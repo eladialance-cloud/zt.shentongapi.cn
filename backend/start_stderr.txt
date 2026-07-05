@@ -1,0 +1,40 @@
+[31m[Nest] 14704  - [39m2026/07/04 16:02:36 [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (1)...[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1122:18)
+    at afterConnectMultiple (node:net:1689:7)
+[31m[Nest] 14704  - [39m2026/07/04 16:02:39 [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (2)...[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1122:18)
+    at afterConnectMultiple (node:net:1689:7)
+[31m[Nest] 14704  - [39m2026/07/04 16:02:42 [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (3)...[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1122:18)
+    at afterConnectMultiple (node:net:1689:7)
+[31m[Nest] 14704  - [39m2026/07/04 16:02:45 [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (4)...[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1122:18)
+    at afterConnectMultiple (node:net:1689:7)
+[31m[Nest] 14704  - [39m2026/07/04 16:02:48 [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (5)...[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1122:18)
+    at afterConnectMultiple (node:net:1689:7)
+[31m[Nest] 14704  - [39m2026/07/04 16:02:51 [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (6)...[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1122:18)
+    at afterConnectMultiple (node:net:1689:7)
+[31m[Nest] 14704  - [39m2026/07/04 16:02:54 [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (7)...[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1122:18)
+    at afterConnectMultiple (node:net:1689:7)
+[31m[Nest] 14704  - [39m2026/07/04 16:02:57 [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (8)...[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1122:18)
+    at afterConnectMultiple (node:net:1689:7)
+[31m[Nest] 14704  - [39m2026/07/04 16:03:00 [31m  ERROR[39m [38;5;3m[TypeOrmModule] [39m[31mUnable to connect to the database. Retrying (9)...[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1122:18)
+    at afterConnectMultiple (node:net:1689:7)
+[31m[Nest] 14704  - [39m2026/07/04 16:03:00 [31m  ERROR[39m [38;5;3m[ExceptionHandler] [39m[31m[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1122:18)
+    at afterConnectMultiple (node:net:1689:7)

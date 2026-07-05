@@ -1,0 +1,24 @@
+# 依赖目录（不上传 node_modules）
+node_modules/
+**/node_modules/
+
+# 真实环境变量文件（仅保留 .env.example，禁止上传真实密钥）
+.env
+**/.env
+
+# 通用构建缓存与日志
+logs
+*.log
+npm-debug.log*
+.cache/
+.DS_Store
+
+# IDE 本地配置
+.vscode/
+.idea/
+
+# 默认忽略所有 dist 构建产物，但保留指定目录
+dist/
+**/dist/
+!frontend/user/dist/**
+!desktop/dist/installer/**

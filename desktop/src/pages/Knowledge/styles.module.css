@@ -1,0 +1,400 @@
+/* 知识库页面样式 - 赛博科技深色风格 */
+
+.pageContainer {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #0a0e1a 0%, #161b22 100%);
+  color: #e6edf3;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.pageTitle {
+  font-size: 22px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ===== 知识库卡片网格 ===== */
+.kbGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.kbCard {
+  background: rgba(22, 27, 34, 0.7);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+}
+
+.kbCard:hover {
+  border-color: rgba(99, 102, 241, 0.5);
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.2);
+  transform: translateY(-2px);
+}
+
+.kbCardIcon {
+  width: 100%;
+  height: 100px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.15));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  color: #a5b4fc;
+}
+
+.kbCardBody {
+  padding: 14px 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kbCardTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #e6edf3;
+}
+
+.kbCardDescription {
+  font-size: 12px;
+  color: #8b949e;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 36px;
+}
+
+.kbCardMeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: #6e7681;
+  margin-top: auto;
+}
+
+.kbCardFooter {
+  padding: 10px 16px;
+  border-top: 1px solid rgba(99, 102, 241, 0.1);
+  display: flex;
+  gap: 8px;
+}
+
+.enterBtn {
+  flex: 1;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border: none;
+}
+
+.enterBtn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7c7ff5 0%, #9d6ff7 100%);
+}
+
+.deleteBtn {
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+.deleteBtn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.newBtn {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border: none;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+}
+
+.newBtn:hover {
+  background: linear-gradient(135deg, #7c7ff5 0%, #9d6ff7 100%);
+}
+
+/* ===== 文档管理页 ===== */
+.docsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.docsTableWrapper {
+  background: rgba(22, 27, 34, 0.7);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 12px;
+  padding: 16px 20px;
+  backdrop-filter: blur(10px);
+}
+
+.uploadArea {
+  background: rgba(22, 27, 34, 0.7);
+  border: 1px dashed rgba(99, 102, 241, 0.3);
+  border-radius: 12px;
+  padding: 20px;
+  backdrop-filter: blur(10px);
+}
+
+.uploadDragger {
+  background: rgba(13, 17, 23, 0.4) !important;
+  border: 1px dashed rgba(99, 102, 241, 0.4) !important;
+  border-radius: 8px !important;
+}
+
+.uploadDragger:hover {
+  border-color: rgba(99, 102, 241, 0.6) !important;
+}
+
+.uploadText {
+  color: #a5b4fc;
+  font-size: 14px;
+}
+
+.uploadHint {
+  color: #6e7681;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* ===== 分块状态标签 ===== */
+.chunkStatusPending {
+  color: #8b949e;
+}
+
+.chunkStatusProcessing {
+  color: #fbbf24;
+}
+
+.chunkStatusCompleted {
+  color: #34d399;
+}
+
+.chunkStatusFailed {
+  color: #f87171;
+}
+
+/* ===== 检索页 ===== */
+.searchContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.searchCard {
+  background: rgba(22, 27, 34, 0.7);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 12px;
+  padding: 20px 24px;
+  backdrop-filter: blur(10px);
+}
+
+.searchBar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.searchInput {
+  flex: 1;
+}
+
+.searchInput input {
+  background: rgba(13, 17, 23, 0.6) !important;
+  border: 1px solid rgba(99, 102, 241, 0.25) !important;
+  color: #e6edf3 !important;
+}
+
+.searchBtn {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border: none;
+}
+
+.searchBtn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7c7ff5 0%, #9d6ff7 100%);
+}
+
+.topKSelect {
+  width: 120px;
+}
+
+.topKSelect .ant-select-selector {
+  background: rgba(13, 17, 23, 0.6) !important;
+  border: 1px solid rgba(99, 102, 241, 0.25) !important;
+  color: #e6edf3 !important;
+}
+
+.resultsList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.resultCard {
+  background: rgba(22, 27, 34, 0.7);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 10px;
+  padding: 14px 18px;
+  backdrop-filter: blur(10px);
+  transition: all 0.15s ease;
+}
+
+.resultCard:hover {
+  border-color: rgba(99, 102, 241, 0.4);
+  background: rgba(22, 27, 34, 0.85);
+}
+
+.resultHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.resultSource {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #a5b4fc;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.scoreBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.resultContent {
+  font-size: 13px;
+  color: #e6edf3;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgba(13, 17, 23, 0.4);
+  padding: 10px 12px;
+  border-radius: 6px;
+  border-left: 3px solid rgba(99, 102, 241, 0.4);
+}
+
+.resultMeta {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #6e7681;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.resultMetaItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ===== 通用空状态 ===== */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  color: #6e7681;
+  gap: 12px;
+}
+
+.emptyStateIcon {
+  font-size: 56px;
+  color: rgba(99, 102, 241, 0.4);
+}
+
+.emptyStateText {
+  font-size: 14px;
+  color: #8b949e;
+}
+
+/* ===== 返回按钮 ===== */
+.backBtn {
+  background: transparent;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: #a5b4fc;
+}
+
+.backBtn:hover {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: rgba(99, 102, 241, 0.5);
+  color: #c7d2fe;
+}
+
+.kbInfoBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(13, 17, 23, 0.6);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 10px;
+}
+
+.kbInfoName {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e6edf3;
+}
+
+.kbInfoDescription {
+  font-size: 12px;
+  color: #8b949e;
+  flex: 1;
+}
+
+.kbActions {
+  display: flex;
+  gap: 8px;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #a5b4fc;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

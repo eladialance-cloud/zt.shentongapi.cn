@@ -1,0 +1,329 @@
+/* 主窗口骨架样式 - 深色赛博风格 */
+
+.layout {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #0a0e1a;
+  color: #e2e8f0;
+  overflow: hidden;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #0a0e1a;
+}
+
+.content::-webkit-scrollbar {
+  width: 8px;
+}
+.content::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 4px;
+}
+.content::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.5);
+}
+
+/* ===== 顶栏 ===== */
+.topbar {
+  height: 48px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background: rgba(15, 23, 42, 0.9);
+  border-bottom: 1px solid rgba(99, 102, 241, 0.18);
+  backdrop-filter: blur(12px);
+  user-select: none;
+  z-index: 100;
+}
+
+.topbarLeft {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.logo {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  background: linear-gradient(135deg, #6366f1 0%, #00d4ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  white-space: nowrap;
+}
+
+.topbarCenter {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: 0 24px;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.searchInput {
+  width: 100%;
+  max-width: 420px;
+}
+
+.topbarRight {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.iconBtn {
+  font-size: 18px;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.iconBtn:hover {
+  color: #c7d2fe;
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.creditsBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: #c7d2fe;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.creditsBadge:hover {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.5);
+  color: #e0e7ff;
+}
+
+.avatarWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 8px;
+  transition: background 0.2s ease;
+}
+
+.avatarWrap:hover {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.avatar {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  flex-shrink: 0;
+}
+
+.username {
+  color: #c7d2fe;
+  font-size: 13px;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== 通知列表 ===== */
+.notificationList {
+  width: 280px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.notificationItem {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.1);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.notificationItem:hover {
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.notificationItem:last-child {
+  border-bottom: none;
+}
+
+.notificationTitle {
+  font-size: 13px;
+  color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.notificationDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #6366f1;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.notificationTime {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.notificationEmpty {
+  padding: 24px;
+  text-align: center;
+  color: #64748b;
+  font-size: 13px;
+}
+
+/* ===== 顶部 Tab 栏 ===== */
+.tabsBar {
+  height: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  background: rgba(15, 23, 42, 0.85);
+  border-bottom: 1px solid rgba(99, 102, 241, 0.18);
+  backdrop-filter: blur(12px);
+  user-select: none;
+  z-index: 90;
+}
+
+/* ===== 状态面板 Drawer ===== */
+.panelSection {
+  margin-bottom: 20px;
+}
+
+.panelSectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+  margin-bottom: 10px;
+  letter-spacing: 0.5px;
+}
+
+.creditsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 8px;
+}
+
+.creditsValue {
+  font-size: 22px;
+  font-weight: 700;
+  color: #00d4ff;
+  background: linear-gradient(135deg, #6366f1 0%, #00d4ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.serviceList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.serviceRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 8px;
+}
+
+.serviceInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.serviceDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.serviceName {
+  font-size: 13px;
+  color: #e2e8f0;
+  font-weight: 500;
+}
+
+.serviceStatus {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.serviceActions {
+  display: flex;
+  gap: 4px;
+}
+
+.serviceActionBtn {
+  color: #94a3b8;
+}
+
+.serviceActionBtn:hover {
+  color: #c7d2fe;
+}
+
+.statsRow {
+  display: flex;
+  gap: 10px;
+}
+
+.statsItem {
+  flex: 1;
+  padding: 12px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.statsLabel {
+  font-size: 11px;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
+.statsValue {
+  font-size: 20px;
+  font-weight: 700;
+  color: #c7d2fe;
+}
+
+.panelFooter {
+  margin-top: 24px;
+}

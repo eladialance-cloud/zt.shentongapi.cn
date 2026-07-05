@@ -1,0 +1,66 @@
+/* 样式重置 - 基于 Normalize.css */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family);
+  font-size: var(--font-size);
+  line-height: 1.5;
+  color: var(--text-primary);
+  background-color: var(--bg-secondary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  font-weight: 600;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  color: color-mix(in srgb, var(--color-primary) 80%, white);
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}

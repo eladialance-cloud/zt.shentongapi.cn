@@ -1,0 +1,13 @@
+- [x] Checkpoint 1: Landing Page 包含 9 个区块，顺序正确
+- [x] Checkpoint 2: Hero 区域品牌名为"深瞳AI"，有标语和 CTA 按钮
+- [x] Checkpoint 3: 核心功能区域有 4 张功能卡片
+- [x] Checkpoint 4: 数据展示区域有 4 项指标和雷达图
+- [x] Checkpoint 5: 使用场景区域有 4 个场景
+- [x] Checkpoint 6: 客户案例区域有 3 个案例卡片
+- [x] Checkpoint 7: 定价区域有 3 档定价（免费/专业/企业）
+- [x] Checkpoint 8: FAQ 区域有 6 个问答，支持折叠
+- [x] Checkpoint 9: CTA 区域有明确的行动号召按钮
+- [x] Checkpoint 10: 页脚区域有品牌信息、链接和版权
+- [x] Checkpoint 11: 响应式适配（1100px 和 768px 断点）
+- [x] Checkpoint 12: 卡片透明度与现有风格一致
+- [x] Checkpoint 13: TypeScript 无类型错误

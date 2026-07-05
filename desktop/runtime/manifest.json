@@ -1,0 +1,71 @@
+{
+  "version": "1.0.0",
+  "services": {
+    "n8n": {
+      "version": "1.62.0",
+      "displayName": "N8N",
+      "port": 5678,
+      "entry": {
+        "win32": "n8n.exe",
+        "darwin": "n8n",
+        "linux": "n8n"
+      },
+      "downloadUrl": {
+        "win32-x64": "https://cdn.shentong.ai/runtime/n8n/1.62.0/n8n-win-x64.tar.gz",
+        "darwin-x64": "https://cdn.shentong.ai/runtime/n8n/1.62.0/n8n-mac-x64.tar.gz",
+        "darwin-arm64": "https://cdn.shentong.ai/runtime/n8n/1.62.0/n8n-mac-arm64.tar.gz",
+        "linux-x64": "https://cdn.shentong.ai/runtime/n8n/1.62.0/n8n-linux-x64.tar.gz"
+      },
+      "sha256": {
+        "win32-x64": "",
+        "darwin-x64": "",
+        "darwin-arm64": "",
+        "linux-x64": ""
+      }
+    },
+    "openclaw": {
+      "version": "0.3.0",
+      "displayName": "OpenClaw",
+      "port": 8080,
+      "entry": {
+        "win32": "openclaw.exe",
+        "darwin": "openclaw",
+        "linux": "openclaw"
+      },
+      "downloadUrl": {
+        "win32-x64": "https://cdn.shentong.ai/runtime/openclaw/0.3.0/openclaw-win-x64.tar.gz",
+        "darwin-x64": "https://cdn.shentong.ai/runtime/openclaw/0.3.0/openclaw-mac-x64.tar.gz",
+        "darwin-arm64": "https://cdn.shentong.ai/runtime/openclaw/0.3.0/openclaw-mac-arm64.tar.gz",
+        "linux-x64": "https://cdn.shentong.ai/runtime/openclaw/0.3.0/openclaw-linux-x64.tar.gz"
+      },
+      "sha256": {
+        "win32-x64": "",
+        "darwin-x64": "",
+        "darwin-arm64": "",
+        "linux-x64": ""
+      }
+    },
+    "mcp": {
+      "version": "0.2.0",
+      "displayName": "MCP Gateway",
+      "port": 3100,
+      "entry": {
+        "win32": "mcp-gateway.exe",
+        "darwin": "mcp-gateway",
+        "linux": "mcp-gateway"
+      },
+      "downloadUrl": {
+        "win32-x64": "https://cdn.shentong.ai/runtime/mcp/0.2.0/mcp-win-x64.tar.gz",
+        "darwin-x64": "https://cdn.shentong.ai/runtime/mcp/0.2.0/mcp-mac-x64.tar.gz",
+        "darwin-arm64": "https://cdn.shentong.ai/runtime/mcp/0.2.0/mcp-mac-arm64.tar.gz",
+        "linux-x64": "https://cdn.shentong.ai/runtime/mcp/0.2.0/mcp-linux-x64.tar.gz"
+      },
+      "sha256": {
+        "win32-x64": "",
+        "darwin-x64": "",
+        "darwin-arm64": "",
+        "linux-x64": ""
+      }
+    }
+  }
+}

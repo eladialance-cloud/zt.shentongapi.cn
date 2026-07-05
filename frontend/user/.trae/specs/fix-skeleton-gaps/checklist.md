@@ -1,0 +1,20 @@
+- [x] Checkpoint 1: OPC 模块 Types/API/Store 已创建并在 index 中导出
+- [x] Checkpoint 2: OPC 5 个页面（团队列表/详情、任务提交/看板、Agent 仓库）已创建
+- [x] Checkpoint 3: OPC 路由已在 router/index.tsx 注册（懒加载）
+- [x] Checkpoint 4: MainLayout 侧边栏包含 OPC 协作导航入口
+- [x] Checkpoint 5: 注册页 pages/Register/ 已创建，路由 /register 已注册
+- [x] Checkpoint 6: Login 页包含跳转注册页的链接
+- [x] Checkpoint 7: 用户中心 Membership.tsx（会员管理）已创建并加入 Tabs
+- [x] Checkpoint 8: 用户中心 Revenue.tsx（收益管理）已创建并加入 Tabs
+- [x] Checkpoint 9: 聊天 SessionList 支持会话分组
+- [x] Checkpoint 10: 聊天 ChatArea 支持消息滚动加载（上拉加载历史）
+- [x] Checkpoint 11: 聊天 ChatArea 支持模型切换 UI
+- [x] Checkpoint 12: 聊天 ChatArea 支持 Agent 挂载 UI
+- [x] Checkpoint 13: 聊天 ChatArea 支持知识库挂载 UI
+- [x] Checkpoint 14: 聊天 ChatArea 支持插件启用 UI
+- [x] Checkpoint 15: store/chat.ts 包含 switchModel/attachAgent/attachKnowledge/togglePlugin actions
+- [x] Checkpoint 16: components/ChatMessage/ 公共组件已创建并在 components/index.ts 导出
+- [x] Checkpoint 17: ChatArea 已引用 ChatMessage 组件替换内联渲染
+- [x] Checkpoint 18: components/AgentCard/ 业务组件已创建并在 components/index.ts 导出
+- [x] Checkpoint 19: AgentMarket 已引用 AgentCard 组件替换内联卡片渲染
+- [x] Checkpoint 20: 所有 TypeScript 文件通过 GetDiagnostics 零类型错误

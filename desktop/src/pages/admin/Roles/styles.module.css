@@ -1,0 +1,59 @@
+/* 角色权限管理页样式 - 复用共享样式 + 页面特有 */
+
+.page {
+  composes: page from '../shared.module.css';
+}
+.header {
+  composes: header from '../shared.module.css';
+}
+.titleArea {
+  composes: titleArea from '../shared.module.css';
+}
+.titleIcon {
+  composes: titleIcon from '../shared.module.css';
+}
+.title {
+  composes: title from '../shared.module.css';
+}
+.subtitle {
+  composes: subtitle from '../shared.module.css';
+}
+.tableWrap {
+  composes: tableWrap from '../shared.module.css';
+}
+.ghostBtn {
+  composes: ghostBtn from '../shared.module.css';
+}
+.tagWarn {
+  composes: tagWarn from '../shared.module.css';
+}
+
+/* 权限编辑树 */
+.permissionTree {
+  max-height: 420px;
+  overflow-y: auto;
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.permissionTree::-webkit-scrollbar {
+  width: 6px;
+}
+.permissionTree::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.3);
+  border-radius: 3px;
+}
+
+.treeFooter {
+  margin-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.treeCount {
+  font-size: 12px;
+  color: #94a3b8;
+}

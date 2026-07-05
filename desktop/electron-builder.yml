@@ -1,0 +1,62 @@
+appId: com.shentong.ai
+productName: 深瞳AI
+copyright: Copyright © 2026 Shentong
+directories:
+  output: dist/installer
+  buildResources: build
+files:
+  - dist/main/**/*
+  - dist/preload/**/*
+  - dist/renderer/**/*
+  - package.json
+  - "!**/*.{ts,tsx,map}"
+  - "!src/**"
+  - "!electron/**"
+  - "!*.config.*"
+asar: true
+extraResources:
+  - from: resources/
+    to: resources/
+  - from: runtime/
+    to: runtime/
+    filter: ["**/*", "!**/.gitkeep"]
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+  artifactName: 深瞳AI-${version}-win-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 深瞳AI
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  include: build/installer.nsh
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  icon: build/icon.icns
+  category: public.app-category.productivity
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+dmg:
+  sign: false
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+publish:
+  provider: generic
+  url: https://update.shentong.ai/desktop/
+  channel: latest

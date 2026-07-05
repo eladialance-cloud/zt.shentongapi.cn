@@ -1,0 +1,113 @@
+/* 插件管理样式 - 复用共享样式 */
+
+.page {
+  composes: page from '../shared.module.css';
+}
+.header {
+  composes: header from '../shared.module.css';
+}
+.titleArea {
+  composes: titleArea from '../shared.module.css';
+}
+.titleIcon {
+  composes: titleIcon from '../shared.module.css';
+}
+.title {
+  composes: title from '../shared.module.css';
+}
+.subtitle {
+  composes: subtitle from '../shared.module.css';
+}
+.toolbar {
+  composes: toolbar from '../shared.module.css';
+}
+.toolbarLeft {
+  composes: toolbarLeft from '../shared.module.css';
+}
+.toolbarRight {
+  composes: toolbarRight from '../shared.module.css';
+}
+.tableWrap {
+  composes: tableWrap from '../shared.module.css';
+}
+.searchBox {
+  composes: searchBox from '../shared.module.css';
+}
+.filterSelect {
+  composes: filterSelect from '../shared.module.css';
+}
+.primaryBtn {
+  composes: primaryBtn from '../shared.module.css';
+}
+.ghostBtn {
+  composes: ghostBtn from '../shared.module.css';
+}
+.dangerBtn {
+  composes: dangerBtn from '../shared.module.css';
+}
+.paginationWrap {
+  composes: paginationWrap from '../shared.module.css';
+}
+.statsGrid {
+  composes: statsGrid from '../shared.module.css';
+}
+.statCard {
+  composes: statCard from '../shared.module.css';
+}
+.statCardBody {
+  composes: statCardBody from '../shared.module.css';
+}
+.statIcon {
+  composes: statIcon from '../shared.module.css';
+}
+.statIconBlue {
+  composes: statIconBlue from '../shared.module.css';
+}
+.statIconGreen {
+  composes: statIconGreen from '../shared.module.css';
+}
+.statIconOrange {
+  composes: statIconOrange from '../shared.module.css';
+}
+.statIconRed {
+  composes: statIconRed from '../shared.module.css';
+}
+.statInfo {
+  composes: statInfo from '../shared.module.css';
+}
+.statLabel {
+  composes: statLabel from '../shared.module.css';
+}
+.statValue {
+  composes: statValue from '../shared.module.css';
+}
+.sectionTitle {
+  composes: sectionTitle from '../shared.module.css';
+}
+.detailSection {
+  composes: detailSection from '../shared.module.css';
+}
+.tag {
+  composes: tag from '../shared.module.css';
+}
+.tagActive {
+  composes: tagActive from '../shared.module.css';
+}
+.tagBanned {
+  composes: tagBanned from '../shared.module.css';
+}
+.tagWarn {
+  composes: tagWarn from '../shared.module.css';
+}
+.card {
+  composes: card from '../shared.module.css';
+}
+
+.sandboxRow {
+  display: flex;
+  gap: 12px;
+}
+
+.sandboxItem {
+  flex: 1;
+}

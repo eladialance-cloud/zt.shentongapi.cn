@@ -1,0 +1,6 @@
+- [x] Checkpoint 1: 所有卡片背景透明度为 30%（alpha=0.3）
+- [x] Checkpoint 2: backdrop-filter: blur(18px) 保留
+- [x] Checkpoint 3: 粒子背景透过卡片可见
+- [x] Checkpoint 4: 卡片文字清晰可读
+- [x] Checkpoint 5: 9 段式结构完整保留
+- [x] Checkpoint 6: TypeScript/CSS 无错误

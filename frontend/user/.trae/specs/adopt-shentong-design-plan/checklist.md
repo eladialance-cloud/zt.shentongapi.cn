@@ -1,0 +1,15 @@
+- [x] Checkpoint 1: 页面纯黑背景(#0a0a0a)，金黄强调色(#f5c518)
+- [x] Checkpoint 2: 导航栏固定顶部，64px高，含品牌"深瞳AI"和登录按钮
+- [x] Checkpoint 3: Hero 区域有金黄标签、双行标题、4项数据统计、CTA按钮
+- [x] Checkpoint 4: 基座双卡区域有 OpenClaw 和 Hermes 两张卡片，各含4条特性
+- [x] Checkpoint 5: 闭环流程图展示 OpenClaw→Hermes→8大AI员工→n8n→飞书
+- [x] Checkpoint 6: 组织架构区域含 CEO决策层 + 5个核心层 + 6个执行层
+- [x] Checkpoint 7: 业务飞轮区域有5步闭环卡片 + 详情面板
+- [x] Checkpoint 8: 协作网络区域有6组数据流卡片 + 3个基础设施卡
+- [x] Checkpoint 9: 技术底座区域有3张技术卡 + 技术栈标签栏
+- [x] Checkpoint 10: 适用场景区域有12个行业卡片（4列×3行）
+- [x] Checkpoint 11: CTA 区域有行动号召
+- [x] Checkpoint 12: Footer 有品牌信息、链接和版权
+- [x] Checkpoint 13: 卡片样式为深灰实色(#141414) + #2a2a2a边框，非半透明
+- [x] Checkpoint 14: 响应式适配（1024px 和 768px 断点）
+- [x] Checkpoint 15: TypeScript 无类型错误

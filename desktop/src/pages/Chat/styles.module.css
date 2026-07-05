@@ -1,0 +1,488 @@
+/* 对话页面样式 - 赛博科技深色风格 */
+
+.chatContainer {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(180deg, #0d1117 0%, #161b22 100%);
+  color: #e6edf3;
+  overflow: hidden;
+}
+
+/* ===== 左侧会话列表 ===== */
+.sessionList {
+  width: 280px;
+  flex-shrink: 0;
+  background: rgba(13, 17, 23, 0.85);
+  border-right: 1px solid rgba(99, 102, 241, 0.2);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.25s ease, transform 0.25s ease;
+  backdrop-filter: blur(10px);
+}
+
+.sessionListCollapsed {
+  width: 0;
+  overflow: hidden;
+  border-right: none;
+}
+
+.sessionListHeader {
+  padding: 12px;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.newChatBtn {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border: none;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+}
+
+.newChatBtn:hover {
+  background: linear-gradient(135deg, #7c7ff5 0%, #9d6ff7 100%);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.6);
+}
+
+.sessionListBody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.sessionListBody::-webkit-scrollbar {
+  width: 6px;
+}
+.sessionListBody::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 3px;
+}
+.sessionListBody::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.5);
+}
+
+.sessionGroupTitle {
+  font-size: 11px;
+  color: #8b949e;
+  padding: 8px 8px 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  user-select: none;
+}
+
+/* ===== 单条会话项 ===== */
+.sessionItem {
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.sessionItem:hover {
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.2);
+}
+
+.sessionItemActive {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.3);
+}
+
+.sessionItemTitle {
+  font-size: 13px;
+  font-weight: 500;
+  color: #e6edf3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sessionItemPreview {
+  font-size: 12px;
+  color: #8b949e;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sessionItemMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #6e7681;
+}
+
+.pinIcon {
+  color: #facc15;
+}
+
+/* ===== 中间消息区 ===== */
+.messageArea {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: rgba(22, 27, 34, 0.6);
+}
+
+.modelSelector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: rgba(13, 17, 23, 0.7);
+  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+  backdrop-filter: blur(10px);
+}
+
+.collapseBtn {
+  flex-shrink: 0;
+}
+
+.selectorLabel {
+  font-size: 12px;
+  color: #8b949e;
+  white-space: nowrap;
+}
+
+.selectorItem {
+  min-width: 140px;
+}
+
+.messageListContainer {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
+  scroll-behavior: smooth;
+}
+
+.messageListContainer::-webkit-scrollbar {
+  width: 8px;
+}
+.messageListContainer::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 4px;
+}
+
+/* ===== 消息气泡 ===== */
+.messageRow {
+  display: flex;
+  margin-bottom: 16px;
+  gap: 10px;
+}
+
+.messageRowUser {
+  flex-direction: row-reverse;
+}
+
+.messageAvatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.messageAvatarUser {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+}
+
+.messageAvatarAssistant {
+  background: rgba(99, 102, 241, 0.15);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+}
+
+.messageBubbleWrap {
+  display: flex;
+  flex-direction: column;
+  max-width: 70%;
+  min-width: 0;
+}
+
+.messageBubbleWrapUser {
+  align-items: flex-end;
+}
+
+.messageBubble {
+  padding: 10px 14px;
+  border-radius: 12px;
+  word-break: break-word;
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.messageBubbleUser {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.messageBubbleAssistant {
+  background: rgba(33, 38, 45, 0.9);
+  color: #e6edf3;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-bottom-left-radius: 4px;
+}
+
+.messageBubbleStreaming {
+  position: relative;
+}
+
+.messageBubbleStreaming::after {
+  content: '▌';
+  display: inline-block;
+  color: #6366f1;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.messageMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #6e7681;
+}
+
+.messageAttachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.attachmentChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(99, 102, 241, 0.15);
+  color: #a5b4fc;
+  font-size: 11px;
+}
+
+/* ===== 工具调用标签 ===== */
+.toolCallBadge {
+  margin: 6px 0;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 8px;
+  background: rgba(99, 102, 241, 0.08);
+  overflow: hidden;
+}
+
+.toolCallHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #a5b4fc;
+  user-select: none;
+}
+
+.toolCallHeader:hover {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.toolCallName {
+  font-weight: 500;
+  color: #c7d2fe;
+}
+
+.toolCallStatusRunning {
+  color: #fbbf24;
+}
+
+.toolCallStatusSuccess {
+  color: #10b981;
+}
+
+.toolCallStatusFailed {
+  color: #ef4444;
+}
+
+.toolCallBody {
+  padding: 8px 10px;
+  border-top: 1px solid rgba(99, 102, 241, 0.15);
+  font-size: 12px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  color: #8b949e;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.toolCallRow {
+  margin-bottom: 4px;
+}
+
+.toolCallRowLabel {
+  color: #6e7681;
+  margin-right: 6px;
+}
+
+/* ===== 计费徽标 ===== */
+.creditsBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  background: rgba(16, 185, 129, 0.1);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.creditsBadgeLow {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+/* ===== 底部输入区 ===== */
+.inputArea {
+  padding: 12px 16px 16px;
+  background: rgba(13, 17, 23, 0.8);
+  border-top: 1px solid rgba(99, 102, 241, 0.15);
+  backdrop-filter: blur(10px);
+}
+
+.attachmentList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.attachmentItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  font-size: 12px;
+  color: #c7d2fe;
+}
+
+.attachmentRemove {
+  cursor: pointer;
+  color: #8b949e;
+  font-size: 12px;
+}
+
+.attachmentRemove:hover {
+  color: #ef4444;
+}
+
+.inputRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: rgba(33, 38, 45, 0.9);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 12px;
+  padding: 8px;
+  transition: border-color 0.2s ease;
+}
+
+.inputRow:focus-within {
+  border-color: rgba(99, 102, 241, 0.6);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.textArea {
+  flex: 1;
+  background: transparent !important;
+  border: none !important;
+  color: #e6edf3 !important;
+  resize: none !important;
+  box-shadow: none !important;
+  font-size: 14px;
+  line-height: 1.5;
+  max-height: 160px;
+}
+
+.textArea::placeholder {
+  color: #6e7681;
+}
+
+.sendBtn {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border: none;
+  flex-shrink: 0;
+}
+
+.sendBtn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7c7ff5 0%, #9d6ff7 100%);
+}
+
+.sendBtn:disabled {
+  background: rgba(99, 102, 241, 0.3);
+  cursor: not-allowed;
+}
+
+.uploadBtn {
+  background: transparent;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: #a5b4fc;
+  flex-shrink: 0;
+}
+
+.uploadBtn:hover {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: rgba(99, 102, 241, 0.5);
+  color: #c7d2fe;
+}
+
+/* ===== 空状态 ===== */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #6e7681;
+  gap: 12px;
+}
+
+.emptyStateIcon {
+  font-size: 56px;
+  color: rgba(99, 102, 241, 0.4);
+}
+
+/* ===== 通用 ===== */
+.glowText {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

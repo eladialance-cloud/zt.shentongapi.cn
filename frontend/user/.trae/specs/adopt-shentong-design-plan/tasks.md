@@ -1,0 +1,32 @@
+# Tasks
+- [ ] Task 1: 重写 Landing Page CSS Module（纯黑+金黄配色系统）
+  - [ ] SubTask 1.1: 定义新的 CSS 变量（#0a0a0a 背景、#f5c518 金黄、#141414 卡片等）
+  - [ ] SubTask 1.2: 导航栏样式（64px 高、半透明黑+blur、金黄按钮）
+  - [ ] SubTask 1.3: Hero 区域样式（标签、大标题、数据卡、CTA 按钮）
+  - [ ] SubTask 1.4: 基座双卡样式（feature-card + 流程图 process-flow）
+  - [ ] SubTask 1.5: 组织架构样式（org-card 决策层/核心层/执行层 + badge）
+  - [ ] SubTask 1.6: 业务飞轮样式（step-card + detail-panel）
+  - [ ] SubTask 1.7: 协作网络样式（dataflow-card + infra-card）
+  - [ ] SubTask 1.8: 技术底座样式（tech-card + tech-stack-bar）
+  - [ ] SubTask 1.9: 适用场景样式（industry-card 4列网格）
+  - [ ] SubTask 1.10: CTA + Footer 样式
+  - [ ] SubTask 1.11: 响应式适配（1024px 和 768px 断点）
+  - [ ] SubTask 1.12: 动画效果（fadeInUp + hover-lift）
+- [x] Task 2: 重写 Landing Page TSX（10 段式结构 + 数据）
+  - [ ] SubTask 2.1: 导航栏（品牌"深瞳AI" + 导航链接 + 登录按钮）
+  - [ ] SubTask 2.2: Hero 区域（标签 + 标题 + 数据卡 + CTA）
+  - [ ] SubTask 2.3: 基座双卡（OpenClaw + Hermes + 流程图）
+  - [ ] SubTask 2.4: 组织架构（CEO + 5核心 + 6执行）
+  - [ ] SubTask 2.5: 业务飞轮（5步 + 详情面板）
+  - [ ] SubTask 2.6: 协作网络（6组数据流 + 3基础设施）
+  - [ ] SubTask 2.7: 技术底座（3技术卡 + 技术栈栏）
+  - [ ] SubTask 2.8: 适用场景（12行业卡）
+  - [ ] SubTask 2.9: CTA + Footer
+  - [ ] SubTask 2.10: 移除 ParticleMatrix 导入
+- [x] Task 3: 验证
+  - [ ] SubTask 3.1: GetDiagnostics 无 TypeScript 错误
+  - [ ] SubTask 3.2: 确认所有 10 个区块渲染正确
+
+# Task Dependencies
+- [Task 2] depends on [Task 1]
+- [Task 3] depends on [Task 2]

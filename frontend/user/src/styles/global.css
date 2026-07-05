@@ -1,0 +1,286 @@
+/* 全局样式 - 科技感深色品牌 */
+@import './variables.css';
+@import './reset.css';
+
+/* ===== 基础 ===== */
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size);
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* 全局过渡 */
+button, a {
+  transition: all var(--motion-duration-fast) var(--motion-ease);
+}
+
+/* 选中文本 */
+::selection {
+  background: rgba(99, 102, 241, 0.2);
+  color: inherit;
+}
+
+/* ===== 滚动条 ===== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* ===== 动效 keyframes ===== */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ===== 动效工具类 ===== */
+.fade-in {
+  animation: fadeIn var(--motion-duration) var(--motion-ease);
+}
+
+/* 路由首次加载动效 */
+main {
+  animation: fadeIn var(--motion-duration) var(--motion-ease);
+}
+
+/* 列表 stagger 入场 */
+.stagger-item {
+  opacity: 0;
+  animation: slideUp var(--motion-duration) var(--motion-ease) forwards;
+}
+
+.stagger-item:nth-child(1) { animation-delay: 0ms; }
+.stagger-item:nth-child(2) { animation-delay: 50ms; }
+.stagger-item:nth-child(3) { animation-delay: 100ms; }
+.stagger-item:nth-child(4) { animation-delay: 150ms; }
+.stagger-item:nth-child(5) { animation-delay: 200ms; }
+.stagger-item:nth-child(6) { animation-delay: 250ms; }
+.stagger-item:nth-child(7) { animation-delay: 300ms; }
+.stagger-item:nth-child(8) { animation-delay: 350ms; }
+
+/* ===== 赛博科技感动效 keyframes ===== */
+
+/* 扫光线横扫（3s 循环） */
+@keyframes scanline {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* 粒子悬浮（6s 循环，上下浮动） */
+@keyframes particle-float {
+  0%, 100% { transform: translateY(0) translateX(0); opacity: 0.4; }
+  50% { transform: translateY(-20px) translateX(10px); opacity: 0.8; }
+}
+
+/* 网格透视移动（20s 循环） */
+@keyframes grid-move {
+  0% { background-position: 0 0; }
+  100% { background-position: 50px 50px; }
+}
+
+/* 流光边框环绕（2s 循环） */
+@keyframes border-flow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+/* 发光脉冲（2s 循环） */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(0, 212, 255, 0.4), 0 0 16px rgba(0, 212, 255, 0.2); }
+  50% { box-shadow: 0 0 16px rgba(0, 212, 255, 0.7), 0 0 32px rgba(0, 212, 255, 0.4); }
+}
+
+/* 扫描线下移（hover 时触发） */
+@keyframes scan-down {
+  0% { top: 0; opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+/* 数字滚动用透明度过渡（配合 JS） */
+@keyframes count-fade {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 渐变文字流动（扫光标题） */
+@keyframes text-shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+/* ===== 赛博科技感工具类 ===== */
+
+/* 顶部扫光线（伪元素） */
+.scanline::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, #00d4ff 50%, #b026ff 100%);
+  animation: scanline 3s linear infinite;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* 网格背景纹理 */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(0, 212, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.06) 1px, transparent 1px);
+  background-size: 50px 50px;
+  animation: grid-move 20s linear infinite;
+}
+
+/* 霓虹文字（青色多层发光） */
+.neon-text {
+  color: #00d4ff;
+  text-shadow:
+    0 0 4px rgba(0, 212, 255, 0.8),
+    0 0 8px rgba(0, 212, 255, 0.6),
+    0 0 16px rgba(0, 212, 255, 0.4),
+    0 0 24px rgba(176, 38, 255, 0.3);
+}
+
+/* 全息图标（渐变 + 发光 + hover 旋转） */
+.holo-icon {
+  background: linear-gradient(135deg, #00d4ff 0%, #b026ff 100%);
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.5), 0 0 24px rgba(176, 38, 255, 0.3);
+  transition: transform var(--motion-duration) var(--motion-ease), box-shadow var(--motion-duration) var(--motion-ease);
+}
+
+.holo-icon:hover {
+  transform: rotate(10deg) scale(1.05);
+  box-shadow: 0 0 16px rgba(0, 212, 255, 0.8), 0 0 32px rgba(176, 38, 255, 0.5);
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* 流光边框（卡片 hover 用，配合 ::after） */
+.border-flow {
+  position: relative;
+}
+
+.border-flow::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(90deg, #00d4ff, #b026ff, #00d4ff);
+  background-size: 200% 100%;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: border-flow 2s linear infinite;
+  opacity: 0;
+  transition: opacity var(--motion-duration) var(--motion-ease);
+  pointer-events: none;
+}
+
+.border-flow:hover::after {
+  opacity: 1;
+}
+
+/* 粒子点阵容器（用 box-shadow 模拟粒子） */
+.particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.particles::before,
+.particles::after {
+  content: '';
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: #00d4ff;
+  box-shadow:
+    10vw 10vh 0 0 rgba(0, 212, 255, 0.6),
+    20vw 30vh 0 0 rgba(176, 38, 255, 0.5),
+    35vw 15vh 0 0 rgba(0, 212, 255, 0.7),
+    50vw 40vh 0 0 rgba(0, 255, 136, 0.4),
+    65vw 25vh 0 0 rgba(0, 212, 255, 0.5),
+    75vw 50vh 0 0 rgba(176, 38, 255, 0.6),
+    85vw 20vh 0 0 rgba(0, 212, 255, 0.7),
+    15vw 60vh 0 0 rgba(176, 38, 255, 0.5),
+    40vw 70vh 0 0 rgba(0, 212, 255, 0.6),
+    60vw 80vh 0 0 rgba(0, 255, 136, 0.5),
+    80vw 65vh 0 0 rgba(0, 212, 255, 0.7),
+    25vw 45vh 0 0 rgba(176, 38, 255, 0.4),
+    55vw 35vh 0 0 rgba(0, 212, 255, 0.6),
+    70vw 75vh 0 0 rgba(0, 255, 136, 0.5),
+    90vw 55vh 0 0 rgba(0, 212, 255, 0.7),
+    5vw 25vh 0 0 rgba(176, 38, 255, 0.5),
+    45vw 5vh 0 0 rgba(0, 212, 255, 0.6),
+    30vw 85vh 0 0 rgba(0, 255, 136, 0.4),
+    95vw 35vh 0 0 rgba(0, 212, 255, 0.7),
+    10vw 50vh 0 0 rgba(176, 38, 255, 0.6);
+  animation: particle-float 6s ease-in-out infinite;
+}
+
+.particles::after {
+  animation-delay: -3s;
+  box-shadow:
+    12vw 22vh 0 0 rgba(0, 212, 255, 0.5),
+    32vw 12vh 0 0 rgba(176, 38, 255, 0.6),
+    52vw 32vh 0 0 rgba(0, 212, 255, 0.7),
+    72vw 42vh 0 0 rgba(0, 255, 136, 0.5),
+    92vw 22vh 0 0 rgba(0, 212, 255, 0.6),
+    22vw 52vh 0 0 rgba(176, 38, 255, 0.5),
+    42vw 62vh 0 0 rgba(0, 212, 255, 0.7),
+    62vw 72vh 0 0 rgba(0, 255, 136, 0.4),
+    82vw 42vh 0 0 rgba(0, 212, 255, 0.6),
+    2vw 32vh 0 0 rgba(176, 38, 255, 0.5),
+    37vw 82vh 0 0 rgba(0, 212, 255, 0.7),
+    57vw 22vh 0 0 rgba(0, 255, 136, 0.5),
+    77vw 62vh 0 0 rgba(0, 212, 255, 0.6),
+    97vw 12vh 0 0 rgba(176, 38, 255, 0.4),
+    17vw 72vh 0 0 rgba(0, 212, 255, 0.7),
+    47vw 42vh 0 0 rgba(0, 255, 136, 0.5),
+    67vw 32vh 0 0 rgba(0, 212, 255, 0.6),
+    87vw 82vh 0 0 rgba(176, 38, 255, 0.5),
+    27vw 17vh 0 0 rgba(0, 212, 255, 0.7),
+    7vw 67vh 0 0 rgba(0, 255, 136, 0.4);
+}

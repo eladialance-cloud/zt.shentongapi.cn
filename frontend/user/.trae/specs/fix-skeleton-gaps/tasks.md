@@ -1,0 +1,48 @@
+# Tasks
+
+- [x] Task 1: 新增 OPC 模块基础设施（Types + API + Store）
+  - [ ] SubTask 1.1: 创建 `types/opc.ts`，定义 Team、Task、AgentRepo 等类型
+  - [ ] SubTask 1.2: 创建 `api/opc.ts`，封装团队列表/详情、任务提交/看板、Agent 仓库接口
+  - [ ] SubTask 1.3: 创建 `store/opc.ts`，管理团队、任务、仓库状态
+  - [ ] SubTask 1.4: 在 `store/index.ts` 和 `api/index.ts` 中导出 OPC 模块
+- [x] Task 2: 新增 OPC 模块页面（5 个）
+  - [ ] SubTask 2.1: 创建 `pages/opc/TeamList/index.tsx` + styles（团队列表）
+  - [ ] SubTask 2.2: 创建 `pages/opc/TeamDetail/index.tsx` + styles（团队详情）
+  - [ ] SubTask 2.3: 创建 `pages/opc/TaskSubmit/index.tsx` + styles（任务提交）
+  - [ ] SubTask 2.4: 创建 `pages/opc/TaskBoard/index.tsx` + styles（任务看板）
+  - [ ] SubTask 2.5: 创建 `pages/opc/AgentRepo/index.tsx` + styles（Agent 仓库）
+- [ ] Task 3: 注册 OPC 路由与导航入口
+  - [ ] SubTask 3.1: 在 `router/index.tsx` 添加 OPC 5 个子路由（懒加载）
+  - [ ] SubTask 3.2: 在 `MainLayout/index.tsx` 侧边栏 navItems 添加 OPC 入口
+- [ ] Task 4: 新增注册页
+  - [ ] SubTask 4.1: 创建 `pages/Register/index.tsx` + styles
+  - [ ] SubTask 4.2: 在 `router/index.tsx` 添加 `/register` 路由
+  - [ ] SubTask 4.3: 在 Login 页添加注册链接
+- [ ] Task 5: 新增用户中心会员页和收益页
+  - [ ] SubTask 5.1: 创建 `pages/user/UserCenter/Membership.tsx`（会员管理）
+  - [ ] SubTask 5.2: 创建 `pages/user/UserCenter/Revenue.tsx`（收益管理）
+  - [ ] SubTask 5.3: 在 UserCenter index.tsx 的 Tabs 中添加会员和收益标签页
+- [x] Task 6: 补全聊天模块功能
+  - [ ] SubTask 6.1: 在 SessionList 添加会话分组功能（按时间/自定义分组）
+  - [ ] SubTask 6.2: 在 ChatArea 添加消息滚动加载（上拉加载更多历史消息）
+  - [ ] SubTask 6.3: 在 ChatArea 添加模型切换下拉选择 UI
+  - [ ] SubTask 6.4: 在 ChatArea 添加 Agent 挂载 UI（选择/移除 Agent）
+  - [ ] SubTask 6.5: 在 ChatArea 添加知识库挂载 UI（选择/移除知识库）
+  - [ ] SubTask 6.6: 在 ChatArea 添加插件启用 UI（启用/禁用插件）
+  - [ ] SubTask 6.7: 在 store/chat.ts 添加 switchModel/attachAgent/attachKnowledge/togglePlugin actions
+- [x] Task 7: 抽取 ChatMessage 公共组件
+  - [ ] SubTask 7.1: 创建 `components/ChatMessage/index.tsx` + styles，从 ChatArea 抽取消息渲染
+  - [ ] SubTask 7.2: 在 ChatArea 中引用 ChatMessage 组件替换内联渲染
+  - [ ] SubTask 7.3: 在 `components/index.ts` 导出 ChatMessage
+- [x] Task 8: 创建 AgentCard 业务组件
+  - [ ] SubTask 8.1: 创建 `components/AgentCard/index.tsx` + styles，按指南 7.2 节示例实现
+  - [ ] SubTask 8.2: 在 AgentMarket 中引用 AgentCard 替换内联卡片渲染
+  - [ ] SubTask 8.3: 在 `components/index.ts` 导出 AgentCard
+
+# Task Dependencies
+- [Task 2] depends on [Task 1]
+- [Task 3] depends on [Task 2]
+- [Task 5] depends on nothing (independent)
+- [Task 6] depends on nothing (independent)
+- [Task 7] depends on nothing (independent)
+- [Task 8] depends on nothing (independent)

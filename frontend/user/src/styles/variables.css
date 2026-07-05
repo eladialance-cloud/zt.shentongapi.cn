@@ -1,0 +1,76 @@
+/* 深瞳 AI 智能中台 - CSS 变量 (用户前台) */
+/* 赛博科技感双色霓虹视觉系统 */
+
+:root {
+  /* 主色调 - 电光青/霓虹紫双色霓虹 */
+  --color-primary: #00d4ff;
+  --color-secondary: #b026ff;
+  --color-accent: #00ff88;        /* 数据流绿，成功/活跃强调 */
+  --color-success: #00ff88;
+  --color-warning: #ffaa00;
+  --color-error: #ff0080;
+
+  /* 品牌渐变与发光 - 双色霓虹 */
+  --gradient-brand: linear-gradient(135deg, #00d4ff 0%, #b026ff 100%);
+  --gradient-brand-hover: linear-gradient(135deg, #00b8e6 0%, #9a1fe6 100%);
+  --color-glow: rgba(0, 212, 255, 0.5);
+  --color-glow-secondary: rgba(176, 38, 255, 0.5);
+
+  /* 背景色 */
+  --bg-primary: #ffffff;
+  --bg-secondary: #0a0e27;        /* 深空黑（dark 模式主背景） */
+  --bg-chat: #f5f5f5;
+  --bg-content: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+
+  /* 文本色 */
+  --text-primary: rgba(0, 0, 0, 0.88);
+  --text-secondary: rgba(0, 0, 0, 0.65);
+  --text-tertiary: rgba(0, 0, 0, 0.45);
+
+  /* 边框 */
+  --border-color: #e5e7eb;
+  --border-color-split: #f0f0f0;
+
+  /* 间距 */
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+
+  /* 圆角 */
+  --border-radius-sm: 6px;
+  --border-radius: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+
+  /* 阴影 - 含霓虹发光 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-glow: 0 8px 32px rgba(0, 212, 255, 0.25), 0 8px 32px rgba(176, 38, 255, 0.15);
+  --shadow-neon: 0 0 12px rgba(0, 212, 255, 0.6), 0 0 24px rgba(0, 212, 255, 0.3);
+
+  /* 深色侧边栏专用 - 深空黑 */
+  --sidebar-bg: #0a0e27;
+  --sidebar-bg-hover: rgba(0, 212, 255, 0.08);
+  --sidebar-bg-active: rgba(0, 212, 255, 0.15);
+  --sidebar-text: rgba(255, 255, 255, 0.7);
+  --sidebar-text-active: #00d4ff;
+  --sidebar-text-hover: rgba(255, 255, 255, 0.95);
+  --sidebar-border: rgba(0, 212, 255, 0.15);
+
+  /* 字体 */
+  --font-family: 'HarmonyOS Sans', 'PingFang SC', '思源黑体 CN', 'Source Han Sans CN',
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-size: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+
+  /* 动效 */
+  --motion-duration-fast: 150ms;
+  --motion-duration: 200ms;
+  --motion-duration-slow: 300ms;
+  --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
+}

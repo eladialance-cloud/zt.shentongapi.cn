@@ -1,0 +1,226 @@
+/* 个人设置样式 - 赛博科技深色风格（与 AgentMarket 一致） */
+
+.page {
+  min-height: 100vh;
+  background: #0a0e1a;
+  background-image:
+    radial-gradient(circle at 15% 20%, rgba(99, 102, 241, 0.12) 0%, transparent 45%),
+    radial-gradient(circle at 85% 80%, rgba(139, 92, 246, 0.10) 0%, transparent 45%),
+    linear-gradient(135deg, #0a0e1a 0%, #111827 100%);
+  color: #e6edf3;
+  display: flex;
+  flex-direction: column;
+}
+
+.page::-webkit-scrollbar {
+  width: 8px;
+}
+.page::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 4px;
+}
+
+/* ===== 顶部标题栏 ===== */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 32px;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+.titleArea {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.titleIcon {
+  font-size: 26px;
+  color: #6366f1;
+  filter: drop-shadow(0 0 10px rgba(99, 102, 241, 0.6));
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin: 0;
+  letter-spacing: 0.5px;
+}
+
+.subtitle {
+  font-size: 12px;
+  color: #8b949e;
+  margin-top: 2px;
+}
+
+.backBtn {
+  background: rgba(99, 102, 241, 0.1) !important;
+  border: 1px solid rgba(99, 102, 241, 0.3) !important;
+  color: #a5b4fc !important;
+}
+.backBtn:hover {
+  background: rgba(99, 102, 241, 0.2) !important;
+  border-color: rgba(99, 102, 241, 0.5) !important;
+}
+
+/* ===== 布局 ===== */
+.body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.sider {
+  background: rgba(17, 24, 39, 0.6) !important;
+  border-right: 1px solid rgba(99, 102, 241, 0.15);
+  width: 220px !important;
+  flex-shrink: 0;
+}
+
+.menu {
+  background: transparent !important;
+  border-inline-end: none !important;
+  padding: 12px 8px;
+}
+
+.content {
+  flex: 1;
+  padding: 24px 32px;
+  overflow-y: auto;
+}
+
+.content::-webkit-scrollbar {
+  width: 8px;
+}
+.content::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 4px;
+}
+
+/* ===== 卡片/表单 ===== */
+.card {
+  background: rgba(17, 24, 39, 0.6) !important;
+  border: 1px solid rgba(99, 102, 241, 0.15) !important;
+  border-radius: 12px !important;
+  max-width: 720px;
+}
+
+.cardBody {
+  padding: 24px;
+}
+
+.sectionTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin: 0 0 4px;
+}
+
+.sectionDesc {
+  font-size: 12px;
+  color: #8b949e;
+  margin-bottom: 20px;
+}
+
+/* ===== 头像 ===== */
+.avatarWrap {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: #fff;
+  overflow: hidden;
+  border: 2px solid rgba(99, 102, 241, 0.4);
+}
+
+.avatarImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatarTip {
+  font-size: 12px;
+  color: #8b949e;
+}
+
+/* ===== 表单项覆盖（深色） ===== */
+.form :global(.ant-form-item-label) > label {
+  color: #cbd5e1 !important;
+}
+.form :global(.ant-input),
+.form :global(.ant-input-password),
+.form :global(.ant-input-affix-wrapper) {
+  background: rgba(10, 14, 26, 0.6) !important;
+  border-color: rgba(99, 102, 241, 0.25) !important;
+  color: #e6edf3 !important;
+}
+.form :global(.ant-input[disabled]) {
+  background: rgba(10, 14, 26, 0.4) !important;
+  color: #8b949e !important;
+}
+
+.primaryBtn {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+  border: none !important;
+  color: #fff !important;
+}
+.primaryBtn:hover {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
+}
+
+/* ===== API Key 一次性展示 ===== */
+.keyOnceBox {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.keyOnceValue {
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  color: #6ee7b7;
+  word-break: break-all;
+  flex: 1;
+}
+
+.warningText {
+  color: #fbbf24;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+/* ===== 表格行内 key ===== */
+.keyCell {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.emptyWrap {
+  padding: 60px 0;
+}
+
+.deviceTip {
+  font-size: 12px;
+  color: #8b949e;
+  margin-top: 8px;
+}

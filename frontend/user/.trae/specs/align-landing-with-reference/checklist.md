@@ -1,0 +1,5 @@
+- [x] Checkpoint 1: Landing Page header 品牌区显示"深瞳AI 控制中枢"
+- [x] Checkpoint 2: Landing Page hero 大标题显示"深瞳AI"
+- [x] Checkpoint 3: 全项目无"深境"残留
+- [x] Checkpoint 4: 卡片透明度与 D:\AI Agent 参考一致（rgba(9,21,36,0.88) → rgba(7,17,30,0.7) + blur(18px)）
+- [x] Checkpoint 5: TypeScript 无类型错误

@@ -1,0 +1,260 @@
+/* Register 页面样式 - 左右分屏科技感深色品牌 */
+.container {
+  min-height: 100vh;
+  display: flex;
+  font-family: var(--font-family);
+}
+
+/* 左侧品牌视觉区 - 赛博深空黑 */
+.brandSide {
+  width: 50%;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 64px;
+  background: #0a0e27;
+}
+
+/* 顶部扫光线（2px 渐变 + 横扫动画） */
+.brandSide::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, #00d4ff 50%, #b026ff 100%);
+  animation: scanline 3s linear infinite;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* 网格纹理叠加（透视移动） */
+.brandSide::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0, 212, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.06) 1px, transparent 1px);
+  background-size: 50px 50px;
+  animation: grid-move 20s linear infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.brandContent {
+  position: relative;
+  z-index: 1;
+  max-width: 420px;
+}
+
+.brandLogo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 48px;
+}
+
+/* 全息图标：渐变 + 发光 + hover 旋转脉冲 */
+.brandIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #00d4ff 0%, #b026ff 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 20px;
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.5), 0 0 24px rgba(176, 38, 255, 0.3);
+  transition: transform var(--motion-duration) var(--motion-ease), box-shadow var(--motion-duration) var(--motion-ease);
+}
+
+.brandIcon:hover {
+  transform: rotate(10deg) scale(1.05);
+  box-shadow: 0 0 16px rgba(0, 212, 255, 0.8), 0 0 32px rgba(176, 38, 255, 0.5);
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* 霓虹文字标题（青色多层发光） */
+.brandTitle {
+  font-size: 22px;
+  font-weight: 700;
+  color: #00d4ff;
+  text-shadow:
+    0 0 4px rgba(0, 212, 255, 0.8),
+    0 0 8px rgba(0, 212, 255, 0.6),
+    0 0 16px rgba(0, 212, 255, 0.4),
+    0 0 24px rgba(176, 38, 255, 0.3);
+  letter-spacing: 0.5px;
+  background: none;
+  -webkit-text-fill-color: initial;
+}
+
+/* 扫光标题（渐变文字流动） */
+.brandHeading {
+  font-size: 40px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  line-height: 1.3;
+  letter-spacing: -0.5px;
+  background: linear-gradient(90deg, #00d4ff, #b026ff, #00d4ff);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: text-shimmer 3s linear infinite;
+}
+
+.brandSubtitle {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 16px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* 装饰光晕 - 青色 */
+.decoration1 {
+  position: absolute;
+  top: -120px;
+  left: -120px;
+  width: 360px;
+  height: 360px;
+  background: radial-gradient(circle, rgba(0, 212, 255, 0.5) 0%, rgba(0, 212, 255, 0) 70%);
+  filter: blur(80px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* 装饰光晕 - 紫色 */
+.decoration2 {
+  position: absolute;
+  bottom: -120px;
+  right: -120px;
+  width: 360px;
+  height: 360px;
+  background: radial-gradient(circle, rgba(176, 38, 255, 0.5) 0%, rgba(176, 38, 255, 0) 70%);
+  filter: blur(80px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* 右侧注册表单区 */
+.formSide {
+  width: 50%;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 64px;
+}
+
+.formContainer {
+  width: 100%;
+  max-width: 400px;
+}
+
+.formTitle {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  line-height: 1.3;
+}
+
+.formSubtitle {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-lg);
+  margin-bottom: 32px;
+  margin-top: 0;
+}
+
+.form {
+  width: 100%;
+}
+
+/* 注册按钮 - 加强霓虹发光 */
+.submitButton {
+  background: var(--gradient-brand) !important;
+  border: none !important;
+  height: 44px;
+  font-size: 16px;
+  font-weight: 500;
+  box-shadow: var(--shadow-neon);
+}
+
+.submitButton:hover,
+.submitButton:focus {
+  background: var(--gradient-brand-hover) !important;
+  border: none !important;
+  box-shadow: 0 0 16px rgba(0, 212, 255, 0.8), 0 0 32px rgba(0, 212, 255, 0.4);
+}
+
+.footer {
+  text-align: center;
+  margin-top: 24px;
+  color: var(--text-tertiary);
+  font-size: var(--font-size);
+}
+
+/* 立即登录链接 - 霓虹青色 */
+.link {
+  margin-left: 4px;
+  color: var(--color-primary);
+  cursor: pointer;
+  transition: all var(--motion-duration) var(--motion-ease);
+}
+
+.link:hover {
+  text-shadow: 0 0 8px rgba(0, 212, 255, 0.6);
+}
+
+/* 移动端品牌头（默认隐藏） */
+.mobileHeader {
+  display: none;
+}
+
+/* 移动端布局 */
+@media (max-width: 768px) {
+  .container {
+    flex-direction: column;
+  }
+
+  .brandSide {
+    display: none;
+  }
+
+  .mobileHeader {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    height: 80px;
+    background: var(--gradient-brand);
+    box-shadow: var(--shadow-glow);
+  }
+
+  .mobileHeader .brandIcon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .mobileHeader .brandTitle {
+    font-size: 20px;
+    color: #ffffff;
+    -webkit-text-fill-color: #ffffff;
+    background: none;
+    text-shadow: none;
+  }
+
+  .formSide {
+    flex: 1;
+    width: 100%;
+    padding: 32px 24px;
+  }
+}
