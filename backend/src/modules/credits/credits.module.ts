@@ -6,6 +6,7 @@ import { CreditsConfigEntity } from './entities/credits-config.entity';
 import { CreditsController, AdminCreditsController } from './controllers/credits.controller';
 import { CreditsService } from './services/credits.service';
 import { CreditsBillingService } from './services/credits-billing.service';
+import { CommonModule } from '../../common/common.module';
 
 /**
  * 积分模块
@@ -18,6 +19,7 @@ import { CreditsBillingService } from './services/credits-billing.service';
       CreditTransactionEntity,
       CreditsConfigEntity,
     ]),
+    CommonModule,
   ],
   controllers: [CreditsController, AdminCreditsController],
   providers: [CreditsService, CreditsBillingService],

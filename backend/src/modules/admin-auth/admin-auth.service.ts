@@ -33,6 +33,8 @@ export interface AdminLoginResult {
     updatedAt: Date;
   };
   permissions: string[];
+  /** 是否需要强制修改密码（默认管理员账号首次登录为 true） */
+  mustChangePassword: boolean;
 }
 
 /**
@@ -92,6 +94,7 @@ export class AdminAuthService {
       expiresAt,
       user: this.toAdminUser(user, roleIds, roleCodes),
       permissions,
+      mustChangePassword: user.mustChangePassword,
     };
   }
 
@@ -116,6 +119,38 @@ export class AdminAuthService {
       user: this.toAdminUser(user, roleIds, roleCodes),
       permissions,
     };
+  }
+
+  /**
+   * 修改管理员密码
+   * 校验旧密码 → 用 bcrypt 哈希新密码 → 更新 password + mustChangePassword=false
+   * 用于默认管理员账号首次登录强制改密场景。
+   */
+  async changePassword(
+    userId: number,
+    oldPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    // password 字段 select:false，需手动 addSelect
+    const user = await this.userRepo
+      .createQueryBuilder('u')
+      .addSelect('u.password')
+      .where('u.id = :id', { id: userId })
+      .getOne();
+    if (!user) {
+      BusinessException.throw(ErrorCode.USER_NOT_FOUND);
+    }
+
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch) {
+      BusinessException.throw(ErrorCode.PASSWORD_INCORRECT);
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await this.userRepo.update(
+      { id: userId },
+      { password: hashed, mustChangePassword: false },
+    );
   }
 
   /**

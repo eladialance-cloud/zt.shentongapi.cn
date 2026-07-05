@@ -92,6 +92,8 @@ export interface AdminLoginResponse {
   user: AdminUser
   /** 权限编码列表 */
   permissions: PermissionCode[]
+  /** 是否需要强制修改密码（默认管理员账号首次登录为 true） */
+  mustChangePassword: boolean
 }
 
 /** 操作类型 */

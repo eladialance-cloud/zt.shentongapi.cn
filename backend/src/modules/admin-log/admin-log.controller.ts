@@ -14,8 +14,8 @@ import { Public } from '../../common/decorators/public.decorator';
  */
 @ApiTags('管理端-操作日志')
 @ApiBearerAuth()
-@Controller('admin/operation-logs')
 @Public()
+@Controller('admin/operation-logs')
 @UseGuards(AdminGuard)
 export class AdminLogController {
   constructor(private readonly service: AdminLogService) {}

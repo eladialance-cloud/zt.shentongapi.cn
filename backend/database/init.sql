@@ -672,6 +672,25 @@ CREATE TABLE `withdrawal_records` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='提现记录表';
 
 -- =============================================================================
+-- 30. 操作日志表(operation_logs)
+-- =============================================================================
+CREATE TABLE `operation_logs` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '日志 ID',
+  `user_id` BIGINT UNSIGNED NOT NULL COMMENT '操作人 ID',
+  `username` VARCHAR(64) NOT NULL COMMENT '操作人用户名',
+  `type` VARCHAR(64) NOT NULL COMMENT '操作类型(POST/PUT/PATCH/DELETE)',
+  `target` VARCHAR(128) NOT NULL COMMENT '操作目标路径',
+  `operation` VARCHAR(512) NOT NULL COMMENT '操作描述',
+  `ip` VARCHAR(64) DEFAULT NULL COMMENT '操作 IP',
+  `ua` VARCHAR(512) DEFAULT NULL COMMENT 'User-Agent',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_operation_logs_user_id` (`user_id`),
+  KEY `idx_operation_logs_type` (`type`),
+  KEY `idx_operation_logs_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='管理端操作日志表';
+
+-- =============================================================================
 -- 结束
 -- =============================================================================
 

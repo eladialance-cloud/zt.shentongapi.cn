@@ -67,4 +67,12 @@ export class UserEntity extends BaseEntity {
 
   @Column({ name: 'needs_tenant_setup', default: false })
   needsTenantSetup: boolean;
+
+  @Column({
+    name: 'must_change_password',
+    type: 'boolean',
+    default: false,
+    comment: '是否需要修改密码（默认管理员账号首次登录强制改密）',
+  })
+  mustChangePassword: boolean;
 }

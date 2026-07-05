@@ -10,12 +10,15 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AppValidationPipe } from './common/pipes/validation.pipe';
 import { swaggerConfig } from './config/swagger.config';
 import { corsConfig } from './config/cors.config';
+import { validateJwtSecrets } from './common/utils/env-validator';
 
 /**
  * 应用入口
- * 数据合同真源：spec.md - 后端项目可启动
  */
 async function bootstrap() {
+  // ===== 启动前校验环境变量（在任何 NestJS 初始化之前执行）=====
+  validateJwtSecrets();
+
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
   const logger = new Logger('Bootstrap');

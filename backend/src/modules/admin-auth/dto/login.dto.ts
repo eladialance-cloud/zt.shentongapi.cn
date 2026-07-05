@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsString, IsNotEmpty, MinLength } from 'class-validator';
 
 /**
  * 管理员登录请求体
@@ -16,4 +16,18 @@ export class AdminLoginDto {
   @IsString()
   @IsNotEmpty()
   captcha: string;
+}
+
+/**
+ * 管理员修改密码请求体
+ * 用于默认管理员账号首次登录强制改密场景。
+ */
+export class AdminChangePasswordDto {
+  @IsString()
+  @IsNotEmpty()
+  oldPassword: string;
+
+  @IsString()
+  @MinLength(8)
+  newPassword: string;
 }

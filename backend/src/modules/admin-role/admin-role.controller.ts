@@ -10,11 +10,8 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AdminGuard } from '../admin-auth/admin.guard';
 import { AdminRoleService } from './admin-role.service';
+import { UpdatePermissionsDto } from './dto/update-permissions.dto';
 import { Public } from '../../common/decorators/public.decorator';
-
-class UpdatePermissionsDto {
-  permissionCodes: string[];
-}
 
 /**
  * 管理端角色控制器
@@ -26,8 +23,8 @@ class UpdatePermissionsDto {
  */
 @ApiTags('管理端-角色')
 @ApiBearerAuth()
-@Controller('admin/roles')
 @Public()
+@Controller('admin/roles')
 @UseGuards(AdminGuard)
 export class AdminRoleController {
   constructor(private readonly service: AdminRoleService) {}

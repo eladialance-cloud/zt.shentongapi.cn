@@ -23,13 +23,16 @@ interface AdminAuthState {
   user: AdminUser | null
   /** 权限编码列表 */
   permissions: PermissionCode[]
+  /** 是否需要强制修改密码（默认管理员账号首次登录为 true） */
+  mustChangePassword: boolean
 
   /** 设置认证信息(登录成功后调用) */
   setAdminAuth: (
     token: string,
     expiresAt: number,
     user: AdminUser,
-    permissions: PermissionCode[]
+    permissions: PermissionCode[],
+    mustChangePassword: boolean
   ) => void
   /** 退出登录(清除状态) */
   clearAdminAuth: () => void
@@ -41,6 +44,8 @@ interface AdminAuthState {
   updateAdminUser: (user: AdminUser) => void
   /** 更新权限列表 */
   updatePermissions: (permissions: PermissionCode[]) => void
+  /** 清除强制改密标记（改密成功后调用） */
+  clearMustChangePassword: () => void
 }
 
 export const useAdminAuthStore = create<AdminAuthState>()(
@@ -50,13 +55,20 @@ export const useAdminAuthStore = create<AdminAuthState>()(
       expiresAt: null,
       user: null,
       permissions: [],
+      mustChangePassword: false,
 
-      setAdminAuth: (token, expiresAt, user, permissions) => {
-        set({ token, expiresAt, user, permissions })
+      setAdminAuth: (token, expiresAt, user, permissions, mustChangePassword) => {
+        set({ token, expiresAt, user, permissions, mustChangePassword })
       },
 
       clearAdminAuth: () => {
-        set({ token: null, expiresAt: null, user: null, permissions: [] })
+        set({
+          token: null,
+          expiresAt: null,
+          user: null,
+          permissions: [],
+          mustChangePassword: false
+        })
       },
 
       isAuthenticated: () => {
@@ -73,7 +85,9 @@ export const useAdminAuthStore = create<AdminAuthState>()(
 
       updateAdminUser: (user) => set({ user }),
 
-      updatePermissions: (permissions) => set({ permissions })
+      updatePermissions: (permissions) => set({ permissions }),
+
+      clearMustChangePassword: () => set({ mustChangePassword: false })
     }),
     {
       name: 'admin-auth-storage',
@@ -82,7 +96,8 @@ export const useAdminAuthStore = create<AdminAuthState>()(
         token: state.token,
         expiresAt: state.expiresAt,
         user: state.user,
-        permissions: state.permissions
+        permissions: state.permissions,
+        mustChangePassword: state.mustChangePassword
       })
     }
   )

@@ -145,9 +145,20 @@ export default function AdminLogin() {
         password: values.password,
         captcha: values.captcha.trim()
       })
-      setAdminAuth(data.token, data.expiresAt, data.user, data.permissions)
+      setAdminAuth(
+        data.token,
+        data.expiresAt,
+        data.user,
+        data.permissions,
+        data.mustChangePassword
+      )
       message.success(`欢迎回来,${data.user.username}`)
-      navigate('/dashboard', { replace: true })
+      // 首次登录默认账号需强制改密，重定向到改密页
+      if (data.mustChangePassword) {
+        navigate('/change-password', { replace: true })
+      } else {
+        navigate('/dashboard', { replace: true })
+      }
     } catch (err) {
       if (err instanceof BusinessError) {
         message.error(err.message || '登录失败')

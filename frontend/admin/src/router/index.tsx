@@ -14,6 +14,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import AdminLogin from '@/pages/Login'
 import AdminLayout from '@/pages/Layout'
+import AdminChangePassword from '@/pages/ChangePassword'
 import { AdminRouteGuard } from '@/components/AdminRouteGuard'
 import AdminDashboard from '@/pages/Dashboard'
 import AdminRoles from '@/pages/Roles'
@@ -56,6 +57,16 @@ const router = createBrowserRouter(
   [
     // ===== 公开路由 =====
     { path: '/login', element: <AdminLogin /> },
+
+    // ===== 受保护路由：强制改密页（独立全屏页，不走 AdminLayout）=====
+    {
+      path: '/change-password',
+      element: (
+        <AdminRouteGuard>
+          <AdminChangePassword />
+        </AdminRouteGuard>
+      )
+    },
 
     // ===== 受保护路由（AdminRouteGuard + AdminLayout 包裹）=====
     {

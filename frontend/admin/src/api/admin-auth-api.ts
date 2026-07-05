@@ -4,6 +4,7 @@
 //   POST   /admin/auth/login                 管理员登录
 //   POST   /admin/auth/logout                管理员登出
 //   GET    /admin/auth/profile               当前管理员信息 + 权限
+//   POST   /admin/auth/change-password       修改管理员密码（首次登录强制改密）
 //   GET    /admin/roles                      角色列表
 //   PUT    /admin/roles/:id/permissions      更新角色权限
 //   GET    /admin/operation-logs             操作日志查询
@@ -32,7 +33,7 @@ import type {
 
 /** API 基础地址 */
 const ADMIN_API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api'
+  import.meta.env.VITE_API_BASE_URL || '/api'
 
 /** 后端标准响应体 */
 interface ApiResponse<T = unknown> {
@@ -199,6 +200,19 @@ export async function getAdminProfile(): Promise<{
 }
 
 /**
+ * 修改管理员密码（首次登录强制改密）
+ * POST /admin/auth/change-password  body: { oldPassword, newPassword }
+ */
+export async function changeAdminPassword(
+  oldPassword: string,
+  newPassword: string
+): Promise<void> {
+  await adminRequest<void>('post', '/admin/auth/change-password', {
+    data: { oldPassword, newPassword }
+  })
+}
+
+/**
  * 角色列表
  * GET /admin/roles
  */
@@ -238,6 +252,7 @@ export default {
   adminLogin,
   adminLogout,
   getAdminProfile,
+  changeAdminPassword,
   listAdminRoles,
   updateRolePermissions,
   listOperationLogs,

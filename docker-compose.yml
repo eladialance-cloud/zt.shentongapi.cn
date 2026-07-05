@@ -105,6 +105,7 @@ services:
       - ./updates:/usr/share/nginx/html/desktop:ro
       - ./frontend/user/dist:/usr/share/nginx/html/landing:ro
       - ./frontend/admin/dist:/usr/share/nginx/html/admin:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
     networks:
       - shentong-net
 

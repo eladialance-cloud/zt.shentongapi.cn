@@ -19,7 +19,7 @@ import { JwtService } from '@nestjs/jwt';
 export class AdminGuard implements CanActivate {
   constructor(private jwtService: JwtService) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const auth: string = request.headers?.authorization || '';
     const match = auth.match(/^Bearer\s+(.+)$/i);
@@ -27,10 +27,10 @@ export class AdminGuard implements CanActivate {
       throw new UnauthorizedException('未授权');
     }
     try {
-      const payload = this.jwtService.verify(match[1]) as {
+      const payload = await this.jwtService.verifyAsync<{
         userId: number;
         username: string;
-      };
+      }>(match[1]);
       request.adminUser = { id: payload.userId, username: payload.username };
       return true;
     } catch {

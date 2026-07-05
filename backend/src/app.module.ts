@@ -39,6 +39,14 @@ import { VersionModule } from './modules/version/version.module';
 import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
 import { AdminRoleModule } from './modules/admin-role/admin-role.module';
 import { AdminLogModule } from './modules/admin-log/admin-log.module';
+import { AdminUserModule } from './modules/admin-user/admin-user.module';
+import { AdminAgentModule } from './modules/admin-agent/admin-agent.module';
+import { AdminWorkflowModule } from './modules/admin-workflow/admin-workflow.module';
+import { AdminPluginModule } from './modules/admin-plugin/admin-plugin.module';
+import { AdminModelModule } from './modules/admin-model/admin-model.module';
+import { AdminFinanceModule } from './modules/admin-finance/admin-finance.module';
+import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
+import { AdminSystemModule } from './modules/admin-system/admin-system.module';
 import { OperationLogInterceptor } from './modules/admin-log/operation-log.interceptor';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -94,6 +102,14 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     AdminAuthModule,
     AdminRoleModule,
     AdminLogModule,
+    AdminUserModule,
+    AdminAgentModule,
+    AdminWorkflowModule,
+    AdminPluginModule,
+    AdminModelModule,
+    AdminFinanceModule,
+    AdminAuditModule,
+    AdminSystemModule,
   ],
   controllers: [AppController],
   providers: [
