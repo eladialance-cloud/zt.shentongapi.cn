@@ -37,7 +37,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 # 仅安装生产依赖
-RUN npm ci --production --no-audit --no-fund && \
+RUN npm config set registry https://registry.npmjs.org/ && npm ci --production --no-audit --no-fund && \
     npm cache clean --force
 
 # 从 Stage 1 复制编译产物
