@@ -79,6 +79,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production-at-least-32-chars-please}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-change-me-admin-jwt-secret-32-chars}
+      ADMIN_JWT_EXPIRES_IN: ${ADMIN_JWT_EXPIRES_IN:-8h}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       THROTTLE_TTL: ${THROTTLE_TTL:-60000}
       THROTTLE_LIMIT: ${THROTTLE_LIMIT:-60}
@@ -102,6 +104,7 @@ services:
       - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./updates:/usr/share/nginx/html/desktop:ro
       - ./frontend/user/dist:/usr/share/nginx/html/landing:ro
+      - ./frontend/admin/dist:/usr/share/nginx/html/admin:ro
     networks:
       - shentong-net
 

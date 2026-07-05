@@ -7,6 +7,10 @@ export class RoleEntity extends BaseEntity {
   @Column({ length: 64 })
   name: string;
 
+  @Index({ unique: true })
+  @Column({ length: 64, nullable: true })
+  code?: string;
+
   @Column({ length: 512, nullable: true })
   description?: string;
 

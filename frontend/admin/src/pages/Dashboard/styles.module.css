@@ -1,0 +1,113 @@
+/* 管理端首页样式 */
+
+.page {
+  composes: page from '../shared.module.css';
+}
+.statsGrid {
+  composes: statsGrid from '../shared.module.css';
+}
+.statCard {
+  composes: statCard from '../shared.module.css';
+}
+.statCardBody {
+  composes: statCardBody from '../shared.module.css';
+}
+.statIcon {
+  composes: statIcon from '../shared.module.css';
+}
+.statIconBlue {
+  composes: statIconBlue from '../shared.module.css';
+}
+.statIconGreen {
+  composes: statIconGreen from '../shared.module.css';
+}
+.statIconOrange {
+  composes: statIconOrange from '../shared.module.css';
+}
+.statIconRed {
+  composes: statIconRed from '../shared.module.css';
+}
+.statInfo {
+  composes: statInfo from '../shared.module.css';
+}
+.statLabel {
+  composes: statLabel from '../shared.module.css';
+}
+.statValue {
+  composes: statValue from '../shared.module.css';
+}
+.sectionTitle {
+  composes: sectionTitle from '../shared.module.css';
+}
+.shortcutIcon {
+  composes: statIconBlue from '../shared.module.css';
+  width: 42px;
+  height: 42px;
+  font-size: 20px;
+  border-radius: 10px;
+}
+
+.welcomeCard {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(99, 102, 241, 0.12)) !important;
+  border: 1px solid rgba(56, 189, 248, 0.25) !important;
+  border-radius: 14px !important;
+  margin-bottom: 20px;
+}
+
+.welcomeTitle {
+  font-size: 22px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin: 0 0 6px;
+}
+
+.welcomeSub {
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.shortcutGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.shortcutCard {
+  background: rgba(15, 23, 42, 0.6) !important;
+  border: 1px solid rgba(56, 189, 248, 0.18) !important;
+  border-radius: 12px !important;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.shortcutCard:hover {
+  border-color: rgba(56, 189, 248, 0.5) !important;
+  box-shadow: 0 0 24px rgba(56, 189, 248, 0.2) !important;
+  transform: translateY(-2px);
+}
+
+.shortcutBody {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shortcutLabel {
+  font-size: 14px;
+  font-weight: 500;
+  color: #e2e8f0;
+}
+
+.shortcutDesc {
+  font-size: 11px;
+  color: #8b949e;
+  margin-top: 2px;
+}
+
+.sectionCard {
+  background: rgba(15, 23, 42, 0.65) !important;
+  border: 1px solid rgba(56, 189, 248, 0.18) !important;
+  border-radius: 12px !important;
+  margin-bottom: 20px;
+  backdrop-filter: blur(12px);
+}

@@ -1,0 +1,66 @@
+/* 深瞳 AI 管理后台 - CSS 变量 (深色赛博管理主题) */
+/* 与用户前台视觉对齐，dark 主题色 #0f172a 背景 */
+
+:root {
+  /* 主色调 - 电光青/霓虹紫双色霓虹（与用户端一致） */
+  --color-primary: #6366f1;
+  --color-secondary: #38bdf8;
+  --color-accent: #34d399;
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-error: #f87171;
+
+  /* 品牌渐变与发光 */
+  --gradient-brand: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%);
+  --gradient-brand-hover: linear-gradient(135deg, #0284c7 0%, #5558e3 100%);
+  --color-glow: rgba(56, 189, 248, 0.5);
+  --color-glow-secondary: rgba(99, 102, 241, 0.5);
+
+  /* 背景色 - dark 主题 #0f172a */
+  --bg-primary: #0f172a;
+  --bg-secondary: #0a0e1a;
+  --bg-chat: #111827;
+  --bg-content: linear-gradient(180deg, #0a0e1a 0%, #0f172a 100%);
+
+  /* 文本色 */
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-tertiary: #6b7280;
+
+  /* 边框 */
+  --border-color: rgba(56, 189, 248, 0.18);
+  --border-color-split: rgba(56, 189, 248, 0.12);
+
+  /* 间距 */
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+
+  /* 圆角 */
+  --border-radius-sm: 6px;
+  --border-radius: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.25);
+  --shadow-glow: 0 8px 32px rgba(56, 189, 248, 0.2), 0 8px 32px rgba(99, 102, 241, 0.15);
+
+  /* 字体 */
+  --font-family: 'HarmonyOS Sans', 'PingFang SC', '思源黑体 CN', 'Source Han Sans CN',
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-size: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+
+  /* 动效 */
+  --motion-duration-fast: 150ms;
+  --motion-duration: 200ms;
+  --motion-duration-slow: 300ms;
+  --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
+}

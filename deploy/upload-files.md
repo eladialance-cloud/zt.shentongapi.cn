@@ -63,6 +63,22 @@ frontend/user/dist/
 
 **注意**:需在本地先执行 `cd frontend/user && npm run build` 生成 dist 目录,再上传。
 
+### 6. 管理后台 Web(`frontend/admin/dist/` 目录)
+
+本地构建后上传整个 dist 目录到服务器:
+
+```
+frontend/admin/dist/
+  ├─ index.html
+  ├─ assets/
+  │   ├─ index-xxxx.js
+  │   ├─ index-xxxx.css
+  │   └─ ...
+  └─ ...
+```
+
+**注意**:需在本地先执行 `cd frontend/admin && npm run build` 生成 dist 目录,再上传。部署后通过 `https://zt.shentongapi.cn/admin/` 访问。
+
 ## 二、必须排除的文件
 
 以下文件**不要**上传到服务器:
@@ -102,9 +118,13 @@ frontend/user/dist/
   │   ├─ nginx.conf
   │   ├─ deploy.sh
   │   └─ upload-files.md                # 本文档
-  ├─ frontend/                          # Landing 站点(新增)
-  │   └─ user/
-  │       └─ dist/                      # 构建产物(本地 build 后上传)
+  ├─ frontend/                          # 前端站点(新增)
+  │   ├─ user/
+  │   │   └─ dist/                      # Landing 构建产物(本地 build 后上传)
+  │   │       ├─ index.html
+  │   │       └─ assets/
+  │   └─ admin/
+  │       └─ dist/                      # 管理后台构建产物(本地 build 后上传)
   │           ├─ index.html
   │           └─ assets/
   ├─ updates/                           # 桌面客户端下载站(nginx 挂载)
@@ -262,6 +282,34 @@ ssh user@server "cd /opt/shentong && docker compose restart nginx"
 ```
 
 Landing 站点将通过 `https://zt.shentongapi.cn/` 访问。
+
+### 7. 构建并上传管理后台 Web
+
+```bash
+# 本地构建
+cd d:/二次开发/frontend/admin
+npm run build
+
+# 上传到服务器
+rsync -avz --delete dist/ user@server:/opt/shentong/frontend/admin/dist/
+
+# 重启 nginx 加载新静态文件(可选)
+ssh user@server "cd /opt/shentong && docker compose restart nginx"
+```
+
+管理后台将通过 `https://zt.shentongapi.cn/admin/` 访问。
+
+### 8. 初始化管理员账号
+
+首次部署后,执行 admin 种子数据脚本创建默认超级管理员:
+
+```bash
+ssh user@server
+cd /opt/shentong
+docker compose exec backend npm run seed:admin
+```
+
+默认管理员账号:`admin / Admin@123456`(首次登录后请立即修改密码)。
 
 ## 六、常见问题
 

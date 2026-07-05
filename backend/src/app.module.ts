@@ -3,7 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { JwtModule } from '@nestjs/jwt';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 
 import { databaseConfig } from './config/database';
 import { jwtConfig } from './config/jwt.config';
@@ -36,6 +36,10 @@ import { ReconciliationModule } from './modules/reconciliation/reconciliation.mo
 import { SyncModule } from './modules/sync/sync.module';
 import { ApiKeyPoolModule } from './modules/api-key-pool/api-key-pool.module';
 import { VersionModule } from './modules/version/version.module';
+import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
+import { AdminRoleModule } from './modules/admin-role/admin-role.module';
+import { AdminLogModule } from './modules/admin-log/admin-log.module';
+import { OperationLogInterceptor } from './modules/admin-log/operation-log.interceptor';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 
@@ -87,6 +91,9 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     SyncModule,
     ApiKeyPoolModule,
     VersionModule,
+    AdminAuthModule,
+    AdminRoleModule,
+    AdminLogModule,
   ],
   controllers: [AppController],
   providers: [
@@ -98,6 +105,10 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: OperationLogInterceptor,
     },
   ],
 })

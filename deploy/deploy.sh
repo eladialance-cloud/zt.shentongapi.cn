@@ -227,6 +227,8 @@ echo -e "  ${CYAN}服务访问地址:${NC}"
 echo -e "    API:        http://$SERVER_IP/api/"
 echo -e "    Swagger:    http://$SERVER_IP/api/docs"
 echo -e "    健康检查:   http://$SERVER_IP/api/health"
+echo -e "    Landing:    http://$SERVER_IP/"
+echo -e "    管理后台:   http://$SERVER_IP/admin/"
 echo ""
 echo -e "  ${CYAN}容器状态:${NC}"
 docker compose ps

@@ -1,0 +1,111 @@
+/* 用户管理模块样式 - 复用共享样式 */
+
+.page {
+  composes: page from '../shared.module.css';
+}
+.header {
+  composes: header from '../shared.module.css';
+}
+.titleArea {
+  composes: titleArea from '../shared.module.css';
+}
+.titleIcon {
+  composes: titleIcon from '../shared.module.css';
+}
+.title {
+  composes: title from '../shared.module.css';
+}
+.subtitle {
+  composes: subtitle from '../shared.module.css';
+}
+.toolbar {
+  composes: toolbar from '../shared.module.css';
+}
+.toolbarLeft {
+  composes: toolbarLeft from '../shared.module.css';
+}
+.toolbarRight {
+  composes: toolbarRight from '../shared.module.css';
+}
+.tableWrap {
+  composes: tableWrap from '../shared.module.css';
+}
+.searchBox {
+  composes: searchBox from '../shared.module.css';
+}
+.filterSelect {
+  composes: filterSelect from '../shared.module.css';
+}
+.primaryBtn {
+  composes: primaryBtn from '../shared.module.css';
+}
+.ghostBtn {
+  composes: ghostBtn from '../shared.module.css';
+}
+.dangerBtn {
+  composes: dangerBtn from '../shared.module.css';
+}
+.paginationWrap {
+  composes: paginationWrap from '../shared.module.css';
+}
+.tag {
+  composes: tag from '../shared.module.css';
+}
+.tagActive {
+  composes: tagActive from '../shared.module.css';
+}
+.tagBanned {
+  composes: tagBanned from '../shared.module.css';
+}
+.tagWarn {
+  composes: tagWarn from '../shared.module.css';
+}
+.card {
+  composes: card from '../shared.module.css';
+}
+.sectionTitle {
+  composes: sectionTitle from '../shared.module.css';
+}
+.detailSection {
+  composes: detailSection from '../shared.module.css';
+}
+
+/* 子页签 */
+.subTabs {
+  margin-bottom: 16px;
+}
+
+/* 账户信息块 */
+.accountGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.accountItem {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.accountLabel {
+  font-size: 12px;
+  color: #8b949e;
+  margin-bottom: 4px;
+}
+
+.accountValue {
+  font-size: 18px;
+  font-weight: 600;
+  color: #7dd3fc;
+}
+
+.amountPositive {
+  color: #34d399 !important;
+}
+
+.amountNegative {
+  color: #f87171 !important;
+}
