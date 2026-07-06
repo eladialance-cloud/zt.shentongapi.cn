@@ -1,4 +1,4 @@
--- =============================================================================
+﻿-- =============================================================================
 -- 深瞳 AI 智能中台 - 数据库初始化脚本
 -- 数据库：ai_agent
 -- MySQL 版本：8.0+
@@ -45,6 +45,7 @@ CREATE TABLE `users` (
   `inviter_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '邀请人 ID',
   `invite_code` VARCHAR(32) DEFAULT NULL COMMENT '邀请码',
   `needs_tenant_setup` BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否需要重新创建租户资源',
+  must_change_password BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否需要修改密码',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
@@ -62,6 +63,7 @@ CREATE TABLE `users` (
 CREATE TABLE `roles` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '角色 ID',
   `name` VARCHAR(64) NOT NULL COMMENT '角色名称 (super_admin/admin/user)',
+  code VARCHAR(64) DEFAULT NULL COMMENT '角色编码',
   `description` VARCHAR(512) DEFAULT NULL COMMENT '角色描述',
   `permissions` JSON DEFAULT NULL COMMENT '权限列表 (JSON 数组)',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
