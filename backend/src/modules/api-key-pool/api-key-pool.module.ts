@@ -4,6 +4,7 @@ import { ApiKeyPoolEntity } from './entities/api-key-pool.entity';
 import { ApiKeyPoolService } from './services/api-key-pool.service';
 import { ApiKeyPoolController } from './api-key-pool.controller';
 import { CommonModule } from '../../common/common.module';
+import { AdminAuthModule } from '../admin-auth/admin-auth.module';
 
 /**
  * API Key 池模块
@@ -13,6 +14,7 @@ import { CommonModule } from '../../common/common.module';
   imports: [
     TypeOrmModule.forFeature([ApiKeyPoolEntity]),
     CommonModule,
+    AdminAuthModule,
   ],
   controllers: [ApiKeyPoolController],
   providers: [ApiKeyPoolService],

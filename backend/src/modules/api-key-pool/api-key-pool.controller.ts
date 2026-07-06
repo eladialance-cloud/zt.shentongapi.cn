@@ -14,9 +14,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiKeyPoolService } from './services/api-key-pool.service';
 import { ApiKeyPoolEntity } from './entities/api-key-pool.entity';
 import { Public } from '../../common/decorators/public.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
+import { AdminGuard } from '../admin-auth/admin.guard';
 
 class CreateKeyDto {
   provider: string;
@@ -50,9 +48,9 @@ class SetLimitsDto {
  */
 @ApiTags('API Key 池-管理端')
 @ApiBearerAuth()
+@Public()
 @Controller('admin/api-key-pool')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('super_admin', 'admin')
+@UseGuards(AdminGuard)
 export class ApiKeyPoolController {
   constructor(private readonly service: ApiKeyPoolService) {}
 

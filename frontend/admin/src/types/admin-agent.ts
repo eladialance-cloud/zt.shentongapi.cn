@@ -123,23 +123,58 @@ export interface UpdateAdminAgentDto {
   pricePerTokenOutput?: number
 }
 
+/** 导入目标状态（与后端 ImportGithubDto.targetStatus 对齐） */
+export type ImportTargetStatus = 'published' | 'pending_review' | 'draft'
+
 /** GitHub 异步导入请求 */
 export interface ImportGithubDto {
   repoUrl: string
+  /** 目标状态，默认 published */
+  targetStatus?: ImportTargetStatus
+  /** 默认模型 ID，默认 gpt-4o-mini */
+  defaultModelId?: string
+  /** 默认创建者 ID，默认 1 */
+  defaultCreatorId?: number
+  /** dry-run 模式：仅解析不入库 */
+  dryRun?: boolean
+  /** 是否覆盖已存在的导入记录 */
+  overwriteExisting?: boolean
 }
 
 /** GitHub 异步导入任务状态 */
 export type ImportTaskStatus = 'pending' | 'processing' | 'success' | 'failed'
+
+/** 导入统计 */
+export interface ImportStats {
+  /** 总文件数 */
+  total: number
+  /** 新增数量 */
+  inserted: number
+  /** 跳过数量（已存在且未覆盖） */
+  skipped: number
+  /** 失败数量 */
+  failed: number
+  /** 耗时毫秒 */
+  durationMs: number
+  /** 错误列表（最多 50 条，超出截断） */
+  errors?: Array<{ filePath: string; error: string }>
+}
 
 /** GitHub 异步导入任务 */
 export interface ImportGithubTask {
   taskId: string
   status: ImportTaskStatus
   /** 进度 0-100 */
-  progress?: number
-  /** 已导入的 Agent ID */
-  agentId?: number
-  /** 错误信息 */
+  progress: number
+  /** 仓库 URL */
+  repoUrl: string
+  /** 分支 */
+  branch?: string
+  /** commit SHA */
+  commitSha?: string
+  /** 统计信息 */
+  stats: ImportStats
+  /** 任务级错误信息（如克隆失败） */
   errorMessage?: string
   createdAt: string
   updatedAt?: string

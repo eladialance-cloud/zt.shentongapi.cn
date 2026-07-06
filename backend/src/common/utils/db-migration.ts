@@ -70,7 +70,7 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
 
     logger.log('Startup migrations completed');
   } catch (err) {
-    logger.error(`Startup migration failed: ${err.message}`);
+    logger.error(`Startup migration failed: ${(err as Error).message}`);
     // 不抛出错误，允许后端继续启动
   } finally {
     await queryRunner.release();

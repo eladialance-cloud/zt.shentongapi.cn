@@ -4,6 +4,7 @@ import { AgentEntity } from '../agent/entities/agent.entity';
 import { AgentReviewEntity } from '../agent/entities/agent-review.entity';
 import { UserEntity } from '../user/entities/user.entity';
 import { AgentCategoryEntity } from './entities/agent-category.entity';
+import { AgentImportTaskEntity } from './entities/agent-import-task.entity';
 import { AdminAuthModule } from '../admin-auth/admin-auth.module';
 import { AdminAgentController } from './admin-agent.controller';
 import { AdminAgentService } from './admin-agent.service';
@@ -26,6 +27,7 @@ import { AdminAgentService } from './admin-agent.service';
       AgentReviewEntity,
       UserEntity,
       AgentCategoryEntity,
+      AgentImportTaskEntity,
     ]),
     AdminAuthModule,
   ],

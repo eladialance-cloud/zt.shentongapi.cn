@@ -1,4 +1,4 @@
-﻿-- =============================================================================
+-- =============================================================================
 -- 深瞳 AI 智能中台 - 数据库初始化脚本
 -- 数据库：ai_agent
 -- MySQL 版本：8.0+
@@ -180,6 +180,26 @@ CREATE TABLE `agents` (
   CONSTRAINT `fk_agents_creator_id` FOREIGN KEY (`creator_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_agents_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 表';
+
+-- -----------------------------------------------------------------------------
+-- 6.1 Agent 批量导入任务表 (agent_import_tasks)
+--    持久化 GitHub 仓库批量导入任务进度与统计
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `agent_import_tasks` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `task_id` VARCHAR(64) NOT NULL,
+  `repo_url` VARCHAR(512) NOT NULL,
+  `branch` VARCHAR(64) NULL,
+  `commit_sha` VARCHAR(64) NULL,
+  `status` ENUM('pending','processing','success','failed') NOT NULL DEFAULT 'pending',
+  `progress` INT NOT NULL DEFAULT 0,
+  `stats` JSON NULL,
+  `error` VARCHAR(512) NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_agent_import_tasks_task_id` (`task_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- -----------------------------------------------------------------------------
 -- 7. Agent 版本表 (agent_versions) - 文档 3.2.2

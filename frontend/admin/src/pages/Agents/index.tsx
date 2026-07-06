@@ -7,7 +7,7 @@
 // GitHub 仓库异步导入(modal 输入 repoUrl,轮询任务状态)
 // API: GET/POST/PATCH/DELETE /admin/agents, publish/unpublish, import-github
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   Button,
   Empty,
@@ -38,8 +38,6 @@ import {
 import {
   createAdminAgent,
   deleteAdminAgent,
-  getImportGithubTask,
-  importGithubAgent,
   listAdminAgents,
   publishAdminAgent,
   unpublishAdminAgent,
@@ -51,10 +49,10 @@ import type {
   AgentPricingMode,
   AgentStatus,
   CreateAdminAgentDto,
-  ImportGithubTask,
   UpdateAdminAgentDto
 } from '@/types/admin-agent'
 import type { AdminPaginatedResult } from '@/types/admin-auth'
+import ImportGithubModal from './ImportGithubModal'
 import styles from './styles.module.css'
 
 const PAGE_SIZE = 20
@@ -103,10 +101,6 @@ interface AgentFormValues {
   pricePerTokenOutput: number
 }
 
-interface ImportFormValues {
-  repoUrl: string
-}
-
 export default function AdminAgents() {
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<AdminAgentItem[]>([])
@@ -122,10 +116,6 @@ export default function AdminAgents() {
 
   // GitHub 导入
   const [importOpen, setImportOpen] = useState(false)
-  const [importForm] = Form.useForm<ImportFormValues>()
-  const [importSubmitting, setImportSubmitting] = useState(false)
-  const [importTask, setImportTask] = useState<ImportGithubTask | null>(null)
-  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadList = useCallback(async () => {
     setLoading(true)
@@ -146,16 +136,6 @@ export default function AdminAgents() {
   useEffect(() => {
     void loadList()
   }, [loadList])
-
-  // 清理轮询定时器
-  useEffect(() => {
-    return () => {
-      if (pollTimer.current) {
-        clearTimeout(pollTimer.current)
-        pollTimer.current = null
-      }
-    }
-  }, [])
 
   const handleTabChange = (key: string) => {
     setActiveTab(key as AgentStatus)
@@ -297,63 +277,6 @@ export default function AdminAgents() {
       console.error('[AdminAgents] delete failed:', err)
       message.error('删除失败')
     }
-  }
-
-  const stopPolling = () => {
-    if (pollTimer.current) {
-      clearTimeout(pollTimer.current)
-      pollTimer.current = null
-    }
-  }
-
-  const pollImportTask = (taskId: string) => {
-    stopPolling()
-    const poll = async () => {
-      try {
-        const task = await getImportGithubTask(taskId)
-        setImportTask(task)
-        if (task.status === 'success' || task.status === 'failed') {
-          stopPolling()
-          if (task.status === 'success') {
-            message.success('GitHub Agent 导入成功')
-            void loadList()
-          } else {
-            message.error(`导入失败: ${task.errorMessage || '未知错误'}`)
-          }
-          return
-        }
-        pollTimer.current = setTimeout(() => void poll(), 2000)
-      } catch (err) {
-        console.error('[AdminAgents] poll failed:', err)
-        stopPolling()
-        message.error('查询导入任务状态失败')
-      }
-    }
-    void poll()
-  }
-
-  const handleImportSubmit = async () => {
-    try {
-      const values = await importForm.validateFields()
-      setImportSubmitting(true)
-      setImportTask(null)
-      const res = await importGithubAgent({ repoUrl: values.repoUrl })
-      message.success('已提交导入任务')
-      pollImportTask(res.taskId)
-    } catch (err) {
-      if (err && typeof err === 'object' && 'errorFields' in err) return
-      console.error('[AdminAgents] import failed:', err)
-      message.error('提交导入任务失败')
-    } finally {
-      setImportSubmitting(false)
-    }
-  }
-
-  const handleCloseImport = () => {
-    stopPolling()
-    setImportOpen(false)
-    setImportTask(null)
-    importForm.resetFields()
   }
 
   const columns: TableColumnsType<AdminAgentItem> = [
@@ -634,60 +557,11 @@ export default function AdminAgents() {
       </Modal>
 
       {/* GitHub 导入 Modal */}
-      <Modal
-        title="GitHub 仓库异步导入"
+      <ImportGithubModal
         open={importOpen}
-        onCancel={handleCloseImport}
-        onOk={handleImportSubmit}
-        confirmLoading={importSubmitting}
-        okText="提交导入"
-        cancelText="关闭"
-        destroyOnClose
-      >
-        <Form<ImportFormValues> form={importForm} layout="vertical">
-          <Form.Item
-            name="repoUrl"
-            label="GitHub 仓库 URL"
-            rules={[
-              { required: true, message: '请输入仓库 URL' },
-              {
-                pattern: /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+/,
-                message: '请输入合法的 GitHub 仓库 URL'
-              }
-            ]}
-          >
-            <Input placeholder="https://github.com/owner/repo" />
-          </Form.Item>
-        </Form>
-        {importTask ? (
-          <div className={styles.importProgress}>
-            <div style={{ marginBottom: 8, color: '#c7d2fe' }}>
-              任务 ID: <code>{importTask.taskId}</code>
-            </div>
-            <div style={{ color: '#94a3b8' }}>
-              状态:
-              <Tag
-                color={
-                  importTask.status === 'success'
-                    ? 'green'
-                    : importTask.status === 'failed'
-                      ? 'red'
-                      : 'processing'
-                }
-                style={{ marginLeft: 8 }}
-              >
-                {importTask.status}
-              </Tag>
-              {importTask.progress != null ? `${importTask.progress}%` : ''}
-            </div>
-            {importTask.errorMessage ? (
-              <div style={{ color: '#f87171', marginTop: 8 }}>
-                {importTask.errorMessage}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </Modal>
+        onClose={() => setImportOpen(false)}
+        onSuccess={loadList}
+      />
     </div>
   )
 }

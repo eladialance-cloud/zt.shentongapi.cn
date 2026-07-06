@@ -6,13 +6,14 @@ import { StatisticsService } from './services/statistics.service';
 import { LogCollectionService } from './services/log-collection.service';
 import { DashboardStatsService } from './services/dashboard-stats.service';
 import { CommonModule } from '../../common/common.module';
+import { AdminAuthModule } from '../admin-auth/admin-auth.module';
 
 /**
  * 统计模块
  * 数据合同真源：Task 33 - 统计报表数据源
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([DailyStatsEntity]), CommonModule],
+  imports: [TypeOrmModule.forFeature([DailyStatsEntity]), CommonModule, AdminAuthModule],
   controllers: [StatisticsController, AdminStatisticsController],
   providers: [StatisticsService, LogCollectionService, DashboardStatsService],
   exports: [StatisticsService, LogCollectionService, DashboardStatsService],

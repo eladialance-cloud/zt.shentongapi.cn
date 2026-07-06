@@ -1,10 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
+import fg from 'fast-glob';
 import { AgentEntity } from '../agent/entities/agent.entity';
 import { AgentReviewEntity } from '../agent/entities/agent-review.entity';
 import { UserEntity } from '../user/entities/user.entity';
 import { AgentCategoryEntity } from './entities/agent-category.entity';
+import {
+  AgentImportTaskEntity,
+  ImportTaskStats,
+} from './entities/agent-import-task.entity';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/constants/error.constant';
 import { AgentQueryDto } from './dto/agent-query.dto';
@@ -14,6 +24,25 @@ import { UpdateAgentDto } from './dto/update-agent.dto';
 import { RejectAgentDto } from './dto/reject-agent.dto';
 import { ImportGithubDto } from './dto/import-github.dto';
 import { UpdateCategoryDisplayDto } from './dto/update-category-display.dto';
+import {
+  ParsedAgentMarkdown,
+  parseAgentMarkdown,
+} from './agent-import.parser';
+import {
+  AgentCategory,
+  BATCH_SIZE,
+  CLONE_TIMEOUT_MS,
+  DEFAULT_CREATOR_ID,
+  DEFAULT_MODEL_ID,
+  DEFAULT_PRICE_PER_CALL,
+  DEFAULT_RUNTIME_TYPE,
+  EXCLUDE_PATTERNS,
+  SOURCE_DIRS_TO_SCAN,
+  SOURCE_DIR_TO_CATEGORY,
+} from './agent-import.constants';
+
+/** exec 的 Promise 化包装 */
+const execAsync = promisify(exec);
 
 /** 固定的 5 个分类 */
 const FIXED_CATEGORIES = [
@@ -33,26 +62,13 @@ const DEFAULT_DISPLAY_NAMES: Record<string, string> = {
   other: '其他',
 };
 
-/** GitHub 导入任务内存存储（进程级） */
-interface ImportTask {
-  taskId: string;
-  status: 'pending' | 'processing' | 'success' | 'failed';
-  progress: number;
-  agentId?: number;
-  errorMessage?: string;
-  repoUrl: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 /**
  * 管理端 Agent 市场服务
  * 数据合同真源：Task 20 - Agent 市场管理
  */
 @Injectable()
 export class AdminAgentService {
-  /** GitHub 导入任务内存存储（进程级，重启后丢失） */
-  private readonly importTasks = new Map<string, ImportTask>();
+  private readonly logger = new Logger(AdminAgentService.name);
 
   constructor(
     @InjectRepository(AgentEntity)
@@ -63,6 +79,8 @@ export class AdminAgentService {
     private categoryRepo: Repository<AgentCategoryEntity>,
     @InjectRepository(UserEntity)
     private userRepo: Repository<UserEntity>,
+    @InjectRepository(AgentImportTaskEntity)
+    private agentImportTaskRepo: Repository<AgentImportTaskEntity>,
   ) {}
 
   // ============ Agent CRUD ============
@@ -286,43 +304,255 @@ export class AdminAgentService {
   /** GitHub 仓库异步导入（创建任务，立即返回 taskId） */
   async importGithub(dto: ImportGithubDto): Promise<{ taskId: string }> {
     const taskId = `imp_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    const now = new Date();
-    const task: ImportTask = {
-      taskId,
-      status: 'pending',
-      progress: 0,
-      repoUrl: dto.repoUrl,
-      createdAt: now,
-      updatedAt: now,
+
+    const defaults = {
+      targetStatus: dto.targetStatus || 'published',
+      defaultModelId: dto.defaultModelId || DEFAULT_MODEL_ID,
+      defaultCreatorId: dto.defaultCreatorId || DEFAULT_CREATOR_ID,
+      dryRun: dto.dryRun ?? false,
+      overwriteExisting: dto.overwriteExisting ?? false,
     };
-    this.importTasks.set(taskId, task);
 
-    // 异步模拟处理（不阻塞响应）：标记为 processing 后直接标记 success
-    // 真实场景应由队列消费者完成克隆、解析、入库
-    setImmediate(() => {
-      const t = this.importTasks.get(taskId);
-      if (!t) return;
-      t.status = 'processing';
-      t.progress = 50;
-      t.updatedAt = new Date();
-      this.importTasks.set(taskId, t);
+    const stats: ImportTaskStats = {
+      total: 0,
+      inserted: 0,
+      skipped: 0,
+      failed: 0,
+      durationMs: 0,
+      errors: [],
+    };
 
-      setTimeout(() => {
-        const latest = this.importTasks.get(taskId);
-        if (!latest) return;
-        latest.status = 'success';
-        latest.progress = 100;
-        latest.updatedAt = new Date();
-        this.importTasks.set(taskId, latest);
-      }, 1000);
+    await this.agentImportTaskRepo.save({
+      taskId,
+      repoUrl: dto.repoUrl,
+      branch: 'main',
+      status: 'processing',
+      progress: 0,
+      stats,
+    });
+
+    void this.processImportTask(taskId, dto, defaults).catch((e: unknown) => {
+      // 异步任务异常由 processImportTask 内部 try-catch 兜底，此处仅作极端兜底日志
+      this.logger?.error?.(
+        `importGithub async dispatch failed: ${(e as Error).message}`,
+      );
     });
 
     return { taskId };
   }
 
+  /** 异步处理导入任务：克隆 → 解析 → 去重 → 入库 */
+  private async processImportTask(
+    taskId: string,
+    dto: ImportGithubDto,
+    defaults: {
+      targetStatus: 'published' | 'pending_review' | 'draft';
+      defaultModelId: string;
+      defaultCreatorId: number;
+      dryRun: boolean;
+      overwriteExisting: boolean;
+    },
+  ): Promise<void> {
+    const startTime = Date.now();
+    const tmpDir = path.join(os.tmpdir(), `agent-import-${taskId}`);
+    const stats: ImportTaskStats = {
+      total: 0,
+      inserted: 0,
+      skipped: 0,
+      failed: 0,
+      durationMs: 0,
+      errors: [],
+    };
+    let commitSha: string | undefined;
+
+    try {
+      // a. git clone（浅克隆）
+      await execAsync(
+        `git clone --depth 1 ${this.escapeShell(dto.repoUrl)} ${this.escapeShell(tmpDir)}`,
+        { timeout: CLONE_TIMEOUT_MS, maxBuffer: 10 * 1024 * 1024 },
+      );
+
+      // b. 获取 commitSha
+      const { stdout: shaStdout } = await execAsync(
+        `git -C ${this.escapeShell(tmpDir)} rev-parse HEAD`,
+      );
+      commitSha = shaStdout.trim();
+
+      // c. 遍历目标源目录下的 markdown 文件
+      const files: string[] = await fg(
+        [
+          ...SOURCE_DIRS_TO_SCAN.map((d) => `${d}/**/*.md`),
+          ...EXCLUDE_PATTERNS.map((p) => '!' + p),
+        ],
+        { cwd: tmpDir, ignore: EXCLUDE_PATTERNS },
+      );
+      stats.total = files.length;
+
+      // d-g. 读取并解析每个文件，单文件错误不中断
+      const parsed: Array<{
+        relPath: string;
+        data: ParsedAgentMarkdown;
+        category: AgentCategory;
+      }> = [];
+      for (const relPath of files) {
+        try {
+          const content = await fs.readFile(path.join(tmpDir, relPath), 'utf8');
+          const result = parseAgentMarkdown(relPath, content);
+          if (result.error) {
+            stats.failed++;
+            if (stats.errors && stats.errors.length < 50) {
+              stats.errors.push({ filePath: relPath, error: result.error });
+            }
+            continue;
+          }
+          const sourceDir = relPath.split('/')[0];
+          const category: AgentCategory =
+            SOURCE_DIR_TO_CATEGORY[sourceDir] || 'other';
+          parsed.push({ relPath, data: result, category });
+        } catch (e) {
+          stats.failed++;
+          if (stats.errors && stats.errors.length < 50) {
+            stats.errors.push({ filePath: relPath, error: (e as Error).message });
+          }
+        }
+      }
+
+      // h. 按 sourceRepoUrl + sourceFilePath 去重
+      const existingMap = new Map<string, { id: number }>();
+      if (parsed.length > 0) {
+        const existing = await this.agentRepo.find({
+          where: {
+            sourceRepoUrl: dto.repoUrl,
+            sourceFilePath: In(parsed.map((p) => p.relPath)),
+          },
+          select: ['id', 'sourceFilePath'],
+        });
+        for (const e of existing) {
+          if (e.sourceFilePath) {
+            existingMap.set(e.sourceFilePath, { id: e.id });
+          }
+        }
+      }
+
+      // 构造新增 / 更新集合
+      const newEntities: AgentEntity[] = [];
+      const updatePayloads: Array<{
+        id: number;
+        fields: Partial<AgentEntity>;
+      }> = [];
+      for (const item of parsed) {
+        const existing = existingMap.get(item.relPath);
+        const sourceDir = item.relPath.split('/')[0];
+        if (existing) {
+          if (!defaults.overwriteExisting) {
+            stats.skipped++;
+            continue;
+          }
+          updatePayloads.push({
+            id: existing.id,
+            fields: {
+              name: item.data.name,
+              description: item.data.description,
+              avatar: item.data.avatar || undefined,
+              systemPrompt: item.data.systemPrompt,
+              modelId: defaults.defaultModelId,
+              category: item.category,
+              sourceCategory: sourceDir,
+              sourceVersion: commitSha,
+            },
+          });
+        } else {
+          const entity = this.agentRepo.create({
+            name: item.data.name,
+            description: item.data.description,
+            avatar: item.data.avatar || undefined,
+            systemPrompt: item.data.systemPrompt,
+            modelId: defaults.defaultModelId,
+            pricePerCall: DEFAULT_PRICE_PER_CALL,
+            creatorId: defaults.defaultCreatorId,
+            creatorType: 'official',
+            status: defaults.targetStatus,
+            category: item.category,
+            sourceType: 'imported',
+            sourceRepoUrl: dto.repoUrl,
+            sourceFilePath: item.relPath,
+            sourceCategory: sourceDir,
+            sourceVersion: commitSha,
+            runtimeType: DEFAULT_RUNTIME_TYPE,
+            userId: defaults.defaultCreatorId,
+            isOfficial: true,
+            publishedAt:
+              defaults.targetStatus === 'published' ? new Date() : undefined,
+          });
+          newEntities.push(entity);
+        }
+      }
+
+      // i/j. dryRun 跳过写入；否则分批入库
+      if (defaults.dryRun) {
+        stats.inserted = 0;
+        stats.skipped = existingMap.size;
+      } else {
+        let processedCount = 0;
+        // 分批 save 新增
+        for (let i = 0; i < newEntities.length; i += BATCH_SIZE) {
+          const batch = newEntities.slice(i, i + BATCH_SIZE);
+          await this.agentRepo.save(batch);
+          processedCount += batch.length;
+          const progress =
+            files.length > 0
+              ? Math.floor((processedCount / files.length) * 100)
+              : 100;
+          await this.agentImportTaskRepo.update({ taskId }, { progress, stats });
+        }
+        stats.inserted = newEntities.length;
+
+        // 分批 update 覆盖
+        for (let i = 0; i < updatePayloads.length; i += BATCH_SIZE) {
+          const batch = updatePayloads.slice(i, i + BATCH_SIZE);
+          for (const payload of batch) {
+            await this.agentRepo.update(payload.id, payload.fields);
+          }
+          processedCount += batch.length;
+          const progress =
+            files.length > 0
+              ? Math.floor((processedCount / files.length) * 100)
+              : 100;
+          await this.agentImportTaskRepo.update({ taskId }, { progress, stats });
+        }
+      }
+
+      // k. 完成
+      stats.durationMs = Date.now() - startTime;
+      stats.total = files.length;
+      await this.agentImportTaskRepo.update(
+        { taskId },
+        {
+          status: 'success',
+          progress: 100,
+          stats,
+          commitSha,
+        },
+      );
+    } catch (e) {
+      stats.durationMs = Date.now() - startTime;
+      await this.agentImportTaskRepo.update({ taskId }, {
+        status: 'failed',
+        error: (e as Error).message.slice(0, 512),
+        stats,
+      });
+    } finally {
+      try {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+      } catch {
+        // 忽略临时目录清理错误
+      }
+    }
+  }
+
   /** 查询导入任务状态 */
   async getImportTask(taskId: string) {
-    const task = this.importTasks.get(taskId);
+    const task = await this.agentImportTaskRepo.findOne({ where: { taskId } });
     if (!task) {
       BusinessException.throw(ErrorCode.NOT_FOUND, '导入任务不存在');
     }
@@ -330,8 +560,11 @@ export class AdminAgentService {
       taskId: task.taskId,
       status: task.status,
       progress: task.progress,
-      agentId: task.agentId,
-      errorMessage: task.errorMessage,
+      repoUrl: task.repoUrl,
+      branch: task.branch,
+      commitSha: task.commitSha,
+      stats: task.stats,
+      errorMessage: task.error,
       createdAt: task.createdAt.toISOString(),
       updatedAt: task.updatedAt.toISOString(),
     };
@@ -473,5 +706,10 @@ export class AdminAgentService {
         updatedAt: a.updatedAt.toISOString(),
       };
     });
+  }
+
+  /** shell 参数转义：用单引号包裹并转义内部单引号 */
+  private escapeShell(arg: string): string {
+    return "'" + String(arg).replace(/'/g, "'\\''") + "'";
   }
 }

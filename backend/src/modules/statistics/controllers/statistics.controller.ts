@@ -1,9 +1,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../../common/decorators/public.decorator';
-import { Roles } from '../../../common/decorators/roles.decorator';
-import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../../common/guards/roles.guard';
+import { AdminGuard } from '../../admin-auth/admin.guard';
 import { StatisticsService } from '../services/statistics.service';
 import { DashboardStatsService } from '../services/dashboard-stats.service';
 
@@ -31,9 +29,9 @@ export class StatisticsController {
  */
 @ApiTags('统计-管理端')
 @ApiBearerAuth()
+@Public()
 @Controller('admin/stats')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('super_admin', 'admin')
+@UseGuards(AdminGuard)
 export class AdminStatisticsController {
   constructor(private readonly dashboard: DashboardStatsService) {}
 

@@ -1,0 +1,76 @@
+/* GitHub 导入弹窗样式 */
+
+.taskPanel {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(56, 189, 248, 0.18);
+}
+
+.taskMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #94a3b8;
+  flex-wrap: wrap;
+}
+
+.metaLabel {
+  color: #8b949e;
+}
+
+.taskId {
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  color: #7dd3fc;
+  background: rgba(56, 189, 248, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+.progressWrap {
+  margin: 12px 0;
+}
+
+.statsRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+  padding: 12px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(56, 189, 248, 0.12);
+  border-radius: 8px;
+}
+
+.errorListWrap {
+  margin-top: 12px;
+}
+
+.errorListTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f87171;
+  margin-bottom: 8px;
+}
+
+.errorFilePath {
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  color: #fbbf24;
+  word-break: break-all;
+}
+
+.errorText {
+  color: #f87171;
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.formHint {
+  font-size: 12px;
+  color: #8b949e;
+  margin-top: 4px;
+}

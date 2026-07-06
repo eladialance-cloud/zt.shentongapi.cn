@@ -14,9 +14,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { VersionService } from './services/version.service';
 import { ClientVersionEntity } from './entities/client-version.entity';
 import { Public } from '../../common/decorators/public.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
+import { AdminGuard } from '../admin-auth/admin.guard';
 
 class CreateVersionDto {
   version: string;
@@ -68,8 +66,8 @@ export class VersionController {
 
   @Get('admin/versions')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('super_admin', 'admin')
+  @Public()
+  @UseGuards(AdminGuard)
   @ApiOperation({ summary: '版本列表' })
   async list(@Query('platform') platform?: string) {
     return this.service.list(platform);
@@ -77,8 +75,8 @@ export class VersionController {
 
   @Get('admin/versions/latest')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('super_admin', 'admin')
+  @Public()
+  @UseGuards(AdminGuard)
   @ApiOperation({ summary: '最新版本' })
   async latest(@Query('platform') platform: 'win' | 'mac') {
     return this.service.getLatest(platform);
@@ -86,8 +84,8 @@ export class VersionController {
 
   @Post('admin/versions')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('super_admin', 'admin')
+  @Public()
+  @UseGuards(AdminGuard)
   @ApiOperation({ summary: '新增版本' })
   async create(@Body() dto: CreateVersionDto) {
     return this.service.create(dto as Partial<ClientVersionEntity>);
@@ -95,8 +93,8 @@ export class VersionController {
 
   @Patch('admin/versions/:id')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('super_admin', 'admin')
+  @Public()
+  @UseGuards(AdminGuard)
   @ApiOperation({ summary: '编辑版本' })
   async update(
     @Param('id', ParseIntPipe) id: number,
@@ -107,8 +105,8 @@ export class VersionController {
 
   @Delete('admin/versions/:id')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('super_admin', 'admin')
+  @Public()
+  @UseGuards(AdminGuard)
   @ApiOperation({ summary: '删除版本' })
   async remove(@Param('id', ParseIntPipe) id: number) {
     await this.service.delete(id);
@@ -117,8 +115,8 @@ export class VersionController {
 
   @Get('admin/versions/:id/stats')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('super_admin', 'admin')
+  @Public()
+  @UseGuards(AdminGuard)
   @ApiOperation({ summary: '版本统计' })
   async stats(@Param('id', ParseIntPipe) id: number) {
     return this.service.getStats(id);

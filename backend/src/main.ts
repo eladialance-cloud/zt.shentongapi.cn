@@ -51,7 +51,7 @@ async function bootstrap() {
     const dataSource = app.get(DataSource);
     await runStartupMigrations(dataSource);
   } catch (err) {
-    logger.warn(`DB migration skipped: ${err.message}`);
+    logger.warn(`DB migration skipped: ${(err as Error).message}`);
   }
 
   // Swagger 文档
