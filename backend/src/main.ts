@@ -11,6 +11,8 @@ import { AppValidationPipe } from './common/pipes/validation.pipe';
 import { swaggerConfig } from './config/swagger.config';
 import { corsConfig } from './config/cors.config';
 import { validateJwtSecrets } from './common/utils/env-validator';
+import { runStartupMigrations } from './common/utils/db-migration';
+import { DataSource } from 'typeorm';
 
 /**
  * 应用入口
@@ -43,6 +45,14 @@ async function bootstrap() {
     new TransformInterceptor(),
     new LoggingInterceptor(),
   );
+
+  // ===== 启动时自动数据库迁移（幂等，补齐缺失列/表）=====
+  try {
+    const dataSource = app.get(DataSource);
+    await runStartupMigrations(dataSource);
+  } catch (err) {
+    logger.warn(`DB migration skipped: ${err.message}`);
+  }
 
   // Swagger 文档
   const { path: swaggerPath, document } = swaggerConfig(configService, app);
