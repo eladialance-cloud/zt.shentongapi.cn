@@ -2,7 +2,7 @@ appId: com.shentong.ai
 productName: 深瞳AI
 copyright: Copyright © 2026 Shentong
 directories:
-  output: dist/installer
+  output: dist/installer-v041
   buildResources: build
 files:
   - dist/main/**/*
@@ -14,6 +14,14 @@ files:
   - "!electron/**"
   - "!*.config.*"
 asar: true
+# H-08b workaround: @journeyapps/sqlcipher 6.0.0 移除了 Windows os 支持（os: ["darwin", "linux"]），
+# 没有 prebuilt binary，源码编译需要 Visual Studio Build Tools。
+# 此处复用 5.3.1 时代的 N-API v6 Windows prebuilt binary（ABI 稳定，与 Electron 41 N-API v9 兼容），
+# 已手动放置于 node_modules/@journeyapps/sqlcipher/build/Release/node_sqlite3.node。
+# 禁用 npmRebuild 防止 electron-builder 调用 @electron/rebuild 覆盖该 binary。
+# 详细说明见 fix-technical-doc.md Task 15 SubTask 15.5/15.6 与 README.md。
+npmRebuild: false
+nodeGypRebuild: false
 extraResources:
   - from: resources/
     to: resources/
@@ -24,8 +32,14 @@ win:
   target:
     - target: nsis
       arch: [x64]
+    - target: zip
+      arch: [x64]
   icon: build/icon.ico
-  artifactName: 深瞳AI-${version}-win-${arch}.${ext}
+  artifactName: ShenTongAI-${version}-${arch}.${ext}
+  # 代码签名：通过环境变量配置，不硬编码证书路径/密码
+  # 构建时设置 CSC_LINK（证书文件路径或 base64）与 CSC_KEY_PASSWORD 环境变量即可启用签名
+  # certificateFile: ${env.CSC_LINK}
+  # certificatePassword: ${env.CSC_KEY_PASSWORD}
 nsis:
   oneClick: false
   perMachine: false
@@ -37,6 +51,8 @@ nsis:
   uninstallerIcon: build/icon.ico
   installerHeaderIcon: build/icon.ico
   include: build/installer.nsh
+  # NSIS 安装包单独命名
+  artifactName: ShenTongAI-Setup-${version}-${arch}.${ext}
 mac:
   target:
     - target: dmg
@@ -47,6 +63,12 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # 代码签名 + 公证：通过环境变量配置，不硬编码证书/凭据
+  # Developer ID 签名：设置 CSC_LINK / CSC_KEY_PASSWORD（或 CSC_NAME 使用钥匙串身份）
+  # identity: ${env.CSC_NAME}
+  # 公证（Notarization）：设置 APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
+  # notarize:
+  #   teamId: ${env.APPLE_TEAM_ID}
 dmg:
   sign: false
   contents:
@@ -58,5 +80,6 @@ dmg:
       path: /Applications
 publish:
   provider: generic
-  url: https://update.shentong.ai/desktop/
+  url: https://zt.shentongapi.cn/desktop/
   channel: latest
+
