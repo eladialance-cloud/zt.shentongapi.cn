@@ -5,6 +5,30 @@ import { loadEnv } from 'vite'
 
 const env = loadEnv(process.env.NODE_ENV === 'production' ? 'production' : 'development', process.cwd(), '')
 
+// H-11 修复：禁止 dev 模式隐式回退到生产 URL
+if (!env.VITE_API_BASE_URL) {
+  throw new Error(`VITE_API_BASE_URL 未设置，mode=${process.env.NODE_ENV || 'development'}。请检查 .env.development 文件。`)
+}
+
+// H-08 升级 Electron 31→41 / vite 5→8 / electron-vite 2→5 后修复：
+// vite@8 的 rolldown 严格解析所有 import，包括 native 模块的传递依赖。
+// @journeyapps/sqlcipher 依赖 @mapbox/node-pre-gyp，后者的 s3_setup.js / napi.js
+// 含有 mock-aws-s3 / aws-sdk / nock / npmlog / rimraf 等"可选/懒加载"依赖，
+// 这些在生产环境不会被实际调用，但 rolldown 会静态解析并报错。
+// 这里把它们全部声明为 external，与 vite@5 旧行为保持一致。
+const nativeModuleOptionalDeps = [
+  'mock-aws-s3',
+  'aws-sdk',
+  'nock',
+  'npmlog',
+  'rimraf',
+  'detect-libc',
+  'semver',
+  '@mapbox/node-pre-gyp',
+  'node-addon-api',
+  '@journeyapps/sqlcipher'
+]
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
@@ -15,7 +39,8 @@ export default defineConfig({
           dir: 'dist/main',
           entryFileNames: '[name].js',
           format: 'cjs'
-        }
+        },
+        external: nativeModuleOptionalDeps
       }
     }
   },
@@ -28,7 +53,8 @@ export default defineConfig({
           dir: 'dist/preload',
           entryFileNames: '[name].js',
           format: 'cjs'
-        }
+        },
+        external: nativeModuleOptionalDeps
       }
     }
   },
@@ -41,12 +67,31 @@ export default defineConfig({
       }
     },
     define: {
-      'import.meta.env.VITE_API_BASE_URL': JSON.stringify(env.VITE_API_BASE_URL || 'http://localhost:3001/api')
+      'import.meta.env.VITE_API_BASE_URL': JSON.stringify(env.VITE_API_BASE_URL)
     },
     build: {
       outDir: resolve(__dirname, 'dist/renderer'),
+      emptyOutDir: true,
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/index.html') }
+        input: { index: resolve(__dirname, 'src/index.html') },
+        output: {
+          // H-08 修复：vite@8 的 rolldown 要求 manualChunks 为函数（vite@5 的 rollup 允许对象形式）
+          manualChunks: (id: string) => {
+            if (!id.includes('node_modules')) {
+              return undefined
+            }
+            if (id.includes('/react-router-dom/') || id.includes('/react-dom/') || id.includes('/react/')) {
+              return 'vendor-react'
+            }
+            if (id.includes('/antd/') || id.includes('/@ant-design/icons/')) {
+              return 'vendor-antd'
+            }
+            if (id.includes('/axios/') || id.includes('/dayjs/') || id.includes('/zustand/')) {
+              return 'vendor-utils'
+            }
+            return undefined
+          }
+        }
       }
     }
   }
