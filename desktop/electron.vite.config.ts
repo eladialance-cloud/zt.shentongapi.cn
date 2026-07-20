@@ -12,19 +12,13 @@ if (!env.VITE_API_BASE_URL) {
 
 // H-08 升级 Electron 31→41 / vite 5→8 / electron-vite 2→5 后修复：
 // vite@8 的 rolldown 严格解析所有 import，包括 native 模块的传递依赖。
-// @journeyapps/sqlcipher 依赖 @mapbox/node-pre-gyp，后者的 s3_setup.js / napi.js
-// 含有 mock-aws-s3 / aws-sdk / nock / npmlog / rimraf 等"可选/懒加载"依赖，
-// 这些在生产环境不会被实际调用，但 rolldown 会静态解析并报错。
-// 这里把它们全部声明为 external，与 vite@5 旧行为保持一致。
+// H-08b 升级 @journeyapps/sqlcipher 5.3.1→6.0.0 后：
+//   - 6.0.0 移除了 @mapbox/node-pre-gyp（及其 mock-aws-s3/aws-sdk/nock/npmlog/rimraf
+//     等可选依赖链，该链通过 tar@6.2.1 引入 6 个路径穿越 CVE）
+//   - 6.0.0 改用 bindings + node-addon-api（node-gyp 源码编译方式）
+// 这里把 native 模块及其传递依赖声明为 external，与 vite@5 旧行为保持一致。
 const nativeModuleOptionalDeps = [
-  'mock-aws-s3',
-  'aws-sdk',
-  'nock',
-  'npmlog',
-  'rimraf',
-  'detect-libc',
-  'semver',
-  '@mapbox/node-pre-gyp',
+  'bindings',
   'node-addon-api',
   '@journeyapps/sqlcipher'
 ]
