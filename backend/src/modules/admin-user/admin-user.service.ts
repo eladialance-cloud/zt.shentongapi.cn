@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Brackets } from 'typeorm';
+import { Repository, Brackets, DataSource } from 'typeorm';
 import { UserEntity } from '../user/entities/user.entity';
 import { UserRoleEntity } from '../user/entities/user-role.entity';
 import { RoleEntity } from '../user/entities/role.entity';
@@ -11,8 +11,10 @@ import { RechargeOrderEntity } from '../payment/entities/recharge-order.entity';
 import { PaymentRecordEntity } from '../payment/entities/payment-record.entity';
 import { DeviceEntity } from '../device/entities/device.entity';
 import { CreditsService } from '../credits/services/credits.service';
+import { EncryptionService } from '../../common/services/encryption.service';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/constants/error.constant';
+import { parsePaging, paginate, findOneOrThrow } from '../../common/utils/query.util';
 import { UserQueryDto } from './dto/user-query.dto';
 import { BanUserDto } from './dto/ban-user.dto';
 import { CreditsAdjustDto } from './dto/credits-adjust.dto';
@@ -20,6 +22,7 @@ import { UserLevelConfigDto } from './dto/user-level-config.dto';
 import { RechargeOrderQueryDto } from './dto/recharge-order-query.dto';
 import { RefundDto } from './dto/refund.dto';
 import { DeviceQueryDto } from './dto/device-query.dto';
+import { CreateAdminUserDto } from './dto/create-admin-user.dto';
 
 /** 用户等级配置存储 key（credits_config 表） */
 const USER_LEVELS_CONFIG_KEY = 'user_levels';
@@ -78,76 +81,45 @@ export class AdminUserService {
     @InjectRepository(DeviceEntity)
     private deviceRepo: Repository<DeviceEntity>,
     private creditsService: CreditsService,
+    private encryption: EncryptionService,
+    private dataSource: DataSource,
   ) {}
 
   // ============ 用户管理 ============
 
   /** 用户列表（分页，含积分余额） */
   async listUsers(query: UserQueryDto) {
-    const page = Math.max(1, Number(query.page) || 1);
-    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+    const { page, pageSize } = parsePaging(query.page, query.pageSize);
 
     const qb = this.userRepo.createQueryBuilder('u');
-
     if (query.keyword) {
-      qb.andWhere(
-        new Brackets((sub) => {
-          sub
-            .where('u.username LIKE :kw', { kw: `%${query.keyword}%` })
-            .orWhere('u.email LIKE :kw', { kw: `%${query.keyword}%` })
-            .orWhere('u.phone LIKE :kw', { kw: `%${query.keyword}%` });
-        }),
-      );
+      qb.andWhere(new Brackets((sub) => {
+        sub.where('u.username LIKE :kw', { kw: `%${query.keyword}%` })
+          .orWhere('u.email LIKE :kw', { kw: `%${query.keyword}%` })
+          .orWhere('u.phone LIKE :kw', { kw: `%${query.keyword}%` });
+      }));
     }
-    if (query.status) {
-      qb.andWhere('u.status = :status', { status: query.status });
-    }
-    if (query.level !== undefined && query.level !== null) {
-      qb.andWhere('u.level = :level', { level: query.level });
-    }
-    if (query.startTime) {
-      qb.andWhere('u.created_at >= :start', { start: query.startTime });
-    }
-    if (query.endTime) {
-      qb.andWhere('u.created_at <= :end', { end: query.endTime });
-    }
-
-    qb.orderBy('u.created_at', 'DESC')
-      .skip((page - 1) * pageSize)
-      .take(pageSize);
+    if (query.status) qb.andWhere('u.status = :status', { status: query.status });
+    if (query.level !== undefined && query.level !== null) qb.andWhere('u.level = :level', { level: query.level });
+    if (query.startTime) qb.andWhere('u.created_at >= :start', { start: query.startTime });
+    if (query.endTime) qb.andWhere('u.created_at <= :end', { end: query.endTime });
+    qb.orderBy('u.created_at', 'DESC').skip((page - 1) * pageSize).take(pageSize);
 
     const [users, total] = await qb.getManyAndCount();
 
     // 批量查询积分余额
     const userIds = users.map((u) => u.id);
-    const accounts =
-      userIds.length > 0
-        ? await this.accountRepo
-            .createQueryBuilder('a')
-            .where('a.user_id IN (:...userIds)', { userIds })
-            .getMany()
-        : [];
-    const balanceMap = new Map<number, number>(
-      accounts.map((a) => [a.userId, a.balance]),
-    );
+    const accounts = userIds.length > 0
+      ? await this.accountRepo.createQueryBuilder('a').where('a.user_id IN (:...userIds)', { userIds }).getMany()
+      : [];
+    const balanceMap = new Map<number, number>(accounts.map((a) => [a.userId, a.balance]));
 
-    const list = users.map((u) => this.toAdminUserItem(u, balanceMap.get(u.id) || 0));
-
-    return {
-      list,
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
-    };
+    return paginate(users.map((u) => this.toAdminUserItem(u, balanceMap.get(u.id) || 0)), total, page, pageSize);
   }
 
   /** 用户详情 */
   async getUserDetail(id: number) {
-    const user = await this.userRepo.findOne({ where: { id } });
-    if (!user) {
-      BusinessException.throw(ErrorCode.USER_NOT_FOUND);
-    }
+    const user = await findOneOrThrow(this.userRepo, { id }, ErrorCode.USER_NOT_FOUND);
     const account = await this.accountRepo.findOne({ where: { userId: id } });
     const roles = await this.getUserRoles(id);
     return {
@@ -165,10 +137,7 @@ export class AdminUserService {
 
   /** 封禁用户 */
   async banUser(id: number, dto: BanUserDto) {
-    const user = await this.userRepo.findOne({ where: { id } });
-    if (!user) {
-      BusinessException.throw(ErrorCode.USER_NOT_FOUND);
-    }
+    const user = await findOneOrThrow(this.userRepo, { id }, ErrorCode.USER_NOT_FOUND);
     user.status = 'banned';
     user.banReason = dto.reason;
     user.banDuration = 'permanent';
@@ -177,32 +146,69 @@ export class AdminUserService {
 
   /** 解封用户 */
   async unbanUser(id: number) {
-    const user = await this.userRepo.findOne({ where: { id } });
-    if (!user) {
-      BusinessException.throw(ErrorCode.USER_NOT_FOUND);
-    }
-    // 使用 query builder 以便将可空字段显式置为 NULL
-    await this.userRepo
-      .createQueryBuilder()
+    await findOneOrThrow(this.userRepo, { id }, ErrorCode.USER_NOT_FOUND);
+    await this.userRepo.createQueryBuilder()
       .update(UserEntity)
-      .set({
-        status: 'active',
-        banReason: null as any,
-        banDuration: null as any,
-        banUntil: null as any,
-      })
+      .set({ status: 'active', banReason: null as any, banDuration: null as any, banUntil: null as any })
       .where('id = :id', { id })
       .execute();
   }
 
   /** 调整用户等级 */
   async updateUserLevel(id: number, level: number) {
-    const user = await this.userRepo.findOne({ where: { id } });
-    if (!user) {
-      BusinessException.throw(ErrorCode.USER_NOT_FOUND);
-    }
+    const user = await findOneOrThrow(this.userRepo, { id }, ErrorCode.USER_NOT_FOUND);
     user.level = level;
     await this.userRepo.save(user);
+  }
+
+  /** 管理端添加用户 */
+  async createUser(dto: CreateAdminUserDto, adminId: number) {
+    // 检查用户名和邮箱唯一性
+    const existsByUsername = await this.userRepo.findOne({ where: { username: dto.username } });
+    if (existsByUsername) {
+      BusinessException.throw(ErrorCode.USER_EXISTS, '用户名已被使用');
+    }
+    const existsByEmail = await this.userRepo.findOne({ where: { email: dto.email } });
+    if (existsByEmail) {
+      BusinessException.throw(ErrorCode.USER_EXISTS, '邮箱已被注册');
+    }
+
+    const hashedPassword = await this.encryption.hash(dto.password);
+    const inviteCode = Math.random().toString(36).slice(2, 10).toUpperCase();
+
+    const user = this.userRepo.create({
+      username: dto.username,
+      email: dto.email,
+      password: hashedPassword,
+      phone: dto.phone || undefined,
+      level: dto.level ?? 0,
+      inviteCode,
+      registerSource: 'direct',
+    });
+    const saved = await this.userRepo.save(user);
+
+    // 默认分配 user 角色
+    const userRole = await this.roleRepo.findOne({ where: { name: 'user' } });
+    if (userRole) {
+      await this.userRoleRepo.save({ userId: saved.id, roleId: userRole.id });
+    }
+
+    return this.toAdminUserItem(saved, 0);
+  }
+
+  /** 管理端删除用户（物理删除 + 事务清理关联数据） */
+  async deleteUser(id: number, adminId: number) {
+    const user = await findOneOrThrow(this.userRepo, { id }, ErrorCode.USER_NOT_FOUND);
+
+    await this.dataSource.transaction(async (manager) => {
+      const userId = Number(id);
+      // 按依赖顺序清理：角色关联 → 积分流水 → 积分账户 → 设备 → 用户
+      await manager.delete(UserRoleEntity, { userId } as any);
+      await manager.delete(CreditTransactionEntity, { userId } as any);
+      await manager.delete(CreditAccountEntity, { userId } as any);
+      await manager.delete(DeviceEntity, { userId } as any);
+      await manager.delete(UserEntity, { id: userId });
+    });
   }
 
   // ============ 用户等级配置 ============
@@ -266,10 +272,7 @@ export class AdminUserService {
 
   /** 用户积分账户 */
   async getCreditsAccount(id: number) {
-    const user = await this.userRepo.findOne({ where: { id } });
-    if (!user) {
-      BusinessException.throw(ErrorCode.USER_NOT_FOUND);
-    }
+    const user = await findOneOrThrow(this.userRepo, { id }, ErrorCode.USER_NOT_FOUND);
     const account = await this.creditsService.getOrCreateAccount(id);
     return {
       userId: account.userId,
@@ -285,25 +288,15 @@ export class AdminUserService {
 
   /** 手动调整积分 */
   async adjustCredits(id: number, dto: CreditsAdjustDto, adminId: number) {
-    const user = await this.userRepo.findOne({ where: { id } });
-    if (!user) {
-      BusinessException.throw(ErrorCode.USER_NOT_FOUND);
-    }
+    await findOneOrThrow(this.userRepo, { id }, ErrorCode.USER_NOT_FOUND);
     await this.creditsService.adminAdjust(id, dto.amount, adminId, dto.remark);
   }
 
   /** 用户积分流水 */
   async listCreditTransactions(id: number, limit = 50) {
-    const user = await this.userRepo.findOne({ where: { id } });
-    if (!user) {
-      BusinessException.throw(ErrorCode.USER_NOT_FOUND);
-    }
+    await findOneOrThrow(this.userRepo, { id }, ErrorCode.USER_NOT_FOUND);
     const take = Math.min(200, Math.max(1, Number(limit) || 50));
-    const txns = await this.txnRepo.find({
-      where: { userId: id },
-      order: { createdAt: 'DESC' },
-      take,
-    });
+    const txns = await this.txnRepo.find({ where: { userId: id }, order: { createdAt: 'DESC' }, take });
     return txns.map((t) => ({
       id: t.id,
       type: t.type,
@@ -320,52 +313,26 @@ export class AdminUserService {
 
   /** 充值订单列表 */
   async listRechargeOrders(query: RechargeOrderQueryDto) {
-    const page = Math.max(1, Number(query.page) || 1);
-    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+    const { page, pageSize } = parsePaging(query.page, query.pageSize);
 
     const qb = this.orderRepo.createQueryBuilder('o');
-    if (query.status) {
-      qb.andWhere('o.status = :status', { status: query.status });
-    }
-    if (query.paymentMethod) {
-      qb.andWhere('o.payment_channel = :method', { method: query.paymentMethod });
-    }
-    if (query.startTime) {
-      qb.andWhere('o.created_at >= :start', { start: query.startTime });
-    }
-    if (query.endTime) {
-      qb.andWhere('o.created_at <= :end', { end: query.endTime });
-    }
-    qb.orderBy('o.created_at', 'DESC')
-      .skip((page - 1) * pageSize)
-      .take(pageSize);
+    if (query.status) qb.andWhere('o.status = :status', { status: query.status });
+    if (query.paymentMethod) qb.andWhere('o.payment_channel = :method', { method: query.paymentMethod });
+    if (query.startTime) qb.andWhere('o.created_at >= :start', { start: query.startTime });
+    if (query.endTime) qb.andWhere('o.created_at <= :end', { end: query.endTime });
+    qb.orderBy('o.created_at', 'DESC').skip((page - 1) * pageSize).take(pageSize);
 
     const [orders, total] = await qb.getManyAndCount();
 
     // 批量查询用户名
-    const userIds = [...new Set(orders.map((o) => o.userId))];
-    const users =
-      userIds.length > 0
-        ? await this.userRepo
-            .createQueryBuilder('u')
-            .select(['u.id', 'u.username'])
-            .where('u.id IN (:...userIds)', { userIds })
-            .getMany()
-        : [];
-    const nameMap = new Map<number, string>(users.map((u) => [u.id, u.username]));
+    const nameMap = await this.batchUsernames(orders.map((o) => o.userId));
 
     // 批量查询支付时间
     const orderNos = orders.map((o) => o.orderNo);
-    const payments =
-      orderNos.length > 0
-        ? await this.paymentRepo
-            .createQueryBuilder('p')
-            .where('p.order_no IN (:...orderNos)', { orderNos })
-            .getMany()
-        : [];
-    const paidMap = new Map<string, Date | undefined>(
-      payments.map((p) => [p.orderNo, p.paidAt || undefined] as [string, Date | undefined]),
-    );
+    const payments = orderNos.length > 0
+      ? await this.paymentRepo.createQueryBuilder('p').where('p.order_no IN (:...orderNos)', { orderNos }).getMany()
+      : [];
+    const paidMap = new Map<string, Date | undefined>(payments.map((p) => [p.orderNo, p.paidAt || undefined] as [string, Date | undefined]));
 
     const list = orders.map((o) => ({
       id: o.id,
@@ -380,13 +347,7 @@ export class AdminUserService {
       paidAt: paidMap.get(o.orderNo)?.toISOString(),
     }));
 
-    return {
-      list,
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
-    };
+    return paginate(list, total, page, pageSize);
   }
 
   /** 退款 */
@@ -417,36 +378,19 @@ export class AdminUserService {
 
   /** 设备列表 */
   async listDevices(query: DeviceQueryDto) {
-    const page = Math.max(1, Number(query.page) || 1);
-    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+    const { page, pageSize } = parsePaging(query.page, query.pageSize);
 
     const qb = this.deviceRepo.createQueryBuilder('d');
     if (query.keyword) {
-      qb.andWhere(
-        new Brackets((sub) => {
-          sub
-            .where('d.device_name LIKE :kw', { kw: `%${query.keyword}%` })
-            .orWhere('d.device_fingerprint LIKE :kw', { kw: `%${query.keyword}%` });
-        }),
-      );
+      qb.andWhere(new Brackets((sub) => {
+        sub.where('d.device_name LIKE :kw', { kw: `%${query.keyword}%` })
+          .orWhere('d.device_fingerprint LIKE :kw', { kw: `%${query.keyword}%` });
+      }));
     }
-    qb.orderBy('d.created_at', 'DESC')
-      .skip((page - 1) * pageSize)
-      .take(pageSize);
+    qb.orderBy('d.created_at', 'DESC').skip((page - 1) * pageSize).take(pageSize);
 
     const [devices, total] = await qb.getManyAndCount();
-
-    // 批量查询用户名
-    const userIds = [...new Set(devices.map((d) => d.userId))];
-    const users =
-      userIds.length > 0
-        ? await this.userRepo
-            .createQueryBuilder('u')
-            .select(['u.id', 'u.username'])
-            .where('u.id IN (:...userIds)', { userIds })
-            .getMany()
-        : [];
-    const nameMap = new Map<number, string>(users.map((u) => [u.id, u.username]));
+    const nameMap = await this.batchUsernames(devices.map((d) => d.userId));
 
     const list = devices.map((d) => ({
       id: Number(d.id),
@@ -458,25 +402,25 @@ export class AdminUserService {
       createdAt: d.createdAt.toISOString(),
     }));
 
-    return {
-      list,
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
-    };
+    return paginate(list, total, page, pageSize);
   }
 
   /** 远程解绑设备 */
   async deleteDevice(id: number) {
-    const device = await this.deviceRepo.findOne({ where: { id } });
-    if (!device) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, '设备不存在');
-    }
+    await findOneOrThrow(this.deviceRepo, { id }, ErrorCode.NOT_FOUND, '设备不存在');
     await this.deviceRepo.delete(id);
   }
 
   // ============ 内部工具 ============
+
+  /** 批量查询用户名 */
+  private async batchUsernames(userIds: number[]): Promise<Map<number, string>> {
+    const ids = [...new Set(userIds.filter((id) => id != null))];
+    if (ids.length === 0) return new Map();
+    const users = await this.userRepo.createQueryBuilder('u')
+      .select(['u.id', 'u.username']).where('u.id IN (:...ids)', { ids }).getMany();
+    return new Map(users.map((u) => [u.id, u.username]));
+  }
 
   private async getUserRoles(userId: number): Promise<string[]> {
     const userRoles = await this.userRoleRepo.find({ where: { userId } });

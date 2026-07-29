@@ -17,6 +17,8 @@ import { AdminModelService } from './admin-model.service';
 import { CreateModelDto } from './dto/create-model.dto';
 import { UpdateModelDto } from './dto/update-model.dto';
 import { TestModelDto } from './dto/test-model.dto';
+import { FetchModelsDto } from './dto/fetch-models.dto';
+import { ImportModelsDto } from './dto/import-models.dto';
 
 /**
  * 管理端大模型配置控制器
@@ -33,6 +35,8 @@ import { TestModelDto } from './dto/test-model.dto';
  *   POST   /admin/models/:id/disable    禁用模型
  *   POST   /admin/models/:id/test       测试模型
  *   POST   /admin/models/:id/sync       手动同步 OpenClaw
+ *   POST   /admin/models/proxy/fetch-models  拉取上游模型列表
+ *   POST   /admin/models/proxy/import        批量导入模型
  */
 @ApiTags('管理端-大模型配置')
 @ApiBearerAuth()
@@ -106,5 +110,19 @@ export class AdminModelController {
   @ApiOperation({ summary: '手动同步 OpenClaw' })
   async sync(@Param('id', ParseIntPipe) id: number) {
     await this.service.sync(id);
+  }
+
+  // ============ 中转站 ============
+
+  @Post('proxy/fetch-models')
+  @ApiOperation({ summary: '拉取上游模型列表' })
+  async fetchUpstreamModels(@Body() dto: FetchModelsDto) {
+    return this.service.fetchUpstreamModels(dto);
+  }
+
+  @Post('proxy/import')
+  @ApiOperation({ summary: '批量导入模型' })
+  async importModels(@Body() dto: ImportModelsDto) {
+    return this.service.importModels(dto);
   }
 }

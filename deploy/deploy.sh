@@ -99,6 +99,75 @@ if ! docker compose version &> /dev/null; then
 fi
 ok "Docker Compose: $(docker compose version)"
 
+# ===== 密码强度检查函数 =====
+check_password_strength() {
+    local var_name="$1"
+    local var_value="$2"
+    local has_warning=false
+
+    # 检查长度
+    if [[ ${#var_value} -lt 16 ]]; then
+        warn "$var_name 长度不足 16 字符(当前 ${#var_value} 字符),建议使用更强密码"
+        has_warning=true
+    fi
+
+    # 检查是否包含 change-me 占位符
+    if [[ "$var_value" == *"change-me"* ]]; then
+        warn "$var_name 仍包含 change-me 占位符,请替换为随机生成的强密码"
+        has_warning=true
+    fi
+
+    # 检查是否为空
+    if [[ -z "$var_value" ]]; then
+        warn "$var_name 为空,请设置有效值"
+        has_warning=true
+    fi
+
+    echo "$has_warning"
+}
+
+# ===== 自动生成强密码/密钥 =====
+generate_password() {
+    openssl rand -base64 24
+}
+
+generate_secret() {
+    openssl rand -hex 32
+}
+
+# ===== 替换 .env 中的占位密码 =====
+replace_placeholder_secrets() {
+    local env_file="$1"
+    local replaced=0
+
+    # 密码类变量(用 base64 密码)
+    local password_vars=("MYSQL_ROOT_PASSWORD" "MYSQL_PASSWORD" "REDIS_PASSWORD")
+    # 密钥类变量(用 hex 密钥)
+    local secret_vars=("JWT_SECRET" "ADMIN_JWT_SECRET" "AES_KEY" "HMAC_SECRET")
+
+    for var in "${password_vars[@]}"; do
+        local current_value=$(grep "^${var}=" "$env_file" | cut -d'=' -f2-)
+        if [[ -z "$current_value" ]] || [[ "$current_value" == *"change-me"* ]]; then
+            local new_password=$(generate_password)
+            sed -i "s|^${var}=.*|${var}=${new_password}|" "$env_file"
+            info "已自动生成 $var"
+            replaced=$((replaced + 1))
+        fi
+    done
+
+    for var in "${secret_vars[@]}"; do
+        local current_value=$(grep "^${var}=" "$env_file" | cut -d'=' -f2-)
+        if [[ -z "$current_value" ]] || [[ "$current_value" == *"change-me"* ]]; then
+            local new_secret=$(generate_secret)
+            sed -i "s|^${var}=.*|${var}=${new_secret}|" "$env_file"
+            info "已自动生成 $var"
+            replaced=$((replaced + 1))
+        fi
+    done
+
+    echo "$replaced"
+}
+
 # ===== 步骤 2:初始化 .env =====
 step "步骤 2/5:初始化环境变量(.env)"
 
@@ -106,20 +175,39 @@ if [[ ! -f ".env" ]]; then
     if [[ -f ".env.example" ]]; then
         cp .env.example .env
         warn ".env 已从 .env.example 复制"
+
+        # 自动替换所有占位密码/密钥
+        replaced_count=$(replace_placeholder_secrets ".env")
+        if [[ "$replaced_count" -gt 0 ]]; then
+            ok "已自动生成 $replaced_count 个密码/密钥"
+        fi
+
+        # 设置文件权限为 600(仅所有者可读写)
+        chmod 600 .env
+        ok ".env 文件权限已设置为 600"
+
+        # 密码强度检查
+        has_warnings=false
+        for var in MYSQL_ROOT_PASSWORD MYSQL_PASSWORD REDIS_PASSWORD JWT_SECRET ADMIN_JWT_SECRET AES_KEY HMAC_SECRET; do
+            var_value=$(grep "^${var}=" .env | cut -d'=' -f2-)
+            result=$(check_password_strength "$var" "$var_value")
+            if [[ "$result" == "true" ]]; then
+                has_warnings=true
+            fi
+        done
+
+        if [[ "$has_warnings" == "true" ]]; then
+            echo ""
+            warn "检测到弱密码,建议手动修改 .env 中的对应项"
+            echo -e "  ${GRAY}生成密码: openssl rand -base64 24${NC}"
+            echo -e "  ${GRAY}生成密钥: openssl rand -hex 32${NC}"
+        else
+            ok "所有密码/密钥强度检查通过"
+        fi
+
         echo ""
-        echo -e "  ${YELLOW}请修改以下敏感配置后再运行部署:${NC}"
-        echo -e "    vi .env"
+        echo -e "  ${GRAY}如需手动修改: vi .env${NC}"
         echo ""
-        echo -e "  ${GRAY}必须修改的项:${NC}"
-        echo -e "    - MYSQL_ROOT_PASSWORD(数据库 root 密码)"
-        echo -e "    - MYSQL_PASSWORD(应用数据库密码)"
-        echo -e "    - REDIS_PASSWORD(Redis 密码)"
-        echo -e "    - JWT_SECRET(至少 32 字符随机串)"
-        echo ""
-        echo -e "  ${GRAY}生成 JWT_SECRET:${NC}"
-        echo -e "    openssl rand -hex 32"
-        echo ""
-        exit 0
     else
         fail ".env 与 .env.example 都不存在"
         info "请先从仓库获取 .env.example"
@@ -127,6 +215,30 @@ if [[ ! -f ".env" ]]; then
     fi
 else
     ok ".env 已存在"
+
+    # 对已存在的 .env 也进行密码强度检查
+    has_warnings=false
+    for var in MYSQL_ROOT_PASSWORD MYSQL_PASSWORD REDIS_PASSWORD JWT_SECRET ADMIN_JWT_SECRET AES_KEY HMAC_SECRET; do
+        var_value=$(grep "^${var}=" .env | cut -d'=' -f2-)
+        result=$(check_password_strength "$var" "$var_value")
+        if [[ "$result" == "true" ]]; then
+            has_warnings=true
+        fi
+    done
+
+    if [[ "$has_warnings" == "true" ]]; then
+        echo ""
+        warn "检测到弱密码,建议修改 .env 中的对应项"
+        echo -e "  ${GRAY}生成密码: openssl rand -base64 24${NC}"
+        echo -e "  ${GRAY}生成密钥: openssl rand -hex 32${NC}"
+    fi
+
+    # 确保 .env 权限为 600
+    local current_perm=$(stat -c '%a' .env 2>/dev/null || stat -f '%A' .env 2>/dev/null || echo "unknown")
+    if [[ "$current_perm" != "600" ]]; then
+        chmod 600 .env
+        info ".env 文件权限已修正为 600(原: $current_perm)"
+    fi
 fi
 
 # ===== 步骤 3:启动 docker compose =====
@@ -227,7 +339,6 @@ echo -e "  ${CYAN}服务访问地址:${NC}"
 echo -e "    API:        http://$SERVER_IP/api/"
 echo -e "    Swagger:    http://$SERVER_IP/api/docs"
 echo -e "    健康检查:   http://$SERVER_IP/api/health"
-echo -e "    Landing:    http://$SERVER_IP/"
 echo -e "    管理后台:   http://$SERVER_IP/admin/"
 echo ""
 echo -e "  ${CYAN}容器状态:${NC}"

@@ -142,7 +142,7 @@ export default function AdminDashboard() {
                 <div className={styles.statInfo}>
                   <span className={styles.statLabel}>{c.label}</span>
                   <span className={styles.statValue}>
-                    {c.value.toLocaleString()}
+                    {(c.value ?? 0).toLocaleString()}
                   </span>
                 </div>
               </div>

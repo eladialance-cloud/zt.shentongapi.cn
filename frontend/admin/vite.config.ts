@@ -27,15 +27,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'antd-vendor': ['antd', '@ant-design/icons'],
-          'echarts-vendor': ['echarts', 'echarts-for-react'],
-        },
-      },
-    },
+    sourcemap: process.env.NODE_ENV !== 'production',
+    chunkSizeWarningLimit: 1500,
   },
 });

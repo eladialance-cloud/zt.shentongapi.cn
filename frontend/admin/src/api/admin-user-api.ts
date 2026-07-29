@@ -25,7 +25,11 @@ import type {
   AdminUserItem,
   AdminUserQuery,
   BanUserDto,
+  CreateAdminUserDto,
   CreditsAdjustDto,
+  GenerateInviteCodesDto,
+  GenerateInviteCodesResult,
+  InviteCodeItem,
   RechargeOrder,
   RechargeOrderQuery,
   RefundDto,
@@ -139,6 +143,43 @@ export async function deleteDevice(id: number): Promise<void> {
   await adminRequest<void>('delete', `/admin/devices/${id}`)
 }
 
+/** 批量生成邀请码 */
+export async function generateInviteCodes(
+  dto: GenerateInviteCodesDto
+): Promise<GenerateInviteCodesResult> {
+  return adminRequest<GenerateInviteCodesResult>(
+    'post',
+    '/admin/invite-codes/generate',
+    { data: dto }
+  )
+}
+
+/** 邀请码列表 */
+export async function listInviteCodes(
+  query: Record<string, unknown> = {}
+): Promise<AdminPaginatedResult<InviteCodeItem>> {
+  return adminRequest<AdminPaginatedResult<InviteCodeItem>>(
+    'get',
+    '/admin/invite-codes',
+    { params: query }
+  )
+}
+
+/** 作废邀请码 */
+export async function revokeInviteCode(id: number): Promise<void> {
+  await adminRequest<void>('post', `/admin/invite-codes/${id}/revoke`)
+}
+
+/** 添加用户 */
+export async function createUser(dto: CreateAdminUserDto): Promise<AdminUserItem> {
+  return adminRequest<AdminUserItem>('post', '/admin/users', { data: dto })
+}
+
+/** 删除用户 */
+export async function deleteUser(id: number): Promise<void> {
+  await adminRequest<void>('delete', `/admin/users/${id}`)
+}
+
 export default {
   listAdminUsers,
   banUser,
@@ -152,5 +193,8 @@ export default {
   listRechargeOrders,
   refundOrder,
   listAdminDevices,
-  deleteDevice
+  deleteDevice,
+  generateInviteCodes,
+  listInviteCodes,
+  revokeInviteCode
 }

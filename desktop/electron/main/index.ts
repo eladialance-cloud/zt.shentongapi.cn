@@ -1,6 +1,13 @@
 // Electron 主进程入口
 
 import { app, BrowserWindow, ipcMain } from 'electron'
+
+// GPU 白名单开关：解决部分显卡/驱动/远程桌面环境下 WebGL 被 Chromium 黑名单拦截的问题
+// 必须在 app.whenReady 之前设置
+app.commandLine.appendSwitch('ignore-gpu-blocklist')
+app.commandLine.appendSwitch('disable-gpu-sandbox')
+// 允许在缺少 GPU 时使用 SwiftShader 软件渲染，保证 PixiJS 至少能创建 WebGL 上下文
+app.commandLine.appendSwitch('enable-unsafe-swiftshader')
 import { createMainWindow, getMainWindow, setQuitting } from './windows/main-window'
 import { createTray, destroyTray } from './tray'
 import { ServiceManager } from './service-manager'
@@ -58,7 +65,9 @@ if (!gotLock) {
   })
 }
 
-// 主窗口全部关闭时不退出（最小化到托盘），macOS 标准行为
+// 主窗口全部关闭时不退出（最小化到托盘）
+// Windows/Linux: 托盘常驻模式，用户可通过托盘菜单恢复窗口
+// macOS: 标准行为是不退出，activate 事件负责重建窗口（已在上方处理）
 app.on('window-all-closed', () => {
   // 由托盘 + close 拦截处理，这里不做退出
 })
@@ -86,6 +95,10 @@ function registerIpcHandlers(): void {
   serviceManager.on('service-error', (payload: unknown) => {
     getMainWindow()?.webContents.send('service:error', payload)
   })
+  // 服务安装进度 → 转发到渲染进程
+  serviceManager.on('install-progress', (payload: unknown) => {
+    getMainWindow()?.webContents.send('service:install-progress', payload)
+  })
 
   // 应用信息与更新
   ipcMain.handle('app:getVersion', () => app.getVersion())
@@ -96,6 +109,15 @@ function registerIpcHandlers(): void {
   ipcMain.handle('app:quitAndInstall', () => {
     appUpdater?.installUpdate()
     return Promise.resolve()
+  })
+
+  // Office 等距 2.5D 画布 WebGL 降级逃生通道：关闭硬件加速并重启
+  // 注意：app.disableHardwareAcceleration() 理论上应在 app.ready 前调用；
+  // 此处作为用户手动触发的兜底方案，在重启后下一次启动时生效。
+  ipcMain.handle('office:disable-hardware-acceleration', () => {
+    app.disableHardwareAcceleration()
+    app.relaunch()
+    app.quit()
   })
 
   // 自动更新（Task 35.3）- update:status 为主进程主动推送，无需 handle

@@ -5,6 +5,8 @@ import {
   IsOptional,
   IsString,
   Min,
+  MaxLength,
+  IsBoolean,
 } from 'class-validator';
 
 /** 工作流列表查询参数 */
@@ -26,21 +28,8 @@ export class AdminWorkflowQueryDto {
   status?: string;
 
   @IsOptional()
-  @IsInt()
-  @Min(1)
-  page?: number;
-
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  pageSize?: number;
-}
-
-/** 审核队列查询参数 */
-export class AdminWorkflowReviewQueryDto {
-  @IsOptional()
   @IsString()
-  status?: string;
+  publishStatus?: string;
 
   @IsOptional()
   @IsInt()
@@ -72,7 +61,11 @@ export class CreateAdminWorkflowDto {
   @IsString()
   cozeWorkflowId?: string;
 
-  @IsIn(['automation', 'integration', 'data_processing', 'other'])
+  @IsOptional()
+  @IsString()
+  workflowJson?: string;
+
+  @IsIn(['automation', 'integration', 'data_processing', 'ai_collaboration', 'independent', 'other'])
   category: string;
 
   @IsOptional()
@@ -88,6 +81,21 @@ export class CreateAdminWorkflowDto {
 
   @IsOptional()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  icon?: string;
+
+  @IsOptional()
+  tags?: string[];
+
+  @IsOptional()
+  @IsString()
+  triggerType?: string;
+
+  @IsOptional()
+  @IsInt()
+  nodeCount?: number;
 }
 
 /** 更新工作流请求体 */
@@ -113,7 +121,11 @@ export class UpdateAdminWorkflowDto {
   cozeWorkflowId?: string;
 
   @IsOptional()
-  @IsIn(['automation', 'integration', 'data_processing', 'other'])
+  @IsString()
+  workflowJson?: string;
+
+  @IsOptional()
+  @IsIn(['automation', 'integration', 'data_processing', 'ai_collaboration', 'independent', 'other'])
   category?: string;
 
   @IsOptional()
@@ -130,4 +142,41 @@ export class UpdateAdminWorkflowDto {
 
   @IsOptional()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isPublished?: boolean;
+
+  @IsOptional()
+  @IsString()
+  icon?: string;
+
+  @IsOptional()
+  tags?: string[];
+
+  @IsOptional()
+  @IsIn(['draft', 'pending_review', 'approved', 'published', 'rejected'])
+  publishStatus?: string;
+
+  @IsOptional()
+  @IsString()
+  triggerType?: string;
+
+  @IsOptional()
+  @IsInt()
+  nodeCount?: number;
+}
+
+/** GitHub 导入请求体 */
+export class ImportGithubWorkflowDto {
+  @IsString()
+  repoUrl: string;
+
+  @IsOptional()
+  @IsString()
+  filePath?: string;
+
+  @IsOptional()
+  @IsString()
+  category?: string;
 }

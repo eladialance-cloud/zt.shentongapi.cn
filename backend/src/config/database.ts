@@ -18,7 +18,8 @@ export const databaseConfig = (
   entities: [join(__dirname, '..', 'modules', '**', '*.entity.{ts,js}')],
   migrations: [join(__dirname, '..', 'migrations', '*.{ts,js}')],
   migrationsRun: true,
-  synchronize: false, // 生产环境必须为 false，通过 migration 管理表结构
+  synchronize: config.get<string>('DB_SYNCHRONIZE', 'false') === 'true', // 生产环境默认 false，可临时通过环境变量开启以自动建表
+  // synchronize: false, // 生产环境必须为 false，通过 migration 管理表结构
   logging: config.get<string>('NODE_ENV') !== 'production',
   charset: 'utf8mb4',
   timezone: '+08:00',

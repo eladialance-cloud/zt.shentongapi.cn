@@ -6,6 +6,9 @@ export class AgentEntity extends BaseEntity {
   @Column({ length: 64 })
   name: string;
 
+  @Column({ name: 'display_name', length: 64, nullable: true })
+  displayName?: string;
+
   @Column({ length: 512, nullable: true })
   description?: string;
 
@@ -143,4 +146,28 @@ export class AgentEntity extends BaseEntity {
   @Index()
   @Column({ name: 'user_id', type: 'bigint' })
   userId: number;
+
+  @Column({ type: 'int', default: 1 })
+  version: number;
+
+  @Column({
+    name: 'pricing_strategy',
+    type: 'enum',
+    enum: ['model', 'fixed', 'free', 'agent', 'hybrid'],
+    default: 'model',
+  })
+  pricingStrategy: 'model' | 'fixed' | 'free' | 'agent' | 'hybrid';
+
+  @Column({ name: 'model_config', type: 'json', nullable: true })
+  modelConfig?: any;
+
+  @Column({ name: 'output_rule', type: 'text', nullable: true })
+  outputRule?: string;
+
+  @Column({ name: 'use_codex', type: 'boolean', default: false })
+  useCodex: boolean;
+
+  @Index()
+  @Column({ name: 'dept_id', type: 'bigint', nullable: true })
+  deptId?: number;
 }

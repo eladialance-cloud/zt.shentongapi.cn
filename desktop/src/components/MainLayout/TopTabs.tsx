@@ -14,7 +14,10 @@ import {
   ApiOutlined,
   BookOutlined,
   TeamOutlined,
-  SettingOutlined
+  SettingOutlined,
+  DesktopOutlined,
+  AppstoreOutlined,
+  ToolOutlined
 } from '@ant-design/icons'
 import styles from './styles.module.css'
 
@@ -33,6 +36,9 @@ const TAB_ITEMS: TabItem[] = [
   { key: 'plugins', label: '插件', icon: <ApiOutlined />, path: '/plugins' },
   { key: 'knowledge', label: '知识库', icon: <BookOutlined />, path: '/knowledge' },
   { key: 'opc', label: '团队', icon: <TeamOutlined />, path: '/opc' },
+  { key: 'office', label: 'AI办公室', icon: <DesktopOutlined />, path: '/office' },
+  { key: 'agents', label: 'Agent市场', icon: <AppstoreOutlined />, path: '/agents' },
+  { key: 'mcp-config', label: 'MCP配置', icon: <ToolOutlined />, path: '/mcp-config' },
   { key: 'settings', label: '设置', icon: <SettingOutlined />, path: '/settings' }
 ]
 

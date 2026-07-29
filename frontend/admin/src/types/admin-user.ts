@@ -154,3 +154,37 @@ export interface AdminDeviceQuery {
 
 /** 复用通用分页结果 */
 export type { AdminPaginatedResult }
+
+/** 邀请码状态 */
+export type InviteCodeStatus = 'active' | 'used' | 'revoked' | 'expired'
+
+/** 邀请码项 */
+export interface InviteCodeItem {
+  id: number
+  code: string
+  status: InviteCodeStatus
+  inviterId: number | null
+  inviteeId: number | null
+  expiresAt: string
+  createdAt: string
+}
+
+/** 管理端创建用户 DTO */
+export interface CreateAdminUserDto {
+  username: string
+  password: string
+  email: string
+  phone?: string
+  level?: number
+}
+
+/** 批量生成邀请码 DTO */
+export interface GenerateInviteCodesDto {
+  count: number
+  expireDays: number
+}
+
+/** 生成邀请码结果 */
+export interface GenerateInviteCodesResult {
+  count: number
+}

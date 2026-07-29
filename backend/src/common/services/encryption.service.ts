@@ -10,15 +10,20 @@ import * as crypto from 'crypto';
  */
 @Injectable()
 export class EncryptionService {
-  private readonly saltRounds = 10;
+  private readonly saltRounds = 12;
   private readonly aesKey: Buffer;
 
   constructor(private config: ConfigService) {
-    // AES 密钥：32 字节，优先取 AES_KEY 环境变量，缺省用内置默认（生产应配置 AES_KEY）
-    const raw = this.config.get<string>(
-      'AES_KEY',
-      'shentong-ai-default-aes-key-32bytes!!',
-    );
+    const raw = this.config.get<string>('AES_KEY');
+    if (!raw) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('AES_KEY 未设置：生产环境必须配置 AES_KEY 环境变量，应用拒绝启动');
+      }
+      // 非生产环境使用明显的开发密钥
+      console.warn('[安全警告] AES_KEY 未设置，使用开发专用密钥。请勿在生产环境使用！');
+      this.aesKey = crypto.createHash('sha256').update('dev-only-aes-key-not-for-production-32b').digest();
+      return;
+    }
     this.aesKey = crypto.createHash('sha256').update(raw).digest();
   }
 
@@ -61,5 +66,16 @@ export class EncryptionService {
       decipher.final(),
     ]);
     return decrypted.toString('utf8');
+  }
+
+  /** 对加密密文做脱敏显示 (如 sk-****ab12) */
+  maskKey(cipherText: string): string {
+    try {
+      const plain = this.decryptAes(cipherText);
+      if (plain.length <= 8) return '****';
+      return plain.slice(0, 3) + '****' + plain.slice(-4);
+    } catch {
+      return '****';
+    }
   }
 }

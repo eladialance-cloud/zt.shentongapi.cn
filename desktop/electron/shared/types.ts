@@ -1,7 +1,7 @@
 // 主进程 / 渲染进程共享类型定义
 // 该文件同时被 tsconfig.node.json 与 tsconfig.web.json 包含
 
-export type ServiceName = 'openclaw' | 'n8n' | 'mcp'
+export type ServiceName = 'openclaw' | 'n8n' | 'mcp' | 'hermes'
 
 export type ServiceStatus = 'running' | 'stopped' | 'starting' | 'error' | 'unknown'
 
@@ -25,6 +25,7 @@ export interface ServiceEnvCheck {
   openclaw: boolean
   n8n: boolean
   mcp: boolean
+  hermes: boolean
 }
 
 /** 运行时 manifest 中单个服务的入口定义 */
@@ -97,6 +98,18 @@ export interface UpdateStatusPayload {
   message?: string
 }
 
+/** 安装进度推送 payload（通过 webContents.send('service:install-progress', payload) 推送） */
+export interface InstallProgressPayload {
+  /** 服务名 */
+  name: ServiceName
+  /** 进度百分比 0-100 */
+  percent: number
+  /** 下载速率 KB/s */
+  speedKBs?: number
+  /** 预计剩余秒数 */
+  etaSec?: number
+}
+
 /** 运行时下载进度（通过 webContents.send('runtime:download-progress', payload) 推送） */
 export interface RuntimeDownloadProgress {
   /** 服务名 */
@@ -115,6 +128,57 @@ export interface RuntimeVerifyResult {
   results: Record<ServiceName, boolean>
   /** 全部通过 */
   allPassed: boolean
+}
+
+// ===== 远程控制类型（Task 14） =====
+
+export type RemoteControlPlatform = 'feishu' | 'wecom'
+
+export type RemoteSecurityLevel = 'low' | 'medium' | 'high'
+
+export type RemoteCommandType =
+  | 'run_workflow'
+  | 'query_status'
+  | 'stop_task'
+  | 'delete_file'
+  | 'format_disk'
+  | 'execute_system_command'
+  | 'modify_system_config'
+  | 'unknown'
+
+export interface RemoteCommand {
+  commandId: string
+  type: RemoteCommandType
+  raw: string
+  source: RemoteControlPlatform
+  payload: {
+    raw: string
+    name?: string
+    taskId?: string
+    [key: string]: unknown
+  }
+}
+
+export interface RemoteCommandResult {
+  commandId: string
+  success?: boolean
+  type?: RemoteCommandType
+  /** 执行状态：running / success / failed / need_confirmation */
+  status?: string
+  message?: string
+  /** 任务进度 0-100 */
+  progress?: number
+  /** 命令执行描述/说明 */
+  description?: string
+  data?: unknown
+}
+
+export interface RemoteControlSettings {
+  enabled: boolean
+  securityLevel: RemoteSecurityLevel
+  feishu: { bound: boolean; webhookUrl?: string; boundAt?: string }
+  wecom: { bound: boolean; webhookUrl?: string; boundAt?: string }
+  deviceWhitelist: Array<{ deviceId: string; name?: string; addedAt?: string }>
 }
 
 /** 同步队列实体类型 */
@@ -177,6 +241,10 @@ export interface ElectronAPI {
     restart(name: ServiceName): Promise<boolean>
     checkEnv(): Promise<ServiceEnvCheck>
     install(name: ServiceName): Promise<boolean>
+    /** 监听安装进度推送，返回取消监听函数 */
+    onInstallProgress(
+      callback: (payload: InstallProgressPayload) => void
+    ): () => void
     /** 监听服务状态变更，返回取消监听函数 */
     onStatusChanged(
       callback: (payload: ServiceStatusChangedPayload) => void
@@ -188,6 +256,8 @@ export interface ElectronAPI {
     getVersion(): Promise<string>
     checkUpdate(): Promise<void>
     quitAndInstall(): Promise<void>
+    /** 关闭硬件加速并重启应用（Office WebGL 降级逃生通道） */
+    disableHardwareAcceleration(): Promise<void>
   }
   /** 自动更新（electron-updater 封装） */
   updater: {

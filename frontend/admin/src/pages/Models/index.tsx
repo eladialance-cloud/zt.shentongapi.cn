@@ -32,16 +32,19 @@ import {
   EditOutlined,
   PlusOutlined,
   ReloadOutlined,
-  SyncOutlined
+  SyncOutlined,
+  ApiOutlined
 } from '@ant-design/icons'
 import {
   createAdminModel,
   listAdminModels,
   syncAdminModel,
+  testModel,
   updateAdminModel
 } from '@/api/admin-model-api'
 import type {
   AdminModelItem,
+  ConnectionStatus,
   CreateAdminModelDto,
   MinUserLevel,
   ModelCapability,
@@ -94,6 +97,12 @@ const CAPABILITY_LABEL: Record<ModelCapability, string> = {
   json_mode: 'JSON'
 }
 
+const CONNECTION_STATUS: Record<string, { color: string; text: string }> = {
+  untested: { color: 'default', text: '未测试' },
+  connected: { color: 'green', text: '已连接' },
+  failed: { color: 'red', text: '连接失败' }
+}
+
 const SYNC_TAG: Record<ModelSyncStatus, { color: string; text: string }> = {
   pending: { color: 'orange', text: '待同步' },
   synced: { color: 'green', text: '已同步' },
@@ -142,6 +151,7 @@ export default function AdminModels() {
   const [form] = Form.useForm<ModelFormValues>()
   const [saving, setSaving] = useState(false)
   const [syncingId, setSyncingId] = useState<number | null>(null)
+  const [testingId, setTestingId] = useState<number | null>(null)
 
   const loadList = useCallback(async () => {
     setLoading(true)
@@ -296,6 +306,33 @@ export default function AdminModels() {
     }
   }
 
+  const handleTest = async (item: AdminModelItem) => {
+    setTestingId(item.id)
+    try {
+      const result = await testModel(item.id)
+      message.success(`测试通过: ${(result.response || '').slice(0, 60)}`)
+      setItems((prev) =>
+        prev.map((m) =>
+          m.id === item.id
+            ? { ...m, connectionStatus: 'connected' as ConnectionStatus }
+            : m
+        )
+      )
+    } catch (err: any) {
+      console.error('[AdminModels] test failed:', err)
+      message.error(`测试失败`)
+      setItems((prev) =>
+        prev.map((m) =>
+          m.id === item.id
+            ? { ...m, connectionStatus: 'failed' as ConnectionStatus }
+            : m
+        )
+      )
+    } finally {
+      setTestingId(null)
+    }
+  }
+
   const columns: TableColumnsType<AdminModelItem> = [
     {
       title: '模型 ID',
@@ -309,6 +346,16 @@ export default function AdminModels() {
       key: 'provider',
       width: 110,
       render: (p: ModelProvider) => <Tag color={PROVIDER_COLOR[p]}>{PROVIDER_LABEL[p]}</Tag>
+    },
+    {
+      title: '连接',
+      dataIndex: 'connectionStatus',
+      key: 'connectionStatus',
+      width: 90,
+      render: (s: string) => {
+        const info = CONNECTION_STATUS[s] || { color: 'default', text: s || '-' }
+        return <Tag color={info.color}>{info.text}</Tag>
+      }
     },
     {
       title: '显示名',
@@ -382,10 +429,13 @@ export default function AdminModels() {
     {
       title: '操作',
       key: 'action',
-      width: 180,
+      width: 260,
       fixed: 'right',
       render: (_: unknown, record: AdminModelItem) => (
         <>
+          <Button type="link" size="small" icon={<ApiOutlined />} loading={testingId === record.id} onClick={() => handleTest(record)}>
+            测试
+          </Button>
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
             编辑
           </Button>

@@ -2,21 +2,29 @@ import { Entity, Column, Index } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 
 /**
- * 工作流模板实体
- * 数据合同真源：Task 21 - 工作流模板管理 / desktop types/admin-workflow
+ * 工作流模板实体（合并 workflows + n8n_workflow_lib）
  *
- * 现有 workflow 模块仅有 health()，无实体，故在此创建最小可用的管理端实体。
+ * 一张表承载：管理端手动创建 + GitHub 批量导入 + 审核流 + 定价
  */
 export type WorkflowEngineType = 'n8n' | 'coze';
-export type AdminWorkflowCategory =
+export type WorkflowCategory =
   | 'automation'
   | 'integration'
   | 'data_processing'
+  | 'ai_collaboration'
+  | 'independent'
   | 'other';
 export type WorkflowReviewStatus = 'pending_review' | 'approved' | 'rejected';
+export type WorkflowPublishStatus =
+  | 'draft'
+  | 'pending_review'
+  | 'approved'
+  | 'published'
+  | 'rejected';
 
 @Entity('workflows')
 export class WorkflowEntity extends BaseEntity {
+  // ── 基础信息 ──
   @Index()
   @Column({ length: 128 })
   name: string;
@@ -27,27 +35,57 @@ export class WorkflowEntity extends BaseEntity {
   @Column({ name: 'engine_type', length: 16, default: 'n8n' })
   engineType: WorkflowEngineType;
 
-  @Column({ name: 'n8n_workflow_id', length: 64, nullable: true })
-  n8nWorkflowId?: string;
+  @Column({ length: 64, default: 'other' })
+  category: WorkflowCategory;
 
-  @Column({ name: 'coze_workflow_id', length: 64, nullable: true })
-  cozeWorkflowId?: string;
+  // ── n8n 工作流 JSON 定义（核心） ──
+  @Column({ name: 'workflow_json', type: 'mediumtext', nullable: true })
+  workflowJson?: string;
 
-  @Column({ length: 32, default: 'other' })
-  category: AdminWorkflowCategory;
-
+  // ── 参数/输出 Schema ──
   @Column({ name: 'input_schema', type: 'json', nullable: true })
   inputSchema?: Record<string, unknown>;
 
   @Column({ name: 'output_schema', type: 'json', nullable: true })
   outputSchema?: Record<string, unknown>;
 
+  // ── 引擎 ID（兼容旧字段） ──
+  @Column({ name: 'n8n_workflow_id', length: 64, nullable: true })
+  n8nWorkflowId?: string;
+
+  @Column({ name: 'coze_workflow_id', length: 64, nullable: true })
+  cozeWorkflowId?: string;
+
+  // ── GitHub 来源追溯 ──
+  @Column({ name: 'source_repo', length: 256, nullable: true })
+  sourceRepo?: string;
+
+  @Column({ name: 'source_path', length: 512, nullable: true })
+  sourcePath?: string;
+
+  @Column({ length: 32, nullable: true })
+  version?: string;
+
+  // ── 展示 ──
+  @Column({ length: 256, nullable: true })
+  icon?: string;
+
+  @Column({ type: 'json', nullable: true })
+  tags?: string[];
+
+  // ── 定价 ──
   @Column({ name: 'price_per_execution', type: 'int', default: 0 })
   pricePerExecution: number;
 
+  // ── 状态 ──
   @Column({ name: 'is_active', type: 'boolean', default: false })
   isActive: boolean;
 
+  @Column({ name: 'is_published', type: 'boolean', default: false })
+  isPublished: boolean;
+
+  // ── 审核流 ──
+  @Index()
   @Column({
     name: 'review_status',
     length: 32,
@@ -55,12 +93,30 @@ export class WorkflowEntity extends BaseEntity {
   })
   reviewStatus: WorkflowReviewStatus;
 
+  @Index()
+  @Column({
+    name: 'publish_status',
+    type: 'enum',
+    enum: ['draft', 'pending_review', 'approved', 'published', 'rejected'],
+    default: 'draft',
+  })
+  publishStatus: WorkflowPublishStatus;
+
   @Column({ name: 'reject_reason', length: 512, nullable: true })
   rejectReason?: string;
 
+  // ── 统计 ──
   @Column({ name: 'execution_count', type: 'int', default: 0 })
   executionCount: number;
 
+  @Column({ name: 'node_count', type: 'int', default: 0 })
+  nodeCount: number;
+
+  // ── 触发类型（从 JSON 解析提取） ──
+  @Column({ name: 'trigger_type', length: 64, nullable: true })
+  triggerType?: string;
+
+  // ── 创建者 ──
   @Column({ name: 'creator_name', length: 64, nullable: true })
   creatorName?: string;
 }

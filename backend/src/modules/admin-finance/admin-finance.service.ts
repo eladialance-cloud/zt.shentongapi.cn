@@ -9,6 +9,7 @@ import { UserEntity } from '../user/entities/user.entity';
 import { InvoiceEntity } from './entities/invoice.entity';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/constants/error.constant';
+import { parsePaging, paginate } from '../../common/utils/query.util';
 import { TransactionQueryDto } from './dto/transaction-query.dto';
 import { OrderQueryDto } from './dto/order-query.dto';
 import { InvoiceQueryDto } from './dto/invoice-query.dto';
@@ -19,36 +20,9 @@ import { RejectInvoiceDto } from './dto/reject-invoice.dto';
 import { InvoiceAuditDto } from './dto/invoice-audit.dto';
 import { AdjustReconciliationDto } from './dto/adjust-reconciliation.dto';
 
-/** 分页参数解析 */
-function parsePaging(page?: number, pageSize?: number) {
-  const p = Math.max(1, Number(page) || 1);
-  const ps = Math.min(100, Math.max(1, Number(pageSize) || 20));
-  return { page: p, pageSize: ps };
-}
-
-/** 分页结果构造 */
-function paginate<T>(list: T[], total: number, page: number, pageSize: number) {
-  return {
-    list,
-    total,
-    page,
-    pageSize,
-    totalPages: Math.ceil(total / pageSize),
-  };
-}
-
 /**
  * 管理端积分财务管理服务
  * 数据合同真源：Task 24 - 积分财务管理
- *
- * 复用现有实体：
- *   - CreditTransactionEntity（积分流水）
- *   - RechargeOrderEntity（充值订单）
- *   - PaymentRecordEntity（支付记录，含退款信息）
- *   - ReconciliationDiffEntity（对账差异）
- *   - UserEntity（用户名回显）
- * 新增实体：
- *   - InvoiceEntity（发票申请）
  */
 @Injectable()
 export class AdminFinanceService {
@@ -116,29 +90,18 @@ export class AdminFinanceService {
 
   /** 积分流水统计 */
   async getTransactionStats(query: TransactionQueryDto) {
-    const qb = this.txnRepo.createQueryBuilder('t');
-    if (query.userId) {
-      qb.andWhere('t.user_id = :uid', { uid: query.userId });
-    }
-    if (query.type) {
-      qb.andWhere('t.type = :type', { type: query.type });
-    }
-    if (query.startTime) {
-      qb.andWhere('t.created_at >= :start', { start: query.startTime });
-    }
-    if (query.endTime) {
-      qb.andWhere('t.created_at <= :end', { end: query.endTime });
-    }
+    const baseQb = () => {
+      const qb = this.txnRepo.createQueryBuilder('t');
+      if (query.userId) qb.andWhere('t.user_id = :uid', { uid: query.userId });
+      if (query.type) qb.andWhere('t.type = :type', { type: query.type });
+      if (query.startTime) qb.andWhere('t.created_at >= :start', { start: query.startTime });
+      if (query.endTime) qb.andWhere('t.created_at <= :end', { end: query.endTime });
+      return qb;
+    };
 
-    const total = await qb.getCount();
-    const income = await qb
-      .andWhere('t.amount > 0')
-      .select('COALESCE(SUM(t.amount),0)', 'sum')
-      .getRawOne<{ sum: string }>();
-    const outcome = await qb
-      .andWhere('t.amount < 0')
-      .select('COALESCE(SUM(t.amount),0)', 'sum')
-      .getRawOne<{ sum: string }>();
+    const total = await baseQb().getCount();
+    const income = await baseQb().andWhere('t.amount > 0').select('COALESCE(SUM(t.amount),0)', 'sum').getRawOne<{ sum: string }>();
+    const outcome = await baseQb().andWhere('t.amount < 0').select('COALESCE(SUM(t.amount),0)', 'sum').getRawOne<{ sum: string }>();
 
     return {
       total,
@@ -173,17 +136,16 @@ export class AdminFinanceService {
 
     const [items, total] = await qb.getManyAndCount();
     const userMap = await this.batchUsernames(items.map((i) => i.userId));
-    const list = await Promise.all(
-      items.map(async (o) => {
-        const payment = o.paymentRecordId
-          ? await this.paymentRepo.findOne({ where: { id: o.paymentRecordId } })
-          : null;
-        return this.toFinanceRechargeOrder(
-          o,
-          payment,
-          userMap.get(o.userId),
-        );
-      }),
+
+    // 批量查询支付记录（避免 N+1）
+    const paymentIds = items.map((o) => o.paymentRecordId).filter(Boolean);
+    const payments = paymentIds.length > 0
+      ? await this.paymentRepo.createQueryBuilder('p').where('p.id IN (:...ids)', { ids: paymentIds }).getMany()
+      : [];
+    const paymentMap = new Map(payments.map((p) => [p.id, p]));
+
+    const list = items.map((o) =>
+      this.toFinanceRechargeOrder(o, o.paymentRecordId ? paymentMap.get(o.paymentRecordId) : undefined, userMap.get(o.userId)),
     );
     return paginate(list, total, page, pageSize);
   }
@@ -330,22 +292,17 @@ export class AdminFinanceService {
 
   /** 对账差异统计 */
   async getReconciliationStats(query: ReconciliationQueryDto) {
-    const qb = this.diffRepo.createQueryBuilder('d');
-    if (query.type) {
-      qb.andWhere('d.type = :type', { type: query.type });
-    }
+    const baseQb = () => {
+      const qb = this.diffRepo.createQueryBuilder('d');
+      if (query.type) qb.andWhere('d.type = :type', { type: query.type });
+      return qb;
+    };
 
-    const total = await qb.getCount();
-    const pending = await qb.andWhere('d.status = :s', { s: 'pending' }).getCount();
-    const resolved = await qb
-      .andWhere('d.status = :s', { s: 'resolved' })
-      .getCount();
-    const ignored = await qb
-      .andWhere('d.status = :s', { s: 'ignored' })
-      .getCount();
-    const sumRow = await qb
-      .select('COALESCE(SUM(d.diff_amount),0)', 'sum')
-      .getRawOne<{ sum: string }>();
+    const total = await baseQb().getCount();
+    const pending = await baseQb().andWhere('d.status = :s', { s: 'pending' }).getCount();
+    const resolved = await baseQb().andWhere('d.status = :s', { s: 'resolved' }).getCount();
+    const ignored = await baseQb().andWhere('d.status = :s', { s: 'ignored' }).getCount();
+    const sumRow = await baseQb().select('COALESCE(SUM(d.diff_amount),0)', 'sum').getRawOne<{ sum: string }>();
 
     return {
       total,

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ModelEntity } from '../model/entities/model.entity';
 import { AdminAuthModule } from '../admin-auth/admin-auth.module';
+import { CommonModule } from '../../common/common.module';
 import { AdminModelController } from './admin-model.controller';
 import { AdminModelService } from './admin-model.service';
 
@@ -17,7 +18,7 @@ import { AdminModelService } from './admin-model.service';
  * 复用现有 ModelEntity（models 表），不新增实体。
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([ModelEntity]), AdminAuthModule],
+  imports: [TypeOrmModule.forFeature([ModelEntity]), AdminAuthModule, CommonModule],
   controllers: [AdminModelController],
   providers: [AdminModelService],
   exports: [AdminModelService],

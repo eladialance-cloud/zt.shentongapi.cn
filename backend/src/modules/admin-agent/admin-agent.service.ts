@@ -17,6 +17,7 @@ import {
 } from './entities/agent-import-task.entity';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/constants/error.constant';
+import { parsePaging, paginate, findOneOrThrow } from '../../common/utils/query.util';
 import { AgentQueryDto } from './dto/agent-query.dto';
 import { AgentReviewQueryDto } from './dto/agent-review-query.dto';
 import { CreateAgentDto } from './dto/create-agent.dto';
@@ -87,49 +88,38 @@ export class AdminAgentService {
 
   /** Agent 列表 */
   async listAgents(query: AgentQueryDto) {
-    const page = Math.max(1, Number(query.page) || 1);
-    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+    const { page, pageSize } = parsePaging(query.page, query.pageSize);
 
     const qb = this.agentRepo.createQueryBuilder('a');
     if (query.status) {
       const entityStatus = this.toEntityStatus(query.status);
-      if (entityStatus) {
-        qb.andWhere('a.status = :status', { status: entityStatus });
-      }
+      if (entityStatus) qb.andWhere('a.status = :status', { status: entityStatus });
     }
-    if (query.category) {
-      qb.andWhere('a.category = :category', { category: query.category });
+    if (query.category) qb.andWhere('a.category = :category', { category: query.category });
+    if (query.keyword) {
+      qb.andWhere(
+        '(a.name LIKE :kw OR a.display_name LIKE :kw OR a.description LIKE :kw)',
+        { kw: `%${query.keyword}%` },
+      );
     }
-    qb.orderBy('a.created_at', 'DESC')
-      .skip((page - 1) * pageSize)
-      .take(pageSize);
+    qb.orderBy('a.created_at', 'DESC').skip((page - 1) * pageSize).take(pageSize);
 
     const [agents, total] = await qb.getManyAndCount();
     const list = await this.toAdminAgentItems(agents);
-
-    return {
-      list,
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
-    };
+    return paginate(list, total, page, pageSize);
   }
 
   /** Agent 详情 */
   async getAgentDetail(id: number) {
-    const agent = await this.agentRepo.findOne({ where: { id } });
-    if (!agent) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 不存在');
-    }
-    const items = await this.toAdminAgentItems([agent]);
-    return items[0];
+    const agent = await findOneOrThrow(this.agentRepo, { id }, ErrorCode.NOT_FOUND, 'Agent 不存在');
+    return (await this.toAdminAgentItems([agent]))[0];
   }
 
   /** 新增 Agent */
-  async createAgent(dto: CreateAgentDto) {
+  async createAgent(dto: CreateAgentDto, adminId: number) {
     const agent = this.agentRepo.create({
       name: dto.name,
+      displayName: dto.displayName,
       description: dto.description,
       systemPrompt: dto.systemPrompt || '',
       usageExample: dto.usageExamples?.join('\n') || undefined,
@@ -139,13 +129,13 @@ export class AdminAgentService {
         dto.pricingMode === 'perToken'
           ? { input: dto.pricePerTokenInput, output: dto.pricePerTokenOutput }
           : undefined,
-      creatorId: 0,
+      creatorId: adminId,
       creatorType: 'official',
       status: 'draft',
       category: dto.category,
       sourceType: 'official',
       runtimeType: 'openclaw',
-      userId: 0,
+      userId: adminId,
     });
     const saved = await this.agentRepo.save(agent);
     return (await this.toAdminAgentItems([saved as AgentEntity]))[0];
@@ -153,150 +143,81 @@ export class AdminAgentService {
 
   /** 编辑 Agent */
   async updateAgent(id: number, dto: UpdateAgentDto) {
-    const agent = await this.agentRepo.findOne({ where: { id } });
-    if (!agent) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 不存在');
+    const agent = await findOneOrThrow(this.agentRepo, { id }, ErrorCode.NOT_FOUND, 'Agent 不存在');
+
+    const simpleFields: Array<keyof UpdateAgentDto & keyof AgentEntity> = ['name', 'displayName', 'description', 'systemPrompt', 'modelId', 'category', 'pricePerCall'];
+    for (const field of simpleFields) {
+      if (dto[field] !== undefined) (agent as any)[field] = dto[field];
     }
-    if (dto.name !== undefined) agent.name = dto.name;
-    if (dto.description !== undefined) agent.description = dto.description;
-    if (dto.systemPrompt !== undefined) agent.systemPrompt = dto.systemPrompt;
     if (dto.usageExamples !== undefined) {
       agent.usageExample = dto.usageExamples.join('\n') || undefined;
     }
-    if (dto.modelId !== undefined) agent.modelId = dto.modelId;
-    if (dto.category !== undefined) agent.category = dto.category;
-    if (dto.pricePerCall !== undefined) agent.pricePerCall = dto.pricePerCall;
     if (dto.pricingMode !== undefined) {
-      if (dto.pricingMode === 'perToken') {
-        agent.pricePerToken = {
-          input: dto.pricePerTokenInput ?? 0,
-          output: dto.pricePerTokenOutput ?? 0,
-        };
-      } else {
-        agent.pricePerToken = undefined;
-      }
+      agent.pricePerToken = dto.pricingMode === 'perToken'
+        ? { input: dto.pricePerTokenInput ?? 0, output: dto.pricePerTokenOutput ?? 0 }
+        : undefined;
     }
     await this.agentRepo.save(agent);
   }
 
   /** 删除 Agent */
   async deleteAgent(id: number) {
-    const agent = await this.agentRepo.findOne({ where: { id } });
-    if (!agent) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 不存在');
-    }
+    await findOneOrThrow(this.agentRepo, { id }, ErrorCode.NOT_FOUND, 'Agent 不存在');
     await this.agentRepo.delete(id);
   }
 
   // ============ 上下架 ============
 
+  /** 修改 Agent 状态并保存 */
+  private async setAgentStatus(id: number, status: AgentEntity['status'], extra?: Partial<AgentEntity>) {
+    const agent = await findOneOrThrow(this.agentRepo, { id }, ErrorCode.NOT_FOUND, 'Agent 不存在');
+    agent.status = status;
+    if (extra) Object.assign(agent, extra);
+    return this.agentRepo.save(agent);
+  }
+
   /** 上架 Agent */
   async publishAgent(id: number) {
-    const agent = await this.agentRepo.findOne({ where: { id } });
-    if (!agent) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 不存在');
-    }
-    agent.status = 'published';
-    agent.publishedAt = new Date();
-    await this.agentRepo.save(agent);
+    return this.setAgentStatus(id, 'published', { publishedAt: new Date() });
   }
 
   /** 下架 Agent */
   async unpublishAgent(id: number) {
-    const agent = await this.agentRepo.findOne({ where: { id } });
-    if (!agent) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 不存在');
-    }
-    agent.status = 'offline';
-    await this.agentRepo.save(agent);
+    return this.setAgentStatus(id, 'offline');
   }
 
   // ============ 审核 ============
 
   /** 审核队列列表 */
   async listReview(query: AgentReviewQueryDto) {
-    const page = Math.max(1, Number(query.page) || 1);
-    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+    const { page, pageSize } = parsePaging(query.page, query.pageSize);
 
     const qb = this.agentRepo.createQueryBuilder('a');
-    if (query.status) {
-      const entityStatus = this.toEntityStatus(query.status);
-      if (entityStatus) {
-        qb.andWhere('a.status = :status', { status: entityStatus });
-      }
-    } else {
-      // 默认只看待审核
-      qb.andWhere('a.status = :status', { status: 'pending_review' });
-    }
-    qb.orderBy('a.created_at', 'DESC')
-      .skip((page - 1) * pageSize)
-      .take(pageSize);
+    const entityStatus = query.status ? this.toEntityStatus(query.status) : 'pending_review';
+    if (entityStatus) qb.andWhere('a.status = :status', { status: entityStatus });
+    qb.orderBy('a.created_at', 'DESC').skip((page - 1) * pageSize).take(pageSize);
 
     const [agents, total] = await qb.getManyAndCount();
     const list = await this.toAdminAgentItems(agents);
-
-    return {
-      list,
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
-    };
+    return paginate(list, total, page, pageSize);
   }
 
   /** 通过审核 */
   async approveAgent(id: number, adminId: number) {
-    const agent = await this.agentRepo.findOne({ where: { id } });
-    if (!agent) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 不存在');
-    }
-    agent.status = 'published';
-    agent.publishedAt = new Date();
-    agent.rejectionReason = undefined;
-    await this.agentRepo.save(agent);
-
-    // 写入审核记录
-    await this.reviewRepo.save({
-      agentId: id,
-      reviewerId: adminId,
-      action: 'approve',
-    });
+    await this.setAgentStatus(id, 'published', { publishedAt: new Date(), rejectionReason: undefined });
+    await this.reviewRepo.save({ agentId: id, reviewerId: adminId, action: 'approve' });
   }
 
   /** 驳回审核 */
   async rejectAgent(id: number, dto: RejectAgentDto, adminId: number) {
-    const agent = await this.agentRepo.findOne({ where: { id } });
-    if (!agent) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 不存在');
-    }
-    agent.status = 'rejected';
-    agent.rejectionReason = dto.reason;
-    await this.agentRepo.save(agent);
-
-    await this.reviewRepo.save({
-      agentId: id,
-      reviewerId: adminId,
-      action: 'reject',
-      reason: dto.reason,
-    });
+    await this.setAgentStatus(id, 'rejected', { rejectionReason: dto.reason });
+    await this.reviewRepo.save({ agentId: id, reviewerId: adminId, action: 'reject', reason: dto.reason });
   }
 
   /** 强制下架 */
   async forceUnpublishAgent(id: number, dto: RejectAgentDto, adminId: number) {
-    const agent = await this.agentRepo.findOne({ where: { id } });
-    if (!agent) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 不存在');
-    }
-    agent.status = 'offline';
-    agent.rejectionReason = dto.reason;
-    await this.agentRepo.save(agent);
-
-    await this.reviewRepo.save({
-      agentId: id,
-      reviewerId: adminId,
-      action: 'reject',
-      reason: dto.reason,
-    });
+    await this.setAgentStatus(id, 'offline', { rejectionReason: dto.reason });
+    await this.reviewRepo.save({ agentId: id, reviewerId: adminId, action: 'reject', reason: dto.reason });
   }
 
   // ============ GitHub 导入 ============
@@ -603,65 +524,49 @@ export class AdminAgentService {
   }
 
   /** 更新分类显示名 */
-  async updateCategoryDisplay(
-    category: string,
-    dto: UpdateCategoryDisplayDto,
-  ) {
+  async updateCategoryDisplay(category: string, dto: UpdateCategoryDisplayDto) {
     if (!FIXED_CATEGORIES.includes(category as any)) {
       BusinessException.throw(ErrorCode.VALIDATION_FAILED, '无效的分类');
     }
     let entity = await this.categoryRepo.findOne({ where: { category } });
     if (entity) {
       entity.displayName = dto.displayName;
-      await this.categoryRepo.save(entity);
     } else {
       entity = this.categoryRepo.create({
         category,
         displayName: dto.displayName,
         sort: FIXED_CATEGORIES.indexOf(category as any),
       });
-      await this.categoryRepo.save(entity);
     }
+    await this.categoryRepo.save(entity);
   }
 
   // ============ 内部工具 ============
 
   /** 前端 status -> 实体 status 映射 */
-  private toEntityStatus(
-    status: string,
-  ): 'draft' | 'pending_review' | 'published' | 'rejected' | 'offline' | null {
-    switch (status) {
-      case 'published':
-        return 'published';
-      case 'unpublished':
-        return 'offline';
-      case 'pending_review':
-        return 'pending_review';
-      case 'rejected':
-        return 'rejected';
-      case 'draft':
-        return 'draft';
-      default:
-        return null;
-    }
+  private static readonly FRONT_TO_ENTITY: Record<string, AgentEntity['status'] | null> = {
+    published: 'published',
+    unpublished: 'offline',
+    pending_review: 'pending_review',
+    rejected: 'rejected',
+    draft: 'draft',
+  };
+
+  private toEntityStatus(status: string): AgentEntity['status'] | null {
+    return AdminAgentService.FRONT_TO_ENTITY[status] ?? null;
   }
 
   /** 实体 status -> 前端 status 映射 */
-  private toFrontendStatus(
-    status: 'draft' | 'pending_review' | 'published' | 'rejected' | 'offline',
-  ): 'published' | 'unpublished' | 'pending_review' | 'rejected' {
-    switch (status) {
-      case 'published':
-        return 'published';
-      case 'offline':
-        return 'unpublished';
-      case 'pending_review':
-        return 'pending_review';
-      case 'rejected':
-        return 'rejected';
-      default:
-        return 'unpublished';
-    }
+  private static readonly ENTITY_TO_FRONT: Record<AgentEntity['status'], string> = {
+    published: 'published',
+    offline: 'unpublished',
+    pending_review: 'pending_review',
+    rejected: 'rejected',
+    draft: 'unpublished',
+  };
+
+  private toFrontendStatus(status: AgentEntity['status']): string {
+    return AdminAgentService.ENTITY_TO_FRONT[status] ?? 'unpublished';
   }
 
   /** 批量转换实体为前端视图（含 creatorName） */
@@ -685,6 +590,7 @@ export class AdminAgentService {
       return {
         id: a.id,
         name: a.name,
+        displayName: a.displayName || undefined,
         description: a.description || '',
         systemPrompt: a.systemPrompt,
         category: a.category,

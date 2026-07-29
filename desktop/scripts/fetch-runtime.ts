@@ -42,7 +42,7 @@ interface ServiceEntry {
 
 interface RuntimeManifest {
   version: string;
-  services: Record<'n8n' | 'openclaw' | 'mcp', ServiceEntry>;
+  services: Record<'n8n' | 'openclaw' | 'mcp' | 'hermes', ServiceEntry>;
 }
 
 // ---------- 常量 ----------
@@ -52,7 +52,7 @@ const RUNTIME_DIR = path.join(PROJECT_ROOT, 'runtime');
 const MANIFEST_PATH = path.join(RUNTIME_DIR, 'manifest.json');
 const TMP_DIR = path.join(RUNTIME_DIR, '.tmp');
 const DOWNLOAD_TIMEOUT_MS = 60_000;
-const SERVICE_KEYS = ['n8n', 'openclaw', 'mcp'] as const;
+const SERVICE_KEYS = ['n8n', 'openclaw', 'mcp', 'hermes'] as const;
 
 // ---------- 工具函数 ----------
 

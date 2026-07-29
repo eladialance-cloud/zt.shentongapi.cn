@@ -33,7 +33,7 @@ const PROJECT_ROOT = path.join(__dirname, '..');
 const INSTALLER_DIR = path.join(PROJECT_ROOT, 'dist', 'installer');
 const PACKAGE_JSON_PATH = path.join(PROJECT_ROOT, 'package.json');
 const OUTPUT_PATH = path.join(INSTALLER_DIR, 'latest.yml');
-const INSTALLER_EXTS = ['.exe', '.dmg', '.appimage', '.deb', '.rpm'];
+const INSTALLER_EXTS = ['.exe', '.dmg', '.appimage', '.deb', '.rpm', '.zip', '.exe.zip'];
 
 // ---------- 类型定义 ----------
 

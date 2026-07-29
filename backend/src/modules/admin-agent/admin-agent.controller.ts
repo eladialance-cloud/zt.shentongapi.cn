@@ -64,8 +64,8 @@ export class AdminAgentController {
 
   @Post()
   @ApiOperation({ summary: '新增 Agent' })
-  async create(@Body() dto: CreateAgentDto) {
-    return this.service.createAgent(dto);
+  async create(@Body() dto: CreateAgentDto, @Req() req: any) {
+    return this.service.createAgent(dto, req.adminUser.id);
   }
 
   // ============ 具名子路径（必须在 :id 之前声明） ============

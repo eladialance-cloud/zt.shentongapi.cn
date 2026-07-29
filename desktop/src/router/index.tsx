@@ -33,6 +33,10 @@ import OPCTeamDetail from '@/pages/OPC/Detail'
 import OPCBoard from '@/pages/OPC/Board'
 import Settings from '@/pages/Settings'
 import ServiceManager from '@/pages/ServiceManager'
+import Office from '@/pages/Office'
+import AgentMarket from '@/pages/AgentMarket'
+import McpConfig from '@/pages/McpConfig'
+import CardShowcase from '@/pages/CardShowcase'
 import MainLayout from '@/components/MainLayout'
 import { useOnboardingStore, useAuthStore } from '@/store'
 
@@ -144,7 +148,15 @@ const router = createHashRouter([
       // ===== Task 15: 个人设置 =====
       { path: '/settings', element: <Settings /> },
       // ===== Task 16: 服务管理 =====
-      { path: '/services', element: <ServiceManager /> }
+      { path: '/services', element: <ServiceManager /> },
+      // ===== AI 办公室 =====
+      { path: '/office', element: <Office /> },
+      // ===== Agent 市场 =====
+      { path: '/agents', element: <AgentMarket /> },
+      // ===== MCP 配置 =====
+      { path: '/mcp-config', element: <McpConfig /> },
+      // ===== 卡片预览 =====
+      { path: '/showcase', element: <CardShowcase /> }
     ]
   },
 

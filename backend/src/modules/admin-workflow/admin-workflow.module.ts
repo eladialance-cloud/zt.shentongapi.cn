@@ -2,19 +2,24 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminAuthModule } from '../admin-auth/admin-auth.module';
 import { WorkflowEntity } from './entities/workflow.entity';
+import { N8nWorkflowExecLogEntity } from './entities/n8n-workflow-exec-log.entity';
+import { WorkflowMcpBindEntity } from './entities/workflow-mcp-bind.entity';
 import { AdminWorkflowController } from './admin-workflow.controller';
 import { AdminWorkflowService } from './admin-workflow.service';
 
 /**
- * 管理端工作流模板模块
- * 数据合同真源：Task 21 - 工作流模板管理
+ * 管理端工作流模板模块（合并版）
  *
- * 导入 AdminAuthModule 以复用 AdminGuard（依赖独立 admin JwtService）。
- * 注意：本模块不在此处注册到 AppModule，由后续任务统一注册。
+ * 合并原 admin-workflow + admin-workflow-lib 两个模块
+ * 一张 workflows 表承载：手动CRUD + GitHub导入 + 审核流 + 定价
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([WorkflowEntity]),
+    TypeOrmModule.forFeature([
+      WorkflowEntity,
+      N8nWorkflowExecLogEntity,
+      WorkflowMcpBindEntity,
+    ]),
     AdminAuthModule,
   ],
   controllers: [AdminWorkflowController],

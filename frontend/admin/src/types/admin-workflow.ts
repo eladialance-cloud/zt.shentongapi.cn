@@ -1,5 +1,5 @@
 // 管理端工作流模板管理模块类型定义
-// 数据合同真源：Task 21 - 工作流模板管理
+// 数据合同真源：Task 21 - 工作流模板管理（合并版）
 
 import type { AdminPaginatedResult } from './admin-auth'
 
@@ -7,47 +7,64 @@ import type { AdminPaginatedResult } from './admin-auth'
 export type WorkflowEngineType = 'n8n' | 'coze'
 
 /** 工作流分类 */
-export type AdminWorkflowCategory =
+export type WorkflowCategory =
   | 'automation'
   | 'integration'
   | 'data_processing'
+  | 'ai_collaboration'
+  | 'independent'
   | 'other'
 
-/** 工作流状态 */
-export type AdminWorkflowStatus = 'active' | 'inactive'
-
-/** 工作流审核状态 */
-export type WorkflowReviewStatus =
+/** 工作流发布状态（Tab 筛选用） */
+export type WorkflowPublishStatus =
+  | 'draft'
   | 'pending_review'
   | 'approved'
+  | 'published'
   | 'rejected'
 
-/** 工作流模板 */
+/** 工作流模板（完整字段） */
 export interface AdminWorkflowItem {
   id: number
   name: string
-  description: string
+  description?: string
   engineType: WorkflowEngineType
-  /** n8n 工作流 ID(engineType=n8n 时) */
+  /** n8n 工作流 ID */
   n8nWorkflowId?: string
-  /** Coze 工作流 ID(engineType=coze 时) */
+  /** Coze 工作流 ID */
   cozeWorkflowId?: string
-  category: AdminWorkflowCategory
-  /** 输入 Schema(JSON Schema) */
+  category: string
+  /** n8n JSON 原始定义 */
+  workflowJson?: string
+  /** 输入参数 Schema */
   inputSchema?: Record<string, unknown>
-  /** 输出 Schema(JSON Schema) */
+  /** 输出 Schema */
   outputSchema?: Record<string, unknown>
-  /** 单次执行价格(积分) */
+  /** 单次执行积分 */
   pricePerExecution: number
-  /** 是否启用 */
+  /** 是否启用（下架/上架） */
   isActive: boolean
+  /** 是否发布 */
+  isPublished: boolean
+  /** 发布状态 */
+  publishStatus?: WorkflowPublishStatus
   /** 审核状态 */
-  reviewStatus?: WorkflowReviewStatus
+  reviewStatus?: string
   /** 驳回原因 */
   rejectReason?: string
   /** 执行次数 */
   executionCount: number
-  /** 创作者 */
+  /** 节点数 */
+  nodeCount?: number
+  /** 触发类型 */
+  triggerType?: string
+  /** GitHub 来源仓库 */
+  sourceRepo?: string
+  /** GitHub 来源路径 */
+  sourcePath?: string
+  version?: string
+  icon?: string
+  tags?: string[]
   creatorName?: string
   createdAt: string
   updatedAt: string
@@ -56,14 +73,10 @@ export interface AdminWorkflowItem {
 /** 工作流查询参数 */
 export interface AdminWorkflowQuery {
   engineType?: WorkflowEngineType | ''
-  category?: AdminWorkflowCategory | ''
-  page?: number
-  pageSize?: number
-}
-
-/** 工作流审核查询参数 */
-export interface AdminWorkflowReviewQuery {
-  status?: WorkflowReviewStatus | ''
+  category?: string | ''
+  keyword?: string
+  status?: string
+  publishStatus?: WorkflowPublishStatus | ''
   page?: number
   pageSize?: number
 }
@@ -75,11 +88,16 @@ export interface CreateAdminWorkflowDto {
   engineType: WorkflowEngineType
   n8nWorkflowId?: string
   cozeWorkflowId?: string
-  category: AdminWorkflowCategory
+  workflowJson?: string
+  category: string
   inputSchema?: Record<string, unknown>
   outputSchema?: Record<string, unknown>
   pricePerExecution: number
-  isActive: boolean
+  isActive?: boolean
+  icon?: string
+  tags?: string[]
+  triggerType?: string
+  nodeCount?: number
 }
 
 /** 更新工作流 DTO */
@@ -89,11 +107,30 @@ export interface UpdateAdminWorkflowDto {
   engineType?: WorkflowEngineType
   n8nWorkflowId?: string
   cozeWorkflowId?: string
-  category?: AdminWorkflowCategory
+  workflowJson?: string
+  category?: string
   inputSchema?: Record<string, unknown>
   outputSchema?: Record<string, unknown>
   pricePerExecution?: number
   isActive?: boolean
+  isPublished?: boolean
+  icon?: string
+  tags?: string[]
+  publishStatus?: WorkflowPublishStatus
+  triggerType?: string
+  nodeCount?: number
+}
+
+/** GitHub 导入 DTO */
+export interface ImportGithubWorkflowDto {
+  repoUrl: string
+  filePath?: string
+  category?: string
+}
+
+/** GitHub 导入结果 */
+export interface ImportGithubWorkflowResult {
+  imported: number
 }
 
 /** 驳回请求体 */
@@ -103,29 +140,25 @@ export interface WorkflowRejectDto {
 
 /** 工作流统计 */
 export interface AdminWorkflowStats {
-  /** 总工作流数 */
   total: number
-  /** 活跃数 */
   active: number
-  /** 按 engineType 分组统计 */
+  pending: number
+  approved: number
+  published: number
+  rejected: number
   byEngineType: Array<{
     engineType: WorkflowEngineType
     total: number
     active: number
     executionCount: number
   }>
-  /** Top 10 热门工作流(按执行次数排序) */
   topWorkflows: Array<{
     id: number
     name: string
     engineType: WorkflowEngineType
     executionCount: number
   }>
-  /** 近 30 天执行趋势 [{ date, count }] */
-  executionTrend: Array<{
-    date: string
-    count: number
-  }>
+  executionTrend: Array<{ date: string; count: number }>
 }
 
 /** 复用通用分页结果 */

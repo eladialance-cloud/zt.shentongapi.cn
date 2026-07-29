@@ -14,6 +14,9 @@ export type ModelProvider =
 /** 模型同步状态(OpenClaw) */
 export type ModelSyncStatus = 'pending' | 'synced' | 'failed'
 
+/** 连接状态 */
+export type ConnectionStatus = 'untested' | 'connected' | 'failed'
+
 /** 模型能力 */
 export type ModelCapability =
   | 'vision'
@@ -37,6 +40,10 @@ export interface AdminModelItem {
   apiKeyMasked?: string
   /** API Endpoint */
   apiEndpoint?: string
+  /** 连接状态 */
+  connectionStatus?: ConnectionStatus
+  /** 最后测试时间 */
+  lastTestedAt?: string
   /** 输入单价(每千 token,decimal) */
   inputPricePerToken: number
   /** 输出单价(每千 token,decimal) */
@@ -104,3 +111,47 @@ export interface UpdateAdminModelDto {
 
 /** 复用通用分页结果 */
 export type { AdminPaginatedResult }
+
+/** 上游模型信息（中转站拉取） */
+export interface UpstreamModel {
+  modelId: string
+  ownedBy?: string
+  upstreamInputPrice?: number
+  upstreamOutputPrice?: number
+  alreadyExists?: boolean
+}
+
+/** 加价模式 */
+export type PricingMode = 'multiplier' | 'fixed' | 'flat'
+
+/** 加价配置 */
+export interface PricingConfig {
+  multiplier?: number
+  fixedInputAdd?: number
+  fixedOutputAdd?: number
+  flatInputPrice?: number
+  flatOutputPrice?: number
+}
+
+/** 导入单项 */
+export interface ImportModelItem {
+  modelId: string
+  upstreamInputPrice?: number
+  upstreamOutputPrice?: number
+}
+
+/** 批量导入 DTO */
+export interface ImportModelsDto {
+  apiEndpoint: string
+  apiKey: string
+  models: ImportModelItem[]
+  pricingMode: PricingMode
+  pricingConfig: PricingConfig
+}
+
+/** 批量导入结果 */
+export interface ImportModelsResult {
+  imported: number
+  skipped: number
+  errors: Array<{ modelId: string; error: string }>
+}

@@ -16,7 +16,8 @@
 //   之所以不复用 httpClient: httpClient 的请求拦截器会注入用户端 accessToken,
 //   会覆盖管理端 token,因此这里使用独立实例避免冲突。
 
-import axios, { type AxiosRequestConfig } from 'axios'
+import axios, { type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios'
+import { message } from 'antd'
 import { BusinessError, NetworkError } from '@/utils/errors'
 import { useAdminAuthStore } from '@/store/admin-auth'
 import type {
@@ -52,7 +53,53 @@ const adminAxios = axios.create({
   }
 })
 
-/** 响应拦截器:解包 data + 业务码检查 + 网络错误 */
+// ===== 401 Token 自动刷新机制 =====
+// 参考 user/src/utils/request.ts 实现
+// 401 时先尝试用 refreshToken 续期，成功则重试原请求；失败再清除登录态
+// 通过独立 axios 实例调用 /admin/auth/refresh，避免触发自身拦截器形成循环
+
+let isAdminRefreshing = false
+let adminFailedQueue: Array<{
+  resolve: (value: unknown) => void
+  reject: (reason: unknown) => void
+  config: InternalAxiosRequestConfig
+}> = []
+
+function flushAdminQueue(error: unknown, token: string | null): void {
+  adminFailedQueue.forEach((item) => {
+    if (error) {
+      item.reject(error)
+    } else {
+      item.config.headers.Authorization = `Bearer ${token}`
+      // 标记为重试请求，防止再次触发 401 刷新循环
+      ;(item.config as InternalAxiosRequestConfig & { _retry?: boolean })._retry = true
+      item.resolve(adminAxios.request(item.config))
+    }
+  })
+  adminFailedQueue = []
+}
+
+async function tryAdminRefreshToken(): Promise<string | null> {
+  const store = useAdminAuthStore.getState()
+  if (!store.refreshToken) return null
+  try {
+    // 用原始 axios 调用，绕过拦截器，避免 401 循环
+    const resp = await axios.post<{
+      code: number
+      message: string
+      data: { accessToken: string; refreshToken: string }
+    }>(`${ADMIN_API_BASE_URL}/admin/auth/refresh`, { refreshToken: store.refreshToken })
+    if (resp.data?.code !== 0) return null
+    const { accessToken: newAccess, refreshToken: newRefresh } = resp.data.data
+    store.updateToken(newAccess)
+    store.updateRefreshToken(newRefresh)
+    return newAccess
+  } catch {
+    return null
+  }
+}
+
+/** 响应拦截器:解包 data + 业务码检查 + 网络错误 + 401 自动刷新 */
 adminAxios.interceptors.response.use(
   (response) => {
     const body = response.data as ApiResponse
@@ -64,7 +111,45 @@ adminAxios.interceptors.response.use(
     }
     return response.data
   },
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config as
+      | (InternalAxiosRequestConfig & { _retry?: boolean })
+      | undefined
+
+    // 401：尝试 refresh 续期后重试，失败再清除登录态
+    if (
+      error.response?.status === 401 &&
+      originalRequest &&
+      !originalRequest._retry
+    ) {
+      // 已在刷新中：把请求挂入队列，等刷新结果
+      if (isAdminRefreshing) {
+        return new Promise((resolve, reject) => {
+          adminFailedQueue.push({ resolve, reject, config: originalRequest })
+        })
+      }
+
+      originalRequest._retry = true
+      isAdminRefreshing = true
+      try {
+        const newToken = await tryAdminRefreshToken()
+        if (newToken) {
+          // 刷新成功：重试队列 + 原请求
+          flushAdminQueue(null, newToken)
+          originalRequest.headers.Authorization = `Bearer ${newToken}`
+          return adminAxios.request(originalRequest)
+        }
+        // 刷新失败：清空队列并清除登录态
+        flushAdminQueue(error, null)
+        useAdminAuthStore.getState().clearAdminAuth()
+        message.error('登录已过期，请重新登录')
+        window.location.href = '/admin/login'
+        return Promise.reject(error)
+      } finally {
+        isAdminRefreshing = false
+      }
+    }
+
     if (!error.response) {
       const isTimeout =
         error.code === 'ECONNABORTED' ||

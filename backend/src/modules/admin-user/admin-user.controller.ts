@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -18,6 +19,7 @@ import { UserQueryDto } from './dto/user-query.dto';
 import { BanUserDto } from './dto/ban-user.dto';
 import { CreditsAdjustDto } from './dto/credits-adjust.dto';
 import { UpdateUserLevelDto } from './dto/update-user-level.dto';
+import { CreateAdminUserDto } from './dto/create-admin-user.dto';
 
 /**
  * 管理端用户控制器
@@ -25,6 +27,8 @@ import { UpdateUserLevelDto } from './dto/update-user-level.dto';
  *
  * 端点：
  *   GET    /admin/users                           用户列表
+ *   POST   /admin/users                           添加用户
+ *   DELETE /admin/users/:id                       删除用户
  *   POST   /admin/users/:id/ban                   封禁用户
  *   POST   /admin/users/:id/unban                 解封用户
  *   PATCH  /admin/users/:id/level                 调整等级
@@ -44,6 +48,21 @@ export class AdminUserController {
   @ApiOperation({ summary: '用户列表' })
   async list(@Query() query: UserQueryDto) {
     return this.service.listUsers(query);
+  }
+
+  @Post()
+  @ApiOperation({ summary: '添加用户' })
+  async create(@Body() dto: CreateAdminUserDto, @Req() req: any) {
+    return this.service.createUser(dto, req.adminUser.id);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: '删除用户' })
+  async delete(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: any,
+  ) {
+    await this.service.deleteUser(id, req.adminUser.id);
   }
 
   @Post(':id/ban')

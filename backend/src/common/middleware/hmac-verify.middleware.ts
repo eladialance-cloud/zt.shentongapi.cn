@@ -1,4 +1,4 @@
-import { Injectable, NestMiddleware } from '@nestjs/common';
+import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response, NextFunction } from 'express';
 import * as crypto from 'crypto';
@@ -27,6 +27,8 @@ const NONCE_SET_KEY = 'hmac:nonces';
  */
 @Injectable()
 export class HmacVerifyMiddleware implements NestMiddleware {
+  private readonly logger = new Logger(HmacVerifyMiddleware.name);
+
   constructor(
     private redis: RedisService,
     private config: ConfigService,
@@ -58,7 +60,12 @@ export class HmacVerifyMiddleware implements NestMiddleware {
     }
 
     // 计算签名
-    const secretKey = this.config.get<string>('HMAC_SECRET', 'shentong-ai-hmac-secret');
+    const secretKey = this.config.get<string>('HMAC_SECRET');
+    if (!secretKey) {
+      // HMAC_SECRET 未设置：跳过 HMAC 校验（等同于不启用）
+      this.logger.warn('HMAC_SECRET 未设置，跳过 HMAC 验签；请在环境变量中配置以启用接口签名校验');
+      return next();
+    }
     const bodyMd5 = this.computeBodyMd5(req);
     const path = req.originalUrl || req.url || '';
     const raw = `${req.method}\n${path}\n${timestamp}\n${nonce}\n${bodyMd5}`;

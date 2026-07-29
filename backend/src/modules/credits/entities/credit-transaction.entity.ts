@@ -22,7 +22,8 @@ export type CreditTxnSource =
   | 'kb_search'
   | 'recharge'
   | 'admin_adjust'
-  | 'signup_reward';
+  | 'signup_reward'
+  | 'llm_proxy';
 
 /**
  * 积分流水实体（不可变，仅追加）

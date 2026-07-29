@@ -18,6 +18,7 @@ import { MessageList } from './components/MessageList'
 import { MessageInput } from './components/MessageInput'
 import * as chatApi from '@/api/chat-api'
 import { listMarketAgents } from '@/api/agent-api'
+import { officeBridge, isRetrieveTool } from '@/pages/Office/services/officeBridge'
 import type {
   ChatSession,
   ChatMessage,
@@ -170,10 +171,21 @@ export default function Chat() {
         attachments: attachments.map((a) => a.fileId)
       }
 
+      // officeBridge: 用户发送消息 → 主管深度工作
+      officeBridge.onChatMessageSent()
+
+      // 标记是否已触发 onReplyGenerated（仅首次 onMessage 触发）
+      let replyGenerated = false
+
       const controller = chatApi.streamMessage(activeSession.id, dto, {
         onMessage: (chunk) => {
           streamingContentRef.current = streamingContentRef.current + chunk
           setStreamingContent(streamingContentRef.current)
+          // officeBridge: 首次收到流式块 → 撰写员开始工作
+          if (!replyGenerated) {
+            replyGenerated = true
+            officeBridge.onReplyGenerated()
+          }
         },
         onToolCall: (toolCall) => {
           const prev = streamingToolCallsRef.current
@@ -186,9 +198,17 @@ export default function Chat() {
             streamingToolCallsRef.current = [...prev, toolCall]
           }
           setStreamingToolCalls(streamingToolCallsRef.current)
+          // officeBridge: 工具调用 → 市场员去技能墙
+          officeBridge.onToolCall(toolCall.name)
+          // 检索类工具同时触发检索员去资料室
+          if (isRetrieveTool(toolCall.name)) {
+            officeBridge.onAgentRetrieve()
+          }
         },
         onCreditsCost: (cost) => {
           console.log('[Chat] credits cost:', cost)
+          // officeBridge: 积分扣减 → 所有人看大屏
+          officeBridge.onCreditsDeducted(cost.amount)
         },
         onComplete: (usage) => {
           const assistantMsg: ChatMessage = {
@@ -210,10 +230,16 @@ export default function Chat() {
           setStreamingContent('')
           setStreamingToolCalls([])
           abortControllerRef.current = null
+          // officeBridge: 回复完成 → 审核员审核 → 所有人切 IDLE
+          officeBridge.onReview()
+          // 审核需要一点时间，延迟 1.5s 后标记任务完成
+          setTimeout(() => officeBridge.onTaskComplete(), 1500)
         },
         onError: (error) => {
           console.error('[Chat] stream error:', error)
           message.error(`生成失败: ${error.message}`)
+          // officeBridge: 系统错误 → 主管弹出错误气泡
+          officeBridge.onSystemError(error.message)
           if (streamingContentRef.current) {
             const assistantMsg: ChatMessage = {
               id: Date.now() + 1,

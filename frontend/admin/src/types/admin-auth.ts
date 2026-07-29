@@ -86,6 +86,8 @@ export interface AdminLoginDto {
 export interface AdminLoginResponse {
   /** 管理端访问令牌 */
   token: string
+  /** 刷新令牌(用于 401 自动续期) */
+  refreshToken: string
   /** 令牌过期时间(毫秒时间戳) */
   expiresAt: number
   /** 管理员用户信息 */

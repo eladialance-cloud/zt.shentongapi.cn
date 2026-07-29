@@ -11,7 +11,8 @@ import type {
   UpdateStatusPayload,
   ElectronAPI,
   RuntimeAPI,
-  RuntimeDownloadProgress
+  RuntimeDownloadProgress,
+  InstallProgressPayload
 } from '../shared/types'
 
 const electronAPI: ElectronAPI = {
@@ -25,6 +26,16 @@ const electronAPI: ElectronAPI = {
     restart: (name: ServiceName) => ipcRenderer.invoke('service:restart', name),
     checkEnv: () => ipcRenderer.invoke('service:checkEnv'),
     install: (name: ServiceName) => ipcRenderer.invoke('service:install', name),
+    onInstallProgress: (callback: (payload: InstallProgressPayload) => void) => {
+      const handler = (
+        _event: IpcRendererEvent,
+        payload: InstallProgressPayload
+      ): void => callback(payload)
+      ipcRenderer.on('service:install-progress', handler)
+      return () => {
+        ipcRenderer.removeListener('service:install-progress', handler)
+      }
+    },
     onStatusChanged: (callback: (payload: ServiceStatusChangedPayload) => void) => {
       const handler = (
         _event: IpcRendererEvent,
@@ -49,7 +60,8 @@ const electronAPI: ElectronAPI = {
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     checkUpdate: () => ipcRenderer.invoke('app:checkUpdate'),
-    quitAndInstall: () => ipcRenderer.invoke('app:quitAndInstall')
+    quitAndInstall: () => ipcRenderer.invoke('app:quitAndInstall'),
+    disableHardwareAcceleration: () => ipcRenderer.invoke('office:disable-hardware-acceleration')
   },
   updater: {
     check: () => ipcRenderer.invoke('update:check'),

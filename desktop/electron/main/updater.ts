@@ -221,12 +221,66 @@ export class AppUpdater {
    * 灰度命中判断：客户端生成 0-100 随机数，<= grayscalePercent 则命中
    * - percent <= 0：无灰度，全员可更新
    * - percent >= 100：全量发布
+   * - 结果持久化到 userData/update-grayscale.json，避免每次检查更新时重新随机
    */
+  private getGrayscaleFile(): string {
+    return path.join(app.getPath('userData'), 'update-grayscale.json')
+  }
+
+  /** 读取持久化的灰度命中记录 */
+  private loadGrayscaleResult(): {
+    version?: string
+    percent?: number
+    hit?: boolean
+  } | null {
+    try {
+      const filePath = this.getGrayscaleFile()
+      if (!fs.existsSync(filePath)) return null
+      const raw = fs.readFileSync(filePath, 'utf-8')
+      return JSON.parse(raw)
+    } catch (err) {
+      console.warn('[updater] loadGrayscaleResult failed:', err)
+      return null
+    }
+  }
+
+  /** 持久化灰度命中结果 */
+  private saveGrayscaleResult(version: string, percent: number, hit: boolean): void {
+    try {
+      const filePath = this.getGrayscaleFile()
+      fs.writeFileSync(filePath, JSON.stringify({ version, percent, hit }, null, 2), {
+        mode: 0o600
+      })
+    } catch (err) {
+      console.warn('[updater] saveGrayscaleResult failed:', err)
+    }
+  }
+
   private isHitGrayscale(percent: number): boolean {
     if (percent <= 0) return true
     if (percent >= 100) return true
+
+    // 先读取持久化的灰度结果
+    const persisted = this.loadGrayscaleResult()
+    const currentVersion = this.lastUpdateInfo?.version || ''
+
+    // 如果持久化记录的 version 和 percent 与当前一致，直接复用已有结果
+    if (
+      persisted &&
+      persisted.version === currentVersion &&
+      persisted.percent === percent &&
+      typeof persisted.hit === 'boolean'
+    ) {
+      console.log(`[updater] Reusing persisted grayscale result: hit=${persisted.hit}`)
+      return persisted.hit
+    }
+
+    // 无持久化记录或版本/灰度比例已变更：重新随机并持久化
     const random = Math.floor(Math.random() * 100) + 1 // 1-100
-    return random <= percent
+    const hit = random <= percent
+    this.saveGrayscaleResult(currentVersion, percent, hit)
+    console.log(`[updater] New grayscale result: random=${random}, percent=${percent}, hit=${hit}`)
+    return hit
   }
 
   /** 强制更新对话框（模态、不可关闭、单按钮，阻断用户操作） */

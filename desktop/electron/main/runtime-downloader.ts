@@ -96,6 +96,39 @@ function serviceInstallDir(name: ServiceName): string {
   return path.join(userDataRuntimeDir(), name)
 }
 
+/** 支持 npm fallback 安装的服务 */
+const NPM_FALLBACK_SERVICES: ServiceName[] = ['openclaw', 'n8n', 'mcp', 'hermes']
+
+/** 服务名到 npm 包名的映射 */
+const SERVICE_NPM_PACKAGE: Record<ServiceName, string> = {
+  openclaw: 'openclaw',
+  n8n: 'n8n',
+  mcp: 'mcp-gateway',
+  hermes: 'hermes-agent'
+}
+
+/** 检测当前环境是否存在可用的 npm */
+function hasNpm(): boolean {
+  try {
+    const cmd = process.platform === 'win32' ? 'where npm' : 'which npm'
+    execSync(cmd, { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** 为 n8n 补装 better-sqlite3 原生模块（失败不阻塞主流程） */
+function installBetterSqlite3(): void {
+  try {
+    console.log('[runtime-downloader] installing better-sqlite3 for n8n...')
+    execSync('npm install -g better-sqlite3', { stdio: 'ignore' })
+    console.log('[runtime-downloader] better-sqlite3 installed successfully')
+  } catch (err) {
+    console.warn('[runtime-downloader] failed to install better-sqlite3 (non-fatal):', err)
+  }
+}
+
 /**
  * 下载并安装服务运行时到 userData 目录
  *
@@ -161,19 +194,44 @@ export async function download(
       }
     }
 
+    let installedViaNpm = false
+
     if (!success) {
-      console.error(`[runtime-downloader] ${name} download failed after ${MAX_RETRIES} attempts`)
-      return false
+      if (NPM_FALLBACK_SERVICES.includes(name) && hasNpm()) {
+        const npmPackage = SERVICE_NPM_PACKAGE[name]
+        console.log(`[runtime-downloader] ${name} CDN download failed, trying npm install -g ${npmPackage}`)
+        try {
+          execSync(`npm install -g ${npmPackage}`, { stdio: 'ignore' })
+          console.log(`[runtime-downloader] ${name} installed via npm fallback`)
+          success = true
+          installedViaNpm = true
+        } catch (err) {
+          console.warn(`[runtime-downloader] ${name} npm fallback failed (non-fatal):`, err)
+        }
+      }
+
+      if (!success) {
+        console.error(`[runtime-downloader] ${name} download failed after ${MAX_RETRIES} attempts`)
+        return false
+      }
     }
 
-    // 解压到服务目录
-    const destDir = serviceInstallDir(name)
-    try {
-      fs.mkdirSync(destDir, { recursive: true })
-      execSync(`tar -xzf "${tmpFile}" -C "${destDir}"`, { stdio: 'ignore' })
-    } catch (err) {
-      console.error(`[runtime-downloader] ${name} extract failed:`, err)
-      return false
+    if (!installedViaNpm) {
+      // 解压到服务目录（先清空旧内容，避免残留文件冲突）
+      const destDir = serviceInstallDir(name)
+      try {
+        fs.rmSync(destDir, { recursive: true, force: true })
+        fs.mkdirSync(destDir, { recursive: true })
+        execSync(`tar -xzf "${tmpFile}" -C "${destDir}"`, { stdio: 'ignore' })
+      } catch (err) {
+        console.error(`[runtime-downloader] ${name} extract failed:`, err)
+        return false
+      }
+    }
+
+    // N8N 补装 better-sqlite3 原生模块
+    if (name === 'n8n') {
+      installBetterSqlite3()
     }
 
     // 更新 userData manifest（失败不阻断主流程）

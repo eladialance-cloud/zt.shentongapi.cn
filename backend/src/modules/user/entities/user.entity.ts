@@ -75,4 +75,8 @@ export class UserEntity extends BaseEntity {
     comment: '是否需要修改密码（默认管理员账号首次登录强制改密）',
   })
   mustChangePassword: boolean;
+
+  @Index({ unique: true })
+  @Column({ name: 'llm_proxy_key', length: 64, nullable: true })
+  llmProxyKey?: string;
 }

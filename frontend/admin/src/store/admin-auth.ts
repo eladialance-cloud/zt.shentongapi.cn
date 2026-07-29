@@ -1,14 +1,16 @@
-// 管理端认证 store - 独立于用户端 auth store
-//
+/** 管理端认证 store - 独立于用户端 auth store
+ *
 // 设计依据：Task 17 - 管理端三层守卫(前端部分)
 // - token: 管理端访问令牌(独立存储,不与用户端 token 混淆)
+// - refreshToken: 刷新令牌(用于 401 时自动续期)
 // - expiresAt: 令牌过期时间(毫秒时间戳)
 // - user: 管理员用户信息
 // - permissions: 权限编码列表
 // - hasPermission(code): 权限检查方法,供 PermissionGate 组件使用
 //
-// 持久化策略:token / expiresAt / user / permissions 全部持久化
+// 持久化策略:token / refreshToken / expiresAt / user / permissions 全部持久化
 // (管理端 token 较长期,且需支持刷新页面后保持登录态)
+ */
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
@@ -17,6 +19,8 @@ import type { AdminUser, PermissionCode } from '@/types/admin-auth'
 interface AdminAuthState {
   /** 管理端访问令牌 */
   token: string | null
+  /** 刷新令牌(用于 401 自动续期) */
+  refreshToken: string | null
   /** 令牌过期时间(毫秒时间戳) */
   expiresAt: number | null
   /** 管理员用户信息 */
@@ -32,8 +36,13 @@ interface AdminAuthState {
     expiresAt: number,
     user: AdminUser,
     permissions: PermissionCode[],
-    mustChangePassword: boolean
+    mustChangePassword: boolean,
+    refreshToken?: string
   ) => void
+  /** 更新访问令牌(401 刷新后调用) */
+  updateToken: (token: string) => void
+  /** 更新刷新令牌 */
+  updateRefreshToken: (refreshToken: string) => void
   /** 退出登录(清除状态) */
   clearAdminAuth: () => void
   /** 检查是否已认证(token 存在且未过期) */
@@ -52,18 +61,24 @@ export const useAdminAuthStore = create<AdminAuthState>()(
   persist(
     (set, get) => ({
       token: null,
+      refreshToken: null,
       expiresAt: null,
       user: null,
       permissions: [],
       mustChangePassword: false,
 
-      setAdminAuth: (token, expiresAt, user, permissions, mustChangePassword) => {
-        set({ token, expiresAt, user, permissions, mustChangePassword })
+      setAdminAuth: (token, expiresAt, user, permissions, mustChangePassword, refreshToken) => {
+        set({ token, expiresAt, user, permissions, mustChangePassword, refreshToken: refreshToken ?? null })
       },
+
+      updateToken: (token) => set({ token }),
+
+      updateRefreshToken: (refreshToken) => set({ refreshToken }),
 
       clearAdminAuth: () => {
         set({
           token: null,
+          refreshToken: null,
           expiresAt: null,
           user: null,
           permissions: [],
@@ -94,6 +109,7 @@ export const useAdminAuthStore = create<AdminAuthState>()(
       // 全部持久化(管理端需支持刷新保持登录态)
       partialize: (state) => ({
         token: state.token,
+        refreshToken: state.refreshToken,
         expiresAt: state.expiresAt,
         user: state.user,
         permissions: state.permissions,

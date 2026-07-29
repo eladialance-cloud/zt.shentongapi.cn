@@ -30,10 +30,10 @@ export class InviteCodeService {
    * 生成邀请码
    * @param inviterId 邀请人 ID
    */
-  async generateCode(inviterId: number): Promise<InviteCodeEntity> {
+  async generateCode(inviterId: number, expireDays?: number): Promise<InviteCodeEntity> {
     const code = await this.generateRandomCode();
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + InviteCodeService.EXPIRE_DAYS);
+    expiresAt.setDate(expiresAt.getDate() + (expireDays ?? InviteCodeService.EXPIRE_DAYS));
 
     const entity = this.inviteCodeRepo.create({
       code,
@@ -103,6 +103,37 @@ export class InviteCodeService {
       (c) => c.status === 'active' && c.expiresAt.getTime() > Date.now(),
     ).length;
     return { total: list.length, used, active };
+  }
+
+  /**
+   * 管理端邀请码列表（分页+过滤）
+   */
+  async listAdminCodes(options: {
+    status?: string;
+    page: number;
+    pageSize: number;
+  }): Promise<{ list: InviteCodeEntity[]; total: number; page: number; pageSize: number }> {
+    const qb = this.inviteCodeRepo.createQueryBuilder('c');
+    if (options.status) {
+      qb.andWhere('c.status = :status', { status: options.status });
+    }
+    qb.orderBy('c.createdAt', 'DESC')
+      .skip((options.page - 1) * options.pageSize)
+      .take(options.pageSize);
+    const [list, total] = await qb.getManyAndCount();
+    return { list, total, page: options.page, pageSize: options.pageSize };
+  }
+
+  /**
+   * 作废邀请码
+   */
+  async revokeCode(id: number): Promise<void> {
+    const entity = await this.inviteCodeRepo.findOne({ where: { id } });
+    if (!entity) {
+      BusinessException.throw(ErrorCode.INVITE_CODE_INVALID);
+    }
+    entity.status = 'revoked';
+    await this.inviteCodeRepo.save(entity);
   }
 
   /** 生成随机邀请码（确保唯一性） */

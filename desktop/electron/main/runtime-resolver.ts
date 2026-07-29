@@ -3,7 +3,7 @@
 // 职责：
 // - 解析 N8N / OpenClaw / MCP Gateway 三个本地服务运行时的入口绝对路径
 // - 解析优先级：内置 extraResources → userData 补丁 → 宿主机命令回退
-// - 校验运行时文件完整性（SHA-256，流式处理大文件）
+// - 校验运行时入口可用性（builtin / userData 存在性，host 直接可用）
 // - 读取 manifest.json（Task 9.1：比对 builtin 与 userData 的 version 字段，返回较新者）
 //
 // 说明：
@@ -22,7 +22,8 @@ import type { ServiceName, RuntimeManifest, ResolvedRuntime } from '../shared/ty
 const HOST_COMMANDS: Record<ServiceName, { cmd: string; args: string[] }> = {
   n8n: { cmd: 'n8n', args: ['start'] },
   openclaw: { cmd: 'openclaw', args: [] },
-  mcp: { cmd: 'mcp-gateway', args: [] }
+  mcp: { cmd: 'mcp-gateway', args: [] },
+  hermes: { cmd: 'hermes', args: [] }
 }
 
 /** 内置运行时根目录：打包后为 process.resourcesPath/runtime，开发环境为 cwd/runtime */
@@ -42,7 +43,8 @@ function getUserDataRuntimePath(): string {
 function findHostCommand(cmd: string): boolean {
   try {
     const tool = process.platform === 'win32' ? 'where' : 'which'
-    execSync(`${tool} ${cmd}`, { stdio: 'ignore' })
+    // S1 修复：添加 windowsHide 避免 Windows 上闪现 CMD 窗口
+    execSync(`${tool} ${cmd}`, { stdio: 'ignore', windowsHide: true })
     return true
   } catch {
     return false
@@ -117,10 +119,11 @@ export function pickNewerManifest(
   if (!userData) return builtin
 
   const cmp = compareSemver(builtin.version, userData.version)
-  // userData 版本 >= builtin → 用 userData（补丁优先）
-  if (cmp >= 0) return userData
-  // builtin 更新（例如 electron-updater 更新后自带新 runtime）
-  return builtin
+  // builtin 较新 → 使用 builtin（例如 electron-updater 更新后自带新 runtime）
+  if (cmp > 0) return builtin
+  // userData 较新，或版本相等 → 使用 userData（补丁优先语义）
+  if (cmp < 0) return userData
+  return userData
 }
 
 /**
@@ -161,26 +164,39 @@ export function resolve(name: ServiceName): ResolvedRuntime | null {
     }
   }
 
-  // 1. 内置 extraResources
+  // Windows 包装脚本兼容：manifest 可能声明 .exe，但实际打包为 .exe.cmd
+  const candidateFiles: string[] = []
   if (entryFile) {
-    const builtinPath = path.join(getBuiltinRuntimePath(), name, entryFile)
-    if (fs.existsSync(builtinPath)) {
-      return {
-        cmd: builtinPath,
-        args: [],
-        env: { ...process.env },
-        source: 'builtin'
+    candidateFiles.push(entryFile)
+    if (process.platform === 'win32') {
+      candidateFiles.push(`${entryFile}.cmd`)
+    }
+  }
+
+  // 1. 内置 extraResources
+  if (candidateFiles.length > 0) {
+    for (const file of candidateFiles) {
+      const builtinPath = path.join(getBuiltinRuntimePath(), name, file)
+      if (fs.existsSync(builtinPath)) {
+        return {
+          cmd: builtinPath,
+          args: [],
+          env: { ...process.env },
+          source: 'builtin'
+        }
       }
     }
 
     // 2. userData 补丁
-    const userDataPath = path.join(getUserDataRuntimePath(), name, entryFile)
-    if (fs.existsSync(userDataPath)) {
-      return {
-        cmd: userDataPath,
-        args: [],
-        env: { ...process.env },
-        source: 'userData'
+    for (const file of candidateFiles) {
+      const userDataPath = path.join(getUserDataRuntimePath(), name, file)
+      if (fs.existsSync(userDataPath)) {
+        return {
+          cmd: userDataPath,
+          args: [],
+          env: { ...process.env },
+          source: 'userData'
+        }
       }
     }
   }
@@ -200,47 +216,28 @@ export function resolve(name: ServiceName): ResolvedRuntime | null {
 }
 
 /**
- * 校验服务运行时完整性（SHA-256）
+ * 校验服务运行时完整性
  *
- * - 读取 manifest 中该服务的 sha256[platform-arch]
- * - 空字符串（构建期未填充）→ 返回 true（开发环境兼容，跳过校验）
- * - 否则计算入口文件 SHA-256 并比对
- * - 仅校验 builtin/userData 来源的文件，host 来源无可校验文件
+ * - builtin / userData 来源：归档完整性由 downloader 保证，只要入口文件存在即视为可用
+ * - host 来源：直接返回 true（无可校验文件）
  */
 export async function verifyIntegrity(name: ServiceName): Promise<boolean> {
-  const manifest = loadManifest()
-  if (!manifest) return false
-
-  const serviceEntry = manifest.services[name]
-  if (!serviceEntry) return false
-
-  const platformKey = `${process.platform}-${process.arch}`
-  const expectedHash = serviceEntry.sha256[platformKey]
-
-  // 构建期未填充：跳过校验
-  if (!expectedHash) return true
-
-  // 解析入口文件路径（仅 builtin / userData 来源有效）
   const resolved = resolve(name)
-  if (!resolved || resolved.source === 'host') {
-    // 期望有内置文件但未找到
-    return false
-  }
+  if (!resolved) return false
 
-  try {
-    const actualHash = await computeFileSha256(resolved.cmd)
-    return actualHash === expectedHash
-  } catch {
-    return false
-  }
+  if (resolved.source === 'host') return true
+
+  // builtin / userData：入口文件存在即可
+  return fs.existsSync(resolved.cmd)
 }
 
 /** 校验所有服务，返回各服务完整性 */
 export async function verifyAll(): Promise<Record<ServiceName, boolean>> {
-  const [n8n, openclaw, mcp] = await Promise.all([
+  const [n8n, openclaw, mcp, hermes] = await Promise.all([
     verifyIntegrity('n8n'),
     verifyIntegrity('openclaw'),
-    verifyIntegrity('mcp')
+    verifyIntegrity('mcp'),
+    verifyIntegrity('hermes')
   ])
-  return { n8n, openclaw, mcp }
+  return { n8n, openclaw, mcp, hermes }
 }

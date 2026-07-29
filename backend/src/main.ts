@@ -51,19 +51,26 @@ async function bootstrap() {
     const dataSource = app.get(DataSource);
     await runStartupMigrations(dataSource);
   } catch (err) {
-    logger.warn(`DB migration skipped: ${(err as Error).message}`);
+    if (configService.get<string>('NODE_ENV') === 'production') {
+      logger.error(`DB migration failed: ${(err as Error).message}`);
+      process.exit(1);
+    } else {
+      logger.warn(`DB migration skipped: ${(err as Error).message}`);
+    }
   }
 
-  // Swagger 文档
-  const { path: swaggerPath, document } = swaggerConfig(configService, app);
-  SwaggerModule.setup(swaggerPath, app, document);
+  // Swagger 文档（生产环境禁用）
+  const port = process.env.PORT || configService.get<number>('PORT', 3001);
+  if (configService.get('NODE_ENV') !== 'production') {
+    const { path: swaggerPath, document } = swaggerConfig(configService, app);
+    SwaggerModule.setup(swaggerPath, app, document);
+    logger.log(`Swagger documentation at: http://localhost:${port}/${swaggerPath}`);
+  }
 
   // 监听端口
-  const port = process.env.PORT || configService.get<number>('PORT', 3001);
   await app.listen(port);
 
   logger.log(`Application is running on: http://localhost:${port}/api`);
-  logger.log(`Swagger documentation at: http://localhost:${port}/${swaggerPath}`);
 }
 
 bootstrap();

@@ -16,29 +16,31 @@ import { AdminGuard } from '../admin-auth/admin.guard';
 import { AdminWorkflowService } from './admin-workflow.service';
 import {
   AdminWorkflowQueryDto,
-  AdminWorkflowReviewQueryDto,
   CreateAdminWorkflowDto,
+  ImportGithubWorkflowDto,
   UpdateAdminWorkflowDto,
 } from './dto/workflow.dto';
 import { WorkflowRejectDto, WorkflowReviewDto } from './dto/review.dto';
 
 /**
- * 管理端工作流模板控制器
- * 数据合同真源：Task 21 - 工作流模板管理 / frontend admin-workflow-api.ts
+ * 管理端工作流模板控制器（合并版）
  *
  * 端点：
- *   GET    /admin/workflows              列表
+ *   GET    /admin/workflows              列表（支持 keyword / engineType / publishStatus 筛选）
  *   POST   /admin/workflows              新增
- *   PATCH  /admin/workflows/:id          编辑
- *   DELETE /admin/workflows/:id          删除
- *   GET    /admin/workflows/review       审核队列
+ *   GET    /admin/workflows/review       审核队列（publishStatus=pending_review）
  *   GET    /admin/workflows/stats        统计
  *   GET    /admin/workflows/:id          详情
- *   POST   /admin/workflows/:id/review   综合审核（action: approve|reject）
+ *   PATCH  /admin/workflows/:id          编辑
+ *   DELETE /admin/workflows/:id          删除
+ *   POST   /admin/workflows/:id/review   审核（approve|reject）
  *   POST   /admin/workflows/:id/approve  通过审核
  *   POST   /admin/workflows/:id/reject   驳回审核
- *
- * @Public 跳过全局 JwtAuthGuard（用户端 JWT），由 AdminGuard 校验 adminToken。
+ *   POST   /admin/workflows/import-github  GitHub 导入
+ *   GET    /admin/workflows/:id/exec-logs 执行日志
+ *   GET    /admin/workflows/:id/mcp-binds  MCP 绑定列表
+ *   POST   /admin/workflows/:id/mcp-binds  创建 MCP 绑定
+ *   DELETE /admin/workflows/mcp-binds/:bindId 删除 MCP 绑定
  */
 @ApiTags('管理端-工作流')
 @ApiBearerAuth()
@@ -60,10 +62,16 @@ export class AdminWorkflowController {
     return this.service.create(dto);
   }
 
+  @Post('import-github')
+  @ApiOperation({ summary: 'GitHub 导入工作流（支持单文件或批量）' })
+  async importFromGithub(@Body() dto: ImportGithubWorkflowDto) {
+    return this.service.importFromGithub(dto);
+  }
+
   @Get('review')
   @ApiOperation({ summary: '审核队列' })
-  async listReview(@Query() query: AdminWorkflowReviewQueryDto) {
-    return this.service.listReview(query);
+  async listReview(@Query() query: AdminWorkflowQueryDto) {
+    return this.service.list({ ...query, publishStatus: 'pending_review' });
   }
 
   @Get('stats')
@@ -119,6 +127,41 @@ export class AdminWorkflowController {
     @Body() dto: WorkflowRejectDto,
   ) {
     await this.service.reject(id, dto.reason);
+    return null;
+  }
+
+  // ── 执行日志 ──────────────────────────────────────────────
+
+  @Get(':id/exec-logs')
+  @ApiOperation({ summary: '执行日志' })
+  async listExecLogs(
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: any,
+  ) {
+    return this.service.listExecLogs({ ...query, workflowLibId: id });
+  }
+
+  // ── MCP 绑定 ──────────────────────────────────────────────
+
+  @Get(':id/mcp-binds')
+  @ApiOperation({ summary: 'MCP 绑定列表' })
+  async listBinds(@Param('id', ParseIntPipe) id: number) {
+    return this.service.listBinds(id);
+  }
+
+  @Post(':id/mcp-binds')
+  @ApiOperation({ summary: '创建 MCP 绑定' })
+  async createBind(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { mcpResourceId: number; bindType: 'input' | 'output' | 'trigger'; config?: Record<string, unknown> },
+  ) {
+    return this.service.createBind(id, body.mcpResourceId, body.bindType, body.config);
+  }
+
+  @Delete('mcp-binds/:bindId')
+  @ApiOperation({ summary: '删除 MCP 绑定' })
+  async deleteBind(@Param('bindId', ParseIntPipe) bindId: number) {
+    await this.service.deleteBind(bindId);
     return null;
   }
 }

@@ -2,7 +2,7 @@ appId: com.shentong.ai
 productName: 深瞳AI
 copyright: Copyright © 2026 Shentong
 directories:
-  output: dist/installer-v041
+  output: dist/installer-v${version}
   buildResources: build
 files:
   - dist/main/**/*
@@ -32,10 +32,9 @@ win:
   target:
     - target: nsis
       arch: [x64]
-    - target: zip
-      arch: [x64]
   icon: build/icon.ico
-  artifactName: ShenTongAI-${version}-${arch}.${ext}
+  artifactName: ShenTongAI-Setup-${version}-${arch}.${ext}
+  signAndEditExecutable: false
   # 代码签名：通过环境变量配置，不硬编码证书路径/密码
   # 构建时设置 CSC_LINK（证书文件路径或 base64）与 CSC_KEY_PASSWORD 环境变量即可启用签名
   # certificateFile: ${env.CSC_LINK}

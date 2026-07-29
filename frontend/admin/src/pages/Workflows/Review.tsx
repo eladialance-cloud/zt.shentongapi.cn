@@ -31,12 +31,13 @@ import {
   rejectWorkflow
 } from '@/api/admin-workflow-api'
 import type {
-  AdminWorkflowCategory,
   AdminWorkflowItem,
   WorkflowEngineType,
-  WorkflowReviewStatus
 } from '@/types/admin-workflow'
 import type { AdminPaginatedResult } from '@/types/admin-auth'
+
+type AdminWorkflowCategory = string
+type WorkflowReviewStatus = string
 import styles from './styles.module.css'
 
 const PAGE_SIZE = 20

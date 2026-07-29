@@ -10,6 +10,7 @@ import { RouterProvider } from 'react-router-dom'
 import router from '@/router'
 import { useAdminAuthStore } from '@/store/admin-auth'
 import { getAdminProfile } from '@/api/admin-auth-api'
+import ErrorBoundary from '@/components/ErrorBoundary'
 import '@/styles/global.css'
 
 export default function App() {
@@ -48,7 +49,9 @@ export default function App() {
         },
       }}
     >
-      <RouterProvider router={router} />
+      <ErrorBoundary>
+        <RouterProvider router={router} />
+      </ErrorBoundary>
     </ConfigProvider>
   )
 }

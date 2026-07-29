@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto'
 
 const INSTALLER_DIR = join(process.cwd(), 'dist', 'installer')
 const LATEST_YML_PATH = join(INSTALLER_DIR, 'latest.yml')
-const INSTALLER_EXTS = ['.exe', '.dmg', '.appimage', '.deb', '.rpm']
+const INSTALLER_EXTS = ['.exe', '.dmg', '.appimage', '.deb', '.rpm', '.zip']
 const MIN_SIZE_BYTES = 50 * 1024 * 1024  // 50MB
 const MAX_SIZE_BYTES = 500 * 1024 * 1024 // 500MB
 

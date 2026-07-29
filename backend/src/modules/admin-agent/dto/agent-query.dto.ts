@@ -14,6 +14,10 @@ export class AgentQueryDto {
   category?: string;
 
   @IsOptional()
+  @IsString()
+  keyword?: string;
+
+  @IsOptional()
   @IsInt()
   @Min(1)
   page?: number;

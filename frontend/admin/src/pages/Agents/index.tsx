@@ -1,13 +1,12 @@
-// 官方 Agent 管理页 - SubTask 20.1 + 20.3
+// 官方 Agent 管理页 - 合并审核流
 //
-// Tab:已发布(published)/已下架(unpublished)
+// Tab:已发布/已下架/待审核/已驳回（合并原独立审核页）
 // 表格:ID/名称/分类/状态/价格/调用次数/创建时间/操作
-// 新增/编辑模态框(含动态 usageExamples 数组、定价配置)
-// 操作:编辑/上架/下架/删除
-// GitHub 仓库异步导入(modal 输入 repoUrl,轮询任务状态)
-// API: GET/POST/PATCH/DELETE /admin/agents, publish/unpublish, import-github
+// 待审核 Tab 内联审核操作（通过/驳回）
+// 操作:编辑/上架/下架/删除/通过审核/驳回审核/强制下架
+// 搜索:关键词搜索（名称/显示名/描述）
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import {
   Button,
   Empty,
@@ -32,8 +31,12 @@ import {
   PlusOutlined,
   ReloadOutlined,
   RobotOutlined,
+  SearchOutlined,
   ArrowUpOutlined,
-  ArrowDownOutlined
+  ArrowDownOutlined,
+  CheckOutlined,
+  CloseOutlined,
+  StopOutlined
 } from '@ant-design/icons'
 import {
   createAdminAgent,
@@ -41,7 +44,10 @@ import {
   listAdminAgents,
   publishAdminAgent,
   unpublishAdminAgent,
-  updateAdminAgent
+  updateAdminAgent,
+  approveAgent,
+  rejectAgent,
+  forceUnpublishAgent
 } from '@/api/admin-agent-api'
 import type {
   AdminAgentItem,
@@ -85,6 +91,13 @@ const PRICING_MODE_OPTIONS: Array<{ label: string; value: AgentPricingMode }> = 
   { label: '按 Token 计费', value: 'perToken' }
 ]
 
+const TABS: Array<{ key: AgentStatus; label: string }> = [
+  { key: 'published', label: '已发布' },
+  { key: 'pending_review', label: '待审核' },
+  { key: 'rejected', label: '已驳回' },
+  { key: 'unpublished', label: '已下架' },
+]
+
 interface AgentFormValues {
   name: string
   displayName?: string
@@ -107,12 +120,21 @@ export default function AdminAgents() {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [activeTab, setActiveTab] = useState<AgentStatus>('published')
+  const [keyword, setKeyword] = useState('')
+  const searchTimer = useRef<ReturnType<typeof setTimeout>>()
 
   // 新增/编辑
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<AdminAgentItem | null>(null)
   const [form] = Form.useForm<AgentFormValues>()
   const [saving, setSaving] = useState(false)
+
+  // 审核驳回
+  const [rejectOpen, setRejectOpen] = useState(false)
+  const [rejectTarget, setRejectTarget] = useState<AdminAgentItem | null>(null)
+  const [rejectReason, setRejectReason] = useState('')
+  const [rejectKind, setRejectKind] = useState<'reject' | 'forceUnpublish'>('reject')
+  const [rejecting, setRejecting] = useState(false)
 
   // GitHub 导入
   const [importOpen, setImportOpen] = useState(false)
@@ -121,6 +143,7 @@ export default function AdminAgents() {
     setLoading(true)
     try {
       const query: Record<string, unknown> = { page, pageSize: PAGE_SIZE, status: activeTab }
+      if (keyword.trim()) query.keyword = keyword.trim()
       const result = await listAdminAgents(query)
       const r = result as AdminPaginatedResult<AdminAgentItem>
       setItems(r.list || [])
@@ -131,11 +154,25 @@ export default function AdminAgents() {
     } finally {
       setLoading(false)
     }
-  }, [page, activeTab])
+  }, [page, activeTab, keyword])
 
   useEffect(() => {
     void loadList()
   }, [loadList])
+
+  useEffect(() => {
+    // 切换 Tab 时清除搜索
+    setKeyword('')
+    setPage(1)
+  }, [activeTab])
+
+  const handleSearchChange = (value: string) => {
+    setKeyword(value)
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => {
+      setPage(1)
+    }, 400)
+  }
 
   const handleTabChange = (key: string) => {
     setActiveTab(key as AgentStatus)
@@ -179,7 +216,6 @@ export default function AdminAgents() {
   const handleSave = async () => {
     try {
       const values = await form.validateFields()
-      // 校验 modelConfig JSON
       let modelConfigParsed: Record<string, unknown> | undefined
       if (values.modelConfig && values.modelConfig.trim()) {
         try {
@@ -245,9 +281,7 @@ export default function AdminAgents() {
     try {
       await publishAdminAgent(item.id)
       message.success('已上架')
-      setItems((prev) =>
-        prev.map((a) => (a.id === item.id ? { ...a, status: 'published' } : a))
-      )
+      void loadList()
     } catch (err) {
       console.error('[AdminAgents] publish failed:', err)
       message.error('上架失败')
@@ -258,9 +292,7 @@ export default function AdminAgents() {
     try {
       await unpublishAdminAgent(item.id)
       message.success('已下架')
-      setItems((prev) =>
-        prev.map((a) => (a.id === item.id ? { ...a, status: 'unpublished' } : a))
-      )
+      void loadList()
     } catch (err) {
       console.error('[AdminAgents] unpublish failed:', err)
       message.error('下架失败')
@@ -271,15 +303,57 @@ export default function AdminAgents() {
     try {
       await deleteAdminAgent(item.id)
       message.success('已删除')
-      setItems((prev) => prev.filter((a) => a.id !== item.id))
-      setTotal((t) => Math.max(0, t - 1))
+      void loadList()
     } catch (err) {
       console.error('[AdminAgents] delete failed:', err)
       message.error('删除失败')
     }
   }
 
-  const columns: TableColumnsType<AdminAgentItem> = [
+  const handleApprove = async (item: AdminAgentItem) => {
+    try {
+      await approveAgent(item.id)
+      message.success('已通过审核')
+      void loadList()
+    } catch (err) {
+      console.error('[AdminAgents] approve failed:', err)
+      message.error('审核通过失败')
+    }
+  }
+
+  const handleRejectClick = (item: AdminAgentItem, kind: 'reject' | 'forceUnpublish') => {
+    setRejectTarget(item)
+    setRejectKind(kind)
+    setRejectReason('')
+    setRejectOpen(true)
+  }
+
+  const handleRejectConfirm = async () => {
+    if (!rejectReason.trim()) {
+      message.warning('请填写驳回原因')
+      return
+    }
+    if (!rejectTarget) return
+    setRejecting(true)
+    try {
+      if (rejectKind === 'forceUnpublish') {
+        await forceUnpublishAgent(rejectTarget.id, { reason: rejectReason.trim() })
+        message.success('已强制下架')
+      } else {
+        await rejectAgent(rejectTarget.id, { reason: rejectReason.trim() })
+        message.success('已驳回')
+      }
+      setRejectOpen(false)
+      void loadList()
+    } catch (err) {
+      console.error('[AdminAgents] reject failed:', err)
+      message.error('操作失败')
+    } finally {
+      setRejecting(false)
+    }
+  }
+
+  const commonColumns: TableColumnsType<AdminAgentItem> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
     {
       title: '名称',
@@ -300,14 +374,14 @@ export default function AdminAgents() {
       title: '分类',
       dataIndex: 'category',
       key: 'category',
-      width: 110,
+      width: 100,
       render: (c: AgentCategory) => <Tag color="blue">{CATEGORY_LABEL[c]}</Tag>
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 100,
+      width: 90,
       render: (s: AgentStatus) => (
         <Tag color={STATUS_TAG[s].color}>{STATUS_TAG[s].text}</Tag>
       )
@@ -315,7 +389,7 @@ export default function AdminAgents() {
     {
       title: '定价',
       key: 'pricing',
-      width: 180,
+      width: 170,
       render: (_: unknown, record: AdminAgentItem) =>
         record.pricingMode === 'perCall' ? (
           <span style={{ color: '#7dd3fc' }}>{record.pricePerCall} 积分/次</span>
@@ -329,7 +403,7 @@ export default function AdminAgents() {
       title: '调用次数',
       dataIndex: 'callCount',
       key: 'callCount',
-      width: 100,
+      width: 90,
       render: (v: number) => <span style={{ color: '#c7d2fe' }}>{v.toLocaleString()}</span>
     },
     {
@@ -339,40 +413,118 @@ export default function AdminAgents() {
       width: 170,
       render: (t: string) => <span style={{ color: '#8b949e' }}>{t}</span>
     },
-    {
-      title: '操作',
-      key: 'action',
-      width: 240,
-      fixed: 'right',
-      render: (_: unknown, record: AdminAgentItem) => (
+  ]
+
+  const actionColumn: TableColumnsType<AdminAgentItem>[0] = {
+    title: '操作',
+    key: 'action',
+    width: 260,
+    fixed: 'right',
+    render: (_: unknown, record: AdminAgentItem) => {
+      // 待审核 Tab：通过 / 驳回
+      if (activeTab === 'pending_review') {
+        return (
+          <>
+            <Button type="link" size="small" icon={<CheckOutlined />} onClick={() => handleApprove(record)}>
+              通过
+            </Button>
+            <Button type="link" size="small" danger icon={<CloseOutlined />} onClick={() => handleRejectClick(record, 'reject')}>
+              驳回
+            </Button>
+            <Popconfirm
+              title="确认删除该 Agent?"
+              onConfirm={() => handleDelete(record)}
+              okText="删除"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                删除
+              </Button>
+            </Popconfirm>
+          </>
+        )
+      }
+      // 已驳回 Tab：重新提交（通过） / 删除
+      if (activeTab === 'rejected') {
+        return (
+          <>
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
+              编辑
+            </Button>
+            <Button type="link" size="small" icon={<CheckOutlined />} onClick={() => handleApprove(record)}>
+              通过
+            </Button>
+            <Popconfirm
+              title="确认删除该 Agent?"
+              onConfirm={() => handleDelete(record)}
+              okText="删除"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                删除
+              </Button>
+            </Popconfirm>
+          </>
+        )
+      }
+      // 已下架 Tab：编辑 / 上架 / 删除
+      if (activeTab === 'unpublished') {
+        return (
+          <>
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
+              编辑
+            </Button>
+            <Button type="link" size="small" icon={<ArrowUpOutlined />} onClick={() => handlePublish(record)}>
+              上架
+            </Button>
+            <Popconfirm
+              title="确认删除该 Agent?"
+              onConfirm={() => handleDelete(record)}
+              okText="删除"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                删除
+              </Button>
+            </Popconfirm>
+          </>
+        )
+      }
+      // 已发布 Tab：编辑 / 下架 / 强制下架
+      return (
         <>
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
             编辑
           </Button>
-          {record.status === 'published' ? (
-            <Button type="link" size="small" icon={<ArrowDownOutlined />} onClick={() => handleUnpublish(record)}>
-              下架
-            </Button>
-          ) : (
-            <Button type="link" size="small" icon={<ArrowUpOutlined />} onClick={() => handlePublish(record)}>
-              上架
-            </Button>
-          )}
-          <Popconfirm
-            title="确认删除该 Agent?"
-            onConfirm={() => handleDelete(record)}
-            okText="删除"
-            cancelText="取消"
-            okButtonProps={{ danger: true }}
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
-          </Popconfirm>
+          <Button type="link" size="small" icon={<ArrowDownOutlined />} onClick={() => handleUnpublish(record)}>
+            下架
+          </Button>
+          <Button type="link" size="small" danger icon={<StopOutlined />} onClick={() => handleRejectClick(record, 'forceUnpublish')}>
+            强制下架
+          </Button>
         </>
       )
     }
-  ]
+  }
+
+  const columns = activeTab === 'pending_review' || activeTab === 'rejected'
+    ? [
+        // 审核 Tab 加驳回原因列
+        ...commonColumns,
+        {
+          title: activeTab === 'rejected' ? '驳回原因' : '提交说明',
+          dataIndex: 'rejectReason',
+          key: 'rejectReason',
+          width: 200,
+          render: (v: string | undefined) =>
+            v ? <span style={{ color: '#f87171', fontSize: 12 }}>{v}</span> : <span style={{ color: '#8b949e' }}>-</span>
+        },
+        actionColumn,
+      ]
+    : [...commonColumns, actionColumn]
 
   return (
     <div className={styles.page}>
@@ -381,30 +533,26 @@ export default function AdminAgents() {
           <RobotOutlined className={styles.titleIcon} />
           <div>
             <h1 className={styles.title}>Agent 市场管理</h1>
-            <div className={styles.subtitle}>官方 Agent 发布 / 编辑 / 上下架</div>
+            <div className={styles.subtitle}>官方 Agent 发布 / 编辑 / 审核</div>
           </div>
         </div>
         <div className={styles.toolbarRight}>
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={loadList}
-            className={styles.ghostBtn}
-          >
+          <Input.Search
+            placeholder="搜索名称/显示名/描述"
+            allowClear
+            value={keyword}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            onSearch={() => { setPage(1); void loadList() }}
+            style={{ width: 260, marginRight: 8 }}
+            prefix={<SearchOutlined />}
+          />
+          <Button icon={<ReloadOutlined />} onClick={loadList} className={styles.ghostBtn}>
             刷新
           </Button>
-          <Button
-            icon={<GithubOutlined />}
-            onClick={() => setImportOpen(true)}
-            className={styles.ghostBtn}
-          >
+          <Button icon={<GithubOutlined />} onClick={() => setImportOpen(true)} className={styles.ghostBtn}>
             GitHub 导入
           </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleAdd}
-            className={styles.primaryBtn}
-          >
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} className={styles.primaryBtn}>
             新增 Agent
           </Button>
         </div>
@@ -413,10 +561,8 @@ export default function AdminAgents() {
       <Tabs
         activeKey={activeTab}
         onChange={handleTabChange}
-        items={[
-          { key: 'published', label: '已发布' },
-          { key: 'unpublished', label: '已下架' }
-        ]}
+        items={TABS.map((t) => ({ key: t.key, label: t.label }))}
+        style={{ marginTop: 0 }}
       />
 
       <Spin spinning={loading}>
@@ -554,6 +700,28 @@ export default function AdminAgents() {
             <InputNumber min={0} step={0.0001} style={{ width: '100%' }} />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 驳回 / 强制下架 理由 Modal */}
+      <Modal
+        title={rejectKind === 'forceUnpublish' ? '强制下架' : '驳回审核'}
+        open={rejectOpen}
+        onOk={handleRejectConfirm}
+        onCancel={() => setRejectOpen(false)}
+        confirmLoading={rejecting}
+        okText="确认"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+      >
+        <div style={{ marginBottom: 8, color: '#e6edf3' }}>
+          {rejectTarget ? `Agent: ${rejectTarget.name}` : ''}
+        </div>
+        <Input.TextArea
+          rows={3}
+          placeholder="请输入原因..."
+          value={rejectReason}
+          onChange={(e) => setRejectReason(e.target.value)}
+        />
       </Modal>
 
       {/* GitHub 导入 Modal */}

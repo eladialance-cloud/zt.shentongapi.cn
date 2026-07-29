@@ -1,7 +1,8 @@
 // 客户端本地服务管理 - 服务状态面板（Task 16）
-// SubTask 16.1: 三个服务状态卡片（OpenClaw/N8N/MCP）
+// SubTask 16.1: 四个服务状态卡片（OpenClaw/N8N/MCP/Hermes）
 // SubTask 16.3: 监听 service:error 弹窗通知
 // 通过 IPC 实时更新状态 + 轮询 CPU/内存
+// 支持一键修复全部 & 单服务修复 + 安装进度展示
 
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -22,28 +23,34 @@ import {
   ReloadOutlined,
   CloudServerOutlined,
   ApartmentOutlined,
-  ApiOutlined
+  ApiOutlined,
+  ThunderboltOutlined,
+  ToolOutlined
 } from '@ant-design/icons'
 import {
   listServices,
   startService,
   stopService,
   restartService,
+  installService,
   onServiceStatusChanged,
-  onServiceError
+  onServiceError,
+  onInstallProgress
 } from '@/api/service-manager-api'
 import type {
   ServiceName,
   ServiceInfo,
   ServiceStatus
 } from '@/types/service-manager'
+import type { InstallProgressPayload } from '@shared/types'
 import styles from './styles.module.css'
 
 /** 服务图标映射 */
 const SERVICE_ICONS: Record<ServiceName, React.ReactNode> = {
   openclaw: <CloudServerOutlined style={{ color: '#6366f1' }} />,
   n8n: <ApartmentOutlined style={{ color: '#8b5cf6' }} />,
-  mcp: <ApiOutlined style={{ color: '#06b6d4' }} />
+  mcp: <ApiOutlined style={{ color: '#06b6d4' }} />,
+  hermes: <ThunderboltOutlined style={{ color: '#f59e0b' }} />
 }
 
 /** 状态展示配置 */
@@ -57,6 +64,9 @@ const STATUS_CONFIG: Record<
   error: { label: '错误', className: styles.statusError },
   unknown: { label: '未知', className: styles.statusUnknown }
 }
+
+/** 需要显示修复按钮的状态 */
+const REPAIRABLE_STATUSES: ServiceStatus[] = ['error', 'unknown', 'stopped']
 
 /** 格式化时间 */
 function formatTime(value: string | undefined | null): string {
@@ -72,6 +82,12 @@ export default function ServiceManager() {
   const [services, setServices] = useState<ServiceInfo[]>([])
   /** 正在执行操作的服务（防止重复点击） */
   const [busy, setBusy] = useState<Set<ServiceName>>(new Set())
+  /** 安装进度（按服务名） */
+  const [installProgress, setInstallProgress] = useState<
+    Partial<Record<ServiceName, InstallProgressPayload>>
+  >({})
+  /** 正在修复中的服务集合 */
+  const [repairing, setRepairing] = useState<Set<ServiceName>>(new Set())
 
   const loadData = useCallback(async () => {
     try {
@@ -79,7 +95,6 @@ export default function ServiceManager() {
       setServices(list || [])
     } catch (err) {
       console.error('[ServiceManager] load failed:', err)
-      // electronAPI 不可用时给出空列表占位
       setServices([])
     } finally {
       setLoading(false)
@@ -121,6 +136,19 @@ export default function ServiceManager() {
     }
   }, [])
 
+  // 监听安装进度推送
+  useEffect(() => {
+    const unsub = onInstallProgress((payload) => {
+      setInstallProgress((prev) => ({
+        ...prev,
+        [payload.name]: payload
+      }))
+    })
+    return () => {
+      unsub()
+    }
+  }, [])
+
   // 轮询刷新 CPU/内存（2s 一次）
   useEffect(() => {
     const timer = setInterval(() => {
@@ -131,6 +159,15 @@ export default function ServiceManager() {
 
   const setBusyFor = (name: ServiceName, value: boolean) => {
     setBusy((prev) => {
+      const next = new Set(prev)
+      if (value) next.add(name)
+      else next.delete(name)
+      return next
+    })
+  }
+
+  const setRepairingFor = (name: ServiceName, value: boolean) => {
+    setRepairing((prev) => {
       const next = new Set(prev)
       if (value) next.add(name)
       else next.delete(name)
@@ -182,6 +219,63 @@ export default function ServiceManager() {
     }
   }
 
+  /** 修复单个服务（重新安装运行时） */
+  const handleRepair = async (name: ServiceName) => {
+    setRepairingFor(name, true)
+    setInstallProgress((prev) => ({
+      ...prev,
+      [name]: { name, percent: 0 }
+    }))
+    try {
+      const ok = await installService(name)
+      if (ok) {
+        message.success(`${name} 修复完成`)
+        // 修复后刷新服务列表
+        void loadData()
+      } else {
+        message.warning(`${name} 修复未成功`)
+      }
+    } catch (err) {
+      console.error('[ServiceManager] repair failed:', err)
+      message.error(`修复失败: ${(err as Error).message}`)
+    } finally {
+      setRepairingFor(name, false)
+      // 清除进度（延迟，让用户看到 100%）
+      setTimeout(() => {
+        setInstallProgress((prev) => {
+          const next = { ...prev }
+          delete next[name]
+          return next
+        })
+      }, 1500)
+    }
+  }
+
+  /** 一键修复全部（修复所有非 running 的服务） */
+  const handleRepairAll = async () => {
+    const needRepair = services.filter(
+      (s) => !REPAIRABLE_STATUSES.includes(s.status) ? false : true
+    )
+    // 更精确：error/unknown/stopped 都需要修复
+    const toRepair = services.filter((s) =>
+      REPAIRABLE_STATUSES.includes(s.status)
+    )
+    if (toRepair.length === 0) {
+      message.info('所有服务运行正常，无需修复')
+      return
+    }
+    message.info(`开始修复 ${toRepair.length} 个服务...`)
+    // 串行修复，避免下载冲突
+    for (const svc of toRepair) {
+      await handleRepair(svc.name)
+    }
+  }
+
+  /** 检查是否有需要修复的服务 */
+  const hasRepairableServices = services.some((s) =>
+    REPAIRABLE_STATUSES.includes(s.status)
+  )
+
   return (
     <div className={styles.page}>
       <div className={styles.header}>
@@ -190,17 +284,29 @@ export default function ServiceManager() {
           <div>
             <h1 className={styles.title}>本地服务管理</h1>
             <div className={styles.subtitle}>
-              管理 OpenClaw / N8N / MCP Gateway 三个本地服务进程
+              管理 OpenClaw / N8N / MCP Gateway / Hermes Agent 四个本地服务进程
             </div>
           </div>
         </div>
-        <Button
-          icon={<RollbackOutlined />}
-          onClick={() => navigate('/dashboard')}
-          className={styles.backBtn}
-        >
-          返回主页
-        </Button>
+        <div className={styles.headerActions}>
+          {hasRepairableServices && (
+            <Button
+              className={styles.repairAllBtn}
+              icon={<ToolOutlined />}
+              loading={repairing.size > 0}
+              onClick={() => void handleRepairAll()}
+            >
+              一键修复全部
+            </Button>
+          )}
+          <Button
+            icon={<RollbackOutlined />}
+            onClick={() => navigate('/dashboard')}
+            className={styles.backBtn}
+          >
+            返回主页
+          </Button>
+        </div>
       </div>
 
       <Spin spinning={loading}>
@@ -214,12 +320,16 @@ export default function ServiceManager() {
               const cfg = STATUS_CONFIG[svc.status] ?? STATUS_CONFIG.unknown
               const isRunning = svc.status === 'running'
               const isBusy = busy.has(svc.name)
+              const isRepairing = repairing.has(svc.name)
+              const progress = installProgress[svc.name]
+              const canRepair =
+                REPAIRABLE_STATUSES.includes(svc.status) && !isRunning && !isBusy
               return (
                 <Card key={svc.name} className={styles.card} bordered={false}>
                   {/* 头部：服务名 + 状态 */}
                   <div className={styles.cardHeader}>
                     <div className={styles.serviceName}>
-                      {SERVICE_ICONS[svc.name]}
+                      {SERVICE_ICONS[svc.name] ?? <CloudServerOutlined />}
                       {svc.displayName}
                     </div>
                     <span className={`${styles.statusBadge} ${cfg.className}`}>
@@ -230,7 +340,37 @@ export default function ServiceManager() {
 
                   {/* 错误信息 */}
                   {svc.status === 'error' && svc.error && (
-                    <div className={styles.errorMsg}>⚠️ {svc.error}</div>
+                    <div className={styles.errorMsg}>
+                      ⚠️ {svc.error}
+                      <div className={styles.errorHint}>
+                        可点击修复重新安装运行时
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 修复进度条 */}
+                  {isRepairing && progress && (
+                    <div className={styles.progressContainer}>
+                      <div className={styles.progressBar}>
+                        <div
+                          className={styles.progressFill}
+                          style={{ width: `${progress.percent ?? 0}%` }}
+                        />
+                      </div>
+                      <div className={styles.progressText}>
+                        <span className={styles.progressPercent}>
+                          {(progress.percent ?? 0).toFixed(1)}%
+                        </span>
+                        {progress.speedKBs != null && (
+                          <span className={styles.progressMeta}>
+                            {progress.speedKBs.toFixed(0)} KB/s
+                            {progress.etaSec != null
+                              ? ` · ETA ${progress.etaSec}s`
+                              : ''}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   )}
 
                   {/* 指标 */}
@@ -268,7 +408,7 @@ export default function ServiceManager() {
                         className={styles.primaryBtn}
                         icon={<PlayCircleOutlined />}
                         loading={isBusy}
-                        disabled={isRunning}
+                        disabled={isRunning || isRepairing}
                         onClick={() => handleStart(svc.name)}
                       >
                         启动
@@ -286,7 +426,7 @@ export default function ServiceManager() {
                           className={styles.dangerBtn}
                           icon={<StopOutlined />}
                           loading={isBusy}
-                          disabled={!isRunning}
+                          disabled={!isRunning || isRepairing}
                         >
                           停止
                         </Button>
@@ -296,10 +436,24 @@ export default function ServiceManager() {
                       className={styles.ghostBtn}
                       icon={<ReloadOutlined />}
                       loading={isBusy}
+                      disabled={isRepairing}
                       onClick={() => handleRestart(svc.name)}
                     >
                       重启
                     </Button>
+                    {canRepair && (
+                      <Button
+                        className={styles.repairBtn}
+                        icon={<ToolOutlined />}
+                        loading={isRepairing}
+                        disabled={isRepairing}
+                        onClick={() => void handleRepair(svc.name)}
+                      >
+                        {isRepairing && progress
+                          ? `修复中 ${(progress.percent ?? 0).toFixed(0)}%`
+                          : '修复'}
+                      </Button>
+                    )}
                   </div>
                 </Card>
               )

@@ -16,9 +16,9 @@ import {
 } from '../../../common/types/pagination.type';
 
 /** 分布式锁重试次数与过期时间 */
-const LOCK_RETRY = 5;
-const LOCK_TTL_SECONDS = 30;
-const LOCK_RETRY_INTERVAL_MS = 100;
+const LOCK_RETRY = 10;
+const LOCK_TTL_SECONDS = 10;
+const LOCK_RETRY_INTERVAL_MS = 200;
 
 export interface CreditTxnQuery extends PaginationQuery {
   type?: CreditTxnType;
@@ -375,7 +375,7 @@ export class CreditsService {
 
   // ============ 内部工具 ============
 
-  /** 分布式锁包装器：重试 5 次，每次间隔 100ms */
+  /** 分布式锁包装器：重试 10 次，指数退避（200ms, 400ms, 800ms...） */
   private async withLock<T>(
     userId: number,
     fn: () => Promise<T>,
@@ -383,10 +383,12 @@ export class CreditsService {
     const lockKey = `credits:lock:${userId}`;
     const lockValue = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
     let acquired = false;
+    let delay = LOCK_RETRY_INTERVAL_MS;
     for (let i = 0; i < LOCK_RETRY; i++) {
       acquired = await this.redis.setNx(lockKey, lockValue, LOCK_TTL_SECONDS);
       if (acquired) break;
-      await this.sleep(LOCK_RETRY_INTERVAL_MS);
+      await this.sleep(delay);
+      delay = Math.min(delay * 2, 5000); // 指数退避，上限 5s
     }
     if (!acquired) {
       BusinessException.throw(
@@ -397,11 +399,8 @@ export class CreditsService {
     try {
       return await fn();
     } finally {
-      // 仅在锁仍属本线程时释放（防误删）
-      const current = await this.redis.get(lockKey);
-      if (current === lockValue) {
-        await this.redis.del(lockKey);
-      }
+      // 原子化锁释放：仅当锁仍属本线程时删除
+      await this.redis.releaseLock(lockKey, lockValue);
     }
   }
 

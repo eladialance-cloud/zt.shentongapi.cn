@@ -10,6 +10,7 @@ import { RechargeOrderEntity } from '../payment/entities/recharge-order.entity';
 import { PaymentRecordEntity } from '../payment/entities/payment-record.entity';
 import { DeviceEntity } from '../device/entities/device.entity';
 import { CreditsModule } from '../credits/credits.module';
+import { CommonModule } from '../../common/common.module';
 import { AdminAuthModule } from '../admin-auth/admin-auth.module';
 import { AdminUserController } from './admin-user.controller';
 import { AdminUserLevelController } from './admin-user-level.controller';
@@ -44,6 +45,7 @@ import { AdminUserService } from './admin-user.service';
       DeviceEntity,
     ]),
     CreditsModule,
+    CommonModule,
     AdminAuthModule,
   ],
   controllers: [

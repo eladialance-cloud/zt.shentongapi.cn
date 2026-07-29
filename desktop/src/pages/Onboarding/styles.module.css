@@ -84,3 +84,85 @@
   background: rgba(239, 68, 68, 0.06);
   border-radius: 6px;
 }
+
+/* ===== Step 2 安装步骤列表 ===== */
+.installList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.installItem {
+  padding: 12px 14px;
+  background: rgba(99, 102, 241, 0.04);
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  border-radius: 8px;
+  transition: border-color 0.2s;
+}
+
+.installItem:hover {
+  border-color: rgba(99, 102, 241, 0.25);
+}
+
+.installItemHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.installServiceName {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1f2937;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.installStatusArea {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.installPending {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.installRunning {
+  color: #6366f1;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.installSuccess {
+  color: #10b981;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.installFailed {
+  color: #ef4444;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.installErrorDetail {
+  margin-top: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-direction: column;
+}
+
+.retryBtn {
+  font-size: 12px !important;
+  align-self: flex-start;
+}

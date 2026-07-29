@@ -6,7 +6,11 @@ import { CreditsConfigEntity } from './entities/credits-config.entity';
 import { CreditsController, AdminCreditsController } from './controllers/credits.controller';
 import { CreditsService } from './services/credits.service';
 import { CreditsBillingService } from './services/credits-billing.service';
+import { PricingService } from './services/pricing.service';
 import { CommonModule } from '../../common/common.module';
+import { UserModule } from '../user/user.module';
+import { ModelEntity } from '../model/entities/model.entity';
+import { AgentEntity } from '../agent/entities/agent.entity';
 
 /**
  * 积分模块
@@ -18,11 +22,14 @@ import { CommonModule } from '../../common/common.module';
       CreditAccountEntity,
       CreditTransactionEntity,
       CreditsConfigEntity,
+      ModelEntity,
+      AgentEntity,
     ]),
     CommonModule,
+    UserModule,
   ],
   controllers: [CreditsController, AdminCreditsController],
-  providers: [CreditsService, CreditsBillingService],
-  exports: [CreditsService, CreditsBillingService],
+  providers: [CreditsService, CreditsBillingService, PricingService],
+  exports: [CreditsService, CreditsBillingService, PricingService],
 })
 export class CreditsModule {}

@@ -15,6 +15,12 @@ export enum ErrorCode {
   INVITE_CODE_INVALID = 1013,
   INVITE_CODE_EXPIRED = 1014,
   INVITE_CODE_USED = 1015,
+  FILE_NOT_FOUND = 1101,
+  FILE_TOO_LARGE = 1102,
+  FILE_TYPE_NOT_ALLOWED = 1103,
+  FILE_UPLOAD_FAILED = 1104,
+  FILE_DELETE_FAILED = 1105,
+  THIRD_PARTY_ERROR = 1106,
   INTERNAL_ERROR = 1099,
 }
 
@@ -35,5 +41,11 @@ export const ErrorMessage: Record<ErrorCode, string> = {
   [ErrorCode.INVITE_CODE_INVALID]: '邀请码无效',
   [ErrorCode.INVITE_CODE_EXPIRED]: '邀请码已过期',
   [ErrorCode.INVITE_CODE_USED]: '邀请码已被使用',
+  [ErrorCode.FILE_NOT_FOUND]: '文件不存在',
+  [ErrorCode.FILE_TOO_LARGE]: '文件大小超过限制',
+  [ErrorCode.FILE_TYPE_NOT_ALLOWED]: '文件类型不允许',
+  [ErrorCode.FILE_UPLOAD_FAILED]: '文件上传失败',
+  [ErrorCode.FILE_DELETE_FAILED]: '文件删除失败',
+  [ErrorCode.THIRD_PARTY_ERROR]: '第三方服务异常',
   [ErrorCode.INTERNAL_ERROR]: '服务器内部错误',
 };

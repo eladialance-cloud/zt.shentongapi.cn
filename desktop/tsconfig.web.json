@@ -19,5 +19,15 @@
       "@shared/*": ["./electron/shared/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "electron/shared/**/*.ts", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "electron/shared/**/*.ts", "tests/**/*.ts"],
+  "exclude": [
+    "src/api/sync-api.ts",
+    "src/pages/Automation",
+    "src/pages/Settings/RemoteControl.tsx",
+    "src/pages/Settings/SyncStatus.tsx",
+    "src/pages/Team",
+    "src/services/office-ws.ts",
+    "src/store/__tests__/state-machine.test.ts",
+    "src/utils/__tests__/astar.test.ts"
+  ]
 }

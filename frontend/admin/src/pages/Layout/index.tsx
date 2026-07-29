@@ -12,7 +12,6 @@ import {
   CloudServerOutlined,
   DashboardOutlined,
   DollarOutlined,
-  KeyOutlined,
   LogoutOutlined,
   RobotOutlined,
   SafetyCertificateOutlined,
@@ -21,7 +20,8 @@ import {
   ToolOutlined,
   UserOutlined,
   AuditOutlined,
-  CloudSyncOutlined
+  CloudSyncOutlined,
+  FileTextOutlined
 } from '@ant-design/icons'
 import { useAdminAuthStore } from '@/store/admin-auth'
 import { adminLogout } from '@/api/admin-auth-api'
@@ -37,7 +37,6 @@ interface MenuItem {
 const MENU_ITEMS: MenuItem[] = [
   { key: 'dashboard', label: '仪表盘', icon: <DashboardOutlined />, path: '/dashboard' },
   { key: 'users', label: '用户管理', icon: <TeamOutlined />, path: '/users' },
-  { key: 'apikey-pool', label: 'Key 池', icon: <KeyOutlined />, path: '/api-key-pool' },
   { key: 'agent', label: 'Agent', icon: <RobotOutlined />, path: '/agents' },
   { key: 'workflow', label: '工作流', icon: <AppstoreOutlined />, path: '/workflows' },
   { key: 'plugin', label: '插件', icon: <ToolOutlined />, path: '/plugins' },
@@ -46,6 +45,8 @@ const MENU_ITEMS: MenuItem[] = [
   { key: 'audit', label: '审核', icon: <AuditOutlined />, path: '/audit' },
   { key: 'stats', label: '统计', icon: <BarChartOutlined />, path: '/stats' },
   { key: 'version', label: '版本', icon: <CloudSyncOutlined />, path: '/versions' },
+  { key: 'content', label: '内容管理', icon: <FileTextOutlined />, path: '/content' },
+  { key: 'community', label: '社区管理', icon: <TeamOutlined />, path: '/community' },
   { key: 'system', label: '系统', icon: <SettingOutlined />, path: '/system' }
 ]
 

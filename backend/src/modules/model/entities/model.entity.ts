@@ -1,6 +1,10 @@
 import { Entity, Column, Index } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 
+export type ConnectionStatus = 'untested' | 'connected' | 'failed';
+
+export type ModelSyncStatus = 'pending' | 'synced' | 'failed';
+
 @Entity('models')
 export class ModelEntity extends BaseEntity {
   @Index()
@@ -13,6 +17,27 @@ export class ModelEntity extends BaseEntity {
 
   @Column({ length: 128 })
   name: string;
+
+  /** API 地址 */
+  @Column({ name: 'api_endpoint', length: 512, nullable: true })
+  apiEndpoint?: string;
+
+  /** AES 加密的 API Key */
+  @Column({ name: 'api_key', length: 512, nullable: true })
+  apiKey?: string;
+
+  /** 连接状态 */
+  @Column({
+    name: 'connection_status',
+    type: 'varchar',
+    length: 16,
+    default: 'untested',
+  })
+  connectionStatus: ConnectionStatus;
+
+  /** 最后测试时间 */
+  @Column({ name: 'last_tested_at', type: 'datetime', nullable: true })
+  lastTestedAt?: Date;
 
   @Column({ length: 512, nullable: true })
   description?: string;

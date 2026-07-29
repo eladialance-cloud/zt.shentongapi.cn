@@ -64,12 +64,16 @@ export function createMockElectronAPI(): ElectronAPI {
       checkEnv: jest.fn(),
       install: jest.fn(),
       onStatusChanged: jest.fn(() => jest.fn()),
-      onError: jest.fn(() => jest.fn())
+      onError: jest.fn(() => jest.fn()),
+      // M5 修复：补充 onInstallProgress mock
+      onInstallProgress: jest.fn(() => jest.fn())
     },
     app: {
       getVersion: jest.fn(),
       checkUpdate: jest.fn(),
-      quitAndInstall: jest.fn()
+      quitAndInstall: jest.fn(),
+      // M5 修复：补充 disableHardwareAcceleration mock
+      disableHardwareAcceleration: jest.fn()
     },
     updater: {
       check: jest.fn(),

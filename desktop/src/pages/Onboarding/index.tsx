@@ -1,5 +1,5 @@
 // 首次启动引导向导
-// 4 步：环境检测（运行时 SHA-256 校验 + 下载）→ 服务初始化 → 登录 → 进入主界面
+// 4 步：环境检测（运行时 SHA-256 校验 + 下载）→ 服务初始化（四服务列表式安装）→ 登录 → 进入主界面
 
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -9,7 +9,6 @@ import {
   Form,
   Input,
   message,
-  Progress,
   Result,
   Space,
   Steps,
@@ -22,7 +21,8 @@ import {
   LoadingOutlined,
   LockOutlined,
   RobotOutlined,
-  UserOutlined
+  UserOutlined,
+  ReloadOutlined
 } from '@ant-design/icons'
 import { useOnboardingStore } from '@/store'
 import type { RuntimeDownloadProgress, ServiceName } from '@shared/types'
@@ -37,7 +37,8 @@ interface ServiceItem {
 const SERVICES: ServiceItem[] = [
   { name: 'openclaw', label: 'OpenClaw', port: 8080 },
   { name: 'n8n', label: 'N8N', port: 5678 },
-  { name: 'mcp', label: 'MCP Gateway', port: 3100 }
+  { name: 'mcp', label: 'MCP Gateway', port: 3100 },
+  { name: 'hermes', label: 'Hermes Agent', port: 8642 }
 ]
 
 interface LoginParams {
@@ -51,12 +52,30 @@ interface DownloadState {
   error: string | null
 }
 
+/** 单服务安装状态 */
+type InstallStatus = 'pending' | 'installing' | 'success' | 'failed'
+
+interface InstallState {
+  status: InstallStatus
+  error: string | null
+}
+
 type VerifyResults = Record<ServiceName, boolean | null>
 
 const initialDownloads: Record<ServiceName, DownloadState> = {
   openclaw: { downloading: false, progress: null, error: null },
   n8n: { downloading: false, progress: null, error: null },
-  mcp: { downloading: false, progress: null, error: null }
+  mcp: { downloading: false, progress: null, error: null },
+  hermes: { downloading: false, progress: null, error: null }
+}
+
+/** 初始化安装状态（全部 pending） */
+function createInitialInstallStates(): Record<ServiceName, InstallState> {
+  const states = {} as Record<ServiceName, InstallState>
+  for (const svc of SERVICES) {
+    states[svc.name] = { status: 'pending', error: null }
+  }
+  return states
 }
 
 export default function Onboarding() {
@@ -67,15 +86,17 @@ export default function Onboarding() {
   const [verifyResults, setVerifyResults] = useState<VerifyResults>({
     openclaw: null,
     n8n: null,
-    mcp: null
+    mcp: null,
+    hermes: null
   })
   const [verifying, setVerifying] = useState(false)
   const [allPassed, setAllPassed] = useState(false)
   const [downloads, setDownloads] =
     useState<Record<ServiceName, DownloadState>>(initialDownloads)
   const [installing, setInstalling] = useState(false)
-  const [installProgress, setInstallProgress] = useState(0)
-  const [installLabel, setInstallLabel] = useState('')
+  const [installStates, setInstallStates] = useState<Record<ServiceName, InstallState>>(
+    createInitialInstallStates
+  )
   const [loginLoading, setLoginLoading] = useState(false)
 
   const api = window.electronAPI
@@ -174,28 +195,94 @@ export default function Onboarding() {
     [runtime]
   )
 
-  // Step 2: 服务初始化（下载安装 + 启动）
-  const handleInstallAndStart = useCallback(async () => {
-    setInstalling(true)
-    try {
-      for (const svc of SERVICES) {
-        setInstallLabel(svc.label)
-        setInstallProgress(0)
+  /** 安装并启动单个服务 */
+  const installSingleService = useCallback(
+    async (svc: ServiceItem): Promise<void> => {
+      setInstallStates((prev) => ({
+        ...prev,
+        [svc.name]: { status: 'installing', error: null }
+      }))
+      try {
         const installed = await api.service.install(svc.name)
         if (!installed) {
           throw new Error(`安装 ${svc.label} 失败`)
         }
-        setInstallProgress(100)
         await api.service.start(svc.name)
+        setInstallStates((prev) => ({
+          ...prev,
+          [svc.name]: { status: 'success', error: null }
+        }))
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : `安装 ${svc.label} 失败`
+        setInstallStates((prev) => ({
+          ...prev,
+          [svc.name]: { status: 'failed', error: msg }
+        }))
+        throw err
       }
+    },
+    [api]
+  )
+
+  // Step 2: 服务初始化（下载安装 + 启动全部服务）
+  const handleInstallAndStart = useCallback(async () => {
+    setInstalling(true)
+    setInstallStates(createInitialInstallStates())
+    let allSuccess = true
+    for (const svc of SERVICES) {
+      try {
+        await installSingleService(svc)
+      } catch {
+        allSuccess = false
+        // 继续安装下一个服务，不中断
+      }
+    }
+    if (allSuccess) {
       message.success('服务初始化完成')
       setCurrent(2)
-    } catch {
-      message.error('服务初始化失败，请重试')
-    } finally {
-      setInstalling(false)
+    } else {
+      message.error('部分服务初始化失败，请重试失败项')
     }
-  }, [api])
+    setInstalling(false)
+  }, [installSingleService])
+
+  /** 重试单个失败的服务 */
+  const handleRetrySingle = useCallback(
+    async (name: ServiceName) => {
+      const svc = SERVICES.find((s) => s.name === name)
+      if (!svc) return
+      try {
+        await installSingleService(svc)
+        message.success(`${svc.label} 安装成功`)
+      } catch {
+        message.error(`${svc.label} 重试失败`)
+      }
+    },
+    [installSingleService]
+  )
+
+  /** 重试全部失败项 */
+  const handleRetryAllFailed = useCallback(async () => {
+    setInstalling(true)
+    const failedServices = SERVICES.filter(
+      (s) => installStates[s.name].status === 'failed'
+    )
+    let allSuccess = true
+    for (const svc of failedServices) {
+      try {
+        await installSingleService(svc)
+      } catch {
+        allSuccess = false
+      }
+    }
+    if (allSuccess) {
+      message.success('全部服务修复成功')
+      setCurrent(2)
+    } else {
+      message.error('仍有服务修复失败')
+    }
+    setInstalling(false)
+  }, [installSingleService, installStates])
 
   // Step 3: 登录
   const handleLogin = async (values: LoginParams) => {
@@ -225,6 +312,16 @@ export default function Onboarding() {
     if (status) return <CheckCircleTwoTone twoToneColor="#52c41a" />
     return <CloseCircleTwoTone twoToneColor="#ff4d4f" />
   }
+
+  /** 是否有失败的安装项 */
+  const hasFailedInstalls = SERVICES.some(
+    (s) => installStates[s.name].status === 'failed'
+  )
+
+  /** 是否全部安装成功 */
+  const allInstallsSuccess = SERVICES.every(
+    (s) => installStates[s.name].status === 'success'
+  )
 
   const stepsItems = [
     { title: '环境检测' },
@@ -258,7 +355,7 @@ export default function Onboarding() {
         {current === 0 && (
           <div>
             <Typography.Paragraph type="secondary">
-              校验内置运行时（OpenClaw / N8N / MCP Gateway）的 SHA-256 完整性，缺失或损坏时可重新下载。
+              校验内置运行时（OpenClaw / N8N / MCP Gateway / Hermes Agent）的 SHA-256 完整性，缺失或损坏时可重新下载。
             </Typography.Paragraph>
             <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }}>
               {SERVICES.map((svc) => {
@@ -338,31 +435,95 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* Step 2: 服务初始化 */}
+        {/* Step 2: 服务初始化（列表式展示每个服务安装状态） */}
         {current === 1 && (
           <div>
             <Typography.Paragraph type="secondary">
-              自动下载并安装运行时，然后启动三个本地服务。
+              自动下载并安装运行时，然后启动四个本地服务。
             </Typography.Paragraph>
-            {installing && (
-              <div style={{ marginBottom: 16 }}>
-                <Typography.Text>正在安装 {installLabel}...</Typography.Text>
-                <Progress percent={installProgress} status="active" />
-              </div>
-            )}
-            <Space>
-              <Button
-                type="primary"
-                onClick={handleInstallAndStart}
-                loading={installing}
-                disabled={installing}
-              >
-                {installing ? '初始化中...' : '开始初始化'}
-              </Button>
-              <Button onClick={() => setCurrent(0)} disabled={installing}>
-                上一步
-              </Button>
-            </Space>
+            <div className={styles.installList}>
+              {SERVICES.map((svc) => {
+                const state = installStates[svc.name]
+                return (
+                  <div key={svc.name} className={styles.installItem}>
+                    <div className={styles.installItemHeader}>
+                      <span className={styles.installServiceName}>
+                        {svc.label}
+                        <span className={styles.servicePort}>:{svc.port}</span>
+                      </span>
+                      <span className={styles.installStatusArea}>
+                        {state.status === 'pending' && (
+                          <span className={styles.installPending}>待安装</span>
+                        )}
+                        {state.status === 'installing' && (
+                          <span className={styles.installRunning}>
+                            <LoadingOutlined style={{ marginRight: 4 }} />
+                            安装中...
+                          </span>
+                        )}
+                        {state.status === 'success' && (
+                          <span className={styles.installSuccess}>
+                            <CheckCircleTwoTone twoToneColor="#52c41a" />
+                            成功
+                          </span>
+                        )}
+                        {state.status === 'failed' && (
+                          <span className={styles.installFailed}>
+                            <CloseCircleTwoTone twoToneColor="#ff4d4f" />
+                            失败
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    {state.status === 'failed' && state.error && (
+                      <div className={styles.installErrorDetail}>
+                        <div className={styles.errorMsg}>{state.error}</div>
+                        <Button
+                          size="small"
+                          icon={<ReloadOutlined />}
+                          loading={installing}
+                          disabled={installing}
+                          onClick={() => void handleRetrySingle(svc.name)}
+                          className={styles.retryBtn}
+                        >
+                          重试
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <Space>
+                <Button
+                  type="primary"
+                  onClick={handleInstallAndStart}
+                  loading={installing}
+                  disabled={installing}
+                >
+                  {installing ? '初始化中...' : '开始初始化'}
+                </Button>
+                {hasFailedInstalls && (
+                  <Button
+                    icon={<ReloadOutlined />}
+                    loading={installing}
+                    disabled={installing}
+                    onClick={() => void handleRetryAllFailed()}
+                  >
+                    全部重试失败项
+                  </Button>
+                )}
+                {allInstallsSuccess && (
+                  <Button type="primary" onClick={() => setCurrent(2)}>
+                    下一步
+                  </Button>
+                )}
+                <Button onClick={() => setCurrent(0)} disabled={installing}>
+                  上一步
+                </Button>
+              </Space>
+            </div>
           </div>
         )}
 

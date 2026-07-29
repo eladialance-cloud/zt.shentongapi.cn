@@ -11,3 +11,6 @@ out/
 runtime/*/
 !runtime/*/.gitkeep
 !runtime/manifest.json
+
+# Cache
+cache/

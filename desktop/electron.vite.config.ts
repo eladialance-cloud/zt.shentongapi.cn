@@ -23,9 +23,17 @@ const nativeModuleOptionalDeps = [
   '@journeyapps/sqlcipher'
 ]
 
+// FIX: 把 Electron 内置模块声明为 external，防止打包时把 npm 上的 electron 包
+// （下载器包装脚本）一起 bundle 进 dist/main/index.js，导致已安装应用启动时报
+// "Electron failed to install correctly, please delete node_modules/electron..."
+const electronBuiltins = ['electron']
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
+    define: {
+      'process.env.VITE_API_BASE_URL': JSON.stringify(env.VITE_API_BASE_URL)
+    },
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, 'electron/main/index.ts') },
@@ -34,7 +42,7 @@ export default defineConfig({
           entryFileNames: '[name].js',
           format: 'cjs'
         },
-        external: nativeModuleOptionalDeps
+        external: [...nativeModuleOptionalDeps, ...electronBuiltins]
       }
     }
   },
@@ -48,12 +56,15 @@ export default defineConfig({
           entryFileNames: '[name].js',
           format: 'cjs'
         },
-        external: nativeModuleOptionalDeps
+        external: [...nativeModuleOptionalDeps, ...electronBuiltins]
       }
     }
   },
   renderer: {
     root: resolve(__dirname, 'src'),
+    // Office 等距 2.5D PNG 素材位于项目根目录 public/assets/office/iso，
+    // 需要显式指定 publicDir，否则 vite 默认从 src/public 读取。
+    publicDir: resolve(__dirname, 'public'),
     plugins: [react()],
     resolve: {
       alias: {

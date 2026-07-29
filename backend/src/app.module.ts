@@ -23,19 +23,26 @@ import { CreditsModule } from './modules/credits/credits.module';
 import { PluginModule } from './modules/plugin/plugin.module';
 import { WorkflowModule } from './modules/workflow/workflow.module';
 import { FileModule } from './modules/file/file.module';
+import { LandingModule } from './modules/landing/landing.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { RagModule } from './modules/rag/rag.module';
 import { McpModule } from './modules/mcp/mcp.module';
 import { N8nModule } from './modules/n8n/n8n.module';
 import { OpcModule } from './modules/opc/opc.module';
+import { HermesModule } from './modules/hermes/hermes.module';
+import { SkillStoreModule } from './modules/skill-store/skill-store.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
 import { SystemModule } from './modules/system/system.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { DeviceModule } from './modules/device/device.module';
 import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
+import { RuntimeModule } from './modules/runtime/runtime.module';
 import { SyncModule } from './modules/sync/sync.module';
+import { TaskModule } from './modules/task/task.module';
 import { ApiKeyPoolModule } from './modules/api-key-pool/api-key-pool.module';
 import { VersionModule } from './modules/version/version.module';
+import { CodexModule } from './modules/codex/codex.module';
+import { CommunityModule } from './modules/community/community.module';
 import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
 import { AdminRoleModule } from './modules/admin-role/admin-role.module';
 import { AdminLogModule } from './modules/admin-log/admin-log.module';
@@ -46,6 +53,9 @@ import { AdminPluginModule } from './modules/admin-plugin/admin-plugin.module';
 import { AdminModelModule } from './modules/admin-model/admin-model.module';
 import { AdminFinanceModule } from './modules/admin-finance/admin-finance.module';
 import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
+import { AdminMcpModule } from './modules/admin-mcp/admin-mcp.module';
+import { AdminOssModule } from './modules/admin-oss/admin-oss.module';
+import { AdminSkillStoreModule } from './modules/admin-skill-store/admin-skill-store.module';
 import { AdminSystemModule } from './modules/admin-system/admin-system.module';
 import { OperationLogInterceptor } from './modules/admin-log/operation-log.interceptor';
 
@@ -91,6 +101,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     McpModule,
     N8nModule,
     OpcModule,
+    HermesModule,
     StatisticsModule,
     SystemModule,
     TenantModule,
@@ -99,6 +110,12 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     SyncModule,
     ApiKeyPoolModule,
     VersionModule,
+    CommunityModule,
+    CodexModule,
+    LandingModule,
+    RuntimeModule,
+    SkillStoreModule,
+    TaskModule,
     AdminAuthModule,
     AdminRoleModule,
     AdminLogModule,
@@ -109,6 +126,9 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     AdminModelModule,
     AdminFinanceModule,
     AdminAuditModule,
+    AdminMcpModule,
+    AdminOssModule,
+    AdminSkillStoreModule,
     AdminSystemModule,
   ],
   controllers: [AppController],
@@ -116,11 +136,11 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     AppService,
     {
       provide: APP_GUARD,
-      useClass: JwtAuthGuard,
+      useClass: ThrottlerGuard,
     },
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: JwtAuthGuard,
     },
     {
       provide: APP_INTERCEPTOR,

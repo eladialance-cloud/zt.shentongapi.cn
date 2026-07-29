@@ -77,6 +77,7 @@ export interface AdminAgentItem {
 export interface AdminAgentQuery {
   status?: AgentStatus | ''
   category?: AgentCategory | ''
+  keyword?: string
   page?: number
   pageSize?: number
 }

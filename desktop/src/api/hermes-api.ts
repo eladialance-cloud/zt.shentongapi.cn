@@ -18,6 +18,7 @@ import type {
   HermesInstance,
   CreateInstanceDto,
   CallLog,
+  CallType,
   HermesSkill,
   InstalledSkill,
   PaginatedResult,
@@ -87,6 +88,41 @@ export async function getCallLogs(
 }
 
 /**
+ * 派发任务请求体
+ */
+export interface ExecuteTaskRequest {
+  callType: CallType;
+  target: string;
+  input?: Record<string, unknown>;
+  skillId?: number;
+}
+
+/**
+ * 派发任务结果
+ */
+export interface ExecuteTaskResult {
+  status: 'success' | 'failed' | 'timeout' | 'running';
+  callLogId?: number;
+  creditsCost?: number;
+  durationMs?: number;
+  output?: Record<string, unknown>;
+}
+
+/**
+ * 执行编排任务
+ * POST /hermes/instances/:id/execute
+ */
+export async function executeTask(
+  instanceId: number,
+  dto: ExecuteTaskRequest
+): Promise<ExecuteTaskResult> {
+  return httpClient.post<ExecuteTaskResult>(
+    `/hermes/instances/${instanceId}/execute`,
+    dto
+  );
+}
+
+/**
  * 卸载技能包
  * POST /hermes/instances/:id/skills/:skillId/unmount
  */
@@ -130,6 +166,7 @@ export default {
   startInstance,
   stopInstance,
   deleteInstance,
+  executeTask,
   getCallLogs,
   unmountSkill,
   listSkillMarket,

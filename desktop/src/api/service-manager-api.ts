@@ -2,13 +2,15 @@
 // 通过 IPC 调用主进程（非 HTTP），封装 window.electronAPI.service
 //
 // 端点契约（IPC channel）：
-//   service:list     获取所有服务完整信息
-//   service:status   获取单个服务完整信息
-//   service:start    启动服务
-//   service:stop     停止服务
-//   service:restart  重启服务
-//   service:status-changed (push) 状态变更事件
-//   service:error          (push) 服务错误事件
+//   service:list              获取所有服务完整信息
+//   service:status            获取单个服务完整信息
+//   service:start             启动服务
+//   service:stop              停止服务
+//   service:restart           重启服务
+//   service:install           安装/修复服务运行时
+//   service:install-progress  (push) 安装进度事件
+//   service:status-changed    (push) 状态变更事件
+//   service:error             (push) 服务错误事件
 
 import type {
   ServiceName,
@@ -16,6 +18,7 @@ import type {
   ServiceStatusChangedPayload,
   ServiceErrorPayload
 } from '@/types/service-manager'
+import type { InstallProgressPayload } from '@shared/types'
 
 /** electronAPI 是否可用（preload 未注入时降级） */
 function getService() {
@@ -62,6 +65,22 @@ export function onServiceStatusChanged(
   }
 }
 
+/** 安装/修复服务（下载运行时并启动） */
+export async function installService(name: ServiceName): Promise<boolean> {
+  return getService().install(name)
+}
+
+/** 监听安装进度推送，返回取消监听函数 */
+export function onInstallProgress(
+  callback: (payload: InstallProgressPayload) => void
+): () => void {
+  try {
+    return getService().onInstallProgress(callback)
+  } catch {
+    return () => {}
+  }
+}
+
 /** 监听服务错误事件，返回取消监听函数 */
 export function onServiceError(
   callback: (payload: ServiceErrorPayload) => void
@@ -79,6 +98,8 @@ export default {
   startService,
   stopService,
   restartService,
+  installService,
   onServiceStatusChanged,
-  onServiceError
+  onServiceError,
+  onInstallProgress
 }

@@ -152,6 +152,10 @@ export default function AdminLogin() {
         data.permissions,
         data.mustChangePassword
       )
+      // 存储 refreshToken 用于 401 自动续期
+      if (data.refreshToken) {
+        useAdminAuthStore.getState().updateRefreshToken(data.refreshToken)
+      }
       message.success(`欢迎回来,${data.user.username}`)
       // 首次登录默认账号需强制改密，重定向到改密页
       if (data.mustChangePassword) {
