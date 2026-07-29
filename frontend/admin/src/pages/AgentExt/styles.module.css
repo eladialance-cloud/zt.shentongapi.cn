@@ -1,0 +1,77 @@
+/* Agent 扩展管理样式 - 复用共享样式 */
+
+.page {
+  composes: page from '../shared.module.css';
+}
+.header {
+  composes: header from '../shared.module.css';
+}
+.titleArea {
+  composes: titleArea from '../shared.module.css';
+}
+.titleIcon {
+  composes: titleIcon from '../shared.module.css';
+}
+.title {
+  composes: title from '../shared.module.css';
+}
+.subtitle {
+  composes: subtitle from '../shared.module.css';
+}
+.toolbar {
+  composes: toolbar from '../shared.module.css';
+}
+.toolbarLeft {
+  composes: toolbarLeft from '../shared.module.css';
+}
+.toolbarRight {
+  composes: toolbarRight from '../shared.module.css';
+}
+.tableWrap {
+  composes: tableWrap from '../shared.module.css';
+}
+.primaryBtn {
+  composes: primaryBtn from '../shared.module.css';
+}
+.ghostBtn {
+  composes: ghostBtn from '../shared.module.css';
+}
+.tag {
+  composes: tag from '../shared.module.css';
+}
+.tagActive {
+  composes: tagActive from '../shared.module.css';
+}
+.tagBanned {
+  composes: tagBanned from '../shared.module.css';
+}
+
+/* Tabs 容器 */
+.tabsContainer {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  border-radius: 12px;
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+}
+
+/* 颜色预览圆点 */
+.colorDot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* 标签预览 */
+.tagPreview {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}

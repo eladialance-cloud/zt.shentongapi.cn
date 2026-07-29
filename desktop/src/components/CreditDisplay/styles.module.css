@@ -1,0 +1,26 @@
+/* === CreditDisplay 积分余额显示 === */
+
+.wrap {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--spacing-xs);
+  font-family: var(--font-family);
+}
+
+.default .number {
+  font-size: 24px;
+  font-weight: 600;
+  transition: color var(--duration-base) var(--ease-out);
+}
+
+.large .number {
+  font-size: 48px;
+  font-weight: var(--font-weight-display);
+  line-height: var(--font-line-height-display);
+  transition: color var(--duration-base) var(--ease-out);
+}
+
+.unit {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}

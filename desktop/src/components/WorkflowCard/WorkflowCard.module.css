@@ -1,0 +1,273 @@
+/* ============================================================
+   WorkflowCard — 工作流模板卡片（重新设计版）
+   风格：赛博科技深色 + 玻璃拟态 + 流程可视化
+   ============================================================ */
+
+.card {
+  position: relative;
+  width: 100%;
+  background: rgba(22, 27, 34, 0.72);
+  border: 1px solid rgba(99, 102, 241, 0.22);
+  border-radius: 16px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.25s var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+              border-color 0.25s ease,
+              box-shadow 0.25s ease;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  border-color: var(--card-accent-border, rgba(99, 102, 241, 0.55));
+  box-shadow:
+    0 0 32px var(--card-accent-bg, rgba(99, 102, 241, 0.18)),
+    0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* ===== 预览区 ===== */
+.preview {
+  position: relative;
+  width: 100%;
+  height: 130px;
+  background: var(--card-accent-gradient, linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.08)));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: filter 0.25s ease;
+}
+
+.card:hover .preview {
+  filter: brightness(1.15);
+}
+
+/* 预览区底部渐变过渡线 */
+.preview::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--card-accent, #6366f1), transparent);
+  opacity: 0.4;
+}
+
+.previewImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.previewPlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.flowSvg {
+  width: 70%;
+  max-width: 200px;
+  height: auto;
+  opacity: 0.8;
+  transition: opacity 0.25s ease;
+}
+
+.card:hover .flowSvg {
+  opacity: 1;
+}
+
+/* ===== 分类标签 ===== */
+.categoryTag {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: rgba(13, 17, 23, 0.8);
+  color: var(--card-accent, #a5b4fc);
+  border: 1px solid var(--card-accent-border, rgba(99, 102, 241, 0.3));
+  font-weight: 500;
+  backdrop-filter: blur(8px);
+  z-index: 2;
+}
+
+/* ===== 执行状态徽章 ===== */
+.statusBadge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 12px;
+  background: rgba(13, 17, 23, 0.8);
+  border: 1px solid;
+  font-weight: 500;
+  backdrop-filter: blur(8px);
+  z-index: 2;
+}
+
+/* ===== 内容区 ===== */
+.body {
+  padding: 14px 18px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin: 0;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.description {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.55;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 37px;
+}
+
+/* ===== 数据胶囊 ===== */
+.metaRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+.pillUsage,
+.pillCost,
+.pillFree {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 16px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid;
+}
+
+.pillUsage {
+  background: rgba(251, 146, 60, 0.08);
+  color: #fb923c;
+  border-color: rgba(251, 146, 60, 0.22);
+}
+
+.pillCost {
+  background: rgba(34, 211, 238, 0.10);
+  color: #22d3ee;
+  border-color: rgba(34, 211, 238, 0.28);
+}
+
+.pillFree {
+  background: rgba(52, 211, 153, 0.10);
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.28);
+}
+
+.pillIcon {
+  font-size: 11px;
+}
+
+/* ===== 操作区 ===== */
+.footer {
+  padding: 0 18px 14px;
+  display: flex;
+  gap: 8px;
+}
+
+.useBtn {
+  flex: 1;
+  height: 38px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--card-accent, #6366f1), #8b5cf6);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 12px var(--card-accent-bg, rgba(99, 102, 241, 0.3));
+}
+
+.useBtn:hover {
+  filter: brightness(1.12);
+  box-shadow: 0 4px 20px var(--card-accent-bg, rgba(99, 102, 241, 0.4));
+  transform: translateY(-1px);
+}
+
+.useBtn:active {
+  transform: translateY(0);
+  filter: brightness(0.95);
+}
+
+.useBtnIcon {
+  font-size: 14px;
+}
+
+.detailBtn {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.08);
+  color: #a5b4fc;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.detailBtn:hover {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.5);
+  color: #c7d2fe;
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 480px) {
+  .preview {
+    height: 100px;
+  }
+
+  .flowSvg {
+    width: 80%;
+  }
+
+  .body {
+    padding: 12px 14px 10px;
+  }
+
+  .footer {
+    padding: 0 14px 12px;
+  }
+}

@@ -1,0 +1,143 @@
+/* ==========================================================================
+   design-tokens.css
+   v1.0 Design Token System — Dark Professional (Cursor/Windsurf inspired)
+   ========================================================================== */
+
+:root {
+  /* -------- Brand color palette -------- */
+  --color-brand: #4F6EF7;
+  --color-brand-hover: #6B86FF;
+  --color-brand-active: #3D5BD9;
+  --color-brand-light: rgba(79, 110, 247, 0.12);
+  --color-brand-bg: rgba(79, 110, 247, 0.08);
+
+  /* -------- Semantic colors (dark-tuned) -------- */
+  --color-success: #34D399;
+  --color-success-light: rgba(52, 211, 153, 0.12);
+  --color-warning: #FBBF24;
+  --color-warning-light: rgba(251, 191, 36, 0.12);
+  --color-error: #F87171;
+  --color-error-light: rgba(248, 113, 113, 0.12);
+  --color-info: #60A5FA;
+  --color-info-light: rgba(96, 165, 250, 0.12);
+  --color-purple: #A78BFA;
+  --color-purple-light: rgba(167, 139, 250, 0.12);
+
+  /* -------- Primary (alias to brand for Ant Design compat) -------- */
+  --color-primary: var(--color-brand);
+  --color-primary-hover: var(--color-brand-hover);
+  --color-primary-active: var(--color-brand-active);
+  --color-primary-light: var(--color-brand-light);
+  --color-primary-bg: var(--color-brand-bg);
+
+  /* -------- Neutral text colors -------- */
+  --color-text-primary: #E6EDF3;
+  --color-text-secondary: #8B949E;
+  --color-text-tertiary: #6E7681;
+  --color-text-quaternary: #484F58;
+  --color-text-disabled: #3D444D;
+
+  /* -------- Background colors (3-layer dark system) -------- */
+  --color-bg-base: #0D1117;
+  --color-bg-root: #0D1117;
+  --color-bg-layout: #0D1117;
+  --color-bg-container: #161B22;
+  --color-bg-elevated: #1C2333;
+  --color-bg-spotlight: #21283A;
+  --color-bg-overlay: rgba(13, 17, 23, 0.7);
+  --color-bg-hover: rgba(255, 255, 255, 0.04);
+
+  /* -------- Border colors -------- */
+  --color-border: #30363D;
+  --color-border-secondary: #21262D;
+  --color-split: rgba(255, 255, 255, 0.06);
+
+  /* -------- Scrollbar -------- */
+  --color-scrollbar-thumb: #30363D;
+  --color-scrollbar-track: transparent;
+
+  /* -------- Font families -------- */
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-family-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code',
+    'Fira Code', 'Consolas', monospace;
+
+  /* -------- Font sizes -------- */
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 13px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-size-2xl: 20px;
+  --font-size-3xl: 24px;
+  --font-size-4xl: 32px;
+  --font-size-5xl: 40px;
+  --font-size-6xl: 52px;
+
+  /* -------- Font weights -------- */
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* -------- Spacing (4px base) -------- */
+  --space-3xs: 2px;
+  --space-2xs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 20px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 40px;
+  --space-4xl: 48px;
+  --space-5xl: 64px;
+  --space-6xl: 80px;
+
+  /* -------- Border radius -------- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+
+  /* -------- Shadows -------- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+  --shadow-glow-brand: 0 0 24px rgba(79, 110, 247, 0.15);
+
+  /* -------- Motion -------- */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* -------- Layout constants -------- */
+  --topbar-height: 48px;
+  --dock-width: 48px;
+  --statusbar-height: 28px;
+
+  /* -------- AI Employee theme colors (preserved from v0.3.1) -------- */
+  /* 商务AI - Business AI */
+  --color-ai-business: #4F6EF7;
+  --color-ai-business-light: rgba(79, 110, 247, 0.15);
+  /* 内容AI - Content AI */
+  --color-ai-content: #A78BFA;
+  --color-ai-content-light: rgba(167, 139, 250, 0.15);
+  /* 交付AI - Delivery AI */
+  --color-ai-delivery: #22D3EE;
+  --color-ai-delivery-light: rgba(34, 211, 238, 0.15);
+  /* 财务AI - Finance AI */
+  --color-ai-finance: #34D399;
+  --color-ai-finance-light: rgba(52, 211, 153, 0.15);
+  /* 客服AI - Service AI */
+  --color-ai-service: #FBBF24;
+  --color-ai-service-light: rgba(251, 191, 36, 0.15);
+  /* Default AI */
+  --color-ai-default: #9CA3AF;
+  --color-ai-default-light: rgba(156, 163, 175, 0.15);
+}

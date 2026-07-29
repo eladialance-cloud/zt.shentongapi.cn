@@ -1,0 +1,35 @@
+/* ==========================================================================
+   Breadcrumb 统一面包屑样式 (Task 25)
+   使用 design-tokens.css 中的 CSS 变量
+   字号 caption，间距合理，支持浅色 / 暗色主题
+   作为 content 内部第一个元素，与 Outlet 内容对齐
+   ========================================================================== */
+
+.breadcrumb {
+  padding: 8px 16px;
+  background: var(--color-bg-container);
+  border-bottom: 1px solid var(--color-border-secondary);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-caption);
+  line-height: 20px;
+  margin-bottom: var(--spacing-md);
+  flex-shrink: 0;
+}
+
+/* 可点击的父级项 */
+.breadcrumbLink {
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  transition: color 0.2s ease;
+}
+
+.breadcrumbLink:hover {
+  color: var(--color-primary);
+}
+
+/* 当前页（最后一项，不可点击） */
+.breadcrumbCurrent {
+  color: var(--color-text-primary);
+  font-weight: 500;
+  cursor: default;
+}

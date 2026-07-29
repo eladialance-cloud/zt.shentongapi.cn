@@ -1,0 +1,160 @@
+/* AdminLayout — v0.3.1 管理后台主布局样式 (Task 22)
+ * 浅色主题, 白色背景, design tokens
+ * TopBar 56px / Sidebar 220px (不可折叠) / BottomBar 32px
+ */
+
+.layout {
+  min-height: 100vh;
+  background: var(--color-bg-layout) !important;
+}
+
+/* 顶栏 56px */
+.topbar {
+  height: 56px !important;
+  line-height: 56px !important;
+  padding: 0 24px !important;
+  background: var(--color-bg-container) !important;
+  border-bottom: 1px solid var(--color-border-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.topbarLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbarLogo {
+  font-size: 22px;
+  color: var(--color-primary);
+}
+
+.topbarTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  letter-spacing: 0.3px;
+}
+
+.envTag {
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.topbarRight {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.iconBtn {
+  font-size: 18px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.iconBtn:hover {
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.avatarWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.avatarWrap:hover {
+  background: var(--color-bg-layout);
+}
+
+.adminName {
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* 主体区 */
+.body {
+  background: var(--color-bg-layout) !important;
+}
+
+/* 侧边栏 220px 不可折叠 */
+.sidebar {
+  background: var(--color-bg-container) !important;
+  border-right: 1px solid var(--color-border-secondary);
+  overflow-y: auto;
+  position: sticky;
+  top: 56px;
+  height: calc(100vh - 56px - 32px);
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+.menu {
+  border-inline-end: none !important;
+  padding: 8px 0;
+}
+
+.contentLayout {
+  background: var(--color-bg-layout) !important;
+}
+
+/* 内容区 */
+.content {
+  padding: 20px 24px;
+  overflow-y: auto;
+  background: var(--color-bg-layout);
+}
+
+.content::-webkit-scrollbar {
+  width: 8px;
+}
+.content::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+/* 底栏 32px */
+.bottombar {
+  height: 32px !important;
+  padding: 0 24px !important;
+  background: var(--color-bg-container) !important;
+  border-top: 1px solid var(--color-border-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+.bottomLeft, .bottomRight {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.bottomItem {
+  display: flex;
+  align-items: center;
+}

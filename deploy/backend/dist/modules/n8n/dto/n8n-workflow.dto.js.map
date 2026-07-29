@@ -1,0 +1,1 @@
+{"version":3,"file":"n8n-workflow.dto.js","sourceRoot":"","sources":["../../../../src/modules/n8n/dto/n8n-workflow.dto.ts"],"names":[],"mappings":";;;;;;;;;;;;AAAA,6CAAsD;AACtD,qDAAuD;AAEvD,MAAa,kBAAkB;IAO7B,SAAS,CAA2B;CACrC;AARD,gDAQC;AADC;IANC,IAAA,6BAAmB,EAAC;QACnB,WAAW,EAAE,SAAS;QACtB,OAAO,EAAE,iBAAiB;KAC3B,CAAC;IACD,IAAA,4BAAU,GAAE;IACZ,IAAA,0BAAQ,GAAE;;qDACyB"}

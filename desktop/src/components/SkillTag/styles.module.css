@@ -1,0 +1,41 @@
+/* === SkillTag SKILL 类型标签 === */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  padding: 0 var(--spacing-sm);
+  font-weight: 500;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.small {
+  height: 20px;
+  font-size: 11px;
+}
+
+.default {
+  height: 24px;
+  font-size: 12px;
+}
+
+.flow {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.reasoning {
+  background: var(--color-purple-light);
+  color: var(--color-purple);
+  border-color: var(--color-purple);
+}
+
+.tool {
+  background: var(--color-ai-delivery-light);
+  color: var(--color-ai-delivery);
+  border-color: var(--color-ai-delivery);
+}

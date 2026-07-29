@@ -1,0 +1,130 @@
+import { Repository } from 'typeorm';
+import { PluginEntity } from '../plugin/entities/plugin.entity';
+import { AdminPluginQueryDto, AdminPluginReviewQueryDto, CreateAdminPluginDto, PluginSyncQueryDto, UpdateAdminPluginDto } from './dto/plugin.dto';
+export declare class AdminPluginService {
+    private readonly repo;
+    constructor(repo: Repository<PluginEntity>);
+    list(query: AdminPluginQueryDto): Promise<{
+        list: {
+            id: number;
+            name: string;
+            description: string;
+            type: string;
+            version: string;
+            entryPoint: string | undefined;
+            status: string;
+            reviewStatus: "approved" | "rejected" | "pending";
+            creatorName: undefined;
+            isOfficial: boolean;
+            pricingMode: string;
+            pricePerCall: number;
+            pricePerTokenInput: number;
+            pricePerTokenOutput: number;
+            callCount: number;
+            rejectReason: string | undefined;
+            createdAt: Date;
+            updatedAt: Date;
+        }[];
+        total: number;
+        page: number;
+        pageSize: number;
+        totalPages: number;
+    }>;
+    detail(id: number): Promise<{
+        id: number;
+        name: string;
+        description: string;
+        type: string;
+        version: string;
+        entryPoint: string | undefined;
+        status: string;
+        reviewStatus: "approved" | "rejected" | "pending";
+        creatorName: undefined;
+        isOfficial: boolean;
+        pricingMode: string;
+        pricePerCall: number;
+        pricePerTokenInput: number;
+        pricePerTokenOutput: number;
+        callCount: number;
+        rejectReason: string | undefined;
+        createdAt: Date;
+        updatedAt: Date;
+    }>;
+    create(dto: CreateAdminPluginDto): Promise<{
+        id: number;
+        name: string;
+        description: string;
+        type: string;
+        version: string;
+        entryPoint: string | undefined;
+        status: string;
+        reviewStatus: "approved" | "rejected" | "pending";
+        creatorName: undefined;
+        isOfficial: boolean;
+        pricingMode: string;
+        pricePerCall: number;
+        pricePerTokenInput: number;
+        pricePerTokenOutput: number;
+        callCount: number;
+        rejectReason: string | undefined;
+        createdAt: Date;
+        updatedAt: Date;
+    }>;
+    update(id: number, dto: UpdateAdminPluginDto): Promise<void>;
+    remove(id: number): Promise<void>;
+    publish(id: number): Promise<void>;
+    unpublish(id: number): Promise<void>;
+    listReview(query: AdminPluginReviewQueryDto): Promise<{
+        list: {
+            id: number;
+            name: string;
+            description: string;
+            type: string;
+            version: string;
+            entryPoint: string | undefined;
+            status: string;
+            reviewStatus: "approved" | "rejected" | "pending";
+            creatorName: undefined;
+            isOfficial: boolean;
+            pricingMode: string;
+            pricePerCall: number;
+            pricePerTokenInput: number;
+            pricePerTokenOutput: number;
+            callCount: number;
+            rejectReason: string | undefined;
+            createdAt: Date;
+            updatedAt: Date;
+        }[];
+        total: number;
+        page: number;
+        pageSize: number;
+        totalPages: number;
+    }>;
+    approve(id: number): Promise<void>;
+    reject(id: number, reason: string): Promise<void>;
+    review(id: number, action: 'approve' | 'reject', reason?: string): Promise<void>;
+    listSyncStatus(query: PluginSyncQueryDto): Promise<{
+        list: {
+            id: number;
+            name: string;
+            type: string;
+            syncStatus: string;
+            lastSyncedAt: Date;
+            errorMessage: undefined;
+        }[];
+        total: number;
+        page: number;
+        pageSize: number;
+        totalPages: number;
+    }>;
+    sync(id: number): Promise<{
+        synced: boolean;
+        count: number;
+    }>;
+    syncAll(): Promise<{
+        synced: boolean;
+        count: number;
+    }>;
+    private toItem;
+    private toSyncStatusItem;
+}

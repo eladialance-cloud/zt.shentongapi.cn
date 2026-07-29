@@ -1,0 +1,435 @@
+/* ===== MCP工具配置页面 样式 - v0.3.1 设计规范 ===== */
+
+.page {
+  min-height: 100%;
+  background: var(--color-bg-layout);
+  padding: var(--spacing-xl) var(--spacing-xxl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+  font-family: var(--font-family);
+}
+
+/* ===== 头部 ===== */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-lg);
+}
+
+.titleArea {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.titleIcon {
+  font-size: 28px;
+  color: var(--color-primary);
+}
+
+.title {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-h2);
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.subtitle {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-tertiary);
+  margin-top: 2px;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.primaryBtn {
+  background: var(--color-primary) !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 500;
+}
+
+.primaryBtn:hover:not(:disabled) {
+  background: var(--color-primary-hover) !important;
+}
+
+.ghostBtn {
+  background: var(--color-bg-elevated) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-secondary) !important;
+}
+
+.ghostBtn:hover:not(:disabled) {
+  background: var(--color-primary-bg) !important;
+  border-color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
+}
+
+/* Task 13: 三级资源归属筛选 */
+.ownerFilter {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-lg);
+}
+
+.ownerFilter :global(.ant-segmented) {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-secondary);
+  padding: 2px;
+  border-radius: var(--radius-md);
+}
+
+.ownerFilter :global(.ant-segmented-item-selected) {
+  background: var(--color-primary) !important;
+  color: #fff !important;
+}
+
+/* ===== 卡片网格 ===== */
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--spacing-xl);
+}
+
+/* ===== 服务器卡片 ===== */
+.serverCard {
+  padding: var(--spacing-xl) !important;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border-secondary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  transition: all 200ms var(--ease-out);
+}
+
+.serverCard:hover {
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-2px);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.cardTitleWrap {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.cardIcon {
+  font-size: 20px;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.cardName {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-h4);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cardDesc {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cardMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.metaText {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-tertiary);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.cardTime {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--color-border-secondary);
+}
+
+/* ===== 空状态 ===== */
+.emptyWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+}
+
+/* ===== JSON 文本域 ===== */
+.jsonTextarea {
+  font-family: var(--font-family-code);
+  font-size: var(--font-size-caption);
+}
+
+/* ===== 工具列表容器 ===== */
+.toolListContainer {
+  display: flex;
+  gap: var(--spacing-lg);
+  min-height: 500px;
+}
+
+.toolListLeft {
+  width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.toolListRight {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.toolListHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-h4);
+  color: var(--color-primary);
+}
+
+.toolList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.toolItem {
+  padding: var(--spacing-md) var(--spacing-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-secondary);
+  background: var(--color-bg-container);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.toolItem:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-bg);
+}
+
+.toolItemActive {
+  border-color: var(--color-primary) !important;
+  background: var(--color-primary-bg) !important;
+  box-shadow: var(--shadow-card);
+}
+
+.toolItemName {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-h4);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-code);
+}
+
+.toolItemDesc {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  margin-top: 4px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ===== 工具详情卡片 ===== */
+.toolDetailCard {
+  padding: var(--spacing-lg) !important;
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border-secondary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  transition: all 200ms var(--ease-out);
+}
+
+.toolDetailName {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-h4);
+  font-weight: var(--font-weight-h4);
+  color: var(--color-primary);
+  font-family: var(--font-family-code);
+}
+
+.toolDetailDesc {
+  font-size: var(--font-size-body);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  margin: var(--spacing-sm) 0 0;
+}
+
+.schemaSection {
+  margin-top: var(--spacing-md);
+}
+
+.schemaTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-h4);
+  color: var(--color-text-secondary);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.schemaPre {
+  background: var(--color-bg-layout);
+  border: 1px solid var(--color-border-secondary);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-md);
+  font-size: var(--font-size-caption);
+  font-family: var(--font-family-code);
+  color: var(--color-text-secondary);
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+  margin: 0;
+}
+
+/* ===== 调用面板 ===== */
+.callPanelCard {
+  padding: var(--spacing-lg) !important;
+}
+
+.callPanelTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-h4);
+  color: var(--color-purple);
+  margin-bottom: var(--spacing-md);
+}
+
+.callPanelLabel {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-tertiary);
+  margin-bottom: 6px;
+}
+
+.callPanelActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--spacing-md);
+}
+
+.callResultSection {
+  margin-top: var(--spacing-lg);
+  border-top: 1px solid var(--color-border-secondary);
+  padding-top: var(--spacing-md);
+}
+
+.callResultTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-h4);
+  color: var(--color-success);
+  margin-bottom: 6px;
+}
+
+.callResultPre {
+  background: var(--color-bg-layout);
+  border: 1px solid var(--color-border-secondary);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-md);
+  font-size: var(--font-size-caption);
+  font-family: var(--font-family-code);
+  color: var(--color-success);
+  overflow-x: auto;
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 0;
+}
+
+/* ===== 工具列表空状态 ===== */
+.toolListEmpty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-md);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-body);
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 768px) {
+  .page {
+    padding: var(--spacing-lg);
+  }
+
+  .cardGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .toolListContainer {
+    flex-direction: column;
+  }
+
+  .toolListLeft {
+    width: 100%;
+  }
+}

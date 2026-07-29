@@ -1,0 +1,38 @@
+/* === TaskFlow 任务流可视化 === */
+
+.svg {
+  display: block;
+  background: var(--color-bg-layout);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-secondary);
+}
+
+.edge {
+  fill: none;
+  stroke-width: 2;
+  transition: stroke var(--duration-base) var(--ease-out);
+}
+
+.particle {
+  fill: var(--color-primary);
+  filter: drop-shadow(0 0 4px var(--color-primary));
+}
+
+.fileIcon {
+  font-family: var(--font-family);
+  font-size: 16px;
+  user-select: none;
+}
+
+.spinnerArc {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: gearRotate 1.5s linear infinite;
+}
+
+.nodeLabel {
+  font-family: var(--font-family);
+  font-size: 12px;
+  fill: var(--color-text-primary);
+  user-select: none;
+}

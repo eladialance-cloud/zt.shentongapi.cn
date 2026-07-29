@@ -1,0 +1,10 @@
+export type AgentCategory = 'office' | 'programming' | 'copywriting' | 'data_analysis' | 'other';
+export declare const SOURCE_DIR_TO_CATEGORY: Record<string, AgentCategory>;
+export declare const SOURCE_DIRS_TO_SCAN: string[];
+export declare const EXCLUDE_PATTERNS: string[];
+export declare const DEFAULT_MODEL_ID = "gpt-4o-mini";
+export declare const DEFAULT_CREATOR_ID = 1;
+export declare const DEFAULT_PRICE_PER_CALL = 0;
+export declare const DEFAULT_RUNTIME_TYPE: "openclaw";
+export declare const BATCH_SIZE = 50;
+export declare const CLONE_TIMEOUT_MS = 120000;

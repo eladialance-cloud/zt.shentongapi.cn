@@ -1,0 +1,12 @@
+/* ==========================================================================
+   shadows.css
+   v0.3.1 4-level Shadow System
+   ========================================================================== */
+
+:root {
+  /* -------- Card / Container shadows -------- */
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.16);
+  --shadow-office: 0 1px 4px rgba(0, 0, 0, 0.06);
+}

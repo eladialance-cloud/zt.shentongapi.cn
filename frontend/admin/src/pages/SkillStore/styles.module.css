@@ -1,0 +1,129 @@
+/* 技能商店管理样式 - 复用共享深色赛博风样式 */
+
+.page {
+  composes: page from '../shared.module.css';
+}
+.header {
+  composes: header from '../shared.module.css';
+}
+.title {
+  composes: title from '../shared.module.css';
+}
+.titleArea {
+  composes: titleArea from '../shared.module.css';
+}
+.titleIcon {
+  composes: titleIcon from '../shared.module.css';
+}
+.subtitle {
+  composes: subtitle from '../shared.module.css';
+}
+.toolbar {
+  composes: toolbar from '../shared.module.css';
+}
+.toolbarLeft {
+  composes: toolbarLeft from '../shared.module.css';
+}
+.toolbarRight {
+  composes: toolbarRight from '../shared.module.css';
+}
+.tableWrap {
+  composes: tableWrap from '../shared.module.css';
+}
+.filterSelect {
+  composes: filterSelect from '../shared.module.css';
+}
+.primaryBtn {
+  composes: primaryBtn from '../shared.module.css';
+}
+.ghostBtn {
+  composes: ghostBtn from '../shared.module.css';
+}
+.paginationWrap {
+  composes: paginationWrap from '../shared.module.css';
+}
+.card {
+  composes: card from '../shared.module.css';
+}
+
+/* Tabs 容器 */
+.tabs {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  backdrop-filter: blur(12px);
+}
+
+/* 添加技能源表单 */
+.sourceForm {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 解析进度 Modal */
+.progressModal {
+  text-align: center;
+}
+
+.progressStep {
+  text-align: left;
+  margin: 8px 0 20px;
+}
+
+.progressError {
+  margin-top: 16px;
+  text-align: left;
+}
+
+.progressFooter {
+  margin-top: 16px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* 技能包详情 Drawer */
+.packageDetail {
+  padding-top: 8px;
+}
+
+.detailForm {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* JSON 文本域编辑器 */
+.jsonEditor {
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-size: 12px;
+  background: rgba(10, 14, 26, 0.6);
+  color: #e6edf3;
+}
+
+/* 状态标签着色 */
+.statusTag {
+  font-size: 11px;
+}
+
+.urlCell {
+  color: #7dd3fc;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.nameCell {
+  color: #f1f5f9;
+  font-weight: 500;
+}
+
+.muted {
+  color: #8b949e;
+}

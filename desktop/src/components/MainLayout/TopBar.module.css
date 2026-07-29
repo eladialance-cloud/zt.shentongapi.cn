@@ -1,0 +1,147 @@
+/* TopBar v1.0 — 48px 暗色顶栏 */
+
+.topbar {
+  height: var(--topbar-height);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-md);
+  background: var(--color-bg-elevated);
+  border-bottom: 1px solid var(--color-border);
+  position: relative;
+  z-index: 100;
+}
+
+/* 左侧搜索按钮 */
+.left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.searchBtn {
+  display: flex !important;
+  align-items: center;
+  gap: var(--space-xs);
+  height: 32px;
+  padding: 0 var(--space-sm) !important;
+  background: var(--color-bg-root) !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: var(--radius-md) !important;
+  color: var(--color-text-tertiary) !important;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.searchBtn:hover {
+  border-color: var(--color-brand) !important;
+}
+
+.searchPlaceholder {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-tertiary);
+}
+
+.shortcutHint {
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  color: var(--color-text-quaternary);
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  line-height: 16px;
+}
+
+/* 右侧操作区 */
+.right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.credits {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.iconBtn {
+  font-size: 18px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  padding: var(--space-2xs);
+  border-radius: var(--radius-md);
+  transition: color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+}
+
+.iconBtn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+
+.avatarWrap {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: var(--radius-full);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.avatarWrap:hover {
+  background: var(--color-bg-hover);
+}
+
+.avatar {
+  background: var(--color-brand) !important;
+  color: #FFFFFF !important;
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+}
+
+/* 通知下拉 */
+.notificationList {
+  width: 320px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.notificationItem {
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-border-secondary);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.notificationItem:hover {
+  background: var(--color-bg-hover);
+}
+
+.notificationItem:last-child {
+  border-bottom: none;
+}
+
+.notificationTitle {
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.notificationDot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-brand);
+  flex-shrink: 0;
+}
+
+.notificationTime {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  margin-top: var(--space-2xs);
+}

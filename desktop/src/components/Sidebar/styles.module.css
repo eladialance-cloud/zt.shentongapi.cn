@@ -1,0 +1,124 @@
+/* === Sidebar v0.3.1 (200px / 64px) === */
+
+.sidebar {
+  width: 200px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-container);
+  border-right: 1px solid var(--color-border-secondary);
+  transition: width var(--duration-base) var(--ease-out);
+  flex-shrink: 0;
+  overflow: hidden;
+  user-select: none;
+}
+
+.collapsed {
+  width: 64px;
+}
+
+/* 导航列表 */
+.navList {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md) var(--spacing-sm);
+  overflow-y: auto;
+}
+
+.navGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.groupTitle {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-tertiary);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* 导航项 */
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body);
+  transition: all var(--duration-fast) var(--ease-out);
+  white-space: nowrap;
+  overflow: hidden;
+  position: relative;
+}
+
+.navItem:hover {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+/* 激活态 */
+.navActive {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.navActive::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  background: var(--color-primary);
+  border-radius: 0 2px 2px 0;
+}
+
+.navIcon {
+  font-size: 16px;
+  width: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.navLabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 折叠态: 隐藏 label, 居中图标 */
+.collapsed .navItem {
+  justify-content: center;
+  padding: var(--spacing-sm);
+}
+
+/* 底部折叠按钮 */
+.collapseBtn {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-top: 1px solid var(--color-border-secondary);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  transition: all var(--duration-fast) var(--ease-out);
+  flex-shrink: 0;
+}
+
+.collapseBtn:hover {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}

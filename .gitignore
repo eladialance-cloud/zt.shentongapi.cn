@@ -27,3 +27,15 @@ npm-debug.log*
 
 # Docs (local only)
 docs/
+
+# Build artifacts
+*.tar.gz
+*.zip
+
+# Desktop build outputs
+desktop/dist/
+desktop/installer/
+
+# Temporary files
+desktop-update-temp-*/
+fix-modules.sh

@@ -1,0 +1,277 @@
+/* === Office 2D Canvas 容器样式 === */
+
+.wrap {
+  position: relative;
+  display: inline-block;
+  background: #F0EBE3;
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+  user-select: none;
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 1200px;
+  background: #F0EBE3;
+}
+
+.hint {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: rgba(60, 60, 60, 0.7);
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 4px;
+  text-align: center;
+  pointer-events: none;
+  font-family: -apple-system, "Segoe UI", sans-serif;
+}
+
+/* === Drawer 内 3 个 tab 内容 === */
+
+.tabContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px;
+}
+
+.employeeCard {
+  border: 1px solid rgba(22, 119, 255, 0.15);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: rgba(22, 119, 255, 0.03);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.employeeCard:hover {
+  border-color: rgba(22, 119, 255, 0.4);
+  background: rgba(22, 119, 255, 0.06);
+}
+
+.employeeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.employeeName {
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.employeeStatus {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  color: #fff;
+}
+
+.employeeStats {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #666;
+}
+
+.employeeStats span strong {
+  color: #1677FF;
+}
+
+.flowList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.flowItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.flowItem.active {
+  background: rgba(22, 119, 255, 0.08);
+  border-left: 3px solid #1677FF;
+}
+
+.flowArrow {
+  color: #1677FF;
+  font-weight: bold;
+}
+
+.logTimeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.logEntry {
+  display: flex;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+  font-size: 12px;
+  border-left: 3px solid #1677FF;
+}
+
+.logEntry.task_complete {
+  border-left-color: #52C41A;
+}
+
+.logEntry.task_fail {
+  border-left-color: #FF4D4F;
+}
+
+.logEntry.meeting {
+  border-left-color: #722ED1;
+}
+
+.logTime {
+  color: #999;
+  font-family: var(--font-family-code);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.logText {
+  color: #333;
+  flex: 1;
+}
+
+.drawerTitle {
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ========== Task 10: Demo 模式样式 ========== */
+
+.demoEntryBar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 25;
+  display: flex;
+  gap: 8px;
+}
+
+.demoCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid rgba(22, 119, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.demoCard:hover {
+  border-color: rgba(22, 119, 255, 0.5);
+  background: rgba(22, 119, 255, 0.06);
+  transform: translateY(-2px);
+}
+
+.demoCardTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.demoCardDesc {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+.demoProgressBar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 36px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  z-index: 100;
+  backdrop-filter: blur(8px);
+}
+
+.demoProgressText {
+  font-size: 12px;
+  flex-shrink: 0;
+  min-width: 180px;
+}
+
+.demoProgressTrack {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.demoProgressFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-purple) 100%);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.demoStopBtn {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  background: rgba(255, 77, 79, 0.9);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.demoStopBtn:hover {
+  background: rgba(255, 77, 79, 1);
+}
+
+.demoNarration {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 24px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font-size: 13px;
+  text-align: center;
+  z-index: 100;
+  backdrop-filter: blur(8px);
+  line-height: 1.5;
+}

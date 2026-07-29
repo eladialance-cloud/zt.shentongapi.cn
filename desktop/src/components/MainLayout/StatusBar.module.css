@@ -1,0 +1,90 @@
+/* StatusBar v1.0 — 28px 暗色底栏 */
+
+.statusbar {
+  height: var(--statusbar-height);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-md);
+  background: var(--color-bg-elevated);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+}
+
+.left,
+.right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  cursor: pointer;
+  padding: 2px var(--space-2xs);
+  border-radius: var(--radius-sm);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.indicator:hover {
+  background: var(--color-bg-hover);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+/* 同步日志 Modal */
+.syncLogToolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-sm);
+}
+
+.syncLogCount {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.syncLogList {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.syncLogItem {
+  padding: var(--space-xs) 0;
+}
+
+.syncLogRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.syncLogTimestamp {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.syncLogDetail {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}

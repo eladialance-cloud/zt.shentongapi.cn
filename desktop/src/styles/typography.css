@@ -1,0 +1,46 @@
+/* ==========================================================================
+   typography.css
+   v0.3.1 7-level Typography System
+   ========================================================================== */
+
+:root {
+  /* -------- Font families -------- */
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+                 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-family-code: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+
+  /* -------- Display -------- */
+  --font-size-display: 48px;
+  --font-line-height-display: 1.2;
+  --font-weight-display: 600;
+
+  /* -------- H1 -------- */
+  --font-size-h1: 32px;
+  --font-line-height-h1: 1.3;
+  --font-weight-h1: 600;
+
+  /* -------- H2 -------- */
+  --font-size-h2: 24px;
+  --font-line-height-h2: 1.35;
+  --font-weight-h2: 600;
+
+  /* -------- H3 -------- */
+  --font-size-h3: 20px;
+  --font-line-height-h3: 1.4;
+  --font-weight-h3: 500;
+
+  /* -------- H4 -------- */
+  --font-size-h4: 16px;
+  --font-line-height-h4: 1.5;
+  --font-weight-h4: 500;
+
+  /* -------- Body -------- */
+  --font-size-body: 14px;
+  --font-line-height-body: 1.5715;
+  --font-weight-body: 400;
+
+  /* -------- Caption -------- */
+  --font-size-caption: 12px;
+  --font-line-height-caption: 1.6667;
+  --font-weight-caption: 400;
+}

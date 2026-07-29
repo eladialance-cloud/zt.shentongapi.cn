@@ -1,0 +1,177 @@
+/* ==========================================================================
+   animations.css
+   v0.3.1 Animation Specs: Duration tokens, Easing tokens,
+                          Keyframe animations, Utility classes
+   ========================================================================== */
+
+:root {
+  /* -------- Duration tokens -------- */
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 400ms;
+  --duration-spring: 500ms;
+
+  /* -------- Easing tokens -------- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ==========================================================================
+   Keyframe animations
+   ========================================================================== */
+
+/* countUp - number counting display (500ms) */
+@keyframes countUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* fadeIn (250ms) */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* fadeOut (250ms) */
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/* scaleIn - spring scale-in (250ms spring) */
+@keyframes scaleIn {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* slideInRight (250ms) */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* breathing - AI employee status light (2s infinite) */
+@keyframes breathing {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
+
+/* statusLight - status light pulse (1.5s infinite) */
+@keyframes statusLight {
+  0% {
+    box-shadow: 0 0 0 0 rgba(82, 196, 26, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(82, 196, 26, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(82, 196, 26, 0);
+  }
+}
+
+/* fileFly - file flying animation (1.5s) */
+@keyframes fileFly {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(40px, -30px) scale(0.9);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(80px, -60px) scale(0.6);
+    opacity: 0;
+  }
+}
+
+/* lightFlow - light beam background-position shift (3s linear infinite) */
+@keyframes lightFlow {
+  from { background-position: 0% 50%; }
+  to   { background-position: 200% 50%; }
+}
+
+/* gearRotate - gear rotation (4s linear infinite) */
+@keyframes gearRotate {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* steam - coffee machine steam (1.5s infinite) */
+@keyframes steam {
+  0% {
+    opacity: 0.4;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+}
+
+/* plantSwing - plant swing (4s ease-in-out infinite) */
+@keyframes plantSwing {
+  0%, 100% { transform: rotate(-3deg); }
+  50%      { transform: rotate(3deg); }
+}
+
+/* enterZoom - spring enter zoom (400ms spring) */
+@keyframes enterZoom {
+  from {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* lowBalanceFlash - low credit warning (1.5s infinite) */
+@keyframes lowBalanceFlash {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+
+/* ==========================================================================
+   Utility classes
+   ========================================================================== */
+
+.animate-fade-in {
+  animation: fadeIn var(--duration-base) var(--ease-out) both;
+}
+
+.animate-scale-in {
+  animation: scaleIn var(--duration-base) var(--ease-spring) both;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight var(--duration-base) var(--ease-out) both;
+}
+
+.animate-enter-zoom {
+  animation: enterZoom var(--duration-slow) var(--ease-spring) both;
+}
+
+.animate-low-balance {
+  animation: lowBalanceFlash 1500ms var(--ease-in-out) infinite;
+}

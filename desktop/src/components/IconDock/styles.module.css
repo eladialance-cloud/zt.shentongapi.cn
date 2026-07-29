@@ -1,0 +1,57 @@
+/* IconDock — 48px 纯图标导航栏 */
+
+.dock {
+  width: var(--dock-width);
+  flex-shrink: 0;
+  background: var(--color-bg-root);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dockNav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2xs);
+  padding: var(--space-sm) 0;
+  flex: 1;
+}
+
+.dockItem {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--color-text-tertiary);
+  transition: background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
+  position: relative;
+}
+
+.dockItem:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+}
+
+.dockItemActive {
+  background: var(--color-brand-light);
+  color: var(--color-brand);
+}
+
+/* 左侧 2px 激活指示条 */
+.dockItemActive::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 20px;
+  background: var(--color-brand);
+  border-radius: 0 1px 1px 0;
+}
