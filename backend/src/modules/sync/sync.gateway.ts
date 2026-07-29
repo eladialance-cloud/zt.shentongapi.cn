@@ -1,1 +1,119 @@
-﻿import { Logger } from '@nestjs/common';import { JwtService } from '@nestjs/jwt';import {  OnGatewayConnection,  OnGatewayDisconnect,  SubscribeMessage,  WebSocketGateway,  WebSocketServer,} from '@nestjs/websockets';import { Server, Socket } from 'socket.io';/** * 鍚屾 WebSocket 缃戝叧锛? 绫绘帹閫侀€氶亾 * 鏁版嵁鍚堝悓鐪熸簮锛歍ask 31 - 鏁版嵁鍚屾璁捐 * 鎺ㄩ€佷簨浠讹細 *   agent:updated / workflow:updated / plugin:updated / credits:updated / *   announcement:push / model:updated / user-level:updated * 瀹㈡埛绔繛鎺ユ椂鎸?userId 鍔犲叆鎴块棿 user:<userId>锛屾湇鍔＄鎸夌敤鎴风簿鍑嗘帹閫? */@WebSocketGateway({  cors: {    origin: [      'https://zt.shentongapi.cn',      'http://localhost:3001', // 寮€鍙戠幆澧?      'http://localhost:5173', // user 鍓嶇寮€鍙?      'http://localhost:5174', // admin 鍓嶇寮€鍙?    ],    credentials: true,  },  namespace: 'sync',})export class SyncGateway implements OnGatewayConnection, OnGatewayDisconnect {  private readonly logger = new Logger(SyncGateway.name);  constructor(private readonly jwtService: JwtService) {}  @WebSocketServer()  server: Server;  handleConnection(client: Socket) {    let token: string | undefined =      (client.handshake.auth as any)?.token ||      (client.handshake.query?.token as string | undefined);    const authHeader = client.handshake.headers?.authorization;    if (!token && authHeader && authHeader.startsWith('Bearer ')) {      token = authHeader.slice('Bearer '.length);    }    if (!token) {      this.logger.warn(`瀹㈡埛绔湭鎼哄甫 token锛岃繛鎺ユ嫆缁? ${client.id}`);      client.emit('error', '鏈巿鏉冿細缂哄皯 token');      client.disconnect(true);      return;    }    try {      const payload = this.jwtService.verify(token);      const userId = payload.sub;      const room = `user:${userId}`;      client.join(room);      this.logger.log(`瀹㈡埛绔繛鎺ュ苟鍔犲叆鎴块棿 ${room}: ${client.id}`);    } catch (err) {      this.logger.warn(`token 楠岃瘉澶辫触锛岃繛鎺ユ嫆缁? ${client.id}`);      client.emit('error', 'token 楠岃瘉澶辫触');      client.disconnect(true);    }  }  handleDisconnect(client: Socket) {    this.logger.log(`瀹㈡埛绔柇寮€: ${client.id}`);  }  /** 澶勭悊瀹㈡埛绔閲忔媺鍙栬姹?*/  @SubscribeMessage('sync:pull')  async handleSyncPull(client: Socket, payload: { since?: string; types?: string[] }) {    try {      const userId = this.getUserIdFromClient(client);      if (!userId) {        client.emit('sync:pull:result', { error: '鏈巿鏉? });        return;      }      // 杩斿洖鏈€杩戝彉鏇寸殑鏁版嵁鎽樿锛屽鎴风鍙嵁姝ゅ喅瀹氭槸鍚﹀埛鏂?      const result = {        timestamp: new Date().toISOString(),        types: payload?.types ?? [],        changes: {}, // 瀹為檯鏁版嵁鐢卞悇 service 鐨?push 浜嬩欢椹卞姩锛岃繖閲屽彧杩斿洖纭      };      client.emit('sync:pull:result', result);    } catch {      client.emit('sync:pull:result', { error: '鍚屾澶辫触' });    }  }  /** 浠?client 鎻愬彇 userId */  private getUserIdFromClient(client: Socket): number | null {    try {      const token =        (client.handshake.auth as any)?.token ||        (client.handshake.query?.token as string);      if (!token) return null;      const payload = this.jwtService.verify(token);      return payload.sub;    } catch {      return null;    }  }  /** 鍚戞寚瀹氱敤鎴锋帹閫佷簨浠?*/  pushToUser(userId: number, event: string, data: unknown): void {    if (!this.server) {      return;    }    this.server.to(`user:${userId}`).emit(event, data);  }  /** 骞挎挱浜嬩欢锛堟墍鏈夎繛鎺ワ級 */  broadcast(event: string, data: unknown): void {    if (!this.server) {      return;    }    this.server.emit(event, data);  }}
+﻿import { Logger } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import {
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  SubscribeMessage,
+  WebSocketGateway,
+  WebSocketServer,
+} from '@nestjs/websockets';
+import { Server, Socket } from 'socket.io';
+
+/**
+ * 鍚屾 WebSocket 缃戝叧锛? 绫绘帹閫侀€氶亾
+ * 鏁版嵁鍚堝悓鐪熸簮锛歍ask 31 - 鏁版嵁鍚屾璁捐
+ * 鎺ㄩ€佷簨浠讹細
+ *   agent:updated / workflow:updated / plugin:updated / credits:updated /
+ *   announcement:push / model:updated / user-level:updated
+ * 瀹㈡埛绔繛鎺ユ椂鎸?userId 鍔犲叆鎴块棿 user:<userId>锛屾湇鍔＄鎸夌敤鎴风簿鍑嗘帹閫? */
+@WebSocketGateway({
+  cors: {
+    origin: [
+      'https://zt.shentongapi.cn',
+      'http://localhost:3001', // 寮€鍙戠幆澧?      'http://localhost:5173', // user 鍓嶇寮€鍙?      'http://localhost:5174', // admin 鍓嶇寮€鍙?    ],
+    credentials: true,
+  },
+  namespace: 'sync',
+})
+export class SyncGateway implements OnGatewayConnection, OnGatewayDisconnect {
+  private readonly logger = new Logger(SyncGateway.name);
+
+  constructor(private readonly jwtService: JwtService) {}
+
+  @WebSocketServer()
+  server: Server;
+
+  handleConnection(client: Socket) {
+    let token: string | undefined =
+      (client.handshake.auth as any)?.token ||
+      (client.handshake.query?.token as string | undefined);
+
+    const authHeader = client.handshake.headers?.authorization;
+    if (!token && authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.slice('Bearer '.length);
+    }
+
+    if (!token) {
+      this.logger.warn(`瀹㈡埛绔湭鎼哄甫 token锛岃繛鎺ユ嫆缁? ${client.id}`);
+      client.emit('error', '鏈巿鏉冿細缂哄皯 token');
+      client.disconnect(true);
+      return;
+    }
+
+    try {
+      const payload = this.jwtService.verify(token);
+      const userId = payload.sub;
+      const room = `user:${userId}`;
+      client.join(room);
+      this.logger.log(`瀹㈡埛绔繛鎺ュ苟鍔犲叆鎴块棿 ${room}: ${client.id}`);
+    } catch (err) {
+      this.logger.warn(`token 楠岃瘉澶辫触锛岃繛鎺ユ嫆缁? ${client.id}`);
+      client.emit('error', 'token 楠岃瘉澶辫触');
+      client.disconnect(true);
+    }
+  }
+
+  handleDisconnect(client: Socket) {
+    this.logger.log(`瀹㈡埛绔柇寮€: ${client.id}`);
+  }
+
+  /** 澶勭悊瀹㈡埛绔閲忔媺鍙栬姹?*/
+  @SubscribeMessage('sync:pull')
+  async handleSyncPull(client: Socket, payload: { since?: string; types?: string[] }) {
+    try {
+      const userId = this.getUserIdFromClient(client);
+      if (!userId) {
+        client.emit('sync:pull:result', { error: '鏈巿鏉? });
+        return;
+      }
+      // 杩斿洖鏈€杩戝彉鏇寸殑鏁版嵁鎽樿锛屽鎴风鍙嵁姝ゅ喅瀹氭槸鍚﹀埛鏂?      const result = {
+        timestamp: new Date().toISOString(),
+        types: payload?.types ?? [],
+        changes: {}, // 瀹為檯鏁版嵁鐢卞悇 service 鐨?push 浜嬩欢椹卞姩锛岃繖閲屽彧杩斿洖纭
+      };
+      client.emit('sync:pull:result', result);
+    } catch {
+      client.emit('sync:pull:result', { error: '鍚屾澶辫触' });
+    }
+  }
+
+  /** 浠?client 鎻愬彇 userId */
+  private getUserIdFromClient(client: Socket): number | null {
+    try {
+      const token =
+        (client.handshake.auth as any)?.token ||
+        (client.handshake.query?.token as string);
+      if (!token) return null;
+      const payload = this.jwtService.verify(token);
+      return payload.sub;
+    } catch {
+      return null;
+    }
+  }
+
+  /** 鍚戞寚瀹氱敤鎴锋帹閫佷簨浠?*/
+  pushToUser(userId: number, event: string, data: unknown): void {
+    if (!this.server) {
+      return;
+    }
+    this.server.to(`user:${userId}`).emit(event, data);
+  }
+
+  /** 骞挎挱浜嬩欢锛堟墍鏈夎繛鎺ワ級 */
+  broadcast(event: string, data: unknown): void {
+    if (!this.server) {
+      return;
+    }
+    this.server.emit(event, data);
+  }
+}

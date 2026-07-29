@@ -1,1 +1,183 @@
-﻿/** * 鐢熸垚 electron-updater 浣跨敤鐨?latest.yml 娓呭崟鏂囦欢銆? * * 鐢ㄩ€?鍦?electron-builder 鎵撳寘瀹屾垚鍚庢墽琛?鎵弿 `dist/installer/` 鐩綍涓嬬殑 * 瀹夎鍖呮枃浠?.exe / .dmg / .AppImage / .deb / .rpm),璁＄畻姣忎釜鏂囦欢鐨?SHA-512 * 鍝堝笇涓庡ぇ灏?鐢熸垚绗﹀悎 electron-updater 瑙勮寖鐨?`latest.yml` 骞跺啓鍏ュ悓鐩綍銆? * * 杩愯鏂瑰紡: *   npx tsx scripts/generate-latest-yml.ts * * 渚濊禆璇存槑: *   浠呬娇鐢?Node.js 鍐呯疆妯″潡(fs / path / crypto),涓嶅紩鍏ユ柊渚濊禆銆? * * latest.yml 鏍煎紡(electron-updater 瑙勮寖): *   version: <鐗堟湰鍙? *   files: *     - url: <鏂囦欢鍚? *       sha512: <SHA-512 鍝堝笇(hex)> *       size: <瀛楄妭鏁? *   path: <涓诲畨瑁呭寘鏂囦欢鍚? *   sha512: <涓诲畨瑁呭寘 SHA-512 鍝堝笇> *   releaseDate: '<ISO 8601 鏃堕棿>' */import { createReadStream, readdirSync, statSync, writeFileSync } from 'node:fs';import { readFile } from 'node:fs/promises';import path from 'node:path';import { createHash } from 'node:crypto';// ---------- 甯搁噺 ----------const PROJECT_ROOT = path.join(__dirname, '..');const PACKAGE_JSON_PATH = path.join(PROJECT_ROOT, 'package.json');// INSTALLER_DIR 鍜?OUTPUT_PATH 鍦?main() 涓牴鎹増鏈彿鍔ㄦ€佽缃?let INSTALLER_DIR = '';let OUTPUT_PATH = '';const INSTALLER_EXTS = ['.exe', '.dmg', '.appimage', '.deb', '.rpm', '.zip'];// ---------- 绫诲瀷瀹氫箟 ----------interface InstallerFile {  filename: string;  sha512: string;  size: number;}interface PackageJson {  version: string;}// ---------- 宸ュ叿鍑芥暟 ----------/** 娴佸紡璁＄畻鏂囦欢 SHA-512(鏀寔澶ф枃浠?閬垮厤鍐呭瓨鐖嗙偢)銆?*/function computeSha512(filePath: string): Promise<string> {  return new Promise((resolve, reject) => {    const hash = createHash('sha512');    const stream = createReadStream(filePath);    stream.on('data', (chunk: Buffer | string) => hash.update(chunk as Buffer));    stream.on('end', () => resolve(hash.digest('hex')));    stream.on('error', reject);  });}/** 鏍煎紡鍖栨枃浠跺ぇ灏?浜虹被鍙)銆?*/function formatSize(bytes: number): string {  const mb = bytes / 1024 / 1024;  if (mb < 1024) return `${mb.toFixed(2)} MB`;  return `${(mb / 1024).toFixed(2)} GB`;}function log(...args: unknown[]): void {  console.log('[generate-latest-yml]', ...args);}function err(...args: unknown[]): void {  console.error('[generate-latest-yml] ERROR:', ...args);}// ---------- 涓绘祦绋?----------async function main(): Promise<void> {  console.log('鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣');  console.log('  鐢熸垚 latest.yml(electron-updater 娓呭崟)');  console.log('鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣');  // 1. 璇诲彇鐗堟湰鍙枫€?  const pkgRaw = await readFile(PACKAGE_JSON_PATH, 'utf-8');  const pkg = JSON.parse(pkgRaw) as PackageJson;  const version = pkg.version;  log(`鐗堟湰鍙? ${version}`);  // 璇诲彇 electron-builder.yml 鐨?output 鐩綍锛屾垨鎵弿鎵€鏈?installer-v* 鐩綍鎵炬渶鏂扮殑  // 浼樺厛绛栫暐锛氭壂鎻忔墍鏈?dist/installer-v* 鐩綍锛屾壘鍒板寘鍚綋鍓嶇増鏈枃浠剁殑鐩綍  const distDir = path.join(PROJECT_ROOT, 'dist');  const allDirs = readdirSync(distDir, { withFileTypes: true })    .filter(d => d.isDirectory() && /^installer-v\d+$/.test(d.name))    .map(d => d.name)    .sort();    // 浠庢渶鏂扮殑鐩綍寮€濮嬫壘锛屾壘鍒板寘鍚綋鍓嶇増鏈畨瑁呭寘鐨勭洰褰?  let foundDir = '';  for (let i = allDirs.length - 1; i >= 0; i--) {    const testDir = path.join(distDir, allDirs[i]);    const testEntries = readdirSync(testDir);    const hasVersion = testEntries.some(f => f.includes(version));    if (hasVersion) {      foundDir = testDir;      break;    }  }    if (!foundDir) {    // 鍥為€€锛氱敤鐗堟湰鍙疯绠楃洰褰曞悕    const versionNoDotFallback = version.replace(/\./g, '');    foundDir = path.join(distDir, `installer-v${versionNoDotFallback}`);  }    INSTALLER_DIR = foundDir;  OUTPUT_PATH = path.join(INSTALLER_DIR, 'latest.yml');  log(`瀹夎鍖呯洰褰? ${INSTALLER_DIR}`);  // 2. 鎵弿瀹夎鍖呯洰褰曘€?  let entries: string[];  try {    entries = readdirSync(INSTALLER_DIR);  } catch (e) {    const message = e instanceof Error ? e.message : String(e);    err(`鐩綍涓嶅瓨鍦ㄦ垨鏃犳硶璇诲彇: ${INSTALLER_DIR}`);    err(`鍘熷洜: ${message}`);    err('璇峰厛鎵ц electron-builder 鎵撳寘');    process.exit(1);  }  const installers = entries.filter((f) =>    INSTALLER_EXTS.includes(path.extname(f).toLowerCase()),  ).filter(f => f.includes(version));  if (installers.length === 0) {    err(`鏈湪 ${INSTALLER_DIR} 鎵惧埌瀹夎鍖呮枃浠禶);    err(`鏀寔鐨勬墿灞曞悕: ${INSTALLER_EXTS.join(', ')}`);    process.exit(1);  }  log(`鎵惧埌 ${installers.length} 涓畨瑁呭寘:`);  // 3. 璁＄畻姣忎釜鏂囦欢鐨?SHA-512 + 澶у皬銆?  const installerInfos: InstallerFile[] = [];  for (const filename of installers) {    const filePath = path.join(INSTALLER_DIR, filename);    const size = statSync(filePath).size;    log(`  璁＄畻 SHA-512: ${filename} (${formatSize(size)})...`);    const sha512 = await computeSha512(filePath);    installerInfos.push({ filename, sha512, size });    log(`  鉁?${sha512.substring(0, 16)}...`);  }  // 4. 鐢熸垚 latest.yml 鍐呭銆?  const releaseDate = new Date().toISOString();  const primary = installerInfos[0];  let yml = `version: ${version}\n`;  yml += `files:\n`;  for (const info of installerInfos) {    yml += `  - url: ${info.filename}\n`;    yml += `    sha512: ${info.sha512}\n`;    yml += `    size: ${info.size}\n`;  }  yml += `path: ${primary.filename}\n`;  yml += `sha512: ${primary.sha512}\n`;  yml += `releaseDate: '${releaseDate}'\n`;  // 5. 鍐欏叆鏂囦欢銆?  writeFileSync(OUTPUT_PATH, yml, 'utf-8');  console.log('');  log(`latest.yml 宸茬敓鎴? ${OUTPUT_PATH}`);  console.log('');  console.log('馃搵 鍐呭棰勮:');  console.log('鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€');  console.log(yml.trim());  console.log('鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€');  console.log('');  log(`涓诲畨瑁呭寘: ${primary.filename}`);  log(`  鐗堟湰: ${version}`);  log(`  澶у皬: ${formatSize(primary.size)}`);  log(`  SHA-512: ${primary.sha512.substring(0, 32)}...`);  log(`  鍙戝竷鏃堕棿: ${releaseDate}`);}main().catch((e) => {  err('鐢熸垚 latest.yml 澶辫触:', e instanceof Error ? e.stack ?? e.message : String(e));  process.exit(1);});
+﻿/**
+ * 鐢熸垚 electron-updater 浣跨敤鐨?latest.yml 娓呭崟鏂囦欢銆? *
+ * 鐢ㄩ€?鍦?electron-builder 鎵撳寘瀹屾垚鍚庢墽琛?鎵弿 `dist/installer/` 鐩綍涓嬬殑
+ * 瀹夎鍖呮枃浠?.exe / .dmg / .AppImage / .deb / .rpm),璁＄畻姣忎釜鏂囦欢鐨?SHA-512
+ * 鍝堝笇涓庡ぇ灏?鐢熸垚绗﹀悎 electron-updater 瑙勮寖鐨?`latest.yml` 骞跺啓鍏ュ悓鐩綍銆? *
+ * 杩愯鏂瑰紡:
+ *   npx tsx scripts/generate-latest-yml.ts
+ *
+ * 渚濊禆璇存槑:
+ *   浠呬娇鐢?Node.js 鍐呯疆妯″潡(fs / path / crypto),涓嶅紩鍏ユ柊渚濊禆銆? *
+ * latest.yml 鏍煎紡(electron-updater 瑙勮寖):
+ *   version: <鐗堟湰鍙?
+ *   files:
+ *     - url: <鏂囦欢鍚?
+ *       sha512: <SHA-512 鍝堝笇(hex)>
+ *       size: <瀛楄妭鏁?
+ *   path: <涓诲畨瑁呭寘鏂囦欢鍚?
+ *   sha512: <涓诲畨瑁呭寘 SHA-512 鍝堝笇>
+ *   releaseDate: '<ISO 8601 鏃堕棿>'
+ */
+
+import { createReadStream, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
+
+// ---------- 甯搁噺 ----------
+
+const PROJECT_ROOT = path.join(__dirname, '..');
+const PACKAGE_JSON_PATH = path.join(PROJECT_ROOT, 'package.json');
+// INSTALLER_DIR 鍜?OUTPUT_PATH 鍦?main() 涓牴鎹増鏈彿鍔ㄦ€佽缃?let INSTALLER_DIR = '';
+let OUTPUT_PATH = '';
+const INSTALLER_EXTS = ['.exe', '.dmg', '.appimage', '.deb', '.rpm', '.zip'];
+
+// ---------- 绫诲瀷瀹氫箟 ----------
+
+interface InstallerFile {
+  filename: string;
+  sha512: string;
+  size: number;
+}
+
+interface PackageJson {
+  version: string;
+}
+
+// ---------- 宸ュ叿鍑芥暟 ----------
+
+/** 娴佸紡璁＄畻鏂囦欢 SHA-512(鏀寔澶ф枃浠?閬垮厤鍐呭瓨鐖嗙偢)銆?*/
+function computeSha512(filePath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = createHash('sha512');
+    const stream = createReadStream(filePath);
+    stream.on('data', (chunk: Buffer | string) => hash.update(chunk as Buffer));
+    stream.on('end', () => resolve(hash.digest('hex')));
+    stream.on('error', reject);
+  });
+}
+
+/** 鏍煎紡鍖栨枃浠跺ぇ灏?浜虹被鍙)銆?*/
+function formatSize(bytes: number): string {
+  const mb = bytes / 1024 / 1024;
+  if (mb < 1024) return `${mb.toFixed(2)} MB`;
+  return `${(mb / 1024).toFixed(2)} GB`;
+}
+
+function log(...args: unknown[]): void {
+  console.log('[generate-latest-yml]', ...args);
+}
+
+function err(...args: unknown[]): void {
+  console.error('[generate-latest-yml] ERROR:', ...args);
+}
+
+// ---------- 涓绘祦绋?----------
+
+async function main(): Promise<void> {
+  console.log('鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣');
+  console.log('  鐢熸垚 latest.yml(electron-updater 娓呭崟)');
+  console.log('鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣');
+
+  // 1. 璇诲彇鐗堟湰鍙枫€?  const pkgRaw = await readFile(PACKAGE_JSON_PATH, 'utf-8');
+  const pkg = JSON.parse(pkgRaw) as PackageJson;
+  const version = pkg.version;
+  log(`鐗堟湰鍙? ${version}`);
+
+  // 璇诲彇 electron-builder.yml 鐨?output 鐩綍锛屾垨鎵弿鎵€鏈?installer-v* 鐩綍鎵炬渶鏂扮殑
+  // 浼樺厛绛栫暐锛氭壂鎻忔墍鏈?dist/installer-v* 鐩綍锛屾壘鍒板寘鍚綋鍓嶇増鏈枃浠剁殑鐩綍
+  const distDir = path.join(PROJECT_ROOT, 'dist');
+  const allDirs = readdirSync(distDir, { withFileTypes: true })
+    .filter(d => d.isDirectory() && /^installer-v\d+$/.test(d.name))
+    .map(d => d.name)
+    .sort();
+  
+  // 浠庢渶鏂扮殑鐩綍寮€濮嬫壘锛屾壘鍒板寘鍚綋鍓嶇増鏈畨瑁呭寘鐨勭洰褰?  let foundDir = '';
+  for (let i = allDirs.length - 1; i >= 0; i--) {
+    const testDir = path.join(distDir, allDirs[i]);
+    const testEntries = readdirSync(testDir);
+    const hasVersion = testEntries.some(f => f.includes(version));
+    if (hasVersion) {
+      foundDir = testDir;
+      break;
+    }
+  }
+  
+  if (!foundDir) {
+    // 鍥為€€锛氱敤鐗堟湰鍙疯绠楃洰褰曞悕
+    const versionNoDotFallback = version.replace(/\./g, '');
+    foundDir = path.join(distDir, `installer-v${versionNoDotFallback}`);
+  }
+  
+  INSTALLER_DIR = foundDir;
+  OUTPUT_PATH = path.join(INSTALLER_DIR, 'latest.yml');
+  log(`瀹夎鍖呯洰褰? ${INSTALLER_DIR}`);
+
+  // 2. 鎵弿瀹夎鍖呯洰褰曘€?  let entries: string[];
+  try {
+    entries = readdirSync(INSTALLER_DIR);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    err(`鐩綍涓嶅瓨鍦ㄦ垨鏃犳硶璇诲彇: ${INSTALLER_DIR}`);
+    err(`鍘熷洜: ${message}`);
+    err('璇峰厛鎵ц electron-builder 鎵撳寘');
+    process.exit(1);
+  }
+
+  const installers = entries.filter((f) =>
+    INSTALLER_EXTS.includes(path.extname(f).toLowerCase()),
+  ).filter(f => f.includes(version));
+
+  if (installers.length === 0) {
+    err(`鏈湪 ${INSTALLER_DIR} 鎵惧埌瀹夎鍖呮枃浠禶);
+    err(`鏀寔鐨勬墿灞曞悕: ${INSTALLER_EXTS.join(', ')}`);
+    process.exit(1);
+  }
+
+  log(`鎵惧埌 ${installers.length} 涓畨瑁呭寘:`);
+
+  // 3. 璁＄畻姣忎釜鏂囦欢鐨?SHA-512 + 澶у皬銆?  const installerInfos: InstallerFile[] = [];
+  for (const filename of installers) {
+    const filePath = path.join(INSTALLER_DIR, filename);
+    const size = statSync(filePath).size;
+    log(`  璁＄畻 SHA-512: ${filename} (${formatSize(size)})...`);
+    const sha512 = await computeSha512(filePath);
+    installerInfos.push({ filename, sha512, size });
+    log(`  鉁?${sha512.substring(0, 16)}...`);
+  }
+
+  // 4. 鐢熸垚 latest.yml 鍐呭銆?  const releaseDate = new Date().toISOString();
+  const primary = installerInfos[0];
+
+  let yml = `version: ${version}\n`;
+  yml += `files:\n`;
+  for (const info of installerInfos) {
+    yml += `  - url: ${info.filename}\n`;
+    yml += `    sha512: ${info.sha512}\n`;
+    yml += `    size: ${info.size}\n`;
+  }
+  yml += `path: ${primary.filename}\n`;
+  yml += `sha512: ${primary.sha512}\n`;
+  yml += `releaseDate: '${releaseDate}'\n`;
+
+  // 5. 鍐欏叆鏂囦欢銆?  writeFileSync(OUTPUT_PATH, yml, 'utf-8');
+
+  console.log('');
+  log(`latest.yml 宸茬敓鎴? ${OUTPUT_PATH}`);
+  console.log('');
+  console.log('馃搵 鍐呭棰勮:');
+  console.log('鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€');
+  console.log(yml.trim());
+  console.log('鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€');
+  console.log('');
+  log(`涓诲畨瑁呭寘: ${primary.filename}`);
+  log(`  鐗堟湰: ${version}`);
+  log(`  澶у皬: ${formatSize(primary.size)}`);
+  log(`  SHA-512: ${primary.sha512.substring(0, 32)}...`);
+  log(`  鍙戝竷鏃堕棿: ${releaseDate}`);
+}
+
+main().catch((e) => {
+  err('鐢熸垚 latest.yml 澶辫触:', e instanceof Error ? e.stack ?? e.message : String(e));
+  process.exit(1);
+});

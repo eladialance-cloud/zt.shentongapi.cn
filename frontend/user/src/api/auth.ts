@@ -1,1 +1,29 @@
-﻿// 璁よ瘉鐩稿叧 APIimport request from '@/utils/request';import type { LoginParams, RegisterParams, User } from '@/types/api';import type { LoginResponse, RefreshTokenResponse } from '@/types/api';/** 鐢ㄦ埛鐧诲綍 */export function login(params: LoginParams) {  return request.post<unknown, LoginResponse>('/auth/login', params);}/** 鐢ㄦ埛娉ㄥ唽 */export function register(params: RegisterParams) {  return request.post<unknown, LoginResponse>('/auth/register', params);}/** 鍒锋柊 Token锛坮efreshToken 鐢?HttpOnly Cookie 鑷姩鎼哄甫锛?*/export function refreshToken() {  return request.post<unknown, RefreshTokenResponse>('/auth/refresh', {});}/** 閫€鍑虹櫥褰?*/export function logout() {  return request.post('/auth/logout');}/** 鑾峰彇褰撳墠鐢ㄦ埛淇℃伅 */export function getCurrentUser() {  return request.get<unknown, User>('/auth/me');}
+﻿// 璁よ瘉鐩稿叧 API
+import request from '@/utils/request';
+import type { LoginParams, RegisterParams, User } from '@/types/api';
+import type { LoginResponse, RefreshTokenResponse } from '@/types/api';
+
+/** 鐢ㄦ埛鐧诲綍 */
+export function login(params: LoginParams) {
+  return request.post<unknown, LoginResponse>('/auth/login', params);
+}
+
+/** 鐢ㄦ埛娉ㄥ唽 */
+export function register(params: RegisterParams) {
+  return request.post<unknown, LoginResponse>('/auth/register', params);
+}
+
+/** 鍒锋柊 Token锛坮efreshToken 鐢?HttpOnly Cookie 鑷姩鎼哄甫锛?*/
+export function refreshToken() {
+  return request.post<unknown, RefreshTokenResponse>('/auth/refresh', {});
+}
+
+/** 閫€鍑虹櫥褰?*/
+export function logout() {
+  return request.post('/auth/logout');
+}
+
+/** 鑾峰彇褰撳墠鐢ㄦ埛淇℃伅 */
+export function getCurrentUser() {
+  return request.get<unknown, User>('/auth/me');
+}

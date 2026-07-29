@@ -1,1 +1,743 @@
-﻿import {  Injectable,  NotFoundException,  BadRequestException,  ForbiddenException,  Logger,} from '@nestjs/common';import { InjectRepository } from '@nestjs/typeorm';import { Repository } from 'typeorm';import { ChatSessionEntity } from '../entities/chat-session.entity';import { ChatMessageEntity } from '../entities/chat-message.entity';import { AgentEntity } from '../../agent/entities/agent.entity';import { CreditsService } from '../../credits/services/credits.service';import { PricingService } from '../../credits/services/pricing.service';import { ApiKeyPoolService } from '../../api-key-pool/services/api-key-pool.service';import { EncryptionService } from '../../../common/services/encryption.service';import { LlmClientService } from './llm-client.service';import { McpService } from '../../mcp/services/mcp.service';import { OpenClawService } from '../../openclaw/services/openclaw.service';import { TaskService } from '../../task/services/task.service';import { TaskType } from '../../task/dto/task.dto';import { CodexService } from '../../codex/codex.service';import { maskApiKey } from '../../../common/utils/secret.util';export interface SendMessageOptions {  sessionId: number;  content: string;  userId: number;  attachments?: Array<{    id: string;    name: string;    type: string;    url: string;    size: number;  }>;}export interface StreamCallbacks {  onMessage: (chunk: string) => void;  onToolCall?: (toolCall: unknown) => void;  onCredits?: (credits: { amount: number; balance: number }) => void;  onDone: (usage: { input: number; output: number; total: number }) => void;  onError: (error: Error) => void;}/** * 鑱婂ぉ鏈嶅姟 * 鏁版嵁鍚堝悓鐪熸簮锛歍ask 27 - 瀵硅瘽浼氳瘽绠＄悊 + Task 29 - 绉垎璁¤垂 * 娴佺▼锛氫細璇濇牎楠?鈫?淇濆瓨鐢ㄦ埛娑堟伅 鈫?棰勬墸绉垎 鈫?鍙?API Key 鈫?娴佸紡璋冪敤 LLM 鈫?缁撶畻绉垎 鈫?淇濆瓨 AI 娑堟伅 */@Injectable()export class ChatService {  private readonly logger = new Logger(ChatService.name);  /** MCP 宸ュ叿鏈€澶ф暟閲忔埅鏂紙閬垮厤瓒呰繃 LLM 鐨?tools 闄愬埗锛?*/  private static readonly MAX_MCP_TOOLS = 30;  /** MCP 宸ュ叿鎵ц瓒呮椂锛堟绉掞級 */  private static readonly MCP_TOOL_TIMEOUT_MS = 30_000;  constructor(    @InjectRepository(ChatSessionEntity)    private sessionRepo: Repository<ChatSessionEntity>,    @InjectRepository(ChatMessageEntity)    private messageRepo: Repository<ChatMessageEntity>,    @InjectRepository(AgentEntity)    private agentRepo: Repository<AgentEntity>,    private creditsService: CreditsService,    private pricingService: PricingService,    private apiKeyPoolService: ApiKeyPoolService,    private encryptionService: EncryptionService,    private llmClient: LlmClientService,    private mcpService: McpService,    private openclawService: OpenClawService,    private taskService: TaskService,    private codexService: CodexService,  ) {}  // ============ 浼氳瘽绠＄悊 ============  /** 鍒涘缓浼氳瘽 */  async createSession(    userId: number,    agentId: number | null,    title?: string,  ): Promise<ChatSessionEntity> {    let agent: AgentEntity | null = null;    if (agentId) {      agent = await this.agentRepo.findOne({        where: { id: agentId, status: 'published' },      });      if (!agent) {        throw new NotFoundException('Agent 涓嶅瓨鍦ㄦ垨鏈笂鏋?);      }    }    const session = this.sessionRepo.create({      userId,      agentId: agentId ? String(agentId) : undefined,      modelId: agent?.modelId || 'gpt-4o-mini',      title: title || agent?.name || '鏂颁細璇?,      groupId: 0,    });    return this.sessionRepo.save(session);  }  /** 鑾峰彇浼氳瘽璇︽儏 */  async getSessionById(sessionId: number, userId: number): Promise<ChatSessionEntity> {    const session = await this.sessionRepo.findOne({      where: { id: sessionId, userId },    });    if (!session) {      throw new NotFoundException('浼氳瘽涓嶅瓨鍦?);    }    return session;  }  /** 鏇存柊浼氳瘽 */  async updateSession(    sessionId: number,    userId: number,    updates: { title?: string; pinned?: boolean; modelId?: string; agentId?: string },  ): Promise<ChatSessionEntity> {    const session = await this.sessionRepo.findOne({      where: { id: sessionId, userId },    });    if (!session) {      throw new NotFoundException('浼氳瘽涓嶅瓨鍦?);    }    if (updates.title !== undefined) session.title = updates.title;    if (updates.pinned !== undefined) session.pinned = updates.pinned;    if (updates.modelId !== undefined) session.modelId = updates.modelId;    if (updates.agentId !== undefined) session.agentId = updates.agentId;    return this.sessionRepo.save(session);  }  /** 鑾峰彇鐢ㄦ埛浼氳瘽鍒楄〃 */  async getUserSessions(    userId: number,    page = 1,    pageSize = 20,    keyword?: string,    pinned?: boolean,  ) {    const qb = this.sessionRepo.createQueryBuilder('s');    qb.where('s.userId = :userId', { userId });    if (keyword) {      qb.andWhere('(s.title LIKE :keyword)', { keyword: `%${keyword}%` });    }    if (pinned !== undefined) {      qb.andWhere('s.pinned = :pinned', { pinned });    }    qb.orderBy('s.updatedAt', 'DESC');    qb.skip((page - 1) * pageSize).take(pageSize);    const [list, total] = await qb.getManyAndCount();    return {      list,      total,      page,      pageSize,      totalPages: Math.ceil(total / pageSize) || 0,    };  }  /** 鑾峰彇浼氳瘽鍘嗗彶娑堟伅 */  async getSessionMessages(    sessionId: number,    userId: number,    page = 1,    pageSize = 50,  ) {    const session = await this.sessionRepo.findOne({      where: { id: sessionId, userId },    });    if (!session) {      throw new NotFoundException('浼氳瘽涓嶅瓨鍦?);    }    const [list, total] = await this.messageRepo.findAndCount({      where: { sessionId },      order: { createdAt: 'ASC' },      skip: (page - 1) * pageSize,      take: pageSize,    });    return {      list,      total,      page,      pageSize,      totalPages: Math.ceil(total / pageSize) || 0,    };  }  /** 鍒犻櫎浼氳瘽 */  async deleteSession(sessionId: number, userId: number): Promise<void> {    const session = await this.sessionRepo.findOne({      where: { id: sessionId, userId },    });    if (!session) throw new NotFoundException('浼氳瘽涓嶅瓨鍦?);    await this.messageRepo.delete({ sessionId });    await this.sessionRepo.delete(sessionId);  }  // ============ 鏍稿績瀵硅瘽娴佺▼ ============  /** 娴佸紡鍙戦€佹秷鎭?*/  async streamMessage(    options: SendMessageOptions,    callbacks: StreamCallbacks,  ): Promise<void> {    const { sessionId, content, userId } = options;    let errorHandled = false;    let frozenTxnId: number | null = null;    const handleError = async (error: Error) => {      if (errorHandled) return;      errorHandled = true;      // 娓呯悊宸蹭繚瀛樹絾鍚庣画澶辫触鐨勭敤鎴锋秷鎭?      try {        await this.messageRepo.delete({          sessionId,          role: 'user',          content,        });      } catch {        // 娓呯悊澶辫触涓嶅奖鍝嶄富娴佺▼      }      if (frozenTxnId) {        try {          await this.creditsService.refundCredits(userId, frozenTxnId);        } catch (err) {          this.logger.error(`閫€娆惧け璐? ${(err as Error).message}`);        }      }      callbacks.onError(error);    };    try {      // 1. 楠岃瘉浼氳瘽褰掑睘锛堝繀椤绘渶鍏堟墽琛岋紝鍚庣画鎵€鏈夋楠や緷璧?session锛?      const session = await this.sessionRepo.findOne({        where: { id: sessionId, userId },      });      if (!session) {        throw new NotFoundException('浼氳瘽涓嶅瓨鍦?);      }      // 骞惰鍖栦紭鍖栵紙H-11锛夛細灏嗘棤渚濊禆姝ラ閫氳繃 Promise.all 鍚屾椂鎵ц锛屽噺灏戦 token 寤惰繜      // 渚濊禆鍏崇郴锛?      //   step 2 (load agent)    渚濊禆 session.agentId      //   step 6 (get API key)   渚濊禆 session.modelId      //   step 3 (save user msg) 鈫?step 5 (get history) 涓茶閾撅紝渚濊禆 sessionId      //   step 4 (freeze credits) 渚濊禆 step 2 鐨?agent      //   step 7 (decrypt key)   渚濊禆 step 6      // 绗竴鎵瑰苟琛岋細step 2 (load agent) 鈥?step 6 (get API key)      const [agent, apiKeyEntry] = await Promise.all([        // Group A: 鍔犺浇 Agent 閰嶇疆锛堜緷璧?session.agentId锛?        session.agentId          ? this.agentRepo.findOne({              where: { id: Number(session.agentId) },            })          : Promise.resolve(null),        // Group B: 鑾峰彇 API Key锛堜緷璧?session.modelId锛?        this.apiKeyPoolService.getNextAvailableKey(          this.llmClient.getProviderFromModelId(session.modelId),        ),      ]);      // 澶勭悊 API Key 缂哄け      // 鏃跺簭璇存槑锛氬師鏂规涓?API Key 鏍￠獙鍦?freeze 涔嬪悗锛岄渶鎵嬪姩 refund锛?      // 鏂版柟妗堜腑 API Key 鏍￠獙鍦?freeze 涔嬪墠锛屾鏃?frozenTxnId 蹇呬负 null锛屾棤闇€ refund      if (!apiKeyEntry) {        throw new BadRequestException('娌℃湁鍙敤鐨?API Key锛岃鑱旂郴绠＄悊鍛?);      }      // 绗簩鎵瑰苟琛岋細step 3鈫? (save msg + get history 涓茶閾? 鈥?step 4 (freeze credits)      // 娉ㄦ剰锛歨istory 蹇呴』鍦?userMessage 淇濆瓨涔嬪悗鏌ヨ锛屼互淇濊瘉鍖呭惈鍒氫繚瀛樼殑鐢ㄦ埛娑堟伅      const estimatedCost = await this.estimateCost(agent, userId);      const [history] = await Promise.all([        // Group C: 淇濆瓨鐢ㄦ埛娑堟伅 鈫?鑾峰彇鍘嗗彶涓婁笅鏂囷紙涓茶閾撅紝渚濊禆 sessionId锛?        (async () => {          const userMessage = this.messageRepo.create({            sessionId,            role: 'user',            content,            attachments: options.attachments,          });          await this.messageRepo.save(userMessage);          return this.getContextMessages(sessionId, 20);        })(),        // Group D: 浼扮畻璐圭敤骞堕鎵ｇН鍒嗭紙渚濊禆 step 2 鐨?agent锛?        (async () => {          if (estimatedCost > 0) {            try {              const freezeTxn = await this.creditsService.freezeCredits(                userId,                estimatedCost,                'model_call',                `session_${sessionId}`,                agent?.modelId,              );              frozenTxnId = freezeTxn.id;            } catch {              throw new ForbiddenException('绉垎浣欓涓嶈冻锛岃鍏呭€?);            }          }        })(),      ]);      // 7. 瑙ｅ瘑 API Key锛堜緷璧?apiKeyEntry锛涜嫢瑙ｅ瘑澶辫触闇€ refund 宸插喕缁撶Н鍒嗭級      // 璺敱鍒ゆ柇锛氬鏋?Agent 鐨?runtimeType 涓?openclaw/hermes锛岃蛋瀵瑰簲杩愯鏃?      if (agent && agent.runtimeType === 'openclaw' && agent.openclawAgentId) {        // OpenClaw 杩愯鏃惰矾寰?        this.logger.log(`Agent ${agent.id} 璺敱鍒?OpenClaw 杩愯鏃? ${agent.openclawAgentId}`);        try {          const openclawResponse = await this.openclawService.invokeAgent(            userId,            agent.openclawAgentId,            content,            history.map((m) => ({ role: m.role, content: m.content })),          );          // 灏?OpenClaw 鍝嶅簲杞负娴佸紡杈撳嚭          if (openclawResponse instanceof Response) {            const reader = (openclawResponse as Response).body?.getReader();            if (reader) {              const decoder = new TextDecoder();              let fullResponse = '';              while (true) {                const { done, value } = await reader.read();                if (done) break;                const chunk = decoder.decode(value, { stream: true });                fullResponse += chunk;                callbacks.onMessage(chunk);              }              // 淇濆瓨 AI 娑堟伅              const actualCost = await this.estimateCost(agent, userId);              try {                await this.messageRepo.save({                  sessionId,                  role: 'assistant',                  content: fullResponse,                  creditsCost: actualCost,                });              } catch (err) {                this.logger.error(`淇濆瓨 AI 娑堟伅澶辫触: ${(err as Error).message}`);              }              // 缁撶畻绉垎              if (frozenTxnId && actualCost > 0) {                try {                  await this.creditsService.settleCredits(userId, frozenTxnId, actualCost);                } catch (err) {                  this.logger.error(`绉垎缁撶畻澶辫触: ${(err as Error).message}`);                }              } else if (frozenTxnId && actualCost === 0) {                try {                  await this.creditsService.refundCredits(userId, frozenTxnId);                } catch (err) {                  this.logger.error(`閫€娆惧け璐? ${(err as Error).message}`);                }              }              // 鏇存柊 Agent 璋冪敤娆℃暟              try {                await this.agentRepo.increment({ id: agent.id }, 'callCount', 1);              } catch (err) {                this.logger.error(`Agent璋冪敤娆℃暟鏇存柊澶辫触: ${(err as Error).message}`);              }              callbacks.onDone({ input: 0, output: 0, total: 0 });            } else {              throw new Error('OpenClaw 鍝嶅簲鏃犲彲璇绘祦');            }          } else {            // 闈?Response 瀵硅薄锛岀洿鎺ヨ繑鍥?            const fullResponse = JSON.stringify(openclawResponse);            callbacks.onMessage(fullResponse);            await this.messageRepo.save({              sessionId,              role: 'assistant',              content: fullResponse,              creditsCost: await this.estimateCost(agent, userId),            });            if (frozenTxnId) {              try {                await this.creditsService.settleCredits(userId, frozenTxnId, await this.estimateCost(agent, userId));              } catch (err) {                this.logger.error(`绉垎缁撶畻澶辫触: ${(err as Error).message}`);              }            }            callbacks.onDone({ input: 0, output: 0, total: 0 });          }          // 鏇存柊浼氳瘽鏃堕棿          await this.sessionRepo.update(sessionId, { updatedAt: new Date() });          return;        } catch (err) {          this.logger.error(`OpenClaw 璋冪敤澶辫触: ${(err as Error).message}`);          await handleError(err as Error);          return;        }      }      // Hermes 杩愯鏃惰矾寰勶紙鏈湴 Hermes Agent 鎵ц锛?      if (agent && (agent.runtimeType === 'hermes' || agent.runtimeType === 'hybrid')) {        this.logger.log(`Agent ${agent.id} 璺敱鍒版湰鍦?Hermes Agent`);        // 閫€鍥為鍐荤粨鐨勭Н鍒嗭紙Hermes 鏈湴鎵ц鏃讹紝绉垎鍦?llm-proxy 涓墸璐癸級        if (frozenTxnId) {          try {            await this.creditsService.refundCredits(userId, frozenTxnId);            this.logger.log(`Hermes 鏈湴鎵ц妯″紡锛屽凡閫€鍥為鍐荤粨绉垎 txnId=${frozenTxnId}`);          } catch (err) {            this.logger.error(`閫€鍥為鍐荤粨绉垎澶辫触: ${(err as Error).message}`);          }        }        // 杩斿洖鏈湴鎵ц鎸囦护        callbacks.onMessage(JSON.stringify({          type: 'hermes_local_execute',          hermesEndpoint: 'http://127.0.0.1:8642',          hermesApiKey: process.env.HERMES_API_SERVER_KEY || '',          agentId: String(agent.id),          systemPrompt: agent.systemPrompt || '浣犳槸涓€涓湁甯姪鐨凙I鍔╂墜銆?,          message: content,          history: history.map(m => ({ role: m.role, content: m.content })),        }));        callbacks.onDone({ input: 0, output: 0, total: 0 });        return;      }      let decryptedKey = '';      try {        decryptedKey = this.encryptionService.decryptAes(apiKeyEntry.apiKey);      } catch (err) {        this.logger.error(`API Key 瑙ｅ瘑澶辫触: ${(err as Error).message}`);        if (frozenTxnId) {          await this.creditsService.refundCredits(userId, frozenTxnId);        }        throw new BadRequestException('API Key 瑙ｅ瘑澶辫触');      }      // 8. 璋冪敤 LLM 娴佸紡鎺ュ彛      try {        this.logger.debug(          `璋冪敤 LLM 娴佸紡鎺ュ彛: model=${session.modelId}, agentId=${agent?.id ?? 'none'}, key=${maskApiKey(decryptedKey)}`,        );        // 鏀堕泦鐢ㄦ埛宸插惎鐢ㄧ殑 MCP Server 宸ュ叿        let openaiTools: Array<{          type: 'function';          function: {            name: string;            description: string;            parameters: Record<string, unknown>;          };        }> = [];        let toolServerMap: Record<string, string> = {}; // toolName 鈫?serverId        try {          const mcpServers = await this.mcpService.listServers(userId);          const enabledServers = mcpServers.filter((s) => s.enabled);          let totalToolsLoaded = 0;          for (const server of enabledServers) {            try {              const tools = await this.mcpService.listTools(userId, String(server.id));              for (const t of tools as Array<Record<string, unknown>>) {                if (totalToolsLoaded >= ChatService.MAX_MCP_TOOLS) {                  this.logger.warn(                    `MCP 宸ュ叿鏁伴噺宸茶揪涓婇檺 ${ChatService.MAX_MCP_TOOLS}锛屾埅鏂墿浣欏伐鍏?(server=${server.name})`,                  );                  break;                }                const toolName = t.name as string;                // 鍛藉悕绌洪棿鍖栵細serverName__toolName 閬垮厤鍐茬獊                const namespacedName = `${server.name}__${toolName}`;                openaiTools.push({                  type: 'function',                  function: {                    name: namespacedName,                    description: (t.description as string) || toolName,                    parameters: (t.inputSchema as Record<string, unknown>) || { type: 'object', properties: {} },                  },                });                toolServerMap[namespacedName] = String(server.id);                totalToolsLoaded++;              }            } catch {              // 鍗曚釜 server 宸ュ叿鍒楄〃鑾峰彇澶辫触锛岃烦杩?              this.logger.warn(`MCP Server ${server.name} 宸ュ叿鍒楄〃鑾峰彇澶辫触锛岃烦杩嘸);            }            if (totalToolsLoaded >= ChatService.MAX_MCP_TOOLS) break;          }          if (openaiTools.length > 0) {            this.logger.debug(`宸插姞杞?${openaiTools.length} 涓?MCP 宸ュ叿 (鍏?${enabledServers.length} 涓?server)`);          }        } catch {          // MCP 宸ュ叿鍔犺浇澶辫触涓嶅奖鍝嶅熀纭€瀵硅瘽          this.logger.warn('MCP 宸ュ叿鍔犺浇澶辫触锛屽皢杩涜绾枃鏈璇?);        }        // 濡傛灉 Agent 鍚敤浜?CodeX锛屾敞鍏ヤ唬鐮佹墽琛屽伐鍏?        if (agent?.useCodex) {          const codexTools = this.codexService.getMcpToolDefinitions();          for (const tool of codexTools) {            const namespacedName = `codex__${tool.toolName}`;            openaiTools.push({              type: 'function',              function: {                name: namespacedName,                description: tool.description,                parameters: tool.inputSchema,              },            });            // CodeX 宸ュ叿鐨勬墽琛屽櫒            toolServerMap[namespacedName] = 'codex';          }          this.logger.debug(`宸叉敞鍏?${codexTools.length} 涓?CodeX 宸ュ叿`);        }        await this.llmClient.streamChat(          {            model: session.modelId,            apiKey: decryptedKey,            systemPrompt: agent?.systemPrompt || '浣犳槸涓€涓湁甯姪鐨凙I鍔╂墜銆?,            messages: history.map((m) => ({ role: m.role, content: m.content })),            tools: openaiTools.length > 0 ? openaiTools : undefined,            toolExecutor: openaiTools.length > 0              ? async (toolName: string, args: Record<string, unknown>) => {                  // 瑙ｆ瀽鍛藉悕绌洪棿锛歴erverName__toolName 鈫?serverId + toolName                  const sepIdx = toolName.indexOf('__');                  if (sepIdx === -1) {                    throw new Error(`宸ュ叿鍚嶆牸寮忛敊璇? ${toolName}`);                  }                  const serverId = toolServerMap[toolName];                  const realToolName = toolName.slice(sepIdx + 2);                  if (!serverId) {                    throw new Error(`鏈壘鍒板伐鍏峰搴旂殑鏈嶅姟鍣? ${toolName}`);                  }                  const startTime = Date.now();                  this.logger.log(                    `鎵ц MCP 宸ュ叿: ${realToolName} on server ${serverId}, args=${JSON.stringify(args).slice(0, 200)}`,                  );                  // CodeX 宸ュ叿璺敱                  if (serverId === 'codex') {                    try {                      let result: unknown;                      if (realToolName === 'execute_code') {                        result = await this.codexService.executeCode(                          (args as any).language,                          (args as any).code,                          (args as any).timeout,                        );                      } else if (realToolName === 'fix_code') {                        result = await this.codexService.fixCode(                          (args as any).code,                          (args as any).errorMessage,                        );                      } else {                        throw new Error(`鏈煡鐨?CodeX 宸ュ叿: ${realToolName}`);                      }                      this.logger.log(                        `MCP 宸ュ叿 ${realToolName} 鎵ц鎴愬姛, 鑰楁椂 ${Date.now() - startTime}ms`,                      );                      return result;                    } catch (err) {                      const elapsed = Date.now() - startTime;                      this.logger.error(                        `CodeX 宸ュ叿 ${realToolName} 鎵ц澶辫触 (${elapsed}ms): ${(err as Error).message}`,                      );                      // 闄嶇骇锛氳繑鍥為敊璇俊鎭粰 LLM锛岃瀹冭嚜琛屽鐞?                      return { error: `宸ュ叿鎵ц澶辫触: ${(err as Error).message}`, toolName: realToolName };                    }                  }                  // MCP 宸ュ叿鎵ц锛堝甫瓒呮椂淇濇姢锛?                  try {                    const result = await Promise.race([                      this.mcpService.callTool(userId, {                        serverId,                        toolName: realToolName,                        args,                      }),                      new Promise<never>((_, reject) =>                        setTimeout(                          () => reject(new Error(`宸ュ叿鎵ц瓒呮椂 (${ChatService.MCP_TOOL_TIMEOUT_MS}ms)`)),                          ChatService.MCP_TOOL_TIMEOUT_MS,                        ),                      ),                    ]);                    this.logger.log(                      `MCP 宸ュ叿 ${realToolName} 鎵ц鎴愬姛, 鑰楁椂 ${Date.now() - startTime}ms`,                    );                    return result;                  } catch (err) {                    const elapsed = Date.now() - startTime;                    this.logger.error(                      `MCP 宸ュ叿 ${realToolName} 鎵ц澶辫触 (${elapsed}ms): ${(err as Error).message}`,                    );                    // 闄嶇骇锛氳繑鍥為敊璇俊鎭粰 LLM锛岃瀹冨熀浜庨敊璇俊鎭户缁璇?                    return { error: `宸ュ叿鎵ц澶辫触: ${(err as Error).message}`, toolName: realToolName };                  }                }              : undefined,          },          {            onMessage: (chunk) => callbacks.onMessage(chunk),            onDone: async (usage, fullResponse) => {              // 9. 淇濆瓨 AI 鍝嶅簲娑堟伅锛堢Щ鍒拌繖閲岋紝鍏堜簬绉垎缁撶畻锛?              const { cost: actualCost, modelId: costModelId } = await this.calculateActualCost(agent, usage, userId);              try {                await this.messageRepo.save({                  sessionId,                  role: 'assistant',                  content: fullResponse,                  tokenUsage: usage,                  creditsCost: actualCost,                });              } catch (err) {                this.logger.error(`淇濆瓨 AI 娑堟伅澶辫触: ${(err as Error).message}`);                // 娑堟伅淇濆瓨澶辫触锛岄€€鍥炲喕缁撶Н鍒?                if (frozenTxnId) {                  try {                    await this.creditsService.refundCredits(userId, frozenTxnId);                    this.logger.log(`娑堟伅淇濆瓨澶辫触锛屽凡閫€鍥炲喕缁撶Н鍒?txnId=${frozenTxnId}`);                  } catch (refundErr) {                    this.logger.error(`閫€鍥炲喕缁撶Н鍒嗗け璐? ${(refundErr as Error).message}`);                  }                }                return;              }              // 10. 缁撶畻绉垎              if (frozenTxnId && actualCost > 0) {                try {                  await this.creditsService.settleCredits(                    userId,                    frozenTxnId,                    actualCost,                  );                } catch (err) {                  this.logger.error(                    `绉垎缁撶畻澶辫触: ${(err as Error).message}, frozenTxnId=${frozenTxnId}, userId=${userId}`,                  );                  // 缁撶畻澶辫触涓嶉€€娆锯€斺€擫LM宸叉秷鑰楋紝鐢ㄦ埛搴旀壙鎷呰垂鐢?                  // 璁板綍鍒版棩蹇椾緵鍚庣画浜哄伐瀵硅处                }              } else if (frozenTxnId && actualCost === 0) {                try {                  await this.creditsService.refundCredits(userId, frozenTxnId);                } catch (err) {                  this.logger.error(                    `閫€娆惧け璐? ${(err as Error).message}, frozenTxnId=${frozenTxnId}`,                  );                }              }              // 11. 鎵ｅ噺 API Key 閰嶉              try {                await this.apiKeyPoolService.deductQuota(                  apiKeyEntry.id,                  usage.total,                );              } catch (err) {                this.logger.error(                  `API Key 閰嶉鎵ｅ噺澶辫触: ${(err as Error).message}, keyId=${apiKeyEntry.id}`,                );                // 閰嶉鎵ｅ噺澶辫触涓嶅奖鍝嶇敤鎴蜂綋楠岋紝璁板綍鏃ュ織渚涘璐?              }              // 12. 鏇存柊 Agent 璋冪敤娆℃暟              if (agent) {                try {                  await this.agentRepo.increment(                    { id: agent.id },                    'callCount',                    1,                  );                } catch (err) {                  this.logger.error(                    `Agent璋冪敤娆℃暟鏇存柊澶辫触: ${(err as Error).message}, agentId=${agent.id}`,                  );                }              }              // 鍒涘缓浠诲姟璁板綍锛堝鏋?Agent 鍚敤浜?CodeX锛?              if (agent?.useCodex) {                try {                  await this.taskService.createTask(userId, {                    taskType: TaskType.CODEX,                    agentId: agent.id ?? undefined,                    title: content.slice(0, 100),                    inputText: content,                  });                } catch (err) {                  this.logger.error(`鍒涘缓浠诲姟璁板綍澶辫触: ${(err as Error).message}`);                }              }              callbacks.onDone(usage);            },            onError: async (error) => {              await handleError(error);            },          },        );      } finally {        // 娓呯悊 API Key 鏄庢枃寮曠敤锛岄槻姝㈠唴瀛橀┗鐣?        decryptedKey = '';      }      // 13. 鏇存柊浼氳瘽鏃堕棿      await this.sessionRepo.update(sessionId, { updatedAt: new Date() });    } catch (err) {      await handleError(err as Error);    }  }  // ============ 杈呭姪鏂规硶 ============  /** 浼扮畻璐圭敤锛堥鎵ｇ敤锛夆€斺€斿鎵樼粰 PricingService锛屽簲鐢ㄤ細鍛樻姌鎵?*/  private async estimateCost(agent: AgentEntity | null, userId?: number): Promise<number> {    const rawCost = await this.pricingService.estimateCost(agent);    if (userId && rawCost > 0) {      const userLevel = await this.pricingService.getUserLevel(userId);      return this.pricingService.applyDiscount(rawCost, userLevel);    }    return rawCost;  }  /** 璁＄畻瀹為檯璐圭敤锛堢粨绠楃敤锛夆€斺€斿鎵樼粰 PricingService锛屽簲鐢ㄤ細鍛樻姌鎵?*/  private async calculateActualCost(    agent: AgentEntity | null,    usage: { input: number; output: number; total: number },    userId?: number,  ): Promise<{ cost: number; modelId?: string }> {    const { cost: rawCost, modelId } = await this.pricingService.calculateActualCost(agent, usage);    if (userId && rawCost > 0) {      const userLevel = await this.pricingService.getUserLevel(userId);      return { cost: this.pricingService.applyDiscount(rawCost, userLevel), modelId };    }    return { cost: rawCost, modelId };  }  /** 鑾峰彇涓婁笅鏂囨秷鎭紙鏈€杩?N 鏉★紝鎸夋椂闂存搴忥級 */  private async getContextMessages(    sessionId: number,    limit: number,  ): Promise<ChatMessageEntity[]> {    const msgs = await this.messageRepo.find({      where: { sessionId },      order: { createdAt: 'DESC' },      take: limit,    });    return msgs      .filter((m) => m.role === 'user' || m.role === 'assistant')      .reverse();  }  health() {    return { status: 'ok', module: 'chat' };  }}
+﻿import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  Logger,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ChatSessionEntity } from '../entities/chat-session.entity';
+import { ChatMessageEntity } from '../entities/chat-message.entity';
+import { AgentEntity } from '../../agent/entities/agent.entity';
+import { CreditsService } from '../../credits/services/credits.service';
+import { PricingService } from '../../credits/services/pricing.service';
+import { ApiKeyPoolService } from '../../api-key-pool/services/api-key-pool.service';
+import { EncryptionService } from '../../../common/services/encryption.service';
+import { LlmClientService } from './llm-client.service';
+import { McpService } from '../../mcp/services/mcp.service';
+import { OpenClawService } from '../../openclaw/services/openclaw.service';
+import { TaskService } from '../../task/services/task.service';
+import { TaskType } from '../../task/dto/task.dto';
+import { CodexService } from '../../codex/codex.service';
+import { maskApiKey } from '../../../common/utils/secret.util';
+
+export interface SendMessageOptions {
+  sessionId: number;
+  content: string;
+  userId: number;
+  attachments?: Array<{
+    id: string;
+    name: string;
+    type: string;
+    url: string;
+    size: number;
+  }>;
+}
+
+export interface StreamCallbacks {
+  onMessage: (chunk: string) => void;
+  onToolCall?: (toolCall: unknown) => void;
+  onCredits?: (credits: { amount: number; balance: number }) => void;
+  onDone: (usage: { input: number; output: number; total: number }) => void;
+  onError: (error: Error) => void;
+}
+
+/**
+ * 鑱婂ぉ鏈嶅姟
+ * 鏁版嵁鍚堝悓鐪熸簮锛歍ask 27 - 瀵硅瘽浼氳瘽绠＄悊 + Task 29 - 绉垎璁¤垂
+ * 娴佺▼锛氫細璇濇牎楠?鈫?淇濆瓨鐢ㄦ埛娑堟伅 鈫?棰勬墸绉垎 鈫?鍙?API Key 鈫?娴佸紡璋冪敤 LLM 鈫?缁撶畻绉垎 鈫?淇濆瓨 AI 娑堟伅
+ */
+@Injectable()
+export class ChatService {
+  private readonly logger = new Logger(ChatService.name);
+
+  /** MCP 宸ュ叿鏈€澶ф暟閲忔埅鏂紙閬垮厤瓒呰繃 LLM 鐨?tools 闄愬埗锛?*/
+  private static readonly MAX_MCP_TOOLS = 30;
+  /** MCP 宸ュ叿鎵ц瓒呮椂锛堟绉掞級 */
+  private static readonly MCP_TOOL_TIMEOUT_MS = 30_000;
+
+  constructor(
+    @InjectRepository(ChatSessionEntity)
+    private sessionRepo: Repository<ChatSessionEntity>,
+    @InjectRepository(ChatMessageEntity)
+    private messageRepo: Repository<ChatMessageEntity>,
+    @InjectRepository(AgentEntity)
+    private agentRepo: Repository<AgentEntity>,
+    private creditsService: CreditsService,
+    private pricingService: PricingService,
+    private apiKeyPoolService: ApiKeyPoolService,
+    private encryptionService: EncryptionService,
+    private llmClient: LlmClientService,
+    private mcpService: McpService,
+    private openclawService: OpenClawService,
+    private taskService: TaskService,
+    private codexService: CodexService,
+  ) {}
+
+  // ============ 浼氳瘽绠＄悊 ============
+
+  /** 鍒涘缓浼氳瘽 */
+  async createSession(
+    userId: number,
+    agentId: number | null,
+    title?: string,
+  ): Promise<ChatSessionEntity> {
+    let agent: AgentEntity | null = null;
+    if (agentId) {
+      agent = await this.agentRepo.findOne({
+        where: { id: agentId, status: 'published' },
+      });
+      if (!agent) {
+        throw new NotFoundException('Agent 涓嶅瓨鍦ㄦ垨鏈笂鏋?);
+      }
+    }
+
+    const session = this.sessionRepo.create({
+      userId,
+      agentId: agentId ? String(agentId) : undefined,
+      modelId: agent?.modelId || 'gpt-4o-mini',
+      title: title || agent?.name || '鏂颁細璇?,
+      groupId: 0,
+    });
+
+    return this.sessionRepo.save(session);
+  }
+
+  /** 鑾峰彇浼氳瘽璇︽儏 */
+  async getSessionById(sessionId: number, userId: number): Promise<ChatSessionEntity> {
+    const session = await this.sessionRepo.findOne({
+      where: { id: sessionId, userId },
+    });
+    if (!session) {
+      throw new NotFoundException('浼氳瘽涓嶅瓨鍦?);
+    }
+    return session;
+  }
+
+  /** 鏇存柊浼氳瘽 */
+  async updateSession(
+    sessionId: number,
+    userId: number,
+    updates: { title?: string; pinned?: boolean; modelId?: string; agentId?: string },
+  ): Promise<ChatSessionEntity> {
+    const session = await this.sessionRepo.findOne({
+      where: { id: sessionId, userId },
+    });
+    if (!session) {
+      throw new NotFoundException('浼氳瘽涓嶅瓨鍦?);
+    }
+    if (updates.title !== undefined) session.title = updates.title;
+    if (updates.pinned !== undefined) session.pinned = updates.pinned;
+    if (updates.modelId !== undefined) session.modelId = updates.modelId;
+    if (updates.agentId !== undefined) session.agentId = updates.agentId;
+    return this.sessionRepo.save(session);
+  }
+
+  /** 鑾峰彇鐢ㄦ埛浼氳瘽鍒楄〃 */
+  async getUserSessions(
+    userId: number,
+    page = 1,
+    pageSize = 20,
+    keyword?: string,
+    pinned?: boolean,
+  ) {
+    const qb = this.sessionRepo.createQueryBuilder('s');
+    qb.where('s.userId = :userId', { userId });
+    if (keyword) {
+      qb.andWhere('(s.title LIKE :keyword)', { keyword: `%${keyword}%` });
+    }
+    if (pinned !== undefined) {
+      qb.andWhere('s.pinned = :pinned', { pinned });
+    }
+    qb.orderBy('s.updatedAt', 'DESC');
+    qb.skip((page - 1) * pageSize).take(pageSize);
+    const [list, total] = await qb.getManyAndCount();
+    return {
+      list,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize) || 0,
+    };
+  }
+
+  /** 鑾峰彇浼氳瘽鍘嗗彶娑堟伅 */
+  async getSessionMessages(
+    sessionId: number,
+    userId: number,
+    page = 1,
+    pageSize = 50,
+  ) {
+    const session = await this.sessionRepo.findOne({
+      where: { id: sessionId, userId },
+    });
+    if (!session) {
+      throw new NotFoundException('浼氳瘽涓嶅瓨鍦?);
+    }
+
+    const [list, total] = await this.messageRepo.findAndCount({
+      where: { sessionId },
+      order: { createdAt: 'ASC' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    return {
+      list,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize) || 0,
+    };
+  }
+
+  /** 鍒犻櫎浼氳瘽 */
+  async deleteSession(sessionId: number, userId: number): Promise<void> {
+    const session = await this.sessionRepo.findOne({
+      where: { id: sessionId, userId },
+    });
+    if (!session) throw new NotFoundException('浼氳瘽涓嶅瓨鍦?);
+    await this.messageRepo.delete({ sessionId });
+    await this.sessionRepo.delete(sessionId);
+  }
+
+  // ============ 鏍稿績瀵硅瘽娴佺▼ ============
+
+  /** 娴佸紡鍙戦€佹秷鎭?*/
+  async streamMessage(
+    options: SendMessageOptions,
+    callbacks: StreamCallbacks,
+  ): Promise<void> {
+    const { sessionId, content, userId } = options;
+    let errorHandled = false;
+    let frozenTxnId: number | null = null;
+
+    const handleError = async (error: Error) => {
+      if (errorHandled) return;
+      errorHandled = true;
+      // 娓呯悊宸蹭繚瀛樹絾鍚庣画澶辫触鐨勭敤鎴锋秷鎭?      try {
+        await this.messageRepo.delete({
+          sessionId,
+          role: 'user',
+          content,
+        });
+      } catch {
+        // 娓呯悊澶辫触涓嶅奖鍝嶄富娴佺▼
+      }
+      if (frozenTxnId) {
+        try {
+          await this.creditsService.refundCredits(userId, frozenTxnId);
+        } catch (err) {
+          this.logger.error(`閫€娆惧け璐? ${(err as Error).message}`);
+        }
+      }
+      callbacks.onError(error);
+    };
+
+    try {
+      // 1. 楠岃瘉浼氳瘽褰掑睘锛堝繀椤绘渶鍏堟墽琛岋紝鍚庣画鎵€鏈夋楠や緷璧?session锛?      const session = await this.sessionRepo.findOne({
+        where: { id: sessionId, userId },
+      });
+      if (!session) {
+        throw new NotFoundException('浼氳瘽涓嶅瓨鍦?);
+      }
+
+      // 骞惰鍖栦紭鍖栵紙H-11锛夛細灏嗘棤渚濊禆姝ラ閫氳繃 Promise.all 鍚屾椂鎵ц锛屽噺灏戦 token 寤惰繜
+      // 渚濊禆鍏崇郴锛?      //   step 2 (load agent)    渚濊禆 session.agentId
+      //   step 6 (get API key)   渚濊禆 session.modelId
+      //   step 3 (save user msg) 鈫?step 5 (get history) 涓茶閾撅紝渚濊禆 sessionId
+      //   step 4 (freeze credits) 渚濊禆 step 2 鐨?agent
+      //   step 7 (decrypt key)   渚濊禆 step 6
+      // 绗竴鎵瑰苟琛岋細step 2 (load agent) 鈥?step 6 (get API key)
+      const [agent, apiKeyEntry] = await Promise.all([
+        // Group A: 鍔犺浇 Agent 閰嶇疆锛堜緷璧?session.agentId锛?        session.agentId
+          ? this.agentRepo.findOne({
+              where: { id: Number(session.agentId) },
+            })
+          : Promise.resolve(null),
+        // Group B: 鑾峰彇 API Key锛堜緷璧?session.modelId锛?        this.apiKeyPoolService.getNextAvailableKey(
+          this.llmClient.getProviderFromModelId(session.modelId),
+        ),
+      ]);
+
+      // 澶勭悊 API Key 缂哄け
+      // 鏃跺簭璇存槑锛氬師鏂规涓?API Key 鏍￠獙鍦?freeze 涔嬪悗锛岄渶鎵嬪姩 refund锛?      // 鏂版柟妗堜腑 API Key 鏍￠獙鍦?freeze 涔嬪墠锛屾鏃?frozenTxnId 蹇呬负 null锛屾棤闇€ refund
+      if (!apiKeyEntry) {
+        throw new BadRequestException('娌℃湁鍙敤鐨?API Key锛岃鑱旂郴绠＄悊鍛?);
+      }
+
+      // 绗簩鎵瑰苟琛岋細step 3鈫? (save msg + get history 涓茶閾? 鈥?step 4 (freeze credits)
+      // 娉ㄦ剰锛歨istory 蹇呴』鍦?userMessage 淇濆瓨涔嬪悗鏌ヨ锛屼互淇濊瘉鍖呭惈鍒氫繚瀛樼殑鐢ㄦ埛娑堟伅
+      const estimatedCost = await this.estimateCost(agent, userId);
+      const [history] = await Promise.all([
+        // Group C: 淇濆瓨鐢ㄦ埛娑堟伅 鈫?鑾峰彇鍘嗗彶涓婁笅鏂囷紙涓茶閾撅紝渚濊禆 sessionId锛?        (async () => {
+          const userMessage = this.messageRepo.create({
+            sessionId,
+            role: 'user',
+            content,
+            attachments: options.attachments,
+          });
+          await this.messageRepo.save(userMessage);
+          return this.getContextMessages(sessionId, 20);
+        })(),
+        // Group D: 浼扮畻璐圭敤骞堕鎵ｇН鍒嗭紙渚濊禆 step 2 鐨?agent锛?        (async () => {
+          if (estimatedCost > 0) {
+            try {
+              const freezeTxn = await this.creditsService.freezeCredits(
+                userId,
+                estimatedCost,
+                'model_call',
+                `session_${sessionId}`,
+                agent?.modelId,
+              );
+              frozenTxnId = freezeTxn.id;
+            } catch {
+              throw new ForbiddenException('绉垎浣欓涓嶈冻锛岃鍏呭€?);
+            }
+          }
+        })(),
+      ]);
+
+      // 7. 瑙ｅ瘑 API Key锛堜緷璧?apiKeyEntry锛涜嫢瑙ｅ瘑澶辫触闇€ refund 宸插喕缁撶Н鍒嗭級
+      // 璺敱鍒ゆ柇锛氬鏋?Agent 鐨?runtimeType 涓?openclaw/hermes锛岃蛋瀵瑰簲杩愯鏃?      if (agent && agent.runtimeType === 'openclaw' && agent.openclawAgentId) {
+        // OpenClaw 杩愯鏃惰矾寰?        this.logger.log(`Agent ${agent.id} 璺敱鍒?OpenClaw 杩愯鏃? ${agent.openclawAgentId}`);
+        try {
+          const openclawResponse = await this.openclawService.invokeAgent(
+            userId,
+            agent.openclawAgentId,
+            content,
+            history.map((m) => ({ role: m.role, content: m.content })),
+          );
+
+          // 灏?OpenClaw 鍝嶅簲杞负娴佸紡杈撳嚭
+          if (openclawResponse instanceof Response) {
+            const reader = (openclawResponse as Response).body?.getReader();
+            if (reader) {
+              const decoder = new TextDecoder();
+              let fullResponse = '';
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value, { stream: true });
+                fullResponse += chunk;
+                callbacks.onMessage(chunk);
+              }
+
+              // 淇濆瓨 AI 娑堟伅
+              const actualCost = await this.estimateCost(agent, userId);
+              try {
+                await this.messageRepo.save({
+                  sessionId,
+                  role: 'assistant',
+                  content: fullResponse,
+                  creditsCost: actualCost,
+                });
+              } catch (err) {
+                this.logger.error(`淇濆瓨 AI 娑堟伅澶辫触: ${(err as Error).message}`);
+              }
+
+              // 缁撶畻绉垎
+              if (frozenTxnId && actualCost > 0) {
+                try {
+                  await this.creditsService.settleCredits(userId, frozenTxnId, actualCost);
+                } catch (err) {
+                  this.logger.error(`绉垎缁撶畻澶辫触: ${(err as Error).message}`);
+                }
+              } else if (frozenTxnId && actualCost === 0) {
+                try {
+                  await this.creditsService.refundCredits(userId, frozenTxnId);
+                } catch (err) {
+                  this.logger.error(`閫€娆惧け璐? ${(err as Error).message}`);
+                }
+              }
+
+              // 鏇存柊 Agent 璋冪敤娆℃暟
+              try {
+                await this.agentRepo.increment({ id: agent.id }, 'callCount', 1);
+              } catch (err) {
+                this.logger.error(`Agent璋冪敤娆℃暟鏇存柊澶辫触: ${(err as Error).message}`);
+              }
+
+              callbacks.onDone({ input: 0, output: 0, total: 0 });
+            } else {
+              throw new Error('OpenClaw 鍝嶅簲鏃犲彲璇绘祦');
+            }
+          } else {
+            // 闈?Response 瀵硅薄锛岀洿鎺ヨ繑鍥?            const fullResponse = JSON.stringify(openclawResponse);
+            callbacks.onMessage(fullResponse);
+            await this.messageRepo.save({
+              sessionId,
+              role: 'assistant',
+              content: fullResponse,
+              creditsCost: await this.estimateCost(agent, userId),
+            });
+            if (frozenTxnId) {
+              try {
+                await this.creditsService.settleCredits(userId, frozenTxnId, await this.estimateCost(agent, userId));
+              } catch (err) {
+                this.logger.error(`绉垎缁撶畻澶辫触: ${(err as Error).message}`);
+              }
+            }
+            callbacks.onDone({ input: 0, output: 0, total: 0 });
+          }
+
+          // 鏇存柊浼氳瘽鏃堕棿
+          await this.sessionRepo.update(sessionId, { updatedAt: new Date() });
+          return;
+        } catch (err) {
+          this.logger.error(`OpenClaw 璋冪敤澶辫触: ${(err as Error).message}`);
+          await handleError(err as Error);
+          return;
+        }
+      }
+
+      // Hermes 杩愯鏃惰矾寰勶紙鏈湴 Hermes Agent 鎵ц锛?      if (agent && (agent.runtimeType === 'hermes' || agent.runtimeType === 'hybrid')) {
+        this.logger.log(`Agent ${agent.id} 璺敱鍒版湰鍦?Hermes Agent`);
+
+        // 閫€鍥為鍐荤粨鐨勭Н鍒嗭紙Hermes 鏈湴鎵ц鏃讹紝绉垎鍦?llm-proxy 涓墸璐癸級
+        if (frozenTxnId) {
+          try {
+            await this.creditsService.refundCredits(userId, frozenTxnId);
+            this.logger.log(`Hermes 鏈湴鎵ц妯″紡锛屽凡閫€鍥為鍐荤粨绉垎 txnId=${frozenTxnId}`);
+          } catch (err) {
+            this.logger.error(`閫€鍥為鍐荤粨绉垎澶辫触: ${(err as Error).message}`);
+          }
+        }
+
+        // 杩斿洖鏈湴鎵ц鎸囦护
+        callbacks.onMessage(JSON.stringify({
+          type: 'hermes_local_execute',
+          hermesEndpoint: 'http://127.0.0.1:8642',
+          hermesApiKey: process.env.HERMES_API_SERVER_KEY || '',
+          agentId: String(agent.id),
+          systemPrompt: agent.systemPrompt || '浣犳槸涓€涓湁甯姪鐨凙I鍔╂墜銆?,
+          message: content,
+          history: history.map(m => ({ role: m.role, content: m.content })),
+        }));
+
+        callbacks.onDone({ input: 0, output: 0, total: 0 });
+        return;
+      }
+
+      let decryptedKey = '';
+      try {
+        decryptedKey = this.encryptionService.decryptAes(apiKeyEntry.apiKey);
+      } catch (err) {
+        this.logger.error(`API Key 瑙ｅ瘑澶辫触: ${(err as Error).message}`);
+        if (frozenTxnId) {
+          await this.creditsService.refundCredits(userId, frozenTxnId);
+        }
+        throw new BadRequestException('API Key 瑙ｅ瘑澶辫触');
+      }
+
+      // 8. 璋冪敤 LLM 娴佸紡鎺ュ彛
+      try {
+        this.logger.debug(
+          `璋冪敤 LLM 娴佸紡鎺ュ彛: model=${session.modelId}, agentId=${agent?.id ?? 'none'}, key=${maskApiKey(decryptedKey)}`,
+        );
+
+        // 鏀堕泦鐢ㄦ埛宸插惎鐢ㄧ殑 MCP Server 宸ュ叿
+        let openaiTools: Array<{
+          type: 'function';
+          function: {
+            name: string;
+            description: string;
+            parameters: Record<string, unknown>;
+          };
+        }> = [];
+        let toolServerMap: Record<string, string> = {}; // toolName 鈫?serverId
+        try {
+          const mcpServers = await this.mcpService.listServers(userId);
+          const enabledServers = mcpServers.filter((s) => s.enabled);
+          let totalToolsLoaded = 0;
+          for (const server of enabledServers) {
+            try {
+              const tools = await this.mcpService.listTools(userId, String(server.id));
+              for (const t of tools as Array<Record<string, unknown>>) {
+                if (totalToolsLoaded >= ChatService.MAX_MCP_TOOLS) {
+                  this.logger.warn(
+                    `MCP 宸ュ叿鏁伴噺宸茶揪涓婇檺 ${ChatService.MAX_MCP_TOOLS}锛屾埅鏂墿浣欏伐鍏?(server=${server.name})`,
+                  );
+                  break;
+                }
+                const toolName = t.name as string;
+                // 鍛藉悕绌洪棿鍖栵細serverName__toolName 閬垮厤鍐茬獊
+                const namespacedName = `${server.name}__${toolName}`;
+                openaiTools.push({
+                  type: 'function',
+                  function: {
+                    name: namespacedName,
+                    description: (t.description as string) || toolName,
+                    parameters: (t.inputSchema as Record<string, unknown>) || { type: 'object', properties: {} },
+                  },
+                });
+                toolServerMap[namespacedName] = String(server.id);
+                totalToolsLoaded++;
+              }
+            } catch {
+              // 鍗曚釜 server 宸ュ叿鍒楄〃鑾峰彇澶辫触锛岃烦杩?              this.logger.warn(`MCP Server ${server.name} 宸ュ叿鍒楄〃鑾峰彇澶辫触锛岃烦杩嘸);
+            }
+            if (totalToolsLoaded >= ChatService.MAX_MCP_TOOLS) break;
+          }
+          if (openaiTools.length > 0) {
+            this.logger.debug(`宸插姞杞?${openaiTools.length} 涓?MCP 宸ュ叿 (鍏?${enabledServers.length} 涓?server)`);
+          }
+        } catch {
+          // MCP 宸ュ叿鍔犺浇澶辫触涓嶅奖鍝嶅熀纭€瀵硅瘽
+          this.logger.warn('MCP 宸ュ叿鍔犺浇澶辫触锛屽皢杩涜绾枃鏈璇?);
+        }
+
+        // 濡傛灉 Agent 鍚敤浜?CodeX锛屾敞鍏ヤ唬鐮佹墽琛屽伐鍏?        if (agent?.useCodex) {
+          const codexTools = this.codexService.getMcpToolDefinitions();
+          for (const tool of codexTools) {
+            const namespacedName = `codex__${tool.toolName}`;
+            openaiTools.push({
+              type: 'function',
+              function: {
+                name: namespacedName,
+                description: tool.description,
+                parameters: tool.inputSchema,
+              },
+            });
+            // CodeX 宸ュ叿鐨勬墽琛屽櫒
+            toolServerMap[namespacedName] = 'codex';
+          }
+          this.logger.debug(`宸叉敞鍏?${codexTools.length} 涓?CodeX 宸ュ叿`);
+        }
+
+        await this.llmClient.streamChat(
+          {
+            model: session.modelId,
+            apiKey: decryptedKey,
+            systemPrompt: agent?.systemPrompt || '浣犳槸涓€涓湁甯姪鐨凙I鍔╂墜銆?,
+            messages: history.map((m) => ({ role: m.role, content: m.content })),
+            tools: openaiTools.length > 0 ? openaiTools : undefined,
+            toolExecutor: openaiTools.length > 0
+              ? async (toolName: string, args: Record<string, unknown>) => {
+                  // 瑙ｆ瀽鍛藉悕绌洪棿锛歴erverName__toolName 鈫?serverId + toolName
+                  const sepIdx = toolName.indexOf('__');
+                  if (sepIdx === -1) {
+                    throw new Error(`宸ュ叿鍚嶆牸寮忛敊璇? ${toolName}`);
+                  }
+                  const serverId = toolServerMap[toolName];
+                  const realToolName = toolName.slice(sepIdx + 2);
+                  if (!serverId) {
+                    throw new Error(`鏈壘鍒板伐鍏峰搴旂殑鏈嶅姟鍣? ${toolName}`);
+                  }
+
+                  const startTime = Date.now();
+                  this.logger.log(
+                    `鎵ц MCP 宸ュ叿: ${realToolName} on server ${serverId}, args=${JSON.stringify(args).slice(0, 200)}`,
+                  );
+
+                  // CodeX 宸ュ叿璺敱
+                  if (serverId === 'codex') {
+                    try {
+                      let result: unknown;
+                      if (realToolName === 'execute_code') {
+                        result = await this.codexService.executeCode(
+                          (args as any).language,
+                          (args as any).code,
+                          (args as any).timeout,
+                        );
+                      } else if (realToolName === 'fix_code') {
+                        result = await this.codexService.fixCode(
+                          (args as any).code,
+                          (args as any).errorMessage,
+                        );
+                      } else {
+                        throw new Error(`鏈煡鐨?CodeX 宸ュ叿: ${realToolName}`);
+                      }
+                      this.logger.log(
+                        `MCP 宸ュ叿 ${realToolName} 鎵ц鎴愬姛, 鑰楁椂 ${Date.now() - startTime}ms`,
+                      );
+                      return result;
+                    } catch (err) {
+                      const elapsed = Date.now() - startTime;
+                      this.logger.error(
+                        `CodeX 宸ュ叿 ${realToolName} 鎵ц澶辫触 (${elapsed}ms): ${(err as Error).message}`,
+                      );
+                      // 闄嶇骇锛氳繑鍥為敊璇俊鎭粰 LLM锛岃瀹冭嚜琛屽鐞?                      return { error: `宸ュ叿鎵ц澶辫触: ${(err as Error).message}`, toolName: realToolName };
+                    }
+                  }
+
+                  // MCP 宸ュ叿鎵ц锛堝甫瓒呮椂淇濇姢锛?                  try {
+                    const result = await Promise.race([
+                      this.mcpService.callTool(userId, {
+                        serverId,
+                        toolName: realToolName,
+                        args,
+                      }),
+                      new Promise<never>((_, reject) =>
+                        setTimeout(
+                          () => reject(new Error(`宸ュ叿鎵ц瓒呮椂 (${ChatService.MCP_TOOL_TIMEOUT_MS}ms)`)),
+                          ChatService.MCP_TOOL_TIMEOUT_MS,
+                        ),
+                      ),
+                    ]);
+                    this.logger.log(
+                      `MCP 宸ュ叿 ${realToolName} 鎵ц鎴愬姛, 鑰楁椂 ${Date.now() - startTime}ms`,
+                    );
+                    return result;
+                  } catch (err) {
+                    const elapsed = Date.now() - startTime;
+                    this.logger.error(
+                      `MCP 宸ュ叿 ${realToolName} 鎵ц澶辫触 (${elapsed}ms): ${(err as Error).message}`,
+                    );
+                    // 闄嶇骇锛氳繑鍥為敊璇俊鎭粰 LLM锛岃瀹冨熀浜庨敊璇俊鎭户缁璇?                    return { error: `宸ュ叿鎵ц澶辫触: ${(err as Error).message}`, toolName: realToolName };
+                  }
+                }
+              : undefined,
+          },
+          {
+            onMessage: (chunk) => callbacks.onMessage(chunk),
+            onDone: async (usage, fullResponse) => {
+              // 9. 淇濆瓨 AI 鍝嶅簲娑堟伅锛堢Щ鍒拌繖閲岋紝鍏堜簬绉垎缁撶畻锛?              const { cost: actualCost, modelId: costModelId } = await this.calculateActualCost(agent, usage, userId);
+              try {
+                await this.messageRepo.save({
+                  sessionId,
+                  role: 'assistant',
+                  content: fullResponse,
+                  tokenUsage: usage,
+                  creditsCost: actualCost,
+                });
+              } catch (err) {
+                this.logger.error(`淇濆瓨 AI 娑堟伅澶辫触: ${(err as Error).message}`);
+                // 娑堟伅淇濆瓨澶辫触锛岄€€鍥炲喕缁撶Н鍒?                if (frozenTxnId) {
+                  try {
+                    await this.creditsService.refundCredits(userId, frozenTxnId);
+                    this.logger.log(`娑堟伅淇濆瓨澶辫触锛屽凡閫€鍥炲喕缁撶Н鍒?txnId=${frozenTxnId}`);
+                  } catch (refundErr) {
+                    this.logger.error(`閫€鍥炲喕缁撶Н鍒嗗け璐? ${(refundErr as Error).message}`);
+                  }
+                }
+                return;
+              }
+
+              // 10. 缁撶畻绉垎
+              if (frozenTxnId && actualCost > 0) {
+                try {
+                  await this.creditsService.settleCredits(
+                    userId,
+                    frozenTxnId,
+                    actualCost,
+                  );
+                } catch (err) {
+                  this.logger.error(
+                    `绉垎缁撶畻澶辫触: ${(err as Error).message}, frozenTxnId=${frozenTxnId}, userId=${userId}`,
+                  );
+                  // 缁撶畻澶辫触涓嶉€€娆锯€斺€擫LM宸叉秷鑰楋紝鐢ㄦ埛搴旀壙鎷呰垂鐢?                  // 璁板綍鍒版棩蹇椾緵鍚庣画浜哄伐瀵硅处
+                }
+              } else if (frozenTxnId && actualCost === 0) {
+                try {
+                  await this.creditsService.refundCredits(userId, frozenTxnId);
+                } catch (err) {
+                  this.logger.error(
+                    `閫€娆惧け璐? ${(err as Error).message}, frozenTxnId=${frozenTxnId}`,
+                  );
+                }
+              }
+
+              // 11. 鎵ｅ噺 API Key 閰嶉
+              try {
+                await this.apiKeyPoolService.deductQuota(
+                  apiKeyEntry.id,
+                  usage.total,
+                );
+              } catch (err) {
+                this.logger.error(
+                  `API Key 閰嶉鎵ｅ噺澶辫触: ${(err as Error).message}, keyId=${apiKeyEntry.id}`,
+                );
+                // 閰嶉鎵ｅ噺澶辫触涓嶅奖鍝嶇敤鎴蜂綋楠岋紝璁板綍鏃ュ織渚涘璐?              }
+
+              // 12. 鏇存柊 Agent 璋冪敤娆℃暟
+              if (agent) {
+                try {
+                  await this.agentRepo.increment(
+                    { id: agent.id },
+                    'callCount',
+                    1,
+                  );
+                } catch (err) {
+                  this.logger.error(
+                    `Agent璋冪敤娆℃暟鏇存柊澶辫触: ${(err as Error).message}, agentId=${agent.id}`,
+                  );
+                }
+              }
+
+              // 鍒涘缓浠诲姟璁板綍锛堝鏋?Agent 鍚敤浜?CodeX锛?              if (agent?.useCodex) {
+                try {
+                  await this.taskService.createTask(userId, {
+                    taskType: TaskType.CODEX,
+                    agentId: agent.id ?? undefined,
+                    title: content.slice(0, 100),
+                    inputText: content,
+                  });
+                } catch (err) {
+                  this.logger.error(`鍒涘缓浠诲姟璁板綍澶辫触: ${(err as Error).message}`);
+                }
+              }
+
+              callbacks.onDone(usage);
+            },
+            onError: async (error) => {
+              await handleError(error);
+            },
+          },
+        );
+      } finally {
+        // 娓呯悊 API Key 鏄庢枃寮曠敤锛岄槻姝㈠唴瀛橀┗鐣?        decryptedKey = '';
+      }
+
+      // 13. 鏇存柊浼氳瘽鏃堕棿
+      await this.sessionRepo.update(sessionId, { updatedAt: new Date() });
+    } catch (err) {
+      await handleError(err as Error);
+    }
+  }
+
+  // ============ 杈呭姪鏂规硶 ============
+
+  /** 浼扮畻璐圭敤锛堥鎵ｇ敤锛夆€斺€斿鎵樼粰 PricingService锛屽簲鐢ㄤ細鍛樻姌鎵?*/
+  private async estimateCost(agent: AgentEntity | null, userId?: number): Promise<number> {
+    const rawCost = await this.pricingService.estimateCost(agent);
+    if (userId && rawCost > 0) {
+      const userLevel = await this.pricingService.getUserLevel(userId);
+      return this.pricingService.applyDiscount(rawCost, userLevel);
+    }
+    return rawCost;
+  }
+
+  /** 璁＄畻瀹為檯璐圭敤锛堢粨绠楃敤锛夆€斺€斿鎵樼粰 PricingService锛屽簲鐢ㄤ細鍛樻姌鎵?*/
+  private async calculateActualCost(
+    agent: AgentEntity | null,
+    usage: { input: number; output: number; total: number },
+    userId?: number,
+  ): Promise<{ cost: number; modelId?: string }> {
+    const { cost: rawCost, modelId } = await this.pricingService.calculateActualCost(agent, usage);
+    if (userId && rawCost > 0) {
+      const userLevel = await this.pricingService.getUserLevel(userId);
+      return { cost: this.pricingService.applyDiscount(rawCost, userLevel), modelId };
+    }
+    return { cost: rawCost, modelId };
+  }
+
+  /** 鑾峰彇涓婁笅鏂囨秷鎭紙鏈€杩?N 鏉★紝鎸夋椂闂存搴忥級 */
+  private async getContextMessages(
+    sessionId: number,
+    limit: number,
+  ): Promise<ChatMessageEntity[]> {
+    const msgs = await this.messageRepo.find({
+      where: { sessionId },
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    return msgs
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .reverse();
+  }
+
+  health() {
+    return { status: 'ok', module: 'chat' };
+  }
+}

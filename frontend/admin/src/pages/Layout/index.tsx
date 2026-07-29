@@ -1,1 +1,258 @@
-﻿// 绠＄悊绔富甯冨眬 - SubTask 17.7//// 缁撴瀯锛氶《鏍?48px,logo + 绠＄悊鍛樺ご鍍忚彍鍗? + 渚ц竟鏍?200px,鍒嗙粍鑿滃崟) + 鍐呭鍖?Outlet)// 渚ц竟鏍忚彍鍗?Task 2 绮剧畝鍚?6 缁?:浠〃鐩?鐢ㄦ埛绠＄悊/鍐呭绠＄悊/妯″瀷涓庨厤缃?璐㈠姟绠＄悊/绯荤粺绠＄悊import { useEffect, useMemo, useState } from 'react'import { Outlet, useNavigate, useLocation } from 'react-router-dom'import { Avatar, Dropdown, Menu, type MenuProps } from 'antd'import {  AppstoreOutlined,  AuditOutlined,  CloudServerOutlined,  DashboardOutlined,  DollarOutlined,  LogoutOutlined,  SafetyCertificateOutlined,  SettingOutlined,  TeamOutlined,  UserOutlined} from '@ant-design/icons'import { useAdminAuthStore } from '@/store/admin-auth'import { adminLogout } from '@/api/admin-auth-api'import styles from './styles.module.css'interface MenuEntry {  key: string  label: string  icon?: React.ReactNode  path?: string  children?: MenuEntry[]}const MENU_ENTRIES: MenuEntry[] = [  { key: 'dashboard', label: '浠〃鐩?, icon: <DashboardOutlined />, path: '/dashboard' },  {    key: 'group-users',    label: '鐢ㄦ埛绠＄悊',    icon: <TeamOutlined />,    children: [      { key: 'users', label: '鐢ㄦ埛鍒楄〃', path: '/users' },      { key: 'users-levels', label: '鐢ㄦ埛绛夌骇', path: '/users/levels' },      { key: 'users-orders', label: '鐢ㄦ埛璁㈠崟', path: '/users/orders' },      { key: 'users-devices', label: '璁惧绠＄悊', path: '/users/devices' }    ]  },  {    key: 'group-content',    label: '鍐呭绠＄悊',    icon: <AppstoreOutlined />,    children: [      { key: 'agents', label: '鏅鸿兘浣?, path: '/agents' },      { key: 'workflows', label: '宸ヤ綔娴?, path: '/workflows' },      { key: 'plugins', label: '鎻掍欢涓庢妧鑳?, path: '/plugins' },      { key: 'review', label: '瀹℃牳涓績', path: '/review' }    ]  },  {    key: 'group-config',    label: '妯″瀷涓庨厤缃?,    icon: <CloudServerOutlined />,    children: [      { key: 'models', label: '妯″瀷绠＄悊', path: '/models' },      { key: 'mcp', label: 'MCP 鏈嶅姟', path: '/mcp' },      { key: 'infra', label: '鍩虹璁炬柦', path: '/infra' }    ]  },  {    key: 'group-finance',    label: '璐㈠姟绠＄悊',    icon: <DollarOutlined />,    children: [      { key: 'finance-transactions', label: '鍏呭€艰鍗?, path: '/finance/transactions' },      { key: 'finance-orders', label: '璁㈠崟绠＄悊', path: '/finance/orders' },      { key: 'finance-invoices', label: '鍙戠エ绠＄悊', path: '/finance/invoices' },      { key: 'finance-reconciliation', label: '瀵硅处绠＄悊', path: '/finance/reconciliation' },      { key: 'plans', label: '濂楅绠＄悊', path: '/plans' }    ]  },  {    key: 'group-system',    label: '绯荤粺绠＄悊',    icon: <SettingOutlined />,    children: [      { key: 'system-config', label: '绯荤粺鍙傛暟', path: '/system/config' },      { key: 'system-announcements', label: '鍏憡绠＄悊', path: '/system/announcements' },      { key: 'versions', label: '鐗堟湰鍙戝竷', path: '/versions' },      { key: 'stats', label: '鏁版嵁缁熻', path: '/stats' },      { key: 'audit-queue', label: '瀹℃牳闃熷垪', path: '/audit/queue' },      { key: 'audit-sensitive-words', label: '鏁忔劅璇嶅簱', path: '/audit/sensitive-words' },      { key: 'audit-ai-config', label: 'AI 瀹℃牳閰嶇疆', path: '/audit/ai-config' }    ]  }]interface LeafInfo {  key: string  path: string  parentKey?: string}// 灞曞紑鎵€鏈夊彾瀛愯妭鐐癸紝渚夸簬鏍规嵁 pathname 鍙嶆煡閫変腑椤逛笌鎵€灞炲垎缁?const ALL_LEAVES: LeafInfo[] = (() => {  const leaves: LeafInfo[] = []  for (const entry of MENU_ENTRIES) {    if (entry.children && entry.children.length > 0) {      for (const child of entry.children) {        if (child.path) {          leaves.push({ key: child.key, path: child.path, parentKey: entry.key })        }      }    } else if (entry.path) {      leaves.push({ key: entry.key, path: entry.path })    }  }  return leaves})()// 鎸夎矾寰勯暱搴﹂檷搴忥紝淇濊瘉鏇村叿浣撶殑璺緞浼樺厛鍖归厤锛堝 /users/levels 浼樺厛浜?/users锛?const SORTED_LEAVES: LeafInfo[] = [...ALL_LEAVES].sort(  (a, b) => b.path.length - a.path.length)export default function AdminLayout() {  const navigate = useNavigate()  const location = useLocation()  const user = useAdminAuthStore((s) => s.user)  const clearAdminAuth = useAdminAuthStore((s) => s.clearAdminAuth)  const { selectedKey, parentKey } = useMemo(() => {    const matched = SORTED_LEAVES.find((leaf) =>      location.pathname.startsWith(leaf.path)    )    return {      selectedKey: matched?.key || 'dashboard',      parentKey: matched?.parentKey    }  }, [location.pathname])  const [openKeys, setOpenKeys] = useState<string[]>(() => {    const matched = SORTED_LEAVES.find((leaf) =>      location.pathname.startsWith(leaf.path)    )    return matched?.parentKey ? [matched.parentKey] : []  })  // 褰撻€変腑椤规墍鍦ㄥ垎缁勬湭灞曞紑鏃惰嚜鍔ㄥ睍寮€锛堝閫氳繃 URL 鐩存帴璁块棶瀛愰〉闈級  useEffect(() => {    if (parentKey && !openKeys.includes(parentKey)) {      setOpenKeys((prev) => [...prev, parentKey])    }  }, [parentKey, openKeys])  const handleOpenChange = (keys: React.Key[]) => {    setOpenKeys(keys.map(String))  }  const menuItems: MenuProps['items'] = useMemo(    () =>      MENU_ENTRIES.map((entry) => {        if (entry.children && entry.children.length > 0) {          return {            key: entry.key,            icon: entry.icon,            label: entry.label,            children: entry.children.map((child) => ({              key: child.key,              label: child.label,              onClick: () => child.path && navigate(child.path)            }))          }        }        return {          key: entry.key,          icon: entry.icon,          label: entry.label,          onClick: () => entry.path && navigate(entry.path)        }      }),    [navigate]  )  const handleLogout = async () => {    try {      await adminLogout()    } catch {      // 鍚庣鐧诲嚭澶辫触涓嶉樆濉?    }    clearAdminAuth()    navigate('/login', { replace: true })  }  const userMenuItems: MenuProps['items'] = [    {      key: 'roles',      icon: <SafetyCertificateOutlined />,      label: '瑙掕壊鏉冮檺',      onClick: () => navigate('/roles')    },    {      key: 'logs',      icon: <AuditOutlined />,      label: '鎿嶄綔鏃ュ織',      onClick: () => navigate('/operation-logs')    },    { type: 'divider' },    {      key: 'logout',      icon: <LogoutOutlined />,      label: '閫€鍑虹櫥褰?,      onClick: handleLogout    }  ]  return (    <div className={styles.layout}>      {/* 椤舵爮 */}      <div className={styles.topbar}>        <div className={styles.topbarLeft}>          <SafetyCertificateOutlined className={styles.topbarLogo} />          <span className={styles.topbarTitle}>娣辩灣AI 绠＄悊鍚庡彴</span>        </div>        <div className={styles.topbarRight}>          <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">            <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>              <Avatar                size={28}                icon={<UserOutlined />}                src={user?.avatar}                style={{ background: 'rgba(56, 189, 248, 0.25)' }}              />              <span className={styles.adminName}>{user?.username || '绠＄悊鍛?}</span>            </div>          </Dropdown>        </div>      </div>      <div className={styles.body}>        {/* 渚ц竟鏍?*/}        <div className={styles.sidebar}>          <Menu            mode="inline"            selectedKeys={[selectedKey]}            openKeys={openKeys}            onOpenChange={handleOpenChange}            items={menuItems}            style={{              background: 'transparent',              borderInlineEnd: 'none'            }}            theme="dark"          />        </div>        {/* 鍐呭鍖?*/}        <div className={styles.content}>          <Outlet />        </div>      </div>    </div>  )}
+﻿// 绠＄悊绔富甯冨眬 - SubTask 17.7
+//
+// 缁撴瀯锛氶《鏍?48px,logo + 绠＄悊鍛樺ご鍍忚彍鍗? + 渚ц竟鏍?200px,鍒嗙粍鑿滃崟) + 鍐呭鍖?Outlet)
+// 渚ц竟鏍忚彍鍗?Task 2 绮剧畝鍚?6 缁?:浠〃鐩?鐢ㄦ埛绠＄悊/鍐呭绠＄悊/妯″瀷涓庨厤缃?璐㈠姟绠＄悊/绯荤粺绠＄悊
+
+import { useEffect, useMemo, useState } from 'react'
+import { Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { Avatar, Dropdown, Menu, type MenuProps } from 'antd'
+import {
+  AppstoreOutlined,
+  AuditOutlined,
+  CloudServerOutlined,
+  DashboardOutlined,
+  DollarOutlined,
+  LogoutOutlined,
+  SafetyCertificateOutlined,
+  SettingOutlined,
+  TeamOutlined,
+  UserOutlined
+} from '@ant-design/icons'
+import { useAdminAuthStore } from '@/store/admin-auth'
+import { adminLogout } from '@/api/admin-auth-api'
+import styles from './styles.module.css'
+
+interface MenuEntry {
+  key: string
+  label: string
+  icon?: React.ReactNode
+  path?: string
+  children?: MenuEntry[]
+}
+
+const MENU_ENTRIES: MenuEntry[] = [
+  { key: 'dashboard', label: '浠〃鐩?, icon: <DashboardOutlined />, path: '/dashboard' },
+  {
+    key: 'group-users',
+    label: '鐢ㄦ埛绠＄悊',
+    icon: <TeamOutlined />,
+    children: [
+      { key: 'users', label: '鐢ㄦ埛鍒楄〃', path: '/users' },
+      { key: 'users-levels', label: '鐢ㄦ埛绛夌骇', path: '/users/levels' },
+      { key: 'users-orders', label: '鐢ㄦ埛璁㈠崟', path: '/users/orders' },
+      { key: 'users-devices', label: '璁惧绠＄悊', path: '/users/devices' }
+    ]
+  },
+  {
+    key: 'group-content',
+    label: '鍐呭绠＄悊',
+    icon: <AppstoreOutlined />,
+    children: [
+      { key: 'agents', label: '鏅鸿兘浣?, path: '/agents' },
+      { key: 'workflows', label: '宸ヤ綔娴?, path: '/workflows' },
+      { key: 'plugins', label: '鎻掍欢涓庢妧鑳?, path: '/plugins' },
+      { key: 'review', label: '瀹℃牳涓績', path: '/review' }
+    ]
+  },
+  {
+    key: 'group-config',
+    label: '妯″瀷涓庨厤缃?,
+    icon: <CloudServerOutlined />,
+    children: [
+      { key: 'models', label: '妯″瀷绠＄悊', path: '/models' },
+      { key: 'mcp', label: 'MCP 鏈嶅姟', path: '/mcp' },
+      { key: 'infra', label: '鍩虹璁炬柦', path: '/infra' }
+    ]
+  },
+  {
+    key: 'group-finance',
+    label: '璐㈠姟绠＄悊',
+    icon: <DollarOutlined />,
+    children: [
+      { key: 'finance-transactions', label: '鍏呭€艰鍗?, path: '/finance/transactions' },
+      { key: 'finance-orders', label: '璁㈠崟绠＄悊', path: '/finance/orders' },
+      { key: 'finance-invoices', label: '鍙戠エ绠＄悊', path: '/finance/invoices' },
+      { key: 'finance-reconciliation', label: '瀵硅处绠＄悊', path: '/finance/reconciliation' },
+      { key: 'plans', label: '濂楅绠＄悊', path: '/plans' }
+    ]
+  },
+  {
+    key: 'group-system',
+    label: '绯荤粺绠＄悊',
+    icon: <SettingOutlined />,
+    children: [
+      { key: 'system-config', label: '绯荤粺鍙傛暟', path: '/system/config' },
+      { key: 'system-announcements', label: '鍏憡绠＄悊', path: '/system/announcements' },
+      { key: 'versions', label: '鐗堟湰鍙戝竷', path: '/versions' },
+      { key: 'stats', label: '鏁版嵁缁熻', path: '/stats' },
+      { key: 'audit-queue', label: '瀹℃牳闃熷垪', path: '/audit/queue' },
+      { key: 'audit-sensitive-words', label: '鏁忔劅璇嶅簱', path: '/audit/sensitive-words' },
+      { key: 'audit-ai-config', label: 'AI 瀹℃牳閰嶇疆', path: '/audit/ai-config' }
+    ]
+  }
+]
+
+interface LeafInfo {
+  key: string
+  path: string
+  parentKey?: string
+}
+
+// 灞曞紑鎵€鏈夊彾瀛愯妭鐐癸紝渚夸簬鏍规嵁 pathname 鍙嶆煡閫変腑椤逛笌鎵€灞炲垎缁?const ALL_LEAVES: LeafInfo[] = (() => {
+  const leaves: LeafInfo[] = []
+  for (const entry of MENU_ENTRIES) {
+    if (entry.children && entry.children.length > 0) {
+      for (const child of entry.children) {
+        if (child.path) {
+          leaves.push({ key: child.key, path: child.path, parentKey: entry.key })
+        }
+      }
+    } else if (entry.path) {
+      leaves.push({ key: entry.key, path: entry.path })
+    }
+  }
+  return leaves
+})()
+
+// 鎸夎矾寰勯暱搴﹂檷搴忥紝淇濊瘉鏇村叿浣撶殑璺緞浼樺厛鍖归厤锛堝 /users/levels 浼樺厛浜?/users锛?const SORTED_LEAVES: LeafInfo[] = [...ALL_LEAVES].sort(
+  (a, b) => b.path.length - a.path.length
+)
+
+export default function AdminLayout() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const user = useAdminAuthStore((s) => s.user)
+  const clearAdminAuth = useAdminAuthStore((s) => s.clearAdminAuth)
+
+  const { selectedKey, parentKey } = useMemo(() => {
+    const matched = SORTED_LEAVES.find((leaf) =>
+      location.pathname.startsWith(leaf.path)
+    )
+    return {
+      selectedKey: matched?.key || 'dashboard',
+      parentKey: matched?.parentKey
+    }
+  }, [location.pathname])
+
+  const [openKeys, setOpenKeys] = useState<string[]>(() => {
+    const matched = SORTED_LEAVES.find((leaf) =>
+      location.pathname.startsWith(leaf.path)
+    )
+    return matched?.parentKey ? [matched.parentKey] : []
+  })
+
+  // 褰撻€変腑椤规墍鍦ㄥ垎缁勬湭灞曞紑鏃惰嚜鍔ㄥ睍寮€锛堝閫氳繃 URL 鐩存帴璁块棶瀛愰〉闈級
+  useEffect(() => {
+    if (parentKey && !openKeys.includes(parentKey)) {
+      setOpenKeys((prev) => [...prev, parentKey])
+    }
+  }, [parentKey, openKeys])
+
+  const handleOpenChange = (keys: React.Key[]) => {
+    setOpenKeys(keys.map(String))
+  }
+
+  const menuItems: MenuProps['items'] = useMemo(
+    () =>
+      MENU_ENTRIES.map((entry) => {
+        if (entry.children && entry.children.length > 0) {
+          return {
+            key: entry.key,
+            icon: entry.icon,
+            label: entry.label,
+            children: entry.children.map((child) => ({
+              key: child.key,
+              label: child.label,
+              onClick: () => child.path && navigate(child.path)
+            }))
+          }
+        }
+        return {
+          key: entry.key,
+          icon: entry.icon,
+          label: entry.label,
+          onClick: () => entry.path && navigate(entry.path)
+        }
+      }),
+    [navigate]
+  )
+
+  const handleLogout = async () => {
+    try {
+      await adminLogout()
+    } catch {
+      // 鍚庣鐧诲嚭澶辫触涓嶉樆濉?    }
+    clearAdminAuth()
+    navigate('/login', { replace: true })
+  }
+
+  const userMenuItems: MenuProps['items'] = [
+    {
+      key: 'roles',
+      icon: <SafetyCertificateOutlined />,
+      label: '瑙掕壊鏉冮檺',
+      onClick: () => navigate('/roles')
+    },
+    {
+      key: 'logs',
+      icon: <AuditOutlined />,
+      label: '鎿嶄綔鏃ュ織',
+      onClick: () => navigate('/operation-logs')
+    },
+    { type: 'divider' },
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: '閫€鍑虹櫥褰?,
+      onClick: handleLogout
+    }
+  ]
+
+  return (
+    <div className={styles.layout}>
+      {/* 椤舵爮 */}
+      <div className={styles.topbar}>
+        <div className={styles.topbarLeft}>
+          <SafetyCertificateOutlined className={styles.topbarLogo} />
+          <span className={styles.topbarTitle}>娣辩灣AI 绠＄悊鍚庡彴</span>
+        </div>
+        <div className={styles.topbarRight}>
+          <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <Avatar
+                size={28}
+                icon={<UserOutlined />}
+                src={user?.avatar}
+                style={{ background: 'rgba(56, 189, 248, 0.25)' }}
+              />
+              <span className={styles.adminName}>{user?.username || '绠＄悊鍛?}</span>
+            </div>
+          </Dropdown>
+        </div>
+      </div>
+
+      <div className={styles.body}>
+        {/* 渚ц竟鏍?*/}
+        <div className={styles.sidebar}>
+          <Menu
+            mode="inline"
+            selectedKeys={[selectedKey]}
+            openKeys={openKeys}
+            onOpenChange={handleOpenChange}
+            items={menuItems}
+            style={{
+              background: 'transparent',
+              borderInlineEnd: 'none'
+            }}
+            theme="dark"
+          />
+        </div>
+
+        {/* 鍐呭鍖?*/}
+        <div className={styles.content}>
+          <Outlet />
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -1,1 +1,430 @@
-﻿// 涓昏繘绋?/ 娓叉煋杩涚▼鍏变韩绫诲瀷瀹氫箟// 璇ユ枃浠跺悓鏃惰 tsconfig.node.json 涓?tsconfig.web.json 鍖呭惈export type ServiceName = 'openclaw' | 'n8n' | 'mcp' | 'hermes'export type ServiceStatus = 'running' | 'stopped' | 'starting' | 'error' | 'unknown'/** 鏈嶅姟閮ㄧ讲绫诲瀷锛歭ocal锛堟湰鍦拌繘绋嬶級/ cloud锛堜簯绔繛鎺ュ瀷锛?*/export type ServiceDeploymentType = 'local' | 'cloud'export interface ServiceInfo {  name: ServiceName  displayName: string  status: ServiceStatus  port: number  pid?: number  /** 鍚姩鏃堕棿锛圛SO 8601 瀛楃涓诧級 */  startTime?: string  /** CPU 鍗犵敤鐧惧垎姣旓紙0-100锛?*/  cpuUsage?: number  /** 鍐呭瓨鍗犵敤 MB */  memoryUsage?: number  /** 閿欒淇℃伅锛坰tatus=error 鏃跺瓨鍦級 */  error?: string  /** 閮ㄧ讲绫诲瀷锛坙ocal=鏈湴杩涚▼ / cloud=浜戠杩炴帴鍨嬶級 */  deploymentType?: ServiceDeploymentType}export interface ServiceEnvCheck {  openclaw: boolean  n8n: boolean  mcp: boolean  hermes: boolean}/** 杩愯鏃?manifest 涓崟涓湇鍔＄殑鍏ュ彛瀹氫箟 */export interface RuntimeManifestEntry {  /** 鏈嶅姟绫诲瀷锛歭ocal=鏈湴杩愯鏃讹紙闇€涓嬭浇/瀹夎锛夛紝cloud=浜戠鏈嶅姟锛堥€氳繃 cloudEndpoint 杩炴帴锛?*/  type?: ServiceDeploymentType  version: string  displayName: string  port: number  /** 骞冲彴 -> 鍏ュ彛鏂囦欢鍚嶏紙濡?win32 -> n8n.exe锛?*/  entry: Record<string, string>  /** cloud 鏈嶅姟鐨勪簯绔?API 绔偣璺緞锛坱ype=cloud 鏃跺瓨鍦紝濡?/hermes锛?*/  cloudEndpoint?: string  /** 骞冲彴-鏋舵瀯 -> 涓嬭浇鍦板潃锛堝 win32-x64锛?*/  downloadUrl: Record<string, string>  /**   * 骞冲彴-鏋舵瀯 -> 褰掓。鏂囦欢澶у皬锛堝瓧鑺傦紝鏋勫缓鏈熷～鍏咃紝0 琛ㄧず鏈～鍏咃級   * TODO: 鐢?scripts/fetch-runtime.ts 鍦ㄦ瀯寤烘湡涓嬭浇褰掓。鍚庡洖鍐欏疄闄呭瓧鑺傛暟   */  size: Record<string, number>  /** 骞冲彴-鏋舵瀯 -> SHA-256 鍝堝笇锛堟瀯寤烘湡濉厖锛岀┖瀛楃涓茶〃绀烘湭濉厖锛?*/  sha256: Record<string, string>}/** runtime/manifest.json 鐨勭被鍨嬬粨鏋?*/export interface RuntimeManifest {  version: string  services: Record<ServiceName, RuntimeManifestEntry>}/** 瑙ｆ瀽鍚庣殑杩愯鏃跺惎鍔ㄥ懡浠ょ粍鍚?*/export interface ResolvedRuntime {  cmd: string  args: string[]  env: NodeJS.ProcessEnv  /** 鏉ユ簮:builtin(鍐呯疆)/ userData(鐢ㄦ埛鐩綍琛ヤ竵)/ host(瀹夸富鏈哄懡浠? */  source: 'builtin' | 'userData' | 'host'}/** 鐘舵€佸彉鏇翠簨浠?payload锛堥€氳繃 webContents.send('service:status-changed', payload) 鎺ㄩ€侊級 */export interface ServiceStatusChangedPayload {  name: ServiceName  status: ServiceStatus  info: ServiceInfo}/** 鏈嶅姟閿欒浜嬩欢 payload锛堥€氳繃 webContents.send('service:error', payload) 鎺ㄩ€侊級 */export interface ServiceErrorPayload {  name: ServiceName  message: string  /** 宸查噸璇曟鏁?*/  retryCount: number}export interface UpdateCheckResult {  available: boolean  version?: string  forceUpdate: boolean  releaseNotes?: string}/** 鏇存柊鐘舵€侊紙閫氳繃 webContents.send('update:status', payload) 鎺ㄩ€佸埌娓叉煋杩涚▼锛?*/export interface UpdateStatusPayload {  /** 褰撳墠鐘舵€?*/  status: 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'  /** 鏂扮増鏈彿 */  version?: string  /** 鏇存柊鏃ュ織 */  releaseNotes?: string  /** 鏄惁寮哄埗鏇存柊 */  forceUpdate: boolean  /** 鏄惁鍛戒腑鐏板害 */  grayscaleHit: boolean  /** 鐏板害鐧惧垎姣旓紙鏈嶅姟绔笅鍙戯級 */  grayscalePercent?: number  /** 涓嬭浇杩涘害 0-100 */  progress: number  /** 闄勫姞淇℃伅锛堥敊璇秷鎭瓑锛?*/  message?: string}/** 杩愯鏃朵笅杞借繘搴︼紙閫氳繃 webContents.send('runtime:download-progress', payload) 鎺ㄩ€侊級 */export interface RuntimeDownloadProgress {  /** 鏈嶅姟鍚?*/  name: ServiceName  /** 杩涘害鐧惧垎姣?0-100 */  percent: number  /** 涓嬭浇閫熺巼 KB/s */  speedKBs: number  /** 棰勮鍓╀綑绉掓暟 */  etaSec: number}/** 杩愯鏃舵牎楠岀粨鏋滐紙runtime:verify 閫氶亾杩斿洖鍊硷級 */export interface RuntimeVerifyResult {  /** 鍚勬湇鍔″畬鏁存€?*/  results: Record<ServiceName, boolean>  /** 鍏ㄩ儴閫氳繃 */  allPassed: boolean}/** 鍚屾闃熷垪瀹炰綋绫诲瀷 */export type SyncEntityType = 'chat_session' | 'chat_message' | 'workflow_execution' | 'plugin_call_log'/** 鍚屾闃熷垪鎿嶄綔绫诲瀷 */export type SyncOperation = 'create' | 'update' | 'delete'/** 鍚屾闃熷垪椤癸紙鍏ラ槦鏃朵娇鐢級 */export interface SyncQueueItem {  client_txn_id: string  entity_type: SyncEntityType  entity_id: string  operation: SyncOperation  payload: unknown}/** 鍚屾闃熷垪琛岋紙鏁版嵁搴撲腑鐨勫畬鏁磋褰曪級 */export interface SyncQueueRow {  id: number  client_txn_id: string  entity_type: SyncEntityType  entity_id: string  operation: SyncOperation  payload: unknown  status: 'pending' | 'synced' | 'failed'  retry_count: number  error_message: string | null  created_at: string  synced_at: string | null}// 璁惧鎸囩汗锛堥噰闆嗘湰鏈虹‖浠?绯荤粺鐗瑰緛鐢熸垚 SHA-256 鍝堝笇锛?export interface DeviceFingerprint {  fingerprint: string // SHA-256 鍝堝笇锛?4 瀛楃 hex锛?  hostname: string  platform: string // win32/darwin/linux  arch: string // x64/arm64  macAddress: string  appVersion: string}// 瀹屾暣璁惧淇℃伅锛堟寚绾?+ 璁惧鍚?+ CPU/鍐呭瓨锛?export interface DeviceInfo extends DeviceFingerprint {  deviceName: string  cpus: number  totalMemory: number}/** 鍑嵁鍔犲瘑瀛樺偍 API锛堥€氳繃 SafeStorage 鍔犲瘑锛屼富杩涚▼鎸佷箙鍖栵級 */export interface CredentialAPI {  /** 鍔犲瘑骞跺瓨鍌ㄥ嚟鎹?*/  set(key: string, value: string): Promise<void>  /** 璇诲彇骞惰В瀵嗗嚟鎹紙涓嶅瓨鍦ㄨ繑鍥?null锛?*/  get(key: string): Promise<string | null>  /** 鍒犻櫎鎸囧畾 key 鐨勫嚟鎹?*/  delete(key: string): Promise<void>}/** 璁よ瘉淇℃伅鏌ヨ API锛堥€氳繃 IPC 浠庝富杩涚▼鑾峰彇 token / apiBase锛屼緵 RemoteControl 璋冪敤鐪熷疄鍚庣 API锛?*/export interface AuthAPI {  /** 璇诲彇褰撳墠 accessToken锛堟湭鐧诲綍鎴栨湭鎸佷箙鍖栨椂杩斿洖 null锛?*/  getToken(): Promise<string | null>  /** 璇诲彇鍚庣 API base URL锛堜笉鍚?/api 鍚庣紑锛?*/  getApiBase(): Promise<string>}// 閫氳繃 contextBridge 鏆撮湶缁欐覆鏌撹繘绋嬬殑 API 褰㈢姸export interface ElectronAPI {  service: {    getStatus(): Promise<Record<ServiceName, ServiceStatus>>    /** 鑾峰彇鍗曚釜鏈嶅姟鐨勫畬鏁翠俊鎭紙鍚?pid/cpu/memory/startTime锛?*/    status(name: ServiceName): Promise<ServiceInfo>    /** 鑾峰彇鎵€鏈夋湇鍔＄殑瀹屾暣淇℃伅鍒楄〃 */    list(): Promise<ServiceInfo[]>    start(name: ServiceName): Promise<boolean>    stop(name: ServiceName): Promise<boolean>    restart(name: ServiceName): Promise<boolean>    checkEnv(): Promise<ServiceEnvCheck>    install(name: ServiceName): Promise<boolean>    /** 鐩戝惉鏈嶅姟鐘舵€佸彉鏇达紝杩斿洖鍙栨秷鐩戝惉鍑芥暟 */    onStatusChanged(      callback: (payload: ServiceStatusChangedPayload) => void    ): () => void    /** 鐩戝惉鏈嶅姟閿欒浜嬩欢锛岃繑鍥炲彇娑堢洃鍚嚱鏁?*/    onError(callback: (payload: ServiceErrorPayload) => void): () => void  }  app: {    getVersion(): Promise<string>    checkUpdate(): Promise<void>    quitAndInstall(): Promise<void>  }  /** 鑷姩鏇存柊锛坋lectron-updater 灏佽锛?*/  updater: {    /** 鎵嬪姩妫€鏌ユ洿鏂?*/    check(): Promise<void>    /** 瑙﹀彂涓嬭浇鏇存柊 */    download(): Promise<void>    /** 閫€鍑哄苟瀹夎鏇存柊 */    install(): Promise<void>    /** 鐩戝惉鏇存柊鐘舵€佸彉鏇达紝杩斿洖鍙栨秷鐩戝惉鍑芥暟 */    onStatus(callback: (payload: UpdateStatusPayload) => void): () => void  }  window: {    minimize(): void    maximize(): void    close(): void  }  device: {    getFingerprint(): Promise<string>  }  db: {    /**     * 鍒濆鍖栨湰鍦版暟鎹簱锛堢櫥褰曞悗璋冪敤锛夛紝杩斿洖鏄惁鎴愬姛锛堝け璐ュ垯杩涘叆闄嶇骇妯″紡锛?     * @param userId 鐢ㄦ埛 ID锛堢ǔ瀹氫笉鍙橀噺锛屼笉闅?token 鍒锋柊鍙樺寲锛?     * @param dbSecret 鍚庣涓嬪彂鐨勭敤鎴风骇闀挎湡瀵嗛挜锛堟寔涔呭寲锛屼笌 token 鐢熷懡鍛ㄦ湡瑙ｈ€︼級     */    initialize(userId: string, dbSecret: string): Promise<boolean>    /** 妫€鏌ユ湰鍦版暟鎹簱鏄惁澶勪簬闄嶇骇妯″紡锛堝悓姝ワ級 */    isDegraded(): boolean    /** 鍏抽棴鏈湴鏁版嵁搴擄紙鐧诲嚭鏃惰皟鐢級 */    close(): void  }  /** 鍚屾闃熷垪鎿嶄綔锛堢绾胯皟鐢ㄩ槦鍒?+ 涓婅鍚屾锛?*/  syncQueue: {    /** 鍏ラ槦锛氬啓鍏?local_sync_queue锛岃繑鍥炶嚜澧?id */    enqueue(item: SyncQueueItem): Promise<number>    /** 璇诲彇 status=pending 鐨勮褰曪紝鏈€澶?limit 鏉?*/    getPending(limit: number): Promise<SyncQueueRow[]>    /** 鎸夌姸鎬佹煡璇㈣褰曪紙鐢ㄤ簬澶辫触璁板綍灞曠ず涓庨噸璇曪級 */    getByStatus(status: 'pending' | 'synced' | 'failed'): Promise<SyncQueueRow[]>    /** 鏇存柊璁板綍鐘舵€侊紙鍚屾鎴愬姛/澶辫触鏃惰皟鐢級 */    updateStatus(      id: number,      status: 'synced' | 'failed' | 'pending',      retryCount: number,      errorMessage?: string    ): Promise<void>    /** 鏍规嵁 client_txn_id 鏌ヨ鏄惁宸插瓨鍦?*/    exists(client_txn_id: string): Promise<boolean>  }  /** 鍑嵁鍔犲瘑瀛樺偍锛圚-03 淇锛氶€氳繃 SafeStorage 鍔犲瘑瀵嗙爜绛夋晱鎰熷嚟鎹級 */  credential: CredentialAPI  /** Hermes Agent 鏈湴 API 瀹㈡埛绔厤缃紙Task 5.2 - 娉ㄥ叆 LLM 浠ｇ悊瀵嗛挜锛?*/  hermes: {    /** 璁剧疆 Hermes Agent LLM 浠ｇ悊瀵嗛挜锛堜緵鏈湴 Hermes Agent 浠ｇ悊杞彂 LLM 璇锋眰锛?*/    setLlmProxyKey(key: string): Promise<boolean>  }}/** 鍗曚釜寮曟搸鐨勮繙绋嬫洿鏂颁俊鎭紙鏉ヨ嚜鍚庣 /api/runtime/check-update锛?*/export interface RuntimeUpdateInfo {  version: string  downloadUrl: string  sha256: string  changelog: string | null  forceUpdate: boolean  minAppVersion: string | null}/** runtime:check-update IPC 杩斿洖缁撴灉 */export interface RuntimeUpdateResult {  /** 闇€瑕佹洿鏂扮殑寮曟搸鍒楄〃锛坘ey 涓?service name: openclaw/n8n/mcp锛?*/  updates: Record<string, RuntimeUpdateInfo>  /** 鏈湴鎵€鏈夊紩鎿庢槸鍚﹀潎涓烘渶鏂扮増 */  upToDate: boolean  /** 缃戠粶鎴栧悗绔敊璇椂鐨勯敊璇俊鎭?*/  error?: string}/** 閫氳繃 contextBridge.exposeInMainWorld('runtime', ...) 鏆撮湶缁欐覆鏌撹繘绋嬬殑杩愯鏃?API 褰㈢姸 */export interface RuntimeAPI {  /** 鏍￠獙鎵€鏈夋湇鍔¤繍琛屾椂瀹屾暣鎬э紝杩斿洖鍚勬湇鍔＄粨鏋滀笌鏄惁鍏ㄩ儴閫氳繃 */  verify(): Promise<RuntimeVerifyResult>  /** 鏍￠獙鍗曚釜鏈嶅姟杩愯鏃跺畬鏁存€э紙SHA-256锛?*/  verifyOne(name: ServiceName): Promise<boolean>  /** 涓嬭浇/瀹夎鏈嶅姟杩愯鏃讹紙閫氳繃 npm install -g锛夛紝杩斿洖 { ok, error? } */  download(name: ServiceName): Promise<{ ok: boolean; error?: string }>  /** 鍙栨秷姝ｅ湪杩涜鐨勪笅杞斤紙淇濈暀涓存椂鏂囦欢浠ヤ究鏂偣缁紶锛?*/  cancelDownload(name: ServiceName): Promise<boolean>  /** 鐩戝惉涓嬭浇杩涘害鎺ㄩ€侊紝杩斿洖鍙栨秷鐩戝惉鍑芥暟锛堜究浜?React useEffect cleanup锛?*/  onDownloadProgress(callback: (progress: RuntimeDownloadProgress) => void): () => void  /** 妫€鏌ュ紩鎿庢洿鏂帮紙璋冪敤鍚庣 /api/runtime/check-update 骞朵笌鏈湴 manifest 姣斿鐗堟湰锛?*/  checkUpdate(): Promise<RuntimeUpdateResult>}// ===== 杩滅▼鎺у埗锛圱ask 14 - Feishu/WeCom IM 杩滅▼浠诲姟娲惧彂锛?=====/** 杩滅▼鎺у埗缁戝畾鐨?IM 骞冲彴 */export type RemoteControlPlatform = 'feishu' | 'wecom'/** 瀹夊叏绛夌骇 *  - high:   浠呭厑璁告煡璇㈢被鍛戒护 *  - medium: 鎵ц绫诲懡浠ら渶浜屾纭 *  - low:    鎵ц绫诲懡浠ょ洿鎺ユ墽琛? */export type RemoteSecurityLevel = 'high' | 'medium' | 'low'/** 鍗曚釜 IM 骞冲彴缁戝畾閰嶇疆 */export interface RemoteControlBinding {  /** 鏄惁宸茬粦瀹?*/  bound: boolean  /** 鏈哄櫒浜?Webhook URL锛堢粦瀹氬悗瀛樺湪锛?*/  webhookUrl?: string  /** 缁戝畾鏃堕棿锛圛SO 8601锛?*/  boundAt?: string}/** 璁惧鐧藉悕鍗曟潯鐩紙鍏佽閫氳繃 IM 杩滅▼鎺у埗鏈満鐨勮澶囷級 */export interface RemoteDeviceWhitelistEntry {  /** 璁惧 ID锛堟寚绾癸級 */  deviceId: string  /** 璁惧鍚嶏紙灞曠ず鐢級 */  deviceName: string}/** 杩滅▼鎺у埗璁剧疆锛堟寔涔呭寲鍦ㄤ富杩涚▼锛屾覆鏌撹繘绋嬭鍐欙級 */export interface RemoteControlSettings {  /** 杩滅▼鎺у埗鎬诲紑鍏?*/  enabled: boolean  /** 瀹夊叏绛夌骇 */  securityLevel: RemoteSecurityLevel  /** 椋炰功缁戝畾 */  feishu: RemoteControlBinding  /** 浼佷笟寰俊缁戝畾 */  wecom: RemoteControlBinding  /** 璁惧鐧藉悕鍗?*/  deviceWhitelist: RemoteDeviceWhitelistEntry[]}/** 杩滅▼鎺у埗杩炴帴鐘舵€?*/export interface RemoteControlStatus {  connected: boolean  /** 褰撳墠璁惧 ID锛堟寚绾癸級 */  deviceId: string  /** 鏈€杩戜竴娆￠敊璇俊鎭?*/  error?: string}/** 杩滅▼鍛戒护绫诲瀷 */export type RemoteCommandType =  | 'run_workflow'  | 'query_status'  | 'stop_task'  | 'delete_file'  | 'format_disk'  | 'execute_system_command'  | 'modify_system_config'  | 'unknown'/** 瑙ｆ瀽鍚庣殑杩滅▼鍛戒护锛堢粨鏋勫寲锛?*/export interface RemoteCommand {  /** 鍛戒护鍞竴 ID锛堢敱浜戠涓嬪彂锛?*/  commandId: string  /** 鍛戒护绫诲瀷 */  type: RemoteCommandType  /** 鍛戒护璐熻浇锛堝伐浣滄祦鍚?/ 浠诲姟 ID / 鍘熷鏂囨湰绛夛級 */  payload: {    name?: string    taskId?: string    raw?: string    input?: unknown  }  /** 鍘熷鍛戒护鏂囨湰 */  raw: string  /** 鏉ユ簮骞冲彴 */  source: RemoteControlPlatform}/** 鍛戒护鎵ц缁撴灉鍥炰紶锛圛M 绔睍绀猴級 */export interface RemoteCommandResult {  /** 瀵瑰簲鐨勫懡浠?ID */  commandId: string  /** 鐘舵€侊細杩涜涓?/ 鎴愬姛 / 澶辫触 / 闇€纭 */  status: 'running' | 'success' | 'failed' | 'need_confirmation'  /** 杩涘害 0-100 */  progress?: number  /** 缁撴灉鎻忚堪 / 閿欒淇℃伅 */  message?: string  /** 楂樺嵄鎿嶄綔鎻忚堪锛坣eed_confirmation 鏃跺～鍐欙級 */  description?: string  /** 鎵ц杩斿洖鐨勬暟鎹?*/  data?: unknown}/** 閫氳繃 contextBridge.exposeInMainWorld('remoteControl', ...) 鏆撮湶缁欐覆鏌撹繘绋嬬殑杩滅▼鎺у埗 API 褰㈢姸 */export interface RemoteControlAPI {  /** 鑾峰彇杩炴帴鐘舵€佷笌褰撳墠璁惧 ID */  getStatus(): Promise<RemoteControlStatus>  /** 缁戝畾 IM 骞冲彴锛堜繚瀛?webhook URL 骞跺皾璇曡繛鎺ワ級 */  bind(platform: RemoteControlPlatform, config: { webhookUrl: string }): Promise<boolean>  /** 瑙ｇ粦 IM 骞冲彴 */  unbind(platform: RemoteControlPlatform): Promise<void>  /** 鍚敤杩滅▼鎺у埗锛堣繛鎺?WebSocket锛?*/  enable(): Promise<void>  /** 绂佺敤杩滅▼鎺у埗锛堟柇寮€ WebSocket锛?*/  disable(): Promise<void>  /** 鏇存柊杩滅▼鎺у埗璁剧疆锛堝畨鍏ㄧ瓑绾?/ 鐧藉悕鍗曠瓑锛?*/  updateSettings(settings: RemoteControlSettings): Promise<void>  /** 璇诲彇褰撳墠杩滅▼鎺у埗璁剧疆 */  getSettings(): Promise<RemoteControlSettings>  /** 鐩戝惉鍛戒护鎵ц缁撴灉鎺ㄩ€侊紝杩斿洖鍙栨秷鐩戝惉鍑芥暟 */  onCommandResult(callback: (result: RemoteCommandResult) => void): () => void}
+﻿// 涓昏繘绋?/ 娓叉煋杩涚▼鍏变韩绫诲瀷瀹氫箟
+// 璇ユ枃浠跺悓鏃惰 tsconfig.node.json 涓?tsconfig.web.json 鍖呭惈
+
+export type ServiceName = 'openclaw' | 'n8n' | 'mcp' | 'hermes'
+
+export type ServiceStatus = 'running' | 'stopped' | 'starting' | 'error' | 'unknown'
+
+/** 鏈嶅姟閮ㄧ讲绫诲瀷锛歭ocal锛堟湰鍦拌繘绋嬶級/ cloud锛堜簯绔繛鎺ュ瀷锛?*/
+export type ServiceDeploymentType = 'local' | 'cloud'
+
+export interface ServiceInfo {
+  name: ServiceName
+  displayName: string
+  status: ServiceStatus
+  port: number
+  pid?: number
+  /** 鍚姩鏃堕棿锛圛SO 8601 瀛楃涓诧級 */
+  startTime?: string
+  /** CPU 鍗犵敤鐧惧垎姣旓紙0-100锛?*/
+  cpuUsage?: number
+  /** 鍐呭瓨鍗犵敤 MB */
+  memoryUsage?: number
+  /** 閿欒淇℃伅锛坰tatus=error 鏃跺瓨鍦級 */
+  error?: string
+  /** 閮ㄧ讲绫诲瀷锛坙ocal=鏈湴杩涚▼ / cloud=浜戠杩炴帴鍨嬶級 */
+  deploymentType?: ServiceDeploymentType
+}
+
+export interface ServiceEnvCheck {
+  openclaw: boolean
+  n8n: boolean
+  mcp: boolean
+  hermes: boolean
+}
+
+/** 杩愯鏃?manifest 涓崟涓湇鍔＄殑鍏ュ彛瀹氫箟 */
+export interface RuntimeManifestEntry {
+  /** 鏈嶅姟绫诲瀷锛歭ocal=鏈湴杩愯鏃讹紙闇€涓嬭浇/瀹夎锛夛紝cloud=浜戠鏈嶅姟锛堥€氳繃 cloudEndpoint 杩炴帴锛?*/
+  type?: ServiceDeploymentType
+  version: string
+  displayName: string
+  port: number
+  /** 骞冲彴 -> 鍏ュ彛鏂囦欢鍚嶏紙濡?win32 -> n8n.exe锛?*/
+  entry: Record<string, string>
+  /** cloud 鏈嶅姟鐨勪簯绔?API 绔偣璺緞锛坱ype=cloud 鏃跺瓨鍦紝濡?/hermes锛?*/
+  cloudEndpoint?: string
+  /** 骞冲彴-鏋舵瀯 -> 涓嬭浇鍦板潃锛堝 win32-x64锛?*/
+  downloadUrl: Record<string, string>
+  /**
+   * 骞冲彴-鏋舵瀯 -> 褰掓。鏂囦欢澶у皬锛堝瓧鑺傦紝鏋勫缓鏈熷～鍏咃紝0 琛ㄧず鏈～鍏咃級
+   * TODO: 鐢?scripts/fetch-runtime.ts 鍦ㄦ瀯寤烘湡涓嬭浇褰掓。鍚庡洖鍐欏疄闄呭瓧鑺傛暟
+   */
+  size: Record<string, number>
+  /** 骞冲彴-鏋舵瀯 -> SHA-256 鍝堝笇锛堟瀯寤烘湡濉厖锛岀┖瀛楃涓茶〃绀烘湭濉厖锛?*/
+  sha256: Record<string, string>
+}
+
+/** runtime/manifest.json 鐨勭被鍨嬬粨鏋?*/
+export interface RuntimeManifest {
+  version: string
+  services: Record<ServiceName, RuntimeManifestEntry>
+}
+
+/** 瑙ｆ瀽鍚庣殑杩愯鏃跺惎鍔ㄥ懡浠ょ粍鍚?*/
+export interface ResolvedRuntime {
+  cmd: string
+  args: string[]
+  env: NodeJS.ProcessEnv
+  /** 鏉ユ簮:builtin(鍐呯疆)/ userData(鐢ㄦ埛鐩綍琛ヤ竵)/ host(瀹夸富鏈哄懡浠? */
+  source: 'builtin' | 'userData' | 'host'
+}
+
+/** 鐘舵€佸彉鏇翠簨浠?payload锛堥€氳繃 webContents.send('service:status-changed', payload) 鎺ㄩ€侊級 */
+export interface ServiceStatusChangedPayload {
+  name: ServiceName
+  status: ServiceStatus
+  info: ServiceInfo
+}
+
+/** 鏈嶅姟閿欒浜嬩欢 payload锛堥€氳繃 webContents.send('service:error', payload) 鎺ㄩ€侊級 */
+export interface ServiceErrorPayload {
+  name: ServiceName
+  message: string
+  /** 宸查噸璇曟鏁?*/
+  retryCount: number
+}
+
+export interface UpdateCheckResult {
+  available: boolean
+  version?: string
+  forceUpdate: boolean
+  releaseNotes?: string
+}
+
+/** 鏇存柊鐘舵€侊紙閫氳繃 webContents.send('update:status', payload) 鎺ㄩ€佸埌娓叉煋杩涚▼锛?*/
+export interface UpdateStatusPayload {
+  /** 褰撳墠鐘舵€?*/
+  status: 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
+  /** 鏂扮増鏈彿 */
+  version?: string
+  /** 鏇存柊鏃ュ織 */
+  releaseNotes?: string
+  /** 鏄惁寮哄埗鏇存柊 */
+  forceUpdate: boolean
+  /** 鏄惁鍛戒腑鐏板害 */
+  grayscaleHit: boolean
+  /** 鐏板害鐧惧垎姣旓紙鏈嶅姟绔笅鍙戯級 */
+  grayscalePercent?: number
+  /** 涓嬭浇杩涘害 0-100 */
+  progress: number
+  /** 闄勫姞淇℃伅锛堥敊璇秷鎭瓑锛?*/
+  message?: string
+}
+
+/** 杩愯鏃朵笅杞借繘搴︼紙閫氳繃 webContents.send('runtime:download-progress', payload) 鎺ㄩ€侊級 */
+export interface RuntimeDownloadProgress {
+  /** 鏈嶅姟鍚?*/
+  name: ServiceName
+  /** 杩涘害鐧惧垎姣?0-100 */
+  percent: number
+  /** 涓嬭浇閫熺巼 KB/s */
+  speedKBs: number
+  /** 棰勮鍓╀綑绉掓暟 */
+  etaSec: number
+}
+
+/** 杩愯鏃舵牎楠岀粨鏋滐紙runtime:verify 閫氶亾杩斿洖鍊硷級 */
+export interface RuntimeVerifyResult {
+  /** 鍚勬湇鍔″畬鏁存€?*/
+  results: Record<ServiceName, boolean>
+  /** 鍏ㄩ儴閫氳繃 */
+  allPassed: boolean
+}
+
+/** 鍚屾闃熷垪瀹炰綋绫诲瀷 */
+export type SyncEntityType = 'chat_session' | 'chat_message' | 'workflow_execution' | 'plugin_call_log'
+
+/** 鍚屾闃熷垪鎿嶄綔绫诲瀷 */
+export type SyncOperation = 'create' | 'update' | 'delete'
+
+/** 鍚屾闃熷垪椤癸紙鍏ラ槦鏃朵娇鐢級 */
+export interface SyncQueueItem {
+  client_txn_id: string
+  entity_type: SyncEntityType
+  entity_id: string
+  operation: SyncOperation
+  payload: unknown
+}
+
+/** 鍚屾闃熷垪琛岋紙鏁版嵁搴撲腑鐨勫畬鏁磋褰曪級 */
+export interface SyncQueueRow {
+  id: number
+  client_txn_id: string
+  entity_type: SyncEntityType
+  entity_id: string
+  operation: SyncOperation
+  payload: unknown
+  status: 'pending' | 'synced' | 'failed'
+  retry_count: number
+  error_message: string | null
+  created_at: string
+  synced_at: string | null
+}
+
+// 璁惧鎸囩汗锛堥噰闆嗘湰鏈虹‖浠?绯荤粺鐗瑰緛鐢熸垚 SHA-256 鍝堝笇锛?export interface DeviceFingerprint {
+  fingerprint: string // SHA-256 鍝堝笇锛?4 瀛楃 hex锛?  hostname: string
+  platform: string // win32/darwin/linux
+  arch: string // x64/arm64
+  macAddress: string
+  appVersion: string
+}
+
+// 瀹屾暣璁惧淇℃伅锛堟寚绾?+ 璁惧鍚?+ CPU/鍐呭瓨锛?export interface DeviceInfo extends DeviceFingerprint {
+  deviceName: string
+  cpus: number
+  totalMemory: number
+}
+
+/** 鍑嵁鍔犲瘑瀛樺偍 API锛堥€氳繃 SafeStorage 鍔犲瘑锛屼富杩涚▼鎸佷箙鍖栵級 */
+export interface CredentialAPI {
+  /** 鍔犲瘑骞跺瓨鍌ㄥ嚟鎹?*/
+  set(key: string, value: string): Promise<void>
+  /** 璇诲彇骞惰В瀵嗗嚟鎹紙涓嶅瓨鍦ㄨ繑鍥?null锛?*/
+  get(key: string): Promise<string | null>
+  /** 鍒犻櫎鎸囧畾 key 鐨勫嚟鎹?*/
+  delete(key: string): Promise<void>
+}
+
+/** 璁よ瘉淇℃伅鏌ヨ API锛堥€氳繃 IPC 浠庝富杩涚▼鑾峰彇 token / apiBase锛屼緵 RemoteControl 璋冪敤鐪熷疄鍚庣 API锛?*/
+export interface AuthAPI {
+  /** 璇诲彇褰撳墠 accessToken锛堟湭鐧诲綍鎴栨湭鎸佷箙鍖栨椂杩斿洖 null锛?*/
+  getToken(): Promise<string | null>
+  /** 璇诲彇鍚庣 API base URL锛堜笉鍚?/api 鍚庣紑锛?*/
+  getApiBase(): Promise<string>
+}
+
+// 閫氳繃 contextBridge 鏆撮湶缁欐覆鏌撹繘绋嬬殑 API 褰㈢姸
+export interface ElectronAPI {
+  service: {
+    getStatus(): Promise<Record<ServiceName, ServiceStatus>>
+    /** 鑾峰彇鍗曚釜鏈嶅姟鐨勫畬鏁翠俊鎭紙鍚?pid/cpu/memory/startTime锛?*/
+    status(name: ServiceName): Promise<ServiceInfo>
+    /** 鑾峰彇鎵€鏈夋湇鍔＄殑瀹屾暣淇℃伅鍒楄〃 */
+    list(): Promise<ServiceInfo[]>
+    start(name: ServiceName): Promise<boolean>
+    stop(name: ServiceName): Promise<boolean>
+    restart(name: ServiceName): Promise<boolean>
+    checkEnv(): Promise<ServiceEnvCheck>
+    install(name: ServiceName): Promise<boolean>
+    /** 鐩戝惉鏈嶅姟鐘舵€佸彉鏇达紝杩斿洖鍙栨秷鐩戝惉鍑芥暟 */
+    onStatusChanged(
+      callback: (payload: ServiceStatusChangedPayload) => void
+    ): () => void
+    /** 鐩戝惉鏈嶅姟閿欒浜嬩欢锛岃繑鍥炲彇娑堢洃鍚嚱鏁?*/
+    onError(callback: (payload: ServiceErrorPayload) => void): () => void
+  }
+  app: {
+    getVersion(): Promise<string>
+    checkUpdate(): Promise<void>
+    quitAndInstall(): Promise<void>
+  }
+  /** 鑷姩鏇存柊锛坋lectron-updater 灏佽锛?*/
+  updater: {
+    /** 鎵嬪姩妫€鏌ユ洿鏂?*/
+    check(): Promise<void>
+    /** 瑙﹀彂涓嬭浇鏇存柊 */
+    download(): Promise<void>
+    /** 閫€鍑哄苟瀹夎鏇存柊 */
+    install(): Promise<void>
+    /** 鐩戝惉鏇存柊鐘舵€佸彉鏇达紝杩斿洖鍙栨秷鐩戝惉鍑芥暟 */
+    onStatus(callback: (payload: UpdateStatusPayload) => void): () => void
+  }
+  window: {
+    minimize(): void
+    maximize(): void
+    close(): void
+  }
+  device: {
+    getFingerprint(): Promise<string>
+  }
+  db: {
+    /**
+     * 鍒濆鍖栨湰鍦版暟鎹簱锛堢櫥褰曞悗璋冪敤锛夛紝杩斿洖鏄惁鎴愬姛锛堝け璐ュ垯杩涘叆闄嶇骇妯″紡锛?     * @param userId 鐢ㄦ埛 ID锛堢ǔ瀹氫笉鍙橀噺锛屼笉闅?token 鍒锋柊鍙樺寲锛?     * @param dbSecret 鍚庣涓嬪彂鐨勭敤鎴风骇闀挎湡瀵嗛挜锛堟寔涔呭寲锛屼笌 token 鐢熷懡鍛ㄦ湡瑙ｈ€︼級
+     */
+    initialize(userId: string, dbSecret: string): Promise<boolean>
+    /** 妫€鏌ユ湰鍦版暟鎹簱鏄惁澶勪簬闄嶇骇妯″紡锛堝悓姝ワ級 */
+    isDegraded(): boolean
+    /** 鍏抽棴鏈湴鏁版嵁搴擄紙鐧诲嚭鏃惰皟鐢級 */
+    close(): void
+  }
+  /** 鍚屾闃熷垪鎿嶄綔锛堢绾胯皟鐢ㄩ槦鍒?+ 涓婅鍚屾锛?*/
+  syncQueue: {
+    /** 鍏ラ槦锛氬啓鍏?local_sync_queue锛岃繑鍥炶嚜澧?id */
+    enqueue(item: SyncQueueItem): Promise<number>
+    /** 璇诲彇 status=pending 鐨勮褰曪紝鏈€澶?limit 鏉?*/
+    getPending(limit: number): Promise<SyncQueueRow[]>
+    /** 鎸夌姸鎬佹煡璇㈣褰曪紙鐢ㄤ簬澶辫触璁板綍灞曠ず涓庨噸璇曪級 */
+    getByStatus(status: 'pending' | 'synced' | 'failed'): Promise<SyncQueueRow[]>
+    /** 鏇存柊璁板綍鐘舵€侊紙鍚屾鎴愬姛/澶辫触鏃惰皟鐢級 */
+    updateStatus(
+      id: number,
+      status: 'synced' | 'failed' | 'pending',
+      retryCount: number,
+      errorMessage?: string
+    ): Promise<void>
+    /** 鏍规嵁 client_txn_id 鏌ヨ鏄惁宸插瓨鍦?*/
+    exists(client_txn_id: string): Promise<boolean>
+  }
+  /** 鍑嵁鍔犲瘑瀛樺偍锛圚-03 淇锛氶€氳繃 SafeStorage 鍔犲瘑瀵嗙爜绛夋晱鎰熷嚟鎹級 */
+  credential: CredentialAPI
+  /** Hermes Agent 鏈湴 API 瀹㈡埛绔厤缃紙Task 5.2 - 娉ㄥ叆 LLM 浠ｇ悊瀵嗛挜锛?*/
+  hermes: {
+    /** 璁剧疆 Hermes Agent LLM 浠ｇ悊瀵嗛挜锛堜緵鏈湴 Hermes Agent 浠ｇ悊杞彂 LLM 璇锋眰锛?*/
+    setLlmProxyKey(key: string): Promise<boolean>
+  }
+}
+
+/** 鍗曚釜寮曟搸鐨勮繙绋嬫洿鏂颁俊鎭紙鏉ヨ嚜鍚庣 /api/runtime/check-update锛?*/
+export interface RuntimeUpdateInfo {
+  version: string
+  downloadUrl: string
+  sha256: string
+  changelog: string | null
+  forceUpdate: boolean
+  minAppVersion: string | null
+}
+
+/** runtime:check-update IPC 杩斿洖缁撴灉 */
+export interface RuntimeUpdateResult {
+  /** 闇€瑕佹洿鏂扮殑寮曟搸鍒楄〃锛坘ey 涓?service name: openclaw/n8n/mcp锛?*/
+  updates: Record<string, RuntimeUpdateInfo>
+  /** 鏈湴鎵€鏈夊紩鎿庢槸鍚﹀潎涓烘渶鏂扮増 */
+  upToDate: boolean
+  /** 缃戠粶鎴栧悗绔敊璇椂鐨勯敊璇俊鎭?*/
+  error?: string
+}
+
+/** 閫氳繃 contextBridge.exposeInMainWorld('runtime', ...) 鏆撮湶缁欐覆鏌撹繘绋嬬殑杩愯鏃?API 褰㈢姸 */
+export interface RuntimeAPI {
+  /** 鏍￠獙鎵€鏈夋湇鍔¤繍琛屾椂瀹屾暣鎬э紝杩斿洖鍚勬湇鍔＄粨鏋滀笌鏄惁鍏ㄩ儴閫氳繃 */
+  verify(): Promise<RuntimeVerifyResult>
+  /** 鏍￠獙鍗曚釜鏈嶅姟杩愯鏃跺畬鏁存€э紙SHA-256锛?*/
+  verifyOne(name: ServiceName): Promise<boolean>
+  /** 涓嬭浇/瀹夎鏈嶅姟杩愯鏃讹紙閫氳繃 npm install -g锛夛紝杩斿洖 { ok, error? } */
+  download(name: ServiceName): Promise<{ ok: boolean; error?: string }>
+  /** 鍙栨秷姝ｅ湪杩涜鐨勪笅杞斤紙淇濈暀涓存椂鏂囦欢浠ヤ究鏂偣缁紶锛?*/
+  cancelDownload(name: ServiceName): Promise<boolean>
+  /** 鐩戝惉涓嬭浇杩涘害鎺ㄩ€侊紝杩斿洖鍙栨秷鐩戝惉鍑芥暟锛堜究浜?React useEffect cleanup锛?*/
+  onDownloadProgress(callback: (progress: RuntimeDownloadProgress) => void): () => void
+  /** 妫€鏌ュ紩鎿庢洿鏂帮紙璋冪敤鍚庣 /api/runtime/check-update 骞朵笌鏈湴 manifest 姣斿鐗堟湰锛?*/
+  checkUpdate(): Promise<RuntimeUpdateResult>
+}
+
+// ===== 杩滅▼鎺у埗锛圱ask 14 - Feishu/WeCom IM 杩滅▼浠诲姟娲惧彂锛?=====
+
+/** 杩滅▼鎺у埗缁戝畾鐨?IM 骞冲彴 */
+export type RemoteControlPlatform = 'feishu' | 'wecom'
+
+/** 瀹夊叏绛夌骇
+ *  - high:   浠呭厑璁告煡璇㈢被鍛戒护
+ *  - medium: 鎵ц绫诲懡浠ら渶浜屾纭
+ *  - low:    鎵ц绫诲懡浠ょ洿鎺ユ墽琛? */
+export type RemoteSecurityLevel = 'high' | 'medium' | 'low'
+
+/** 鍗曚釜 IM 骞冲彴缁戝畾閰嶇疆 */
+export interface RemoteControlBinding {
+  /** 鏄惁宸茬粦瀹?*/
+  bound: boolean
+  /** 鏈哄櫒浜?Webhook URL锛堢粦瀹氬悗瀛樺湪锛?*/
+  webhookUrl?: string
+  /** 缁戝畾鏃堕棿锛圛SO 8601锛?*/
+  boundAt?: string
+}
+
+/** 璁惧鐧藉悕鍗曟潯鐩紙鍏佽閫氳繃 IM 杩滅▼鎺у埗鏈満鐨勮澶囷級 */
+export interface RemoteDeviceWhitelistEntry {
+  /** 璁惧 ID锛堟寚绾癸級 */
+  deviceId: string
+  /** 璁惧鍚嶏紙灞曠ず鐢級 */
+  deviceName: string
+}
+
+/** 杩滅▼鎺у埗璁剧疆锛堟寔涔呭寲鍦ㄤ富杩涚▼锛屾覆鏌撹繘绋嬭鍐欙級 */
+export interface RemoteControlSettings {
+  /** 杩滅▼鎺у埗鎬诲紑鍏?*/
+  enabled: boolean
+  /** 瀹夊叏绛夌骇 */
+  securityLevel: RemoteSecurityLevel
+  /** 椋炰功缁戝畾 */
+  feishu: RemoteControlBinding
+  /** 浼佷笟寰俊缁戝畾 */
+  wecom: RemoteControlBinding
+  /** 璁惧鐧藉悕鍗?*/
+  deviceWhitelist: RemoteDeviceWhitelistEntry[]
+}
+
+/** 杩滅▼鎺у埗杩炴帴鐘舵€?*/
+export interface RemoteControlStatus {
+  connected: boolean
+  /** 褰撳墠璁惧 ID锛堟寚绾癸級 */
+  deviceId: string
+  /** 鏈€杩戜竴娆￠敊璇俊鎭?*/
+  error?: string
+}
+
+/** 杩滅▼鍛戒护绫诲瀷 */
+export type RemoteCommandType =
+  | 'run_workflow'
+  | 'query_status'
+  | 'stop_task'
+  | 'delete_file'
+  | 'format_disk'
+  | 'execute_system_command'
+  | 'modify_system_config'
+  | 'unknown'
+
+/** 瑙ｆ瀽鍚庣殑杩滅▼鍛戒护锛堢粨鏋勫寲锛?*/
+export interface RemoteCommand {
+  /** 鍛戒护鍞竴 ID锛堢敱浜戠涓嬪彂锛?*/
+  commandId: string
+  /** 鍛戒护绫诲瀷 */
+  type: RemoteCommandType
+  /** 鍛戒护璐熻浇锛堝伐浣滄祦鍚?/ 浠诲姟 ID / 鍘熷鏂囨湰绛夛級 */
+  payload: {
+    name?: string
+    taskId?: string
+    raw?: string
+    input?: unknown
+  }
+  /** 鍘熷鍛戒护鏂囨湰 */
+  raw: string
+  /** 鏉ユ簮骞冲彴 */
+  source: RemoteControlPlatform
+}
+
+/** 鍛戒护鎵ц缁撴灉鍥炰紶锛圛M 绔睍绀猴級 */
+export interface RemoteCommandResult {
+  /** 瀵瑰簲鐨勫懡浠?ID */
+  commandId: string
+  /** 鐘舵€侊細杩涜涓?/ 鎴愬姛 / 澶辫触 / 闇€纭 */
+  status: 'running' | 'success' | 'failed' | 'need_confirmation'
+  /** 杩涘害 0-100 */
+  progress?: number
+  /** 缁撴灉鎻忚堪 / 閿欒淇℃伅 */
+  message?: string
+  /** 楂樺嵄鎿嶄綔鎻忚堪锛坣eed_confirmation 鏃跺～鍐欙級 */
+  description?: string
+  /** 鎵ц杩斿洖鐨勬暟鎹?*/
+  data?: unknown
+}
+
+/** 閫氳繃 contextBridge.exposeInMainWorld('remoteControl', ...) 鏆撮湶缁欐覆鏌撹繘绋嬬殑杩滅▼鎺у埗 API 褰㈢姸 */
+export interface RemoteControlAPI {
+  /** 鑾峰彇杩炴帴鐘舵€佷笌褰撳墠璁惧 ID */
+  getStatus(): Promise<RemoteControlStatus>
+  /** 缁戝畾 IM 骞冲彴锛堜繚瀛?webhook URL 骞跺皾璇曡繛鎺ワ級 */
+  bind(platform: RemoteControlPlatform, config: { webhookUrl: string }): Promise<boolean>
+  /** 瑙ｇ粦 IM 骞冲彴 */
+  unbind(platform: RemoteControlPlatform): Promise<void>
+  /** 鍚敤杩滅▼鎺у埗锛堣繛鎺?WebSocket锛?*/
+  enable(): Promise<void>
+  /** 绂佺敤杩滅▼鎺у埗锛堟柇寮€ WebSocket锛?*/
+  disable(): Promise<void>
+  /** 鏇存柊杩滅▼鎺у埗璁剧疆锛堝畨鍏ㄧ瓑绾?/ 鐧藉悕鍗曠瓑锛?*/
+  updateSettings(settings: RemoteControlSettings): Promise<void>
+  /** 璇诲彇褰撳墠杩滅▼鎺у埗璁剧疆 */
+  getSettings(): Promise<RemoteControlSettings>
+  /** 鐩戝惉鍛戒护鎵ц缁撴灉鎺ㄩ€侊紝杩斿洖鍙栨秷鐩戝惉鍑芥暟 */
+  onCommandResult(callback: (result: RemoteCommandResult) => void): () => void
+}

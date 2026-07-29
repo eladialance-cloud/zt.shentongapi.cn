@@ -1,1 +1,799 @@
-﻿// 鏈湴鏈嶅姟绠＄悊鍣?- 绠＄悊 OpenClaw / N8N / MCP Gateway 涓変釜鏈湴鏈嶅姟杩涚▼//// 瀹炵幇璇存槑锛圱ask 16锛夛細// - 涓変釜鏈嶅姟鍧囬€氳繃 child_process.spawn 鍚姩瀛愯繘绋?// - 鍚姩鍛戒护鍙厤缃紙SERVICE_COMMANDS锛夛紝鎸夊€欓€夊懡浠や緷娆″皾璇?// - 姣忕閲囨牱 CPU/鍐呭瓨锛圵indows: wmic / Linux: /proc/<pid>/stat锛?// - 寮傚父閫€鍑鸿嚜鍔ㄩ噸鍚紙鏈€澶?3 娆★紝闂撮殧 5 绉掞級锛岃秴杩囧悗 emit 'service-error'// - 鐘舵€佸彉鏇?emit 'status-changed'锛岀敱涓昏繘绋嬪叆鍙ｈ浆鍙戝埌娓叉煋杩涚▼import { EventEmitter } from 'node:events'import { execFile, spawn, type ChildProcess } from 'node:child_process'import { createConnection } from 'node:net'import * as path from 'node:path'import treekill from 'tree-kill'import type {  ServiceName,  ServiceStatus,  ServiceInfo,  ServiceEnvCheck,  ServiceErrorPayload,  ServiceDeploymentType} from '../shared/types'import { resolve, verifyAll } from './runtime-resolver'import type { ResolvedRuntime } from '../shared/types'import { download as downloadRuntime } from './runtime-downloader'interface ServiceDef {  displayName: string  port: number  deploymentType: ServiceDeploymentType}const SERVICE_DEFS: Record<ServiceName, ServiceDef> = {  openclaw: { displayName: 'OpenClaw', port: 51096, deploymentType: 'local' },  n8n: { displayName: 'N8N', port: 5678, deploymentType: 'local' },  mcp: { displayName: 'MCP Gateway', port: 3100, deploymentType: 'local' },  hermes: { displayName: 'Hermes Agent', port: 8642, deploymentType: 'local' }}/** N8N 瀛愯繘绋嬬幆澧冨彉閲?*/const N8N_ENV: NodeJS.ProcessEnv = {  ...process.env,  N8N_HOST: '127.0.0.1',  N8N_PORT: '5678',  N8N_PROTOCOL: 'http',  N8N_EDITOR_BASE_URL: 'http://127.0.0.1:5678',  N8N_DIAGNOSTICS_ENABLED: 'false',  GENERIC_TIMEZONE: 'Asia/Shanghai'}/** MCP 瀛愯繘绋嬬幆澧冨彉閲?*/// mcp-gateway 鏄?SSE 瀹㈡埛绔紝闇€鎸囧畾鍚庣 MCP Server URL锛屼笉鐩戝惉鏈湴绔彛const MCP_BACKEND_URL = process.env.VITE_API_BASE_URL?.replace('/api', '') || 'https://zt.shentongapi.cn'const MCP_ENV: NodeJS.ProcessEnv = {  ...process.env,  MCP_SERVER_URL: `${MCP_BACKEND_URL}/api/mcp`}/** Hermes Agent 瀛愯繘绋嬬幆澧冨彉閲?*/const HERMES_API_SERVER_KEY = process.env.HERMES_API_SERVER_KEY || 'shentong-local-hermes-key'// 鐢?IPC 鍦ㄧ敤鎴风櫥褰曞悗娉ㄥ叆锛坢ain/index.ts 璋冪敤 setHermesLlmProxyKey锛?let hermesLlmProxyKey = ''const HERMES_ENV: NodeJS.ProcessEnv = {  ...process.env,  HERMES_API_SERVER_KEY,  CUSTOM_API_KEY: hermesLlmProxyKey,  CUSTOM_BASE_URL: `${MCP_BACKEND_URL}/api/llm-proxy/v1`,}/** 鐢?IPC 璋冪敤锛屾洿鏂?hermes 鍚姩鏃剁殑 CUSTOM_API_KEY 鐜鍙橀噺 */export function setHermesLlmProxyKey(key: string): void {  hermesLlmProxyKey = key  HERMES_ENV.CUSTOM_API_KEY = key}/** 鑷姩閲嶅惎閰嶇疆 */const MAX_RESTART_RETRIES = 3const RESTART_INTERVAL_MS = 5000/** 绔彛杩為€氭€ф娴?*/function isPortListening(port: number, host = '127.0.0.1'): Promise<boolean> {  return new Promise((resolve) => {    const socket = createConnection({ port, host })    let settled = false    const done = (ok: boolean) => {      if (settled) return      settled = true      socket.destroy()      resolve(ok)    }    socket.once('connect', () => done(true))    socket.once('error', () => done(false))    setTimeout(() => done(false), 1000)  })}/** 绛夊緟绔彛灏辩华锛堣疆璇級 */async function waitForPort(  port: number,  timeoutMs = 30000,  intervalMs = 1000): Promise<boolean> {  const deadline = Date.now() + timeoutMs  while (Date.now() < deadline) {    if (await isPortListening(port)) return true    await new Promise((resolve) => setTimeout(resolve, intervalMs))  }  return false}/** 杩涚▼鎸囨爣閲囨牱缁撴灉 */interface ProcessMetrics {  /** CPU 绱鏃堕棿锛堟绉掞紝user+kernel锛?*/  cpuTimeMs: number  /** 鍐呭瓨鍗犵敤锛堝瓧鑺傦級 */  memBytes: number}/** 璇诲彇鍗曚釜杩涚▼鐨勭疮璁?CPU 鏃堕棿涓庡唴瀛橈紙璺ㄥ钩鍙帮紝best-effort锛?*/function sampleProcess(pid: number): Promise<ProcessMetrics | null> {  return new Promise((resolve) => {    if (process.platform === 'win32') {      // PowerShell Get-CimInstance 鏇夸唬宸插純鐢ㄧ殑 wmic锛圵indows 11 22H2+ 绉婚櫎浜?wmic锛?      // UserModeTime / KernelModeTime 鍗曚綅 100ns锛學orkingSetSize 鍗曚綅瀛楄妭      // 浣跨敤 execFile 鑰岄潪 exec锛岄伩鍏?shell 娉ㄥ叆椋庨櫓      execFile(        'powershell.exe',        ['-NoProfile', '-Command', `Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}' | Select-Object UserModeTime,KernelModeTime,WorkingSetSize | Format-List`],        { windowsHide: true, timeout: 3000 },        (err, stdout) => {          if (err || !stdout) return resolve(null)          const map: Record<string, string> = {}          for (const line of stdout.split(/\r?\n/)) {            const idx = line.indexOf(':')            if (idx > 0) {              const key = line.slice(0, idx).trim()              const val = line.slice(idx + 1).trim()              if (key) map[key] = val            }          }          const user = Number(map.UserModeTime) || 0          const kernel = Number(map.KernelModeTime) || 0          const ws = Number(map.WorkingSetSize) || 0          // 鏃堕棿鍗曚綅涓?100ns锛岃浆鎹负姣          const cpuTimeMs = (user + kernel) / 10000          if (!cpuTimeMs && !ws) return resolve(null)          resolve({ cpuTimeMs, memBytes: ws })        }      )    } else {      // Linux: /proc/<pid>/stat      execFile('cat', [`/proc/${pid}/stat`], { timeout: 2000 }, (err, stdout) => {        if (err || !stdout) return resolve(null)        const fields = stdout.trim().split(' ')        // utime=14, stime=15, rss=24锛堜粠 0 寮€濮嬭鏁帮級        const utime = parseInt(fields[13], 10) || 0        const stime = parseInt(fields[14], 10) || 0        const rss = parseInt(fields[23], 10) || 0        const clkTck = 100        const cpuTimeMs = ((utime + stime) / clkTck) * 1000        const memBytes = rss * 4096        resolve({ cpuTimeMs, memBytes })      })    }  })}export class ServiceManager extends EventEmitter {  private services: Map<ServiceName, ServiceInfo> = new Map()  /** 杩愯涓殑瀛愯繘绋?*/  private processes: Map<ServiceName, ChildProcess> = new Map()  /** 涓诲姩鍋滄鏍囪锛堥伩鍏嶈Е鍙戣嚜鍔ㄩ噸鍚級 */  private intentionalStop: Set<ServiceName> = new Set()  /** 鑷姩閲嶅惎宸查噸璇曟鏁?*/  private restartCounts: Map<ServiceName, number> = new Map()  /** 涓婁竴娆?CPU 閲囨牱锛堢敤浜庡樊鍊艰绠?CPU%锛?*/  private lastCpuSample: Map<ServiceName, { time: number; cpuMs: number }> = new Map()  /** metrics 閲囨牱瀹氭椂鍣?*/  private metricsTimer: NodeJS.Timeout | null = null  /** 浜戠鏈嶅姟鍋ュ悍妫€鏌ュ畾鏃跺櫒 */  private cloudHealthTimer: NodeJS.Timeout | null = null  /** 姣忔湇鍔℃渶杩?stderr 杈撳嚭锛堢幆褰㈢紦鍐诧紝鏈€杩?20 琛岋級锛岀敤浜庡惎鍔ㄥけ璐ヨ瘖鏂?*/  private stderrBuffer: Map<ServiceName, string[]> = new Map()  private static readonly STDERR_MAX_LINES = 20  /** 闃叉鑷姩瀹夎閫掑綊鐨勬爣璁?*/  private autoInstallAttempted: Set<ServiceName> = new Set()  /** 闃叉 doctor 閲嶅鎵ц鐨勬爣璁?*/  private doctorAttempted: boolean = false  constructor() {    super()    for (const [name, def] of Object.entries(SERVICE_DEFS)) {      this.services.set(name as ServiceName, {        name: name as ServiceName,        displayName: def.displayName,        status: 'unknown',        port: def.port,        deploymentType: def.deploymentType      })    }    this.startMetricsSampler()    this.startCloudHealthCheck()  }  /** 鍚姩姣?5 绉?metrics 閲囨牱 */  private startMetricsSampler(): void {    if (this.metricsTimer) return    this.metricsTimer = setInterval(() => {      void this.sampleAllMetrics()    }, 5000)    // 涓嶉樆姝㈣繘绋嬮€€鍑?    if (typeof this.metricsTimer.unref === 'function') {      this.metricsTimer.unref()    }  }  /** 閲囨牱鎵€鏈夎繍琛屼腑鏈嶅姟鐨?CPU/鍐呭瓨 */  private async sampleAllMetrics(): Promise<void> {    for (const [name, child] of this.processes) {      const pid = child.pid      if (!pid) continue      const info = this.services.get(name)      if (!info || info.status !== 'running') continue      try {        const sample = await sampleProcess(pid)        if (!sample) continue        const now = Date.now()        const last = this.lastCpuSample.get(name)        let cpuPercent: number | undefined        if (last) {          const dt = now - last.time          const dCpu = sample.cpuTimeMs - last.cpuMs          if (dt > 0) cpuPercent = Math.max(0, Math.min(100, (dCpu / dt) * 100))        }        this.lastCpuSample.set(name, { time: now, cpuMs: sample.cpuTimeMs })        info.cpuUsage = cpuPercent        info.memoryUsage = Math.round((sample.memBytes / 1024 / 1024) * 10) / 10      } catch {        // 閲囨牱澶辫触蹇界暐      }    }  }  /** 鍚姩浜戠鏈嶅姟瀹氭椂鍋ュ悍妫€鏌ワ紙姣?30 绉掞級 */  private startCloudHealthCheck(): void {    if (this.cloudHealthTimer) return    this.cloudHealthTimer = setInterval(() => {      void this.checkAllCloudServices()    }, 30000)    if (typeof this.cloudHealthTimer.unref === 'function') {      this.cloudHealthTimer.unref()    }  }  /** 閬嶅巻鎵€鏈変簯绔湇鍔℃墽琛屽仴搴锋鏌?*/  private async checkAllCloudServices(): Promise<void> {    for (const [name, info] of this.services) {      if (info.deploymentType !== 'cloud') continue      // 璺宠繃涓诲姩鍋滄鐨勬湇鍔?      if (this.intentionalStop.has(name)) continue      await this.checkCloudHealth(name, info)    }  }  /** 浜戠鏈嶅姟瀹氭椂鍋ュ悍妫€鏌ワ紙涓嶈缃?starting 鐘舵€侊紝閬垮厤 UI 闂儊锛?*/  private async checkCloudHealth(name: ServiceName, info: ServiceInfo): Promise<void> {    try {      const baseUrl = process.env.VITE_API_BASE_URL || 'https://zt.shentongapi.cn/api'      const url = `${baseUrl}/hermes/health`      const controller = new AbortController()      const timeout = setTimeout(() => controller.abort(), 10000)      const res = await fetch(url, { signal: controller.signal })      clearTimeout(timeout)      if (res.ok) {        if (info.status !== 'running') {          info.status = 'running'          info.startTime = info.startTime ?? new Date().toISOString()          info.error = undefined          this.emitStatus(name)        }      } else {        throw new Error(`HTTP ${res.status}`)      }    } catch {      if (info.status !== 'error') {        info.status = 'error'        info.error = 'Hermes 浜戠鏈嶅姟涓嶅彲杈撅紝璇锋鏌ヤ簯绔儴缃?        this.emitStatus(name)      }    }  }  /** 浜戠鏈嶅姟鍋ュ悍妫€鏌ワ紙鐢ㄤ簬 start/install锛岃缃?starting 鐘舵€侊級 */  private async checkCloudService(name: ServiceName, info: ServiceInfo): Promise<boolean> {    info.status = 'starting'    this.emitStatus(name)    try {      const baseUrl = process.env.VITE_API_BASE_URL || 'https://zt.shentongapi.cn/api'      const url = `${baseUrl}/hermes/health`      const controller = new AbortController()      const timeout = setTimeout(() => controller.abort(), 10000)      const res = await fetch(url, { signal: controller.signal })      clearTimeout(timeout)      if (res.ok) {        info.status = 'running'        info.startTime = new Date().toISOString()        info.error = undefined        this.emitStatus(name)        return true      }      throw new Error(`HTTP ${res.status}`)    } catch {      info.status = 'error'      info.error = 'Hermes 浜戠鏈嶅姟涓嶅彲杈撅紝璇锋鏌ヤ簯绔儴缃?      this.emitStatus(name)      return false    }  }  getAllStatus(): Record<ServiceName, ServiceStatus> {    const result = {} as Record<ServiceName, ServiceStatus>    for (const [name, info] of this.services) {      result[name] = info.status    }    return result  }  getStatus(name: ServiceName): ServiceStatus {    return this.services.get(name)?.status ?? 'unknown'  }  /** 妫€娴嬫湇鍔＄湡瀹炶繍琛岀姸鎬侊紙绔彛鏄惁鐩戝惉锛?*/  async getServiceStatus(name: ServiceName): Promise<ServiceStatus> {    const info = this.services.get(name)    if (!info) return 'unknown'    const listening = await isPortListening(info.port)    if (listening && info.status !== 'running') {      info.status = 'running'      this.emitStatus(name)    } else if (!listening && info.status === 'running') {      info.status = this.processes.has(name) ? 'unknown' : 'stopped'      this.emitStatus(name)    }    return info.status  }  getInfo(name: ServiceName): ServiceInfo | undefined {    return this.services.get(name)  }  getAllInfo(): ServiceInfo[] {    return Array.from(this.services.values())  }  async start(name: ServiceName): Promise<boolean> {    const info = this.services.get(name)    if (!info) return false    // 浜戠鏈嶅姟锛氫笉妫€鏌ユ湰鍦扮鍙ｏ紝鐩存帴璋冪敤浜戠鍋ュ悍妫€鏌?    if (info.deploymentType === 'cloud') {      this.restartCounts.delete(name)      this.intentionalStop.delete(name)      try {        return await this.checkCloudService(name, info)      } catch (err) {        console.error(`[service-manager] start ${name} failed:`, err)        info.status = 'error'        info.error = err instanceof Error ? err.message : String(err)        this.emitStatus(name)        return false      }    }    // 宸插湪杩愯锛氱洿鎺ヨ繑鍥炴垚鍔?    if (info.status === 'running' && (await isPortListening(info.port))) {      return true    }    // Hermes 鐜鍙橀噺棰勬锛欳USTOM_API_KEY 蹇呴』鍦ㄧ櫥褰曞悗鐢?IPC 娉ㄥ叆    if (name === 'hermes' && !HERMES_ENV.CUSTOM_API_KEY) {      info.status = 'error'      info.error = 'Hermes Agent 鍚姩澶辫触锛欳USTOM_API_KEY 鏈缃紝璇风櫥褰曞悗鍐嶈瘯'      this.emitStatus(name)      return false    }    // 閲嶇疆閲嶈瘯璁℃暟    this.restartCounts.delete(name)    this.intentionalStop.delete(name)    try {      return await this.spawnService(name, info)    } catch (err) {      console.error(`[service-manager] start ${name} failed:`, err)      info.status = 'error'      info.error = err instanceof Error ? err.message : String(err)      this.emitStatus(name)      return false    }  }  /** 棰勬 OpenClaw 閰嶇疆鏈夋晥鎬э紝蹇呰鏃惰嚜鍔ㄤ慨澶嶏紙纭繚鏂扮敤鎴峰紑绠卞嵆鐢級 */  private async preflightOpenClawConfig(resolved: ResolvedRuntime): Promise<boolean> {    try {      // 杩愯 openclaw doctor --fix 鑷姩淇閰嶇疆闂      // 瓒呮椂 30 绉掞紝閬垮厤鍗′綇鍚姩娴佺▼      const result = await new Promise<boolean>((resolveFn) => {        const child = execFile(          resolved.cmd,          [...resolved.args, 'doctor', '--fix'],          {            env: resolved.env,            windowsHide: true,            timeout: 30000,            maxBuffer: 1024 * 1024          },          (err, stdout, stderr) => {            if (err && !stdout) {              console.warn('[service-manager] openclaw doctor --fix failed:', err.message)              resolveFn(false)            } else {              // doctor --fix 鍗充娇鏈?warning 涔熶細杩斿洖 0 鎴栭潪 0锛屽叧閿槸閰嶇疆鏄惁鏈夋晥              console.log('[service-manager] openclaw doctor --fix completed')              resolveFn(true)            }          }        )        // 闃叉瀛愯繘绋嬫寕璧?        setTimeout(() => {          try { child.kill('SIGKILL') } catch {}          resolveFn(false)        }, 35000)      })      return result    } catch (err) {      console.warn('[service-manager] openclaw doctor preflight error:', err)      return false    }  }  /** spawn 瀛愯繘绋嬪苟绛夊緟绔彛灏辩华 */  private async spawnService(name: ServiceName, info: ServiceInfo): Promise<boolean> {    // 浜戠鏈嶅姟锛氫笉 spawn 瀛愯繘绋嬶紝杞敱浜戠鍋ュ悍妫€鏌ュ鐞?    if (info.deploymentType === 'cloud') {      return this.checkCloudService(name, info)    }    // 濡傛灉绔彛宸茬粡鍦ㄧ洃鍚紙澶栭儴宸插惎鍔級锛岀洿鎺ョ疆涓?running    if (await isPortListening(info.port)) {      info.status = 'running'      info.startTime = new Date().toISOString()      this.emitStatus(name)      return true    }    const resolved = resolve(name)    if (!resolved) {      // 杩愯鏃舵湭瀹夎锛氳嚜鍔ㄤ粠 CDN 涓嬭浇瀹夎锛堥槻閫掑綊锛氬悓涓€娆?start 璋冪敤鍙皾璇曚竴娆★級      if (this.autoInstallAttempted.has(name)) {        info.status = 'error'        info.error = `${info.displayName} 杩愯鏃跺畨瑁呭け璐ワ紝璇锋鏌ョ綉缁滄垨鎵嬪姩鍦ㄦ湇鍔＄鐞嗛〉瀹夎`        this.emitStatus(name)        this.intentionalStop.add(name)        return false      }      this.autoInstallAttempted.add(name)      try {        info.status = 'starting'        info.error = `${info.displayName} 杩愯鏃舵湭瀹夎锛屾鍦ㄤ粠 CDN 涓嬭浇...`        this.emitStatus(name)        const installOk = await this.install(name)        if (installOk) {          // install 鍐呴儴宸茶皟鐢?start锛屾竻鐞嗘爣璁板苟杩斿洖          this.autoInstallAttempted.delete(name)          return true        }        // install 澶辫触锛坕nstall 鍐呴儴宸茶缃?error锛?        this.autoInstallAttempted.delete(name)        return false      } catch (err) {        info.status = 'error'        info.error = `${info.displayName} 杩愯鏃朵笅杞藉け璐? ${err instanceof Error ? err.message : String(err)}`        this.emitStatus(name)        this.intentionalStop.add(name)        this.autoInstallAttempted.delete(name)        return false      }    }    // OpenClaw 棰勬锛氶娆″惎鍔ㄥ墠鑷姩杩愯 doctor --fix 淇閰嶇疆    if (name === 'openclaw' && !this.doctorAttempted) {      this.doctorAttempted = true      info.status = 'starting'      info.error = `${info.displayName} 姝ｅ湪鍒濆鍖栭厤缃?..`      this.emitStatus(name)      await this.preflightOpenClawConfig(resolved)      info.error = undefined    }    // 鍚堝苟鐜鍙橀噺锛歂8N_ENV / MCP_ENV / HERMES_ENV 浼樺厛浜?resolved.env    const env =      name === 'n8n' ? { ...resolved.env, ...N8N_ENV } :      name === 'mcp' ? { ...resolved.env, ...MCP_ENV } :      name === 'hermes' ? { ...resolved.env, ...HERMES_ENV } :      resolved.env    let child: ChildProcess    try {      // Windows 涓婏細濡傛灉 cmd 鏄?.cmd/.bat 鏂囦欢闇€瑕?shell 妯″紡锛涘鏋滄槸 .exe 鐩存帴璺緞鍒欎笉闇€瑕?      const needsShell = process.platform === 'win32' && (        !path.isAbsolute(resolved.cmd) ||        resolved.cmd.toLowerCase().endsWith('.cmd') ||        resolved.cmd.toLowerCase().endsWith('.bat') ||        resolved.cmd.toLowerCase().endsWith('.ps1')      )      // Windows shell mode: quote path with spaces      const spawnCmd = needsShell && path.isAbsolute(resolved.cmd) && !resolved.cmd.startsWith('"')        ? `"${resolved.cmd}"`        : resolved.cmd      child = spawn(spawnCmd, resolved.args, {        env,        stdio: ['ignore', 'pipe', 'pipe'],        windowsHide: true,        shell: needsShell      })    } catch (err) {      info.status = 'error'      info.error = `鍚姩 ${info.displayName} 澶辫触: ${err instanceof Error ? err.message : String(err)}`      this.emitStatus(name)      return false    }    // 鏍囪 starting    info.status = 'starting'    info.error = undefined    this.emitStatus(name)    // MCP Gateway 鏄?SSE 瀹㈡埛绔紝涓嶇洃鍚鍙?    // 灏辩华淇″彿锛歴tdout 鎴?stderr 杈撳嚭 "MCP Gateway is running" 鎴?"SSE backend connected"    const mcpReady = new Promise<boolean>((resolveMcp) => {      if (name !== 'mcp') {        resolveMcp(false)        return      }      const timer = setTimeout(() => resolveMcp(false), 15000)      const checkReady = (chunk: Buffer) => {        const text = chunk.toString()        if (text.includes('MCP Gateway is running') || text.includes('SSE backend connected')) {          clearTimeout(timer)          resolveMcp(true)        }      }      child.stdout?.on('data', checkReady)      child.stderr?.on('data', checkReady)    })    // 鐩戝惉瀛愯繘绋嬭緭鍑?    child.stdout?.on('data', (chunk: Buffer) => {      const text = chunk.toString().trim()      if (text) console.log(`[${name}] ${text}`)    })    child.stderr?.on('data', (chunk: Buffer) => {      const text = chunk.toString().trim()      if (text) {        console.warn(`[${name}] ${text}`)        // 绱Н stderr 鐢ㄤ簬鍚姩澶辫触璇婃柇        const lines = text.split(/\r?\n/).filter(Boolean)        const buf = this.stderrBuffer.get(name) ?? []        for (const line of lines) {          buf.push(line)          if (buf.length > ServiceManager.STDERR_MAX_LINES) buf.shift()        }        this.stderrBuffer.set(name, buf)      }    })    // spawn 閿欒锛堝鍛戒护涓嶅瓨鍦級    child.once('error', (err) => {      console.error(`[service-manager] ${name} spawn error:`, err)      this.processes.delete(name)      this.stderrBuffer.delete(name)      info.status = 'error'      info.error = err.message      info.pid = undefined      this.emitStatus(name)      // spawn 澶辫触锛氭爣璁颁富鍔ㄥ仠姝紝閬垮厤鏃犳剰涔夐噸璇?      this.intentionalStop.add(name)    })    // 瀛愯繘绋嬮€€鍑?    child.once('exit', (code, signal) => {      console.warn(`[service-manager] ${name} exited: code=${code} signal=${signal}`)      this.processes.delete(name)      this.lastCpuSample.delete(name)      const wasStarting = info.status === 'starting'      const wasRunning = info.status === 'running'      info.pid = undefined      info.cpuUsage = undefined      info.memoryUsage = undefined      // 涓诲姩鍋滄锛氫笉閲嶅惎      if (this.intentionalStop.has(name)) {        info.status = 'stopped'        this.emitStatus(name)        return      }      // 鍚姩闃舵閫€鍑猴細鏍囪 error锛屼笉鑷姩閲嶅惎锛堥伩鍏嶆棤鎰忎箟閲嶈瘯锛?      if (wasStarting) {        info.status = 'error'        const stderrTail = (this.stderrBuffer.get(name) ?? []).join('\n')        const baseMsg = name === 'n8n'          ? `${info.displayName} 鍚姩澶辫触 (code=${code})锛岃灏濊瘯鍦ㄦ湇鍔＄鐞嗛〉闈㈤噸鏂板畨瑁?N8N`          : `${info.displayName} 鍚姩澶辫触 (code=${code})锛岃妫€鏌ユ湇鍔℃槸鍚﹀凡姝ｇ‘瀹夎`        info.error = stderrTail          ? `${baseMsg}\nstderr: ${stderrTail}`          : baseMsg        info.status = 'error'        this.emitStatus(name)        this.intentionalStop.add(name)        this.stderrBuffer.delete(name)        return      }      // 杩愯涓紓甯搁€€鍑猴細鏍囪 error 骞跺皾璇曡嚜鍔ㄩ噸鍚?      if (wasRunning) {        info.status = 'error'        info.error = `杩涚▼寮傚父閫€鍑?(code=${code} signal=${signal})`        this.emitStatus(name)        void this.tryAutoRestart(name)      }    })    this.processes.set(name, child)    info.pid = child.pid    // 绛夊緟鏈嶅姟灏辩华    // - MCP Gateway锛歋SE 瀹㈡埛绔紝涓嶇洃鍚鍙ｏ紝妫€娴?stderr 灏辩华鏍囪 + 杩涚▼瀛樻椿    // - OpenClaw / N8N锛氭娴嬬鍙ｇ洃鍚?    let ready: boolean    if (name === 'mcp') {      ready = await mcpReady      if (ready && this.processes.has(name)) {        info.status = 'running'        info.startTime = new Date().toISOString()        this.restartCounts.delete(name)        this.emitStatus(name)        return true      }    } else {      // N8N 鍒濆鍖栬緝鎱紝鍗曠嫭寤堕暱瓒呮椂鍒?90s锛屽叾浠栨湇鍔′繚鎸侀粯璁?30s      const portTimeoutMs = name === 'n8n' ? 90000 : 30000      ready = await waitForPort(info.port, portTimeoutMs, 1000)      if (ready && this.processes.has(name)) {        info.status = 'running'        info.startTime = new Date().toISOString()        this.restartCounts.delete(name)        this.emitStatus(name)        return true      }    }    // 鏈氨缁細淇濈暀杩涚▼缁х画鍚姩锛屾爣璁颁负 starting锛堝墠绔彲缁х画杞锛?    if (this.processes.has(name)) {      info.status = 'starting'      this.emitStatus(name)    }    return false  }  /** 鑷姩閲嶅惎锛堟渶澶?MAX_RESTART_RETRIES 娆★紝闂撮殧 RESTART_INTERVAL_MS锛?*/  private async tryAutoRestart(name: ServiceName): Promise<void> {    if (this.intentionalStop.has(name)) return    const count = (this.restartCounts.get(name) ?? 0) + 1    this.restartCounts.set(name, count)    if (count > MAX_RESTART_RETRIES) {      // 瓒呰繃閲嶈瘯涓婇檺锛氬仠姝㈤噸璇曪紝鎺ㄩ€?error 浜嬩欢      const info = this.services.get(name)      const payload: ServiceErrorPayload = {        name,        message:          info?.error ||          `${info?.displayName ?? name} 鑷姩閲嶅惎澶辫触锛屽凡瓒呰繃鏈€澶ч噸璇曟鏁?(${MAX_RESTART_RETRIES})`,        retryCount: count - 1      }      console.error(`[service-manager] ${name} auto-restart exhausted:`, payload.message)      this.emit('service-error', payload)      return    }    console.log(`[service-manager] ${name} auto-restart attempt ${count}/${MAX_RESTART_RETRIES} in ${RESTART_INTERVAL_MS}ms`)    await new Promise((resolve) => setTimeout(resolve, RESTART_INTERVAL_MS))    if (this.intentionalStop.has(name)) return    const info = this.services.get(name)    if (!info) return    info.status = 'starting'    info.error = undefined    this.emitStatus(name)    try {      await this.spawnService(name, info)    } catch (err) {      info.status = 'error'      info.error = err instanceof Error ? err.message : String(err)      this.emitStatus(name)      void this.tryAutoRestart(name)    }  }  async stop(name: ServiceName): Promise<boolean> {    const info = this.services.get(name)    if (!info) return false    // 鏍囪涓诲姩鍋滄锛岄伩鍏嶈Е鍙戣嚜鍔ㄩ噸鍚?    this.intentionalStop.add(name)    this.restartCounts.delete(name)    this.stderrBuffer.delete(name)    // 浜戠鏈嶅姟锛氫笉 kill 杩涚▼锛屼粎璁剧疆鐘舵€?    if (info.deploymentType === 'cloud') {      info.status = 'stopped'      info.pid = undefined      info.error = undefined      info.cpuUsage = undefined      info.memoryUsage = undefined      info.startTime = undefined      this.emitStatus(name)      return true    }    const child = this.processes.get(name)    if (child) {      const pid = child.pid      try {        child.removeAllListeners('exit')        child.removeAllListeners('error')        if (pid) {          const exited = new Promise<boolean>((resolve) => {            child.once('exit', () => resolve(true))            // 5s 瓒呮椂鍚庣敤 SIGKILL 寮哄埗鏉€鏁存５杩涚▼鏍戯紙鍏滃簳锛?            setTimeout(() => {              treekill(pid, 'SIGKILL', (err) => {                if (err) console.warn(`[service-manager] stop ${name} SIGKILL treekill failed:`, err)              })            }, 5000)          })          // 鍏堝皾璇?SIGTERM 浼橀泤閫€鍑猴紙tree-kill 鏉€鏁存５杩涚▼鏍戯紝鍚瓙瀛欒繘绋嬶紝閬垮厤瀛ゅ効锛?          treekill(pid, 'SIGTERM', (err) => {            if (err) console.warn(`[service-manager] stop ${name} SIGTERM treekill failed:`, err)          })          await exited        }      } catch (err) {        console.warn(`[service-manager] stop ${name} kill failed:`, err)      } finally {        this.processes.delete(name)        this.lastCpuSample.delete(name)      }    }    info.status = 'stopped'    info.pid = undefined    info.error = undefined    info.cpuUsage = undefined    info.memoryUsage = undefined    info.startTime = undefined    this.emitStatus(name)    return true  }  async restart(name: ServiceName): Promise<boolean> {    await this.stop(name)    // 鐭殏绛夊緟绔彛閲婃斁    await new Promise((resolve) => setTimeout(resolve, 500))    this.intentionalStop.delete(name)    return this.start(name)  }  async checkEnvironment(): Promise<ServiceEnvCheck> {    const result = await verifyAll()    return { openclaw: result.openclaw, n8n: result.n8n, mcp: result.mcp, hermes: result.hermes }  }  async install(name: ServiceName, onProgress?: (percent: number) => void): Promise<boolean> {    const info = this.services.get(name)    if (!info) return false    // 浜戠鏈嶅姟鏃犻渶鏈湴瀹夎锛岀洿鎺ヨЕ鍙戝仴搴锋鏌?    if (info.deploymentType === 'cloud') {      return this.start(name)    }    try {      const result = await downloadRuntime(name, (progress) => {        onProgress?.(progress.percent)      })      if (!result.ok) {        info.status = 'error'        info.error = result.error || '杩愯鏃跺畨瑁呭け璐?        this.emitStatus(name)        return false      }      // 瀹夎鎴愬姛鍚庤嚜鍔ㄥ惎鍔?      return await this.start(name)    } catch (err) {      info.status = 'error'      info.error = err instanceof Error ? err.message : String(err)      this.emitStatus(name)      return false    }  }  async startAll(): Promise<void> {    await Promise.all([this.start('openclaw'), this.start('n8n'), this.start('mcp'), this.start('hermes')])  }  async stopAll(): Promise<void> {    await Promise.all([this.stop('openclaw'), this.stop('n8n'), this.stop('mcp'), this.stop('hermes')])  }  /** 缁熶竴鍙戦€?status-changed 浜嬩欢 */  private emitStatus(name: ServiceName): void {    const info = this.services.get(name)    if (!info) return    this.emit('status-changed', name, info.status, info)  }}
+﻿// 鏈湴鏈嶅姟绠＄悊鍣?- 绠＄悊 OpenClaw / N8N / MCP Gateway 涓変釜鏈湴鏈嶅姟杩涚▼
+//
+// 瀹炵幇璇存槑锛圱ask 16锛夛細
+// - 涓変釜鏈嶅姟鍧囬€氳繃 child_process.spawn 鍚姩瀛愯繘绋?// - 鍚姩鍛戒护鍙厤缃紙SERVICE_COMMANDS锛夛紝鎸夊€欓€夊懡浠や緷娆″皾璇?// - 姣忕閲囨牱 CPU/鍐呭瓨锛圵indows: wmic / Linux: /proc/<pid>/stat锛?// - 寮傚父閫€鍑鸿嚜鍔ㄩ噸鍚紙鏈€澶?3 娆★紝闂撮殧 5 绉掞級锛岃秴杩囧悗 emit 'service-error'
+// - 鐘舵€佸彉鏇?emit 'status-changed'锛岀敱涓昏繘绋嬪叆鍙ｈ浆鍙戝埌娓叉煋杩涚▼
+
+import { EventEmitter } from 'node:events'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import { createConnection } from 'node:net'
+import * as path from 'node:path'
+import treekill from 'tree-kill'
+import type {
+  ServiceName,
+  ServiceStatus,
+  ServiceInfo,
+  ServiceEnvCheck,
+  ServiceErrorPayload,
+  ServiceDeploymentType
+} from '../shared/types'
+import { resolve, verifyAll } from './runtime-resolver'
+import type { ResolvedRuntime } from '../shared/types'
+import { download as downloadRuntime } from './runtime-downloader'
+
+interface ServiceDef {
+  displayName: string
+  port: number
+  deploymentType: ServiceDeploymentType
+}
+
+const SERVICE_DEFS: Record<ServiceName, ServiceDef> = {
+  openclaw: { displayName: 'OpenClaw', port: 51096, deploymentType: 'local' },
+  n8n: { displayName: 'N8N', port: 5678, deploymentType: 'local' },
+  mcp: { displayName: 'MCP Gateway', port: 3100, deploymentType: 'local' },
+  hermes: { displayName: 'Hermes Agent', port: 8642, deploymentType: 'local' }
+}
+
+/** N8N 瀛愯繘绋嬬幆澧冨彉閲?*/
+const N8N_ENV: NodeJS.ProcessEnv = {
+  ...process.env,
+  N8N_HOST: '127.0.0.1',
+  N8N_PORT: '5678',
+  N8N_PROTOCOL: 'http',
+  N8N_EDITOR_BASE_URL: 'http://127.0.0.1:5678',
+  N8N_DIAGNOSTICS_ENABLED: 'false',
+  GENERIC_TIMEZONE: 'Asia/Shanghai'
+}
+
+/** MCP 瀛愯繘绋嬬幆澧冨彉閲?*/
+// mcp-gateway 鏄?SSE 瀹㈡埛绔紝闇€鎸囧畾鍚庣 MCP Server URL锛屼笉鐩戝惉鏈湴绔彛
+const MCP_BACKEND_URL = process.env.VITE_API_BASE_URL?.replace('/api', '') || 'https://zt.shentongapi.cn'
+const MCP_ENV: NodeJS.ProcessEnv = {
+  ...process.env,
+  MCP_SERVER_URL: `${MCP_BACKEND_URL}/api/mcp`
+}
+
+/** Hermes Agent 瀛愯繘绋嬬幆澧冨彉閲?*/
+const HERMES_API_SERVER_KEY = process.env.HERMES_API_SERVER_KEY || 'shentong-local-hermes-key'
+// 鐢?IPC 鍦ㄧ敤鎴风櫥褰曞悗娉ㄥ叆锛坢ain/index.ts 璋冪敤 setHermesLlmProxyKey锛?let hermesLlmProxyKey = ''
+const HERMES_ENV: NodeJS.ProcessEnv = {
+  ...process.env,
+  HERMES_API_SERVER_KEY,
+  CUSTOM_API_KEY: hermesLlmProxyKey,
+  CUSTOM_BASE_URL: `${MCP_BACKEND_URL}/api/llm-proxy/v1`,
+}
+
+/** 鐢?IPC 璋冪敤锛屾洿鏂?hermes 鍚姩鏃剁殑 CUSTOM_API_KEY 鐜鍙橀噺 */
+export function setHermesLlmProxyKey(key: string): void {
+  hermesLlmProxyKey = key
+  HERMES_ENV.CUSTOM_API_KEY = key
+}
+
+/** 鑷姩閲嶅惎閰嶇疆 */
+const MAX_RESTART_RETRIES = 3
+const RESTART_INTERVAL_MS = 5000
+
+/** 绔彛杩為€氭€ф娴?*/
+function isPortListening(port: number, host = '127.0.0.1'): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = createConnection({ port, host })
+    let settled = false
+    const done = (ok: boolean) => {
+      if (settled) return
+      settled = true
+      socket.destroy()
+      resolve(ok)
+    }
+    socket.once('connect', () => done(true))
+    socket.once('error', () => done(false))
+    setTimeout(() => done(false), 1000)
+  })
+}
+
+/** 绛夊緟绔彛灏辩华锛堣疆璇級 */
+async function waitForPort(
+  port: number,
+  timeoutMs = 30000,
+  intervalMs = 1000
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (await isPortListening(port)) return true
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+  return false
+}
+
+/** 杩涚▼鎸囨爣閲囨牱缁撴灉 */
+interface ProcessMetrics {
+  /** CPU 绱鏃堕棿锛堟绉掞紝user+kernel锛?*/
+  cpuTimeMs: number
+  /** 鍐呭瓨鍗犵敤锛堝瓧鑺傦級 */
+  memBytes: number
+}
+
+/** 璇诲彇鍗曚釜杩涚▼鐨勭疮璁?CPU 鏃堕棿涓庡唴瀛橈紙璺ㄥ钩鍙帮紝best-effort锛?*/
+function sampleProcess(pid: number): Promise<ProcessMetrics | null> {
+  return new Promise((resolve) => {
+    if (process.platform === 'win32') {
+      // PowerShell Get-CimInstance 鏇夸唬宸插純鐢ㄧ殑 wmic锛圵indows 11 22H2+ 绉婚櫎浜?wmic锛?      // UserModeTime / KernelModeTime 鍗曚綅 100ns锛學orkingSetSize 鍗曚綅瀛楄妭
+      // 浣跨敤 execFile 鑰岄潪 exec锛岄伩鍏?shell 娉ㄥ叆椋庨櫓
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-Command', `Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}' | Select-Object UserModeTime,KernelModeTime,WorkingSetSize | Format-List`],
+        { windowsHide: true, timeout: 3000 },
+        (err, stdout) => {
+          if (err || !stdout) return resolve(null)
+          const map: Record<string, string> = {}
+          for (const line of stdout.split(/\r?\n/)) {
+            const idx = line.indexOf(':')
+            if (idx > 0) {
+              const key = line.slice(0, idx).trim()
+              const val = line.slice(idx + 1).trim()
+              if (key) map[key] = val
+            }
+          }
+          const user = Number(map.UserModeTime) || 0
+          const kernel = Number(map.KernelModeTime) || 0
+          const ws = Number(map.WorkingSetSize) || 0
+          // 鏃堕棿鍗曚綅涓?100ns锛岃浆鎹负姣
+          const cpuTimeMs = (user + kernel) / 10000
+          if (!cpuTimeMs && !ws) return resolve(null)
+          resolve({ cpuTimeMs, memBytes: ws })
+        }
+      )
+    } else {
+      // Linux: /proc/<pid>/stat
+      execFile('cat', [`/proc/${pid}/stat`], { timeout: 2000 }, (err, stdout) => {
+        if (err || !stdout) return resolve(null)
+        const fields = stdout.trim().split(' ')
+        // utime=14, stime=15, rss=24锛堜粠 0 寮€濮嬭鏁帮級
+        const utime = parseInt(fields[13], 10) || 0
+        const stime = parseInt(fields[14], 10) || 0
+        const rss = parseInt(fields[23], 10) || 0
+        const clkTck = 100
+        const cpuTimeMs = ((utime + stime) / clkTck) * 1000
+        const memBytes = rss * 4096
+        resolve({ cpuTimeMs, memBytes })
+      })
+    }
+  })
+}
+
+export class ServiceManager extends EventEmitter {
+  private services: Map<ServiceName, ServiceInfo> = new Map()
+  /** 杩愯涓殑瀛愯繘绋?*/
+  private processes: Map<ServiceName, ChildProcess> = new Map()
+  /** 涓诲姩鍋滄鏍囪锛堥伩鍏嶈Е鍙戣嚜鍔ㄩ噸鍚級 */
+  private intentionalStop: Set<ServiceName> = new Set()
+  /** 鑷姩閲嶅惎宸查噸璇曟鏁?*/
+  private restartCounts: Map<ServiceName, number> = new Map()
+  /** 涓婁竴娆?CPU 閲囨牱锛堢敤浜庡樊鍊艰绠?CPU%锛?*/
+  private lastCpuSample: Map<ServiceName, { time: number; cpuMs: number }> = new Map()
+  /** metrics 閲囨牱瀹氭椂鍣?*/
+  private metricsTimer: NodeJS.Timeout | null = null
+  /** 浜戠鏈嶅姟鍋ュ悍妫€鏌ュ畾鏃跺櫒 */
+  private cloudHealthTimer: NodeJS.Timeout | null = null
+  /** 姣忔湇鍔℃渶杩?stderr 杈撳嚭锛堢幆褰㈢紦鍐诧紝鏈€杩?20 琛岋級锛岀敤浜庡惎鍔ㄥけ璐ヨ瘖鏂?*/
+  private stderrBuffer: Map<ServiceName, string[]> = new Map()
+  private static readonly STDERR_MAX_LINES = 20
+  /** 闃叉鑷姩瀹夎閫掑綊鐨勬爣璁?*/
+  private autoInstallAttempted: Set<ServiceName> = new Set()
+  /** 闃叉 doctor 閲嶅鎵ц鐨勬爣璁?*/
+  private doctorAttempted: boolean = false
+
+  constructor() {
+    super()
+    for (const [name, def] of Object.entries(SERVICE_DEFS)) {
+      this.services.set(name as ServiceName, {
+        name: name as ServiceName,
+        displayName: def.displayName,
+        status: 'unknown',
+        port: def.port,
+        deploymentType: def.deploymentType
+      })
+    }
+    this.startMetricsSampler()
+    this.startCloudHealthCheck()
+  }
+
+  /** 鍚姩姣?5 绉?metrics 閲囨牱 */
+  private startMetricsSampler(): void {
+    if (this.metricsTimer) return
+    this.metricsTimer = setInterval(() => {
+      void this.sampleAllMetrics()
+    }, 5000)
+    // 涓嶉樆姝㈣繘绋嬮€€鍑?    if (typeof this.metricsTimer.unref === 'function') {
+      this.metricsTimer.unref()
+    }
+  }
+
+  /** 閲囨牱鎵€鏈夎繍琛屼腑鏈嶅姟鐨?CPU/鍐呭瓨 */
+  private async sampleAllMetrics(): Promise<void> {
+    for (const [name, child] of this.processes) {
+      const pid = child.pid
+      if (!pid) continue
+      const info = this.services.get(name)
+      if (!info || info.status !== 'running') continue
+      try {
+        const sample = await sampleProcess(pid)
+        if (!sample) continue
+        const now = Date.now()
+        const last = this.lastCpuSample.get(name)
+        let cpuPercent: number | undefined
+        if (last) {
+          const dt = now - last.time
+          const dCpu = sample.cpuTimeMs - last.cpuMs
+          if (dt > 0) cpuPercent = Math.max(0, Math.min(100, (dCpu / dt) * 100))
+        }
+        this.lastCpuSample.set(name, { time: now, cpuMs: sample.cpuTimeMs })
+        info.cpuUsage = cpuPercent
+        info.memoryUsage = Math.round((sample.memBytes / 1024 / 1024) * 10) / 10
+      } catch {
+        // 閲囨牱澶辫触蹇界暐
+      }
+    }
+  }
+
+  /** 鍚姩浜戠鏈嶅姟瀹氭椂鍋ュ悍妫€鏌ワ紙姣?30 绉掞級 */
+  private startCloudHealthCheck(): void {
+    if (this.cloudHealthTimer) return
+    this.cloudHealthTimer = setInterval(() => {
+      void this.checkAllCloudServices()
+    }, 30000)
+    if (typeof this.cloudHealthTimer.unref === 'function') {
+      this.cloudHealthTimer.unref()
+    }
+  }
+
+  /** 閬嶅巻鎵€鏈変簯绔湇鍔℃墽琛屽仴搴锋鏌?*/
+  private async checkAllCloudServices(): Promise<void> {
+    for (const [name, info] of this.services) {
+      if (info.deploymentType !== 'cloud') continue
+      // 璺宠繃涓诲姩鍋滄鐨勬湇鍔?      if (this.intentionalStop.has(name)) continue
+      await this.checkCloudHealth(name, info)
+    }
+  }
+
+  /** 浜戠鏈嶅姟瀹氭椂鍋ュ悍妫€鏌ワ紙涓嶈缃?starting 鐘舵€侊紝閬垮厤 UI 闂儊锛?*/
+  private async checkCloudHealth(name: ServiceName, info: ServiceInfo): Promise<void> {
+    try {
+      const baseUrl = process.env.VITE_API_BASE_URL || 'https://zt.shentongapi.cn/api'
+      const url = `${baseUrl}/hermes/health`
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 10000)
+      const res = await fetch(url, { signal: controller.signal })
+      clearTimeout(timeout)
+      if (res.ok) {
+        if (info.status !== 'running') {
+          info.status = 'running'
+          info.startTime = info.startTime ?? new Date().toISOString()
+          info.error = undefined
+          this.emitStatus(name)
+        }
+      } else {
+        throw new Error(`HTTP ${res.status}`)
+      }
+    } catch {
+      if (info.status !== 'error') {
+        info.status = 'error'
+        info.error = 'Hermes 浜戠鏈嶅姟涓嶅彲杈撅紝璇锋鏌ヤ簯绔儴缃?
+        this.emitStatus(name)
+      }
+    }
+  }
+
+  /** 浜戠鏈嶅姟鍋ュ悍妫€鏌ワ紙鐢ㄤ簬 start/install锛岃缃?starting 鐘舵€侊級 */
+  private async checkCloudService(name: ServiceName, info: ServiceInfo): Promise<boolean> {
+    info.status = 'starting'
+    this.emitStatus(name)
+    try {
+      const baseUrl = process.env.VITE_API_BASE_URL || 'https://zt.shentongapi.cn/api'
+      const url = `${baseUrl}/hermes/health`
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 10000)
+      const res = await fetch(url, { signal: controller.signal })
+      clearTimeout(timeout)
+      if (res.ok) {
+        info.status = 'running'
+        info.startTime = new Date().toISOString()
+        info.error = undefined
+        this.emitStatus(name)
+        return true
+      }
+      throw new Error(`HTTP ${res.status}`)
+    } catch {
+      info.status = 'error'
+      info.error = 'Hermes 浜戠鏈嶅姟涓嶅彲杈撅紝璇锋鏌ヤ簯绔儴缃?
+      this.emitStatus(name)
+      return false
+    }
+  }
+
+  getAllStatus(): Record<ServiceName, ServiceStatus> {
+    const result = {} as Record<ServiceName, ServiceStatus>
+    for (const [name, info] of this.services) {
+      result[name] = info.status
+    }
+    return result
+  }
+
+  getStatus(name: ServiceName): ServiceStatus {
+    return this.services.get(name)?.status ?? 'unknown'
+  }
+
+  /** 妫€娴嬫湇鍔＄湡瀹炶繍琛岀姸鎬侊紙绔彛鏄惁鐩戝惉锛?*/
+  async getServiceStatus(name: ServiceName): Promise<ServiceStatus> {
+    const info = this.services.get(name)
+    if (!info) return 'unknown'
+    const listening = await isPortListening(info.port)
+    if (listening && info.status !== 'running') {
+      info.status = 'running'
+      this.emitStatus(name)
+    } else if (!listening && info.status === 'running') {
+      info.status = this.processes.has(name) ? 'unknown' : 'stopped'
+      this.emitStatus(name)
+    }
+    return info.status
+  }
+
+  getInfo(name: ServiceName): ServiceInfo | undefined {
+    return this.services.get(name)
+  }
+
+  getAllInfo(): ServiceInfo[] {
+    return Array.from(this.services.values())
+  }
+
+  async start(name: ServiceName): Promise<boolean> {
+    const info = this.services.get(name)
+    if (!info) return false
+
+    // 浜戠鏈嶅姟锛氫笉妫€鏌ユ湰鍦扮鍙ｏ紝鐩存帴璋冪敤浜戠鍋ュ悍妫€鏌?    if (info.deploymentType === 'cloud') {
+      this.restartCounts.delete(name)
+      this.intentionalStop.delete(name)
+      try {
+        return await this.checkCloudService(name, info)
+      } catch (err) {
+        console.error(`[service-manager] start ${name} failed:`, err)
+        info.status = 'error'
+        info.error = err instanceof Error ? err.message : String(err)
+        this.emitStatus(name)
+        return false
+      }
+    }
+
+    // 宸插湪杩愯锛氱洿鎺ヨ繑鍥炴垚鍔?    if (info.status === 'running' && (await isPortListening(info.port))) {
+      return true
+    }
+
+    // Hermes 鐜鍙橀噺棰勬锛欳USTOM_API_KEY 蹇呴』鍦ㄧ櫥褰曞悗鐢?IPC 娉ㄥ叆
+    if (name === 'hermes' && !HERMES_ENV.CUSTOM_API_KEY) {
+      info.status = 'error'
+      info.error = 'Hermes Agent 鍚姩澶辫触锛欳USTOM_API_KEY 鏈缃紝璇风櫥褰曞悗鍐嶈瘯'
+      this.emitStatus(name)
+      return false
+    }
+
+    // 閲嶇疆閲嶈瘯璁℃暟
+    this.restartCounts.delete(name)
+    this.intentionalStop.delete(name)
+
+    try {
+      return await this.spawnService(name, info)
+    } catch (err) {
+      console.error(`[service-manager] start ${name} failed:`, err)
+      info.status = 'error'
+      info.error = err instanceof Error ? err.message : String(err)
+      this.emitStatus(name)
+      return false
+    }
+  }
+
+  /** 棰勬 OpenClaw 閰嶇疆鏈夋晥鎬э紝蹇呰鏃惰嚜鍔ㄤ慨澶嶏紙纭繚鏂扮敤鎴峰紑绠卞嵆鐢級 */
+  private async preflightOpenClawConfig(resolved: ResolvedRuntime): Promise<boolean> {
+    try {
+      // 杩愯 openclaw doctor --fix 鑷姩淇閰嶇疆闂
+      // 瓒呮椂 30 绉掞紝閬垮厤鍗′綇鍚姩娴佺▼
+      const result = await new Promise<boolean>((resolveFn) => {
+        const child = execFile(
+          resolved.cmd,
+          [...resolved.args, 'doctor', '--fix'],
+          {
+            env: resolved.env,
+            windowsHide: true,
+            timeout: 30000,
+            maxBuffer: 1024 * 1024
+          },
+          (err, stdout, stderr) => {
+            if (err && !stdout) {
+              console.warn('[service-manager] openclaw doctor --fix failed:', err.message)
+              resolveFn(false)
+            } else {
+              // doctor --fix 鍗充娇鏈?warning 涔熶細杩斿洖 0 鎴栭潪 0锛屽叧閿槸閰嶇疆鏄惁鏈夋晥
+              console.log('[service-manager] openclaw doctor --fix completed')
+              resolveFn(true)
+            }
+          }
+        )
+        // 闃叉瀛愯繘绋嬫寕璧?        setTimeout(() => {
+          try { child.kill('SIGKILL') } catch {}
+          resolveFn(false)
+        }, 35000)
+      })
+      return result
+    } catch (err) {
+      console.warn('[service-manager] openclaw doctor preflight error:', err)
+      return false
+    }
+  }
+
+  /** spawn 瀛愯繘绋嬪苟绛夊緟绔彛灏辩华 */
+  private async spawnService(name: ServiceName, info: ServiceInfo): Promise<boolean> {
+    // 浜戠鏈嶅姟锛氫笉 spawn 瀛愯繘绋嬶紝杞敱浜戠鍋ュ悍妫€鏌ュ鐞?    if (info.deploymentType === 'cloud') {
+      return this.checkCloudService(name, info)
+    }
+
+    // 濡傛灉绔彛宸茬粡鍦ㄧ洃鍚紙澶栭儴宸插惎鍔級锛岀洿鎺ョ疆涓?running
+    if (await isPortListening(info.port)) {
+      info.status = 'running'
+      info.startTime = new Date().toISOString()
+      this.emitStatus(name)
+      return true
+    }
+
+    const resolved = resolve(name)
+    if (!resolved) {
+      // 杩愯鏃舵湭瀹夎锛氳嚜鍔ㄤ粠 CDN 涓嬭浇瀹夎锛堥槻閫掑綊锛氬悓涓€娆?start 璋冪敤鍙皾璇曚竴娆★級
+      if (this.autoInstallAttempted.has(name)) {
+        info.status = 'error'
+        info.error = `${info.displayName} 杩愯鏃跺畨瑁呭け璐ワ紝璇锋鏌ョ綉缁滄垨鎵嬪姩鍦ㄦ湇鍔＄鐞嗛〉瀹夎`
+        this.emitStatus(name)
+        this.intentionalStop.add(name)
+        return false
+      }
+      this.autoInstallAttempted.add(name)
+      try {
+        info.status = 'starting'
+        info.error = `${info.displayName} 杩愯鏃舵湭瀹夎锛屾鍦ㄤ粠 CDN 涓嬭浇...`
+        this.emitStatus(name)
+        const installOk = await this.install(name)
+        if (installOk) {
+          // install 鍐呴儴宸茶皟鐢?start锛屾竻鐞嗘爣璁板苟杩斿洖
+          this.autoInstallAttempted.delete(name)
+          return true
+        }
+        // install 澶辫触锛坕nstall 鍐呴儴宸茶缃?error锛?        this.autoInstallAttempted.delete(name)
+        return false
+      } catch (err) {
+        info.status = 'error'
+        info.error = `${info.displayName} 杩愯鏃朵笅杞藉け璐? ${err instanceof Error ? err.message : String(err)}`
+        this.emitStatus(name)
+        this.intentionalStop.add(name)
+        this.autoInstallAttempted.delete(name)
+        return false
+      }
+    }
+
+    // OpenClaw 棰勬锛氶娆″惎鍔ㄥ墠鑷姩杩愯 doctor --fix 淇閰嶇疆
+    if (name === 'openclaw' && !this.doctorAttempted) {
+      this.doctorAttempted = true
+      info.status = 'starting'
+      info.error = `${info.displayName} 姝ｅ湪鍒濆鍖栭厤缃?..`
+      this.emitStatus(name)
+      await this.preflightOpenClawConfig(resolved)
+      info.error = undefined
+    }
+
+    // 鍚堝苟鐜鍙橀噺锛歂8N_ENV / MCP_ENV / HERMES_ENV 浼樺厛浜?resolved.env
+    const env =
+      name === 'n8n' ? { ...resolved.env, ...N8N_ENV } :
+      name === 'mcp' ? { ...resolved.env, ...MCP_ENV } :
+      name === 'hermes' ? { ...resolved.env, ...HERMES_ENV } :
+      resolved.env
+
+    let child: ChildProcess
+    try {
+      // Windows 涓婏細濡傛灉 cmd 鏄?.cmd/.bat 鏂囦欢闇€瑕?shell 妯″紡锛涘鏋滄槸 .exe 鐩存帴璺緞鍒欎笉闇€瑕?      const needsShell = process.platform === 'win32' && (
+        !path.isAbsolute(resolved.cmd) ||
+        resolved.cmd.toLowerCase().endsWith('.cmd') ||
+        resolved.cmd.toLowerCase().endsWith('.bat') ||
+        resolved.cmd.toLowerCase().endsWith('.ps1')
+      )
+      // Windows shell mode: quote path with spaces
+      const spawnCmd = needsShell && path.isAbsolute(resolved.cmd) && !resolved.cmd.startsWith('"')
+        ? `"${resolved.cmd}"`
+        : resolved.cmd
+      child = spawn(spawnCmd, resolved.args, {
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+        shell: needsShell
+      })
+    } catch (err) {
+      info.status = 'error'
+      info.error = `鍚姩 ${info.displayName} 澶辫触: ${err instanceof Error ? err.message : String(err)}`
+      this.emitStatus(name)
+      return false
+    }
+
+    // 鏍囪 starting
+    info.status = 'starting'
+    info.error = undefined
+    this.emitStatus(name)
+
+    // MCP Gateway 鏄?SSE 瀹㈡埛绔紝涓嶇洃鍚鍙?    // 灏辩华淇″彿锛歴tdout 鎴?stderr 杈撳嚭 "MCP Gateway is running" 鎴?"SSE backend connected"
+    const mcpReady = new Promise<boolean>((resolveMcp) => {
+      if (name !== 'mcp') {
+        resolveMcp(false)
+        return
+      }
+      const timer = setTimeout(() => resolveMcp(false), 15000)
+      const checkReady = (chunk: Buffer) => {
+        const text = chunk.toString()
+        if (text.includes('MCP Gateway is running') || text.includes('SSE backend connected')) {
+          clearTimeout(timer)
+          resolveMcp(true)
+        }
+      }
+      child.stdout?.on('data', checkReady)
+      child.stderr?.on('data', checkReady)
+    })
+
+    // 鐩戝惉瀛愯繘绋嬭緭鍑?    child.stdout?.on('data', (chunk: Buffer) => {
+      const text = chunk.toString().trim()
+      if (text) console.log(`[${name}] ${text}`)
+    })
+    child.stderr?.on('data', (chunk: Buffer) => {
+      const text = chunk.toString().trim()
+      if (text) {
+        console.warn(`[${name}] ${text}`)
+        // 绱Н stderr 鐢ㄤ簬鍚姩澶辫触璇婃柇
+        const lines = text.split(/\r?\n/).filter(Boolean)
+        const buf = this.stderrBuffer.get(name) ?? []
+        for (const line of lines) {
+          buf.push(line)
+          if (buf.length > ServiceManager.STDERR_MAX_LINES) buf.shift()
+        }
+        this.stderrBuffer.set(name, buf)
+      }
+    })
+
+    // spawn 閿欒锛堝鍛戒护涓嶅瓨鍦級
+    child.once('error', (err) => {
+      console.error(`[service-manager] ${name} spawn error:`, err)
+      this.processes.delete(name)
+      this.stderrBuffer.delete(name)
+      info.status = 'error'
+      info.error = err.message
+      info.pid = undefined
+      this.emitStatus(name)
+      // spawn 澶辫触锛氭爣璁颁富鍔ㄥ仠姝紝閬垮厤鏃犳剰涔夐噸璇?      this.intentionalStop.add(name)
+    })
+
+    // 瀛愯繘绋嬮€€鍑?    child.once('exit', (code, signal) => {
+      console.warn(`[service-manager] ${name} exited: code=${code} signal=${signal}`)
+      this.processes.delete(name)
+      this.lastCpuSample.delete(name)
+      const wasStarting = info.status === 'starting'
+      const wasRunning = info.status === 'running'
+      info.pid = undefined
+      info.cpuUsage = undefined
+      info.memoryUsage = undefined
+
+      // 涓诲姩鍋滄锛氫笉閲嶅惎
+      if (this.intentionalStop.has(name)) {
+        info.status = 'stopped'
+        this.emitStatus(name)
+        return
+      }
+
+      // 鍚姩闃舵閫€鍑猴細鏍囪 error锛屼笉鑷姩閲嶅惎锛堥伩鍏嶆棤鎰忎箟閲嶈瘯锛?      if (wasStarting) {
+        info.status = 'error'
+        const stderrTail = (this.stderrBuffer.get(name) ?? []).join('\n')
+        const baseMsg = name === 'n8n'
+          ? `${info.displayName} 鍚姩澶辫触 (code=${code})锛岃灏濊瘯鍦ㄦ湇鍔＄鐞嗛〉闈㈤噸鏂板畨瑁?N8N`
+          : `${info.displayName} 鍚姩澶辫触 (code=${code})锛岃妫€鏌ユ湇鍔℃槸鍚﹀凡姝ｇ‘瀹夎`
+        info.error = stderrTail
+          ? `${baseMsg}\nstderr: ${stderrTail}`
+          : baseMsg
+        info.status = 'error'
+        this.emitStatus(name)
+        this.intentionalStop.add(name)
+        this.stderrBuffer.delete(name)
+        return
+      }
+
+      // 杩愯涓紓甯搁€€鍑猴細鏍囪 error 骞跺皾璇曡嚜鍔ㄩ噸鍚?      if (wasRunning) {
+        info.status = 'error'
+        info.error = `杩涚▼寮傚父閫€鍑?(code=${code} signal=${signal})`
+        this.emitStatus(name)
+        void this.tryAutoRestart(name)
+      }
+    })
+
+    this.processes.set(name, child)
+    info.pid = child.pid
+
+    // 绛夊緟鏈嶅姟灏辩华
+    // - MCP Gateway锛歋SE 瀹㈡埛绔紝涓嶇洃鍚鍙ｏ紝妫€娴?stderr 灏辩华鏍囪 + 杩涚▼瀛樻椿
+    // - OpenClaw / N8N锛氭娴嬬鍙ｇ洃鍚?    let ready: boolean
+    if (name === 'mcp') {
+      ready = await mcpReady
+      if (ready && this.processes.has(name)) {
+        info.status = 'running'
+        info.startTime = new Date().toISOString()
+        this.restartCounts.delete(name)
+        this.emitStatus(name)
+        return true
+      }
+    } else {
+      // N8N 鍒濆鍖栬緝鎱紝鍗曠嫭寤堕暱瓒呮椂鍒?90s锛屽叾浠栨湇鍔′繚鎸侀粯璁?30s
+      const portTimeoutMs = name === 'n8n' ? 90000 : 30000
+      ready = await waitForPort(info.port, portTimeoutMs, 1000)
+      if (ready && this.processes.has(name)) {
+        info.status = 'running'
+        info.startTime = new Date().toISOString()
+        this.restartCounts.delete(name)
+        this.emitStatus(name)
+        return true
+      }
+    }
+
+    // 鏈氨缁細淇濈暀杩涚▼缁х画鍚姩锛屾爣璁颁负 starting锛堝墠绔彲缁х画杞锛?    if (this.processes.has(name)) {
+      info.status = 'starting'
+      this.emitStatus(name)
+    }
+    return false
+  }
+
+  /** 鑷姩閲嶅惎锛堟渶澶?MAX_RESTART_RETRIES 娆★紝闂撮殧 RESTART_INTERVAL_MS锛?*/
+  private async tryAutoRestart(name: ServiceName): Promise<void> {
+    if (this.intentionalStop.has(name)) return
+    const count = (this.restartCounts.get(name) ?? 0) + 1
+    this.restartCounts.set(name, count)
+
+    if (count > MAX_RESTART_RETRIES) {
+      // 瓒呰繃閲嶈瘯涓婇檺锛氬仠姝㈤噸璇曪紝鎺ㄩ€?error 浜嬩欢
+      const info = this.services.get(name)
+      const payload: ServiceErrorPayload = {
+        name,
+        message:
+          info?.error ||
+          `${info?.displayName ?? name} 鑷姩閲嶅惎澶辫触锛屽凡瓒呰繃鏈€澶ч噸璇曟鏁?(${MAX_RESTART_RETRIES})`,
+        retryCount: count - 1
+      }
+      console.error(`[service-manager] ${name} auto-restart exhausted:`, payload.message)
+      this.emit('service-error', payload)
+      return
+    }
+
+    console.log(`[service-manager] ${name} auto-restart attempt ${count}/${MAX_RESTART_RETRIES} in ${RESTART_INTERVAL_MS}ms`)
+    await new Promise((resolve) => setTimeout(resolve, RESTART_INTERVAL_MS))
+    if (this.intentionalStop.has(name)) return
+
+    const info = this.services.get(name)
+    if (!info) return
+    info.status = 'starting'
+    info.error = undefined
+    this.emitStatus(name)
+    try {
+      await this.spawnService(name, info)
+    } catch (err) {
+      info.status = 'error'
+      info.error = err instanceof Error ? err.message : String(err)
+      this.emitStatus(name)
+      void this.tryAutoRestart(name)
+    }
+  }
+
+  async stop(name: ServiceName): Promise<boolean> {
+    const info = this.services.get(name)
+    if (!info) return false
+
+    // 鏍囪涓诲姩鍋滄锛岄伩鍏嶈Е鍙戣嚜鍔ㄩ噸鍚?    this.intentionalStop.add(name)
+    this.restartCounts.delete(name)
+    this.stderrBuffer.delete(name)
+
+    // 浜戠鏈嶅姟锛氫笉 kill 杩涚▼锛屼粎璁剧疆鐘舵€?    if (info.deploymentType === 'cloud') {
+      info.status = 'stopped'
+      info.pid = undefined
+      info.error = undefined
+      info.cpuUsage = undefined
+      info.memoryUsage = undefined
+      info.startTime = undefined
+      this.emitStatus(name)
+      return true
+    }
+
+    const child = this.processes.get(name)
+    if (child) {
+      const pid = child.pid
+      try {
+        child.removeAllListeners('exit')
+        child.removeAllListeners('error')
+        if (pid) {
+          const exited = new Promise<boolean>((resolve) => {
+            child.once('exit', () => resolve(true))
+            // 5s 瓒呮椂鍚庣敤 SIGKILL 寮哄埗鏉€鏁存５杩涚▼鏍戯紙鍏滃簳锛?            setTimeout(() => {
+              treekill(pid, 'SIGKILL', (err) => {
+                if (err) console.warn(`[service-manager] stop ${name} SIGKILL treekill failed:`, err)
+              })
+            }, 5000)
+          })
+          // 鍏堝皾璇?SIGTERM 浼橀泤閫€鍑猴紙tree-kill 鏉€鏁存５杩涚▼鏍戯紝鍚瓙瀛欒繘绋嬶紝閬垮厤瀛ゅ効锛?          treekill(pid, 'SIGTERM', (err) => {
+            if (err) console.warn(`[service-manager] stop ${name} SIGTERM treekill failed:`, err)
+          })
+          await exited
+        }
+      } catch (err) {
+        console.warn(`[service-manager] stop ${name} kill failed:`, err)
+      } finally {
+        this.processes.delete(name)
+        this.lastCpuSample.delete(name)
+      }
+    }
+
+    info.status = 'stopped'
+    info.pid = undefined
+    info.error = undefined
+    info.cpuUsage = undefined
+    info.memoryUsage = undefined
+    info.startTime = undefined
+    this.emitStatus(name)
+    return true
+  }
+
+  async restart(name: ServiceName): Promise<boolean> {
+    await this.stop(name)
+    // 鐭殏绛夊緟绔彛閲婃斁
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    this.intentionalStop.delete(name)
+    return this.start(name)
+  }
+
+  async checkEnvironment(): Promise<ServiceEnvCheck> {
+    const result = await verifyAll()
+    return { openclaw: result.openclaw, n8n: result.n8n, mcp: result.mcp, hermes: result.hermes }
+  }
+
+  async install(name: ServiceName, onProgress?: (percent: number) => void): Promise<boolean> {
+    const info = this.services.get(name)
+    if (!info) return false
+    // 浜戠鏈嶅姟鏃犻渶鏈湴瀹夎锛岀洿鎺ヨЕ鍙戝仴搴锋鏌?    if (info.deploymentType === 'cloud') {
+      return this.start(name)
+    }
+    try {
+      const result = await downloadRuntime(name, (progress) => {
+        onProgress?.(progress.percent)
+      })
+      if (!result.ok) {
+        info.status = 'error'
+        info.error = result.error || '杩愯鏃跺畨瑁呭け璐?
+        this.emitStatus(name)
+        return false
+      }
+      // 瀹夎鎴愬姛鍚庤嚜鍔ㄥ惎鍔?      return await this.start(name)
+    } catch (err) {
+      info.status = 'error'
+      info.error = err instanceof Error ? err.message : String(err)
+      this.emitStatus(name)
+      return false
+    }
+  }
+
+  async startAll(): Promise<void> {
+    await Promise.all([this.start('openclaw'), this.start('n8n'), this.start('mcp'), this.start('hermes')])
+  }
+
+  async stopAll(): Promise<void> {
+    await Promise.all([this.stop('openclaw'), this.stop('n8n'), this.stop('mcp'), this.stop('hermes')])
+  }
+
+  /** 缁熶竴鍙戦€?status-changed 浜嬩欢 */
+  private emitStatus(name: ServiceName): void {
+    const info = this.services.get(name)
+    if (!info) return
+    this.emit('status-changed', name, info.status, info)
+  }
+}

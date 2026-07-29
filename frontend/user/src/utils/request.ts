@@ -1,1 +1,134 @@
-﻿// Axios HTTP 瀹㈡埛绔皝瑁?// 瀵归綈寮€鍙戞枃妗?鍓嶇寮€鍙戞寚鍗?md 3.3 HTTP 瀹㈡埛绔細Axiosimport axios, {  AxiosError,  AxiosRequestConfig,  AxiosResponse,  InternalAxiosRequestConfig,} from 'axios';import { message } from 'antd';import { useAuthStore } from '@/store/auth';import { API_BASE_URL, REQUEST_TIMEOUT, STORAGE_KEYS } from './constants';import type { ApiResponse } from '@/types/api';const request = axios.create({  baseURL: API_BASE_URL,  timeout: REQUEST_TIMEOUT,  withCredentials: true, // 鍙戦€?HttpOnly Cookie锛坮efreshToken 璺ㄥ煙鎼哄甫锛?  headers: {    'Content-Type': 'application/json',  },});// ===== Refresh Token 缁湡鏈哄埗 =====// 401 鏃跺厛灏濊瘯鐢?refreshToken 缁湡锛屾垚鍔熷垯閲嶈瘯鍘熻姹傦紱澶辫触鍐?logout// 閫氳繃鐙珛 axios 瀹炰緥璋冪敤 /auth/refresh锛岄伩鍏嶈Е鍙戣嚜韬嫤鎴櫒褰㈡垚寰幆let isRefreshing = false;let failedQueue: Array<{  resolve: (value: unknown) => void;  reject: (reason: unknown) => void;  config: InternalAxiosRequestConfig;}> = [];function flushQueue(error: unknown, token: string | null) {  failedQueue.forEach((item) => {    if (error) {      item.reject(error);    } else {      // 閲嶆柊鎸傝浇鏂?token 鍚庨噸璇?      item.config.headers.Authorization = `Bearer ${token}`;      item.resolve(request(item.config));    }  });  failedQueue = [];}async function tryRefreshToken(): Promise<string | null> {  const { refreshAccessToken } = useAuthStore.getState();  try {    // refreshToken 鐢辨祻瑙堝櫒閫氳繃 HttpOnly Cookie 鑷姩鎼哄甫锛屾棤闇€鎵嬪姩浼犲弬    const resp = await axios.post<{      code: number;      message: string;      data: { accessToken: string };    }>(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });    if (resp.data?.code !== 0) return null;    const { accessToken: newAccess } = resp.data.data;    // 浠呮洿鏂?accessToken锛屼笉鎵撴柇 socket 杩炴帴    refreshAccessToken(newAccess);    return newAccess;  } catch {    return null;  }}// 璇锋眰鎷︽埅鍣細娉ㄥ叆 Tokenrequest.interceptors.request.use(  (config: InternalAxiosRequestConfig) => {    const token = useAuthStore.getState().accessToken;    if (token) {      config.headers.Authorization = `Bearer ${token}`;    }    return config;  },  (error: AxiosError) => Promise.reject(error));// 鍝嶅簲鎷︽埅鍣細缁熶竴澶勭悊涓氬姟鐮佷笌閿欒request.interceptors.response.use(  (response): AxiosResponse | Promise<AxiosResponse> => {    const { code, data, message: msg } = response.data as ApiResponse;    if (code === 0) {      return data as unknown as AxiosResponse;    }    message.error(msg || '璇锋眰澶辫触');    return Promise.reject(new Error(msg || '璇锋眰澶辫触'));  },  async (error: AxiosError) => {    const originalRequest = error.config as      | (InternalAxiosRequestConfig & { _retry?: boolean })      | undefined;    // 401锛氬皾璇?refresh 缁湡鍚庨噸璇曪紝澶辫触鍐?logout    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {      // 宸插湪鍒锋柊涓細鎶婅姹傛寕鍏ラ槦鍒楋紝绛夊埛鏂扮粨鏋?      if (isRefreshing) {        return new Promise((resolve, reject) => {          failedQueue.push({ resolve, reject, config: originalRequest });        });      }      originalRequest._retry = true;      isRefreshing = true;      try {        const newToken = await tryRefreshToken();        if (newToken) {          // 鍒锋柊鎴愬姛锛氶噸璇曢槦鍒?+ 鍘熻姹?          flushQueue(null, newToken);          originalRequest.headers.Authorization = `Bearer ${newToken}`;          return request(originalRequest);        }        // 鍒锋柊澶辫触锛氭竻绌洪槦鍒楀苟鐧诲嚭        flushQueue(error, null);        useAuthStore.getState().logout();        window.location.href = '/login';        return Promise.reject(error);      } finally {        isRefreshing = false;      }    }    // 闈?401 / 宸查噸璇曡繃 / 鏃?config锛氱洿鎺ユ彁绀?    const msg =      (error.response?.data as ApiResponse)?.message ||      error.message ||      '缃戠粶閿欒';    if (error.response?.status === 401) {      // refresh 澶辫触璺緞宸茶烦杞紝杩欓噷閬垮厤閲嶅 message      return Promise.reject(error);    }    message.error(msg);    return Promise.reject(error);  });export default request;export { STORAGE_KEYS };// 鏆撮湶绫诲瀷渚涘閮ㄦ墿灞曪紙濡?_retry 鏍囪锛?export type { AxiosRequestConfig };
+﻿// Axios HTTP 瀹㈡埛绔皝瑁?// 瀵归綈寮€鍙戞枃妗?鍓嶇寮€鍙戞寚鍗?md 3.3 HTTP 瀹㈡埛绔細Axios
+import axios, {
+  AxiosError,
+  AxiosRequestConfig,
+  AxiosResponse,
+  InternalAxiosRequestConfig,
+} from 'axios';
+import { message } from 'antd';
+import { useAuthStore } from '@/store/auth';
+import { API_BASE_URL, REQUEST_TIMEOUT, STORAGE_KEYS } from './constants';
+import type { ApiResponse } from '@/types/api';
+
+const request = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: REQUEST_TIMEOUT,
+  withCredentials: true, // 鍙戦€?HttpOnly Cookie锛坮efreshToken 璺ㄥ煙鎼哄甫锛?  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// ===== Refresh Token 缁湡鏈哄埗 =====
+// 401 鏃跺厛灏濊瘯鐢?refreshToken 缁湡锛屾垚鍔熷垯閲嶈瘯鍘熻姹傦紱澶辫触鍐?logout
+// 閫氳繃鐙珛 axios 瀹炰緥璋冪敤 /auth/refresh锛岄伩鍏嶈Е鍙戣嚜韬嫤鎴櫒褰㈡垚寰幆
+
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (value: unknown) => void;
+  reject: (reason: unknown) => void;
+  config: InternalAxiosRequestConfig;
+}> = [];
+
+function flushQueue(error: unknown, token: string | null) {
+  failedQueue.forEach((item) => {
+    if (error) {
+      item.reject(error);
+    } else {
+      // 閲嶆柊鎸傝浇鏂?token 鍚庨噸璇?      item.config.headers.Authorization = `Bearer ${token}`;
+      item.resolve(request(item.config));
+    }
+  });
+  failedQueue = [];
+}
+
+async function tryRefreshToken(): Promise<string | null> {
+  const { refreshAccessToken } = useAuthStore.getState();
+  try {
+    // refreshToken 鐢辨祻瑙堝櫒閫氳繃 HttpOnly Cookie 鑷姩鎼哄甫锛屾棤闇€鎵嬪姩浼犲弬
+    const resp = await axios.post<{
+      code: number;
+      message: string;
+      data: { accessToken: string };
+    }>(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
+    if (resp.data?.code !== 0) return null;
+    const { accessToken: newAccess } = resp.data.data;
+    // 浠呮洿鏂?accessToken锛屼笉鎵撴柇 socket 杩炴帴
+    refreshAccessToken(newAccess);
+    return newAccess;
+  } catch {
+    return null;
+  }
+}
+
+// 璇锋眰鎷︽埅鍣細娉ㄥ叆 Token
+request.interceptors.request.use(
+  (config: InternalAxiosRequestConfig) => {
+    const token = useAuthStore.getState().accessToken;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error: AxiosError) => Promise.reject(error)
+);
+
+// 鍝嶅簲鎷︽埅鍣細缁熶竴澶勭悊涓氬姟鐮佷笌閿欒
+request.interceptors.response.use(
+  (response): AxiosResponse | Promise<AxiosResponse> => {
+    const { code, data, message: msg } = response.data as ApiResponse;
+
+    if (code === 0) {
+      return data as unknown as AxiosResponse;
+    }
+
+    message.error(msg || '璇锋眰澶辫触');
+    return Promise.reject(new Error(msg || '璇锋眰澶辫触'));
+  },
+  async (error: AxiosError) => {
+    const originalRequest = error.config as
+      | (InternalAxiosRequestConfig & { _retry?: boolean })
+      | undefined;
+
+    // 401锛氬皾璇?refresh 缁湡鍚庨噸璇曪紝澶辫触鍐?logout
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+      // 宸插湪鍒锋柊涓細鎶婅姹傛寕鍏ラ槦鍒楋紝绛夊埛鏂扮粨鏋?      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject, config: originalRequest });
+        });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+      try {
+        const newToken = await tryRefreshToken();
+        if (newToken) {
+          // 鍒锋柊鎴愬姛锛氶噸璇曢槦鍒?+ 鍘熻姹?          flushQueue(null, newToken);
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return request(originalRequest);
+        }
+        // 鍒锋柊澶辫触锛氭竻绌洪槦鍒楀苟鐧诲嚭
+        flushQueue(error, null);
+        useAuthStore.getState().logout();
+        window.location.href = '/login';
+        return Promise.reject(error);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
+    // 闈?401 / 宸查噸璇曡繃 / 鏃?config锛氱洿鎺ユ彁绀?    const msg =
+      (error.response?.data as ApiResponse)?.message ||
+      error.message ||
+      '缃戠粶閿欒';
+    if (error.response?.status === 401) {
+      // refresh 澶辫触璺緞宸茶烦杞紝杩欓噷閬垮厤閲嶅 message
+      return Promise.reject(error);
+    }
+    message.error(msg);
+    return Promise.reject(error);
+  }
+);
+
+export default request;
+export { STORAGE_KEYS };
+// 鏆撮湶绫诲瀷渚涘閮ㄦ墿灞曪紙濡?_retry 鏍囪锛?export type { AxiosRequestConfig };

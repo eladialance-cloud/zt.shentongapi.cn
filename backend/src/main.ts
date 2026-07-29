@@ -1,1 +1,103 @@
-﻿import { NestFactory } from '@nestjs/core';import { ConfigService } from '@nestjs/config';import { Logger } from '@nestjs/common';import helmet from 'helmet';import cookieParser from 'cookie-parser';import { SwaggerModule } from '@nestjs/swagger';import { AppModule } from './app.module';import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';import { TransformInterceptor } from './common/interceptors/transform.interceptor';import { LoggingInterceptor } from './common/interceptors/logging.interceptor';import { AppValidationPipe } from './common/pipes/validation.pipe';import { swaggerConfig } from './config/swagger.config';import { corsConfig } from './config/cors.config';import { validateJwtSecrets } from './common/utils/env-validator';import { runStartupMigrations } from './common/utils/db-migration';import { DataSource } from 'typeorm';/** * 搴旂敤鍏ュ彛 */async function bootstrap() {  // ===== 鍚姩鍓嶆牎楠岀幆澧冨彉閲忥紙鍦ㄤ换浣?NestJS 鍒濆鍖栦箣鍓嶆墽琛岋級=====  validateJwtSecrets();  const app = await NestFactory.create(AppModule, { rawBody: true });  const configService = app.get(ConfigService);  const logger = new Logger('Bootstrap');  // 淇′换 nginx 鍙嶅悜浠ｇ悊锛屾纭瘑鍒?X-Forwarded-Proto锛圚TTPS 缁堟浜?nginx锛?  app.getHttpAdapter().getInstance().set('trust proxy', 1);  // 鍏ㄥ眬鍓嶇紑  app.setGlobalPrefix('api');  // CORS  app.enableCors(corsConfig(configService));  // Helmet 瀹夊叏澶?鑷畾涔?CSP锛屽厑璁?antd 鍐呰仈鏍峰紡涓?Vite 鍐呰仈鑴氭湰)  app.use(    helmet({      contentSecurityPolicy: {        directives: {          defaultSrc: ["'self'"],          scriptSrc: ["'self'", "'unsafe-inline'"], // Vite 寮€鍙戦渶瑕?inline          styleSrc: ["'self'", "'unsafe-inline'"], // antd/Styled-components 闇€瑕?inline          imgSrc: ["'self'", 'data:', 'https:'], // 鍥剧墖鍏佽 data URI 鍜?https          fontSrc: ["'self'", 'data:', 'https:'],          connectSrc: ["'self'", 'https:', 'wss:'], // API 鍜?WebSocket          mediaSrc: ["'self'"],          frameSrc: ["'self'"],          objectSrc: ["'none'"],          baseUri: ["'self'"],          formAction: ["'self'"],        },      },      // HSTS 鐢?Nginx 澶勭悊锛岃繖閲屼笉閲嶅      strictTransportSecurity: false,    }),  );  // Cookie 瑙ｆ瀽锛坮efreshToken 閫氳繃 HttpOnly Cookie 浼犺緭锛?  app.use(cookieParser());  // 鍏ㄥ眬绠￠亾  app.useGlobalPipes(new AppValidationPipe());  // 鍏ㄥ眬杩囨护鍣?  app.useGlobalFilters(new AllExceptionsFilter());  // 鍏ㄥ眬鎷︽埅鍣?  app.useGlobalInterceptors(    new TransformInterceptor(),    new LoggingInterceptor(),  );  // ===== 鍚姩鏃惰嚜鍔ㄦ暟鎹簱杩佺Щ锛堝箓绛夛紝琛ラ綈缂哄け鍒?琛級=====  try {    const dataSource = app.get(DataSource);    await runStartupMigrations(dataSource);  } catch (err) {    const msg = `DB migration failed: ${(err as Error).message}`;    if (process.env.NODE_ENV === 'production') {      logger.error(msg);      process.exit(1); // 鐢熶骇鐜闃绘鍚姩    } else {      logger.warn(msg); // 闈炵敓浜х幆澧冧繚鐣?warn    }  }  // Swagger 鏂囨。锛堢敓浜х幆澧冮殧绂伙級  const swaggerSetup = swaggerConfig(configService, app);  if (swaggerSetup && process.env.NODE_ENV !== 'production') {    SwaggerModule.setup(swaggerSetup.path, app, swaggerSetup.document);  }  // 鐩戝惉绔彛  const port = process.env.PORT || configService.get<number>('PORT', 3001);  // 浼橀泤鍋滄満锛氱洃鍚?SIGTERM/SIGINT锛屽畬鎴愯繘琛屼腑璇锋眰鍚庨€€鍑猴紙閬垮厤 Docker stop 琚?SIGKILL锛?  app.enableShutdownHooks();  await app.listen(port);  logger.log(`Application is running on: http://localhost:${port}/api`);  if (swaggerSetup && process.env.NODE_ENV !== 'production') {    logger.log(`Swagger documentation at: http://localhost:${port}/${swaggerSetup.path}`);  }}bootstrap();
+﻿import { NestFactory } from '@nestjs/core';
+import { ConfigService } from '@nestjs/config';
+import { Logger } from '@nestjs/common';
+import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
+import { SwaggerModule } from '@nestjs/swagger';
+import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { AppValidationPipe } from './common/pipes/validation.pipe';
+import { swaggerConfig } from './config/swagger.config';
+import { corsConfig } from './config/cors.config';
+import { validateJwtSecrets } from './common/utils/env-validator';
+import { runStartupMigrations } from './common/utils/db-migration';
+import { DataSource } from 'typeorm';
+
+/**
+ * 搴旂敤鍏ュ彛
+ */
+async function bootstrap() {
+  // ===== 鍚姩鍓嶆牎楠岀幆澧冨彉閲忥紙鍦ㄤ换浣?NestJS 鍒濆鍖栦箣鍓嶆墽琛岋級=====
+  validateJwtSecrets();
+
+  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const configService = app.get(ConfigService);
+  const logger = new Logger('Bootstrap');
+
+  // 淇′换 nginx 鍙嶅悜浠ｇ悊锛屾纭瘑鍒?X-Forwarded-Proto锛圚TTPS 缁堟浜?nginx锛?  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
+  // 鍏ㄥ眬鍓嶇紑
+  app.setGlobalPrefix('api');
+
+  // CORS
+  app.enableCors(corsConfig(configService));
+
+  // Helmet 瀹夊叏澶?鑷畾涔?CSP锛屽厑璁?antd 鍐呰仈鏍峰紡涓?Vite 鍐呰仈鑴氭湰)
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"], // Vite 寮€鍙戦渶瑕?inline
+          styleSrc: ["'self'", "'unsafe-inline'"], // antd/Styled-components 闇€瑕?inline
+          imgSrc: ["'self'", 'data:', 'https:'], // 鍥剧墖鍏佽 data URI 鍜?https
+          fontSrc: ["'self'", 'data:', 'https:'],
+          connectSrc: ["'self'", 'https:', 'wss:'], // API 鍜?WebSocket
+          mediaSrc: ["'self'"],
+          frameSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"],
+        },
+      },
+      // HSTS 鐢?Nginx 澶勭悊锛岃繖閲屼笉閲嶅
+      strictTransportSecurity: false,
+    }),
+  );
+
+  // Cookie 瑙ｆ瀽锛坮efreshToken 閫氳繃 HttpOnly Cookie 浼犺緭锛?  app.use(cookieParser());
+
+  // 鍏ㄥ眬绠￠亾
+  app.useGlobalPipes(new AppValidationPipe());
+
+  // 鍏ㄥ眬杩囨护鍣?  app.useGlobalFilters(new AllExceptionsFilter());
+
+  // 鍏ㄥ眬鎷︽埅鍣?  app.useGlobalInterceptors(
+    new TransformInterceptor(),
+    new LoggingInterceptor(),
+  );
+
+  // ===== 鍚姩鏃惰嚜鍔ㄦ暟鎹簱杩佺Щ锛堝箓绛夛紝琛ラ綈缂哄け鍒?琛級=====
+  try {
+    const dataSource = app.get(DataSource);
+    await runStartupMigrations(dataSource);
+  } catch (err) {
+    const msg = `DB migration failed: ${(err as Error).message}`;
+    if (process.env.NODE_ENV === 'production') {
+      logger.error(msg);
+      process.exit(1); // 鐢熶骇鐜闃绘鍚姩
+    } else {
+      logger.warn(msg); // 闈炵敓浜х幆澧冧繚鐣?warn
+    }
+  }
+
+  // Swagger 鏂囨。锛堢敓浜х幆澧冮殧绂伙級
+  const swaggerSetup = swaggerConfig(configService, app);
+  if (swaggerSetup && process.env.NODE_ENV !== 'production') {
+    SwaggerModule.setup(swaggerSetup.path, app, swaggerSetup.document);
+  }
+
+  // 鐩戝惉绔彛
+  const port = process.env.PORT || configService.get<number>('PORT', 3001);
+  // 浼橀泤鍋滄満锛氱洃鍚?SIGTERM/SIGINT锛屽畬鎴愯繘琛屼腑璇锋眰鍚庨€€鍑猴紙閬垮厤 Docker stop 琚?SIGKILL锛?  app.enableShutdownHooks();
+  await app.listen(port);
+
+  logger.log(`Application is running on: http://localhost:${port}/api`);
+  if (swaggerSetup && process.env.NODE_ENV !== 'production') {
+    logger.log(`Swagger documentation at: http://localhost:${port}/${swaggerSetup.path}`);
+  }
+}
+
+bootstrap();

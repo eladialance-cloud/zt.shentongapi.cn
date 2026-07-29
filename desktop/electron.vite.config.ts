@@ -1,1 +1,115 @@
-﻿import { defineConfig, externalizeDepsPlugin } from 'electron-vite'import react from '@vitejs/plugin-react'import { resolve } from 'node:path'import { loadEnv } from 'vite'const env = loadEnv(process.env.NODE_ENV === 'production' ? 'production' : 'development', process.cwd(), '')// H-11 淇锛氱姝?dev 妯″紡闅愬紡鍥為€€鍒扮敓浜?URLif (!env.VITE_API_BASE_URL) {  throw new Error(`VITE_API_BASE_URL 鏈缃紝mode=${process.env.NODE_ENV || 'development'}銆傝妫€鏌?.env.development 鏂囦欢銆俙)}// H-08 鍗囩骇 Electron 31鈫?1 / vite 5鈫? / electron-vite 2鈫? 鍚庝慨澶嶏細// vite@8 鐨?rolldown 涓ユ牸瑙ｆ瀽鎵€鏈?import锛屽寘鎷?native 妯″潡鐨勪紶閫掍緷璧栥€?// H-08b 鍗囩骇 @journeyapps/sqlcipher 5.3.1鈫?.0.0 鍚庯細//   - 6.0.0 绉婚櫎浜?@mapbox/node-pre-gyp锛堝強鍏?mock-aws-s3/aws-sdk/nock/npmlog/rimraf//     绛夊彲閫変緷璧栭摼锛岃閾鹃€氳繃 tar@6.2.1 寮曞叆 6 涓矾寰勭┛瓒?CVE锛?//   - 6.0.0 鏀圭敤 bindings + node-addon-api锛坣ode-gyp 婧愮爜缂栬瘧鏂瑰紡锛?// 杩欓噷鎶?native 妯″潡鍙婂叾浼犻€掍緷璧栧０鏄庝负 external锛屼笌 vite@5 鏃ц涓轰繚鎸佷竴鑷淬€?const nativeModuleOptionalDeps = [  'bindings',  'node-addon-api',  '@journeyapps/sqlcipher']// electron 鍦?devDependencies 涓紝externalizeDepsPlugin 涓嶄細鑷姩 externalize// 浣嗕富杩涚▼浠ｇ爜锛堝 electron-log锛変細 require('electron')锛屾墦鍖呮椂蹇呴』鎺掗櫎const electronExternalDeps = [  'electron',  'electron-updater',  ...nativeModuleOptionalDeps]export default defineConfig({  main: {    plugins: [externalizeDepsPlugin()],    define: {      'process.env.VITE_API_BASE_URL': JSON.stringify(env.VITE_API_BASE_URL)    },    build: {      rollupOptions: {        input: { index: resolve(__dirname, 'electron/main/index.ts') },        output: {          dir: 'dist/main',          entryFileNames: '[name].js',          format: 'cjs'        },        external: electronExternalDeps      }    }  },  preload: {    plugins: [externalizeDepsPlugin()],    build: {      rollupOptions: {        input: { index: resolve(__dirname, 'electron/preload/index.ts') },        output: {          dir: 'dist/preload',          entryFileNames: '[name].js',          format: 'cjs'        },        external: electronExternalDeps      }    }  },  renderer: {    root: resolve(__dirname, 'src'),    // K14 fix: Electron file:// 鍗忚涓嬬粷瀵硅矾寰?'/' 鎸囧悜纾佺洏鏍圭洰褰曪紝蹇呴』鐢ㄧ浉瀵硅矾寰?    base: './',    plugins: [      react(),      {        // dev 妯″紡鏀惧 CSP锛歏ite 鍦?dev 妯″紡浼氬悜 index.html 娉ㄥ叆 React HMR 鐨?inline preamble script锛?        // 鑰?index.html 涓?CSP 鐨?script-src 'self' 浼氭嫤鎴 inline script锛?        // 瀵艰嚧 @vitejs/plugin-react 鎶涘嚭 "can't detect preamble" 閿欒骞朵娇鏁翠釜 React 搴旂敤宕╂簝銆?        // 姝ゆ彃浠朵粎鍦?dev 妯″紡锛坅pply: 'serve'锛夊皢 script-src 'self' 鏀惧涓?'self' 'unsafe-inline'锛?        // 涓嶅奖鍝?production build锛坧roduction CSP 淇濇寔 'self' 涓ユ牸绛栫暐锛夈€?        name: 'dev-csp-unsafe-inline',        apply: 'serve' as const,        transformIndexHtml(html: string) {          // 浠呮浛鎹㈢涓€娆″嚭鐜扮殑 script-src 'self'; 閬垮厤璇激鍏朵粬 CSP 鎸囦护          return html.replace(            "script-src 'self';",            "script-src 'self' 'unsafe-inline';"          )        }      }    ],    resolve: {      alias: {        '@': resolve(__dirname, 'src')      }    },    define: {      'import.meta.env.VITE_API_BASE_URL': JSON.stringify(env.VITE_API_BASE_URL)    },    build: {      outDir: resolve(__dirname, 'dist/renderer'),      emptyOutDir: true,      rollupOptions: {        input: { index: resolve(__dirname, 'src/index.html') },        output: {          // H-08 淇锛歷ite@8 鐨?rolldown 瑕佹眰 manualChunks 涓哄嚱鏁帮紙vite@5 鐨?rollup 鍏佽瀵硅薄褰㈠紡锛?          manualChunks: (id: string) => {            if (!id.includes('node_modules')) {              return undefined            }            if (id.includes('/pixi.js/') || id.includes('/@pixi/')) {              return 'vendor-pixi'            }            if (id.includes('/react-router-dom/') || id.includes('/react-dom/') || id.includes('/react/')) {              return 'vendor-react'            }            if (id.includes('/antd/') || id.includes('/@ant-design/icons/')) {              return 'vendor-antd'            }            if (id.includes('/axios/') || id.includes('/dayjs/') || id.includes('/zustand/')) {              return 'vendor-utils'            }            return undefined          }        }      }    }  }})
+﻿import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import react from '@vitejs/plugin-react'
+import { resolve } from 'node:path'
+import { loadEnv } from 'vite'
+
+const env = loadEnv(process.env.NODE_ENV === 'production' ? 'production' : 'development', process.cwd(), '')
+
+// H-11 淇锛氱姝?dev 妯″紡闅愬紡鍥為€€鍒扮敓浜?URL
+if (!env.VITE_API_BASE_URL) {
+  throw new Error(`VITE_API_BASE_URL 鏈缃紝mode=${process.env.NODE_ENV || 'development'}銆傝妫€鏌?.env.development 鏂囦欢銆俙)
+}
+
+// H-08 鍗囩骇 Electron 31鈫?1 / vite 5鈫? / electron-vite 2鈫? 鍚庝慨澶嶏細
+// vite@8 鐨?rolldown 涓ユ牸瑙ｆ瀽鎵€鏈?import锛屽寘鎷?native 妯″潡鐨勪紶閫掍緷璧栥€?// H-08b 鍗囩骇 @journeyapps/sqlcipher 5.3.1鈫?.0.0 鍚庯細
+//   - 6.0.0 绉婚櫎浜?@mapbox/node-pre-gyp锛堝強鍏?mock-aws-s3/aws-sdk/nock/npmlog/rimraf
+//     绛夊彲閫変緷璧栭摼锛岃閾鹃€氳繃 tar@6.2.1 寮曞叆 6 涓矾寰勭┛瓒?CVE锛?//   - 6.0.0 鏀圭敤 bindings + node-addon-api锛坣ode-gyp 婧愮爜缂栬瘧鏂瑰紡锛?// 杩欓噷鎶?native 妯″潡鍙婂叾浼犻€掍緷璧栧０鏄庝负 external锛屼笌 vite@5 鏃ц涓轰繚鎸佷竴鑷淬€?const nativeModuleOptionalDeps = [
+  'bindings',
+  'node-addon-api',
+  '@journeyapps/sqlcipher'
+]
+
+// electron 鍦?devDependencies 涓紝externalizeDepsPlugin 涓嶄細鑷姩 externalize
+// 浣嗕富杩涚▼浠ｇ爜锛堝 electron-log锛変細 require('electron')锛屾墦鍖呮椂蹇呴』鎺掗櫎
+const electronExternalDeps = [
+  'electron',
+  'electron-updater',
+  ...nativeModuleOptionalDeps
+]
+
+export default defineConfig({
+  main: {
+    plugins: [externalizeDepsPlugin()],
+    define: {
+      'process.env.VITE_API_BASE_URL': JSON.stringify(env.VITE_API_BASE_URL)
+    },
+    build: {
+      rollupOptions: {
+        input: { index: resolve(__dirname, 'electron/main/index.ts') },
+        output: {
+          dir: 'dist/main',
+          entryFileNames: '[name].js',
+          format: 'cjs'
+        },
+        external: electronExternalDeps
+      }
+    }
+  },
+  preload: {
+    plugins: [externalizeDepsPlugin()],
+    build: {
+      rollupOptions: {
+        input: { index: resolve(__dirname, 'electron/preload/index.ts') },
+        output: {
+          dir: 'dist/preload',
+          entryFileNames: '[name].js',
+          format: 'cjs'
+        },
+        external: electronExternalDeps
+      }
+    }
+  },
+  renderer: {
+    root: resolve(__dirname, 'src'),
+    // K14 fix: Electron file:// 鍗忚涓嬬粷瀵硅矾寰?'/' 鎸囧悜纾佺洏鏍圭洰褰曪紝蹇呴』鐢ㄧ浉瀵硅矾寰?    base: './',
+    plugins: [
+      react(),
+      {
+        // dev 妯″紡鏀惧 CSP锛歏ite 鍦?dev 妯″紡浼氬悜 index.html 娉ㄥ叆 React HMR 鐨?inline preamble script锛?        // 鑰?index.html 涓?CSP 鐨?script-src 'self' 浼氭嫤鎴 inline script锛?        // 瀵艰嚧 @vitejs/plugin-react 鎶涘嚭 "can't detect preamble" 閿欒骞朵娇鏁翠釜 React 搴旂敤宕╂簝銆?        // 姝ゆ彃浠朵粎鍦?dev 妯″紡锛坅pply: 'serve'锛夊皢 script-src 'self' 鏀惧涓?'self' 'unsafe-inline'锛?        // 涓嶅奖鍝?production build锛坧roduction CSP 淇濇寔 'self' 涓ユ牸绛栫暐锛夈€?        name: 'dev-csp-unsafe-inline',
+        apply: 'serve' as const,
+        transformIndexHtml(html: string) {
+          // 浠呮浛鎹㈢涓€娆″嚭鐜扮殑 script-src 'self'; 閬垮厤璇激鍏朵粬 CSP 鎸囦护
+          return html.replace(
+            "script-src 'self';",
+            "script-src 'self' 'unsafe-inline';"
+          )
+        }
+      }
+    ],
+    resolve: {
+      alias: {
+        '@': resolve(__dirname, 'src')
+      }
+    },
+    define: {
+      'import.meta.env.VITE_API_BASE_URL': JSON.stringify(env.VITE_API_BASE_URL)
+    },
+    build: {
+      outDir: resolve(__dirname, 'dist/renderer'),
+      emptyOutDir: true,
+      rollupOptions: {
+        input: { index: resolve(__dirname, 'src/index.html') },
+        output: {
+          // H-08 淇锛歷ite@8 鐨?rolldown 瑕佹眰 manualChunks 涓哄嚱鏁帮紙vite@5 鐨?rollup 鍏佽瀵硅薄褰㈠紡锛?          manualChunks: (id: string) => {
+            if (!id.includes('node_modules')) {
+              return undefined
+            }
+            if (id.includes('/pixi.js/') || id.includes('/@pixi/')) {
+              return 'vendor-pixi'
+            }
+            if (id.includes('/react-router-dom/') || id.includes('/react-dom/') || id.includes('/react/')) {
+              return 'vendor-react'
+            }
+            if (id.includes('/antd/') || id.includes('/@ant-design/icons/')) {
+              return 'vendor-antd'
+            }
+            if (id.includes('/axios/') || id.includes('/dayjs/') || id.includes('/zustand/')) {
+              return 'vendor-utils'
+            }
+            return undefined
+          }
+        }
+      }
+    }
+  }
+})
