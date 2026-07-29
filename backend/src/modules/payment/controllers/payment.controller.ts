@@ -1,18 +1,1 @@
-import { Controller, Get } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { PaymentService } from '../services/payment.service';
-import { Public } from '../../../common/decorators/public.decorator';
-
-@ApiTags('支付')
-@ApiBearerAuth()
-@Controller('payments')
-export class PaymentController {
-  constructor(private readonly paymentService: PaymentService) {}
-
-  @Get('health')
-  @Public()
-  @ApiOperation({ summary: '健康检查' })
-  health() {
-    return this.paymentService.health();
-  }
-}
+﻿import {  Controller,  Get,  Post,  Body,  Param,  Query,  Headers,  Req,} from '@nestjs/common';import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';import { Request } from 'express';import { PaymentService } from '../services/payment.service';import { Public } from '../../../common/decorators/public.decorator';import {  CurrentUser,  ICurrentUser,} from '../../../common/decorators/current-user.decorator';import { CreateRechargeDto } from '../dto/create-recharge.dto';@ApiTags('鏀粯')@ApiBearerAuth()@Controller('payments')export class PaymentController {  constructor(private readonly paymentService: PaymentService) {}  @Get('health')  @Public()  @ApiOperation({ summary: '鍋ュ悍妫€鏌? })  health() {    return this.paymentService.health();  }  // ============ 鍏呭€?============  @Post('recharge')  @ApiOperation({ summary: '鍒涘缓鍏呭€艰鍗曞苟鍙戣捣鏀粯' })  async createRecharge(    @Body() dto: CreateRechargeDto,    @CurrentUser() user: ICurrentUser,  ) {    const order = await this.paymentService.createRechargeOrder(      user.userId,      dto.packageId ?? null,      dto.credits,      dto.amount,      dto.channel,    );    const payment = await this.paymentService.initiatePayment(      order.orderNo,      dto.channel,      dto.subMethod ?? '',    );    return { order, payment };  }  @Get('orders')  @ApiOperation({ summary: '鎴戠殑鍏呭€艰鍗? })  async getOrders(    @CurrentUser() user: ICurrentUser,    @Query('page') page = '1',    @Query('pageSize') pageSize = '20',  ) {    return this.paymentService.getUserOrders(      user.userId,      Number(page),      Number(pageSize),    );  }  @Get('orders/:orderNo')  @ApiOperation({ summary: '鏌ヨ璁㈠崟鐘舵€? })  async getOrderStatus(    @Param('orderNo') orderNo: string,    @CurrentUser() user: ICurrentUser,  ) {    return this.paymentService.getOrderStatus(orderNo, user.userId);  }  // ============ 鏀粯鍥炶皟锛堝叕寮€鎺ュ彛锛?============  @Post('callback/wechat')  @Public()  @ApiOperation({ summary: '寰俊鏀粯鍥炶皟' })  async wechatCallback(    @Body() body: Record<string, unknown>,    @Headers() headers: Record<string, string>,  ) {    return this.paymentService.handlePaymentCallback('wechat', {      body,      'wechatpay-signature': headers['wechatpay-signature'],      'wechatpay-serial': headers['wechatpay-serial'],      'wechatpay-nonce': headers['wechatpay-nonce'],      'wechatpay-timestamp': headers['wechatpay-timestamp'],    });  }  @Post('callback/alipay')  @Public()  @ApiOperation({ summary: '鏀粯瀹濇敮浠樺洖璋? })  async alipayCallback(@Body() body: Record<string, unknown>) {    return this.paymentService.handlePaymentCallback('alipay', body);  }  @Post('callback/stripe')  @Public()  @ApiOperation({ summary: 'Stripe鏀粯鍥炶皟' })  async stripeCallback(    @Body() body: Record<string, unknown>,    @Headers('stripe-signature') sig: string,    @Req() req: Request & { rawBody?: Buffer },  ) {    // Stripe 楠岀闇€瑕佸師濮?raw body銆?    // NestJS main.ts 宸查厤缃?rawBody: true锛宺eq.rawBody 鏄師濮嬭姹備綋鐨?Buffer銆?    const rawBody = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(body);    return this.paymentService.handlePaymentCallback('stripe', {      ...body,      'stripe-signature': sig,      raw_body: rawBody,    });  }  // ============ 浼氬憳濂楅 ============  @Get('plans')  @Public()  @ApiOperation({ summary: '鑾峰彇浼氬憳濂楅鍒楄〃' })  async getPlans() {    return this.paymentService.getPlans();  }}

@@ -1,17 +1,1 @@
-import { Controller, Get } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { Public } from '../../../common/decorators/public.decorator';
-import { SystemService } from '../services/system.service';
-
-@ApiTags('系统')
-@ApiBearerAuth()
-@Controller('system')
-export class SystemController {
-  constructor(private readonly service: SystemService) {}
-
-  @Public()
-  @Get('health')
-  health() {
-    return this.service.health();
-  }
-}
+﻿import {  Controller,  Get,  Query,} from '@nestjs/common';import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';import { Public } from '../../../common/decorators/public.decorator';import {  CurrentUser,  ICurrentUser,} from '../../../common/decorators/current-user.decorator';import { SystemService } from '../services/system.service';@ApiTags('绯荤粺')@ApiBearerAuth()@Controller('system')export class SystemController {  constructor(private readonly service: SystemService) {}  @Public()  @Get('health')  @ApiOperation({ summary: '鍋ュ悍妫€鏌? })  health() {    return this.service.health();  }  @Get('status')  @ApiOperation({ summary: '鑾峰彇绯荤粺鐘舵€? })  getSystemStatus(@CurrentUser() user: ICurrentUser) {    return this.service.getSystemStatus(user.userId);  }  @Public()  @Get('config')  @ApiOperation({ summary: '鑾峰彇鍏紑閰嶇疆' })  getPublicConfig() {    return this.service.getPublicConfig();  }  @Public()  @Get('announcements')  @ApiOperation({ summary: '鑾峰彇宸插彂甯冨叕鍛婂垪琛? })  async getAnnouncements(    @Query('page') page?: string,    @Query('pageSize') pageSize?: string,  ) {    return this.service.getPublishedAnnouncements(      page ? Number(page) : 1,      pageSize ? Number(pageSize) : 10,    );  }  @Get('features')  @ApiOperation({ summary: '鑾峰彇鍔熻兘寮€鍏? })  getFeatureFlags(@CurrentUser() user: ICurrentUser) {    return this.service.getFeatureFlags(user.userId);  }}

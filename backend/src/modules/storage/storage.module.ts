@@ -1,10 +1,1 @@
-import { Module } from '@nestjs/common';
-import { StorageController } from './controllers/storage.controller';
-import { StorageService } from './services/storage.service';
-
-@Module({
-  controllers: [StorageController],
-  providers: [StorageService],
-  exports: [StorageService],
-})
-export class StorageModule {}
+﻿import { Module } from '@nestjs/common';import { TypeOrmModule } from '@nestjs/typeorm';import { JwtModule } from '@nestjs/jwt';import { StorageController } from './controllers/storage.controller';import { StorageService } from './services/storage.service';import { StorageBucketEntity } from './entities/storage-bucket.entity';import { StorageObjectEntity } from './entities/storage-object.entity';@Module({  imports: [    TypeOrmModule.forFeature([StorageBucketEntity, StorageObjectEntity]),    JwtModule.register({}), // 浣跨敤鍏ㄥ眬 JWT 閰嶇疆  ],  controllers: [StorageController],  providers: [StorageService],  exports: [StorageService],})export class StorageModule {}

@@ -1,18 +1,1 @@
-/// <reference types="vite/client" />
-
-import type { ElectronAPI, RuntimeAPI } from '@shared/types'
-
-declare global {
-  interface Window {
-    electronAPI: ElectronAPI
-    runtime: RuntimeAPI
-  }
-}
-
-// CSS Module 类型声明（用于 import styles from '*.module.css'）
-declare module '*.module.css' {
-  const classes: { readonly [key: string]: string }
-  export default classes
-}
-
-export {}
+﻿/// <reference types="vite/client" />import type { ElectronAPI, RuntimeAPI, RemoteControlAPI, AuthAPI } from '@shared/types'declare global {  interface Window {    electronAPI: ElectronAPI    runtime: RuntimeAPI    remoteControl: RemoteControlAPI    authApi: AuthAPI  }  // Task 23: Office WebSocket 鐜鍙橀噺绫诲瀷澹版槑锛堝悎骞跺埌 Vite 榛樿 ImportMetaEnv锛?  interface ImportMetaEnv {    readonly VITE_OFFICE_WS_URL?: string    readonly VITE_OFFICE_USE_MOCK_WS?: string  }}// CSS Module 绫诲瀷澹版槑锛堢敤浜?import styles from '*.module.css'锛?declare module '*.module.css' {  const classes: { readonly [key: string]: string }  export default classes}export {}

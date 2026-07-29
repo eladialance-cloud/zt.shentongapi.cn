@@ -1,13 +1,1 @@
-import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { RagDocumentEntity } from './entities/rag-document.entity';
-import { RagController } from './controllers/rag.controller';
-import { RagService } from './services/rag.service';
-
-@Module({
-  imports: [TypeOrmModule.forFeature([RagDocumentEntity])],
-  controllers: [RagController],
-  providers: [RagService],
-  exports: [RagService],
-})
-export class RagModule {}
+﻿import { Module } from '@nestjs/common';import { TypeOrmModule } from '@nestjs/typeorm';import { RagController } from './controllers/rag.controller';import { RagService } from './services/rag.service';import { KnowledgeBaseEntity } from '../knowledge/entities/knowledge-base.entity';import { KnowledgeBaseDocumentEntity } from '../knowledge/entities/knowledge-base-document.entity';import { KnowledgeBaseChunkEntity } from '../knowledge/entities/knowledge-base-chunk.entity';@Module({  imports: [    TypeOrmModule.forFeature([      KnowledgeBaseEntity,      KnowledgeBaseDocumentEntity,      KnowledgeBaseChunkEntity,    ]),  ],  controllers: [RagController],  providers: [RagService],  exports: [RagService],})export class RagModule {}

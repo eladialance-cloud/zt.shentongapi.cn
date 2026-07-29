@@ -1,9 +1,1 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
-
-export class RefreshTokenDto {
-  @ApiProperty({ description: '刷新令牌' })
-  @IsString()
-  @IsNotEmpty({ message: 'refreshToken不能为空' })
-  refreshToken: string;
-}
+﻿import { ApiProperty } from '@nestjs/swagger';import { IsOptional, IsString } from 'class-validator';export class RefreshTokenDto {  @ApiProperty({    description: '鍒锋柊浠ょ墝锛堝彲閫夛紝浼樺厛浠?HttpOnly Cookie 璇诲彇锛?,    required: false,  })  @IsString()  @IsOptional()  refreshToken?: string;}

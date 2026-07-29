@@ -1,10 +1,1 @@
-import { Module } from '@nestjs/common';
-import { SystemController } from './controllers/system.controller';
-import { SystemService } from './services/system.service';
-
-@Module({
-  controllers: [SystemController],
-  providers: [SystemService],
-  exports: [SystemService],
-})
-export class SystemModule {}
+﻿import { Module } from '@nestjs/common';import { TypeOrmModule } from '@nestjs/typeorm';import { SystemController } from './controllers/system.controller';import { SystemService } from './services/system.service';import { AnnouncementEntity } from '../admin-system/entities/announcement.entity';@Module({  imports: [TypeOrmModule.forFeature([AnnouncementEntity])],  controllers: [SystemController],  providers: [SystemService],  exports: [SystemService],})export class SystemModule {}
