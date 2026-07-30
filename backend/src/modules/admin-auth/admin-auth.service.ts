@@ -1,14 +1,17 @@
-import { Injectable } from '@nestjs/common';
+﻿import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { UserEntity } from '../user/entities/user.entity';
 import { RoleEntity } from '../user/entities/role.entity';
 import { UserRoleEntity } from '../user/entities/user-role.entity';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/constants/error.constant';
+
+/** Token 黑名单 Redis key 前缀（登出吊销） */
+export const ADMIN_TOKEN_BLACKLIST_PREFIX = 'admin:token:blacklist:';
 
 /** 管理端 JWT 载荷 */
 export interface AdminTokenPayload {
@@ -146,7 +149,7 @@ export class AdminAuthService {
       BusinessException.throw(ErrorCode.PASSWORD_INCORRECT);
     }
 
-    const hashed = await bcrypt.hash(newPassword, 10);
+    const hashed = await bcrypt.hash(newPassword, 12);
     await this.userRepo.update(
       { id: userId },
       { password: hashed, mustChangePassword: false },

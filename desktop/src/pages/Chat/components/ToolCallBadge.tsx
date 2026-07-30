@@ -1,1 +1,122 @@
-﻿// 宸ュ叿璋冪敤灞曠ず缁勪欢// 鏄剧ず宸ュ叿璋冪敤鏍囩锛歔馃敡 宸ュ叿璋冪敤] 宸ュ叿鍚嶇О// 灞曞紑鍚庢樉绀猴細杈撳叆鍙傛暟銆佽緭鍑虹粨鏋溿€佹墽琛岃€楁椂銆佺Н鍒嗘秷鑰?// 鐘舵€侊細running锛堣浆鍦堬級/ success锛堢豢鑹插鍕撅級/ failed锛堢孩鑹插弶锛?import { useState, type MouseEvent } from 'react'import { Tooltip, message, Button } from 'antd'import {  CheckCircleFilled,  CloseCircleFilled,  LoadingOutlined,  ToolOutlined,  DownOutlined,  RightOutlined,  ReloadOutlined} from '@ant-design/icons'import type { ToolCallInfo } from '@/types/chat'import { mcpApi } from '@/api/mcp-api'import styles from '../styles.module.css'interface ToolCallBadgeProps {  toolCall: ToolCallInfo  /** 榛樿鏄惁灞曞紑 */  defaultExpanded?: boolean  /** 宸ュ叿鎵€灞炵殑 MCP 鏈嶅姟鍣?ID锛岀敤浜庡け璐ラ噸璇?*/  serverId?: number}/** 鐘舵€佸浘鏍?*/function StatusIcon({ status }: { status: ToolCallInfo['status'] }) {  if (status === 'running') {    return <LoadingOutlined className={styles.toolCallStatusRunning} spin />  }  if (status === 'success') {    return <CheckCircleFilled className={styles.toolCallStatusSuccess} />  }  return <CloseCircleFilled className={styles.toolCallStatusFailed} />}/** 鏍煎紡鍖栬€楁椂 */function formatDuration(ms: number): string {  if (ms < 1000) return `${ms}ms`  return `${(ms / 1000).toFixed(2)}s`}/** 瀹夊叏 stringify */function safeStringify(value: unknown): string {  if (value == null) return '-'  if (typeof value === 'string') return value  try {    return JSON.stringify(value, null, 2)  } catch {    return String(value)  }}export function ToolCallBadge({ toolCall, defaultExpanded = false, serverId }: ToolCallBadgeProps) {  const [expanded, setExpanded] = useState(defaultExpanded)  const [retrying, setRetrying] = useState(false)  const handleRetry = async (e: MouseEvent) => {    e.stopPropagation() // 闃绘瑙﹀彂 header 鐨?expand/collapse    if (serverId == null) {      message.warning('缂哄皯 serverId锛屾棤娉曢噸璇?)      return    }    setRetrying(true)    try {      await mcpApi.callTool(        serverId,        toolCall.name,        (toolCall.input as Record<string, unknown>) ?? {}      )      message.success(`宸ュ叿閲嶈瘯鎴愬姛锛?{toolCall.name}`)      // 娉ㄦ剰锛歵oolCall 鏄?props 鏃犳硶鐩存帴鏇存柊锛屽疄闄呯姸鎬佹洿鏂扮敱鐖剁粍浠堕€氳繃閲嶆柊鎷夊彇鏁版嵁瀹屾垚    } catch (err) {      console.error('[ToolCallBadge] retry failed:', err)      message.error(`宸ュ叿閲嶈瘯澶辫触锛?{(err as Error).message}`)    } finally {      setRetrying(false)    }  }  const statusText =    toolCall.status === 'running'      ? '鎵ц涓?      : toolCall.status === 'success'        ? '鎵ц瀹屾垚'        : '鎵ц澶辫触'  return (    <div className={styles.toolCallBadge}>      <div        className={styles.toolCallHeader}        onClick={() => setExpanded((v) => !v)}        role="button"        tabIndex={0}        onKeyDown={(e) => {          if (e.key === 'Enter' || e.key === ' ') {            e.preventDefault()            setExpanded((v) => !v)          }        }}      >        {expanded ? <DownOutlined /> : <RightOutlined />}        <ToolOutlined />        <span className={styles.toolCallName}>{toolCall.name}</span>        <StatusIcon status={toolCall.status} />        <span style={{ color: '#6e7681' }}>{statusText}</span>        {toolCall.status !== 'running' && (          <Tooltip title="鎵ц鑰楁椂">            <span style={{ color: '#6e7681' }}>路 {formatDuration(toolCall.duration)}</span>          </Tooltip>        )}        {toolCall.creditsCost > 0 && (          <Tooltip title="绉垎娑堣€?>            <span style={{ color: '#34d399' }}>路 馃拵 {toolCall.creditsCost}</span>          </Tooltip>        )}        {toolCall.status === 'failed' && (          <Button            type="link"            size="small"            icon={<ReloadOutlined />}            loading={retrying}            onClick={handleRetry}            style={{ marginLeft: 'auto', padding: '0 8px', fontSize: 12 }}          >            閲嶈瘯          </Button>        )}      </div>      {expanded && (        <div className={styles.toolCallBody}>          <div className={styles.toolCallRow}>            <span className={styles.toolCallRowLabel}>杈撳叆:</span>            <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>              {safeStringify(toolCall.input)}            </pre>          </div>          {toolCall.status !== 'running' && (            <div className={styles.toolCallRow}>              <span className={styles.toolCallRowLabel}>杈撳嚭:</span>              <pre style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>                {safeStringify(toolCall.output)}              </pre>            </div>          )}        </div>      )}    </div>  )}export default ToolCallBadge
+// 工具调用展示组件
+// 显示工具调用标签：[🔧 工具调用] 工具名称
+// 展开后显示：输入参数、输出结果、执行耗时、积分消耗
+// 状态：running（转圈）/ success（绿色对勾）/ failed（红色叉）
+
+import { useState } from "react";
+import { Tooltip } from "antd";
+import {
+  CheckCircleFilled,
+  CloseCircleFilled,
+  LoadingOutlined,
+  ToolOutlined,
+  DownOutlined,
+  RightOutlined,
+} from "@ant-design/icons";
+import type { ToolCallInfo } from "@/types/chat";
+import styles from "../styles.module.css";
+
+interface ToolCallBadgeProps {
+  toolCall: ToolCallInfo;
+  /** 默认是否展开 */
+  defaultExpanded?: boolean;
+}
+
+/** 状态图标 */
+function StatusIcon({ status }: { status: ToolCallInfo["status"] }) {
+  if (status === "running") {
+    return <LoadingOutlined className={styles.toolCallStatusRunning} spin />;
+  }
+  if (status === "success") {
+    return <CheckCircleFilled className={styles.toolCallStatusSuccess} />;
+  }
+  return <CloseCircleFilled className={styles.toolCallStatusFailed} />;
+}
+
+/** 格式化耗时 */
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(2)}s`;
+}
+
+/** 安全 stringify */
+function safeStringify(value: unknown): string {
+  if (value == null) return "-";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+export function ToolCallBadge({
+  toolCall,
+  defaultExpanded = false,
+}: ToolCallBadgeProps) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+
+  const statusText =
+    toolCall.status === "running"
+      ? "执行中"
+      : toolCall.status === "success"
+        ? "执行完成"
+        : "执行失败";
+
+  return (
+    <div className={styles.toolCallBadge}>
+      <div
+        className={styles.toolCallHeader}
+        onClick={() => setExpanded((v) => !v)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setExpanded((v) => !v);
+          }
+        }}
+      >
+        {expanded ? <DownOutlined /> : <RightOutlined />}
+        <ToolOutlined />
+        <span className={styles.toolCallName}>{toolCall.name}</span>
+        <StatusIcon status={toolCall.status} />
+        <span style={{ color: "#6e7681" }}>{statusText}</span>
+        {toolCall.status !== "running" && (
+          <Tooltip title="执行耗时">
+            <span style={{ color: "#6e7681" }}>
+              · {formatDuration(toolCall.duration)}
+            </span>
+          </Tooltip>
+        )}
+        {toolCall.creditsCost > 0 && (
+          <Tooltip title="积分消耗">
+            <span style={{ color: "#34d399" }}>
+              · 💎 {toolCall.creditsCost}
+            </span>
+          </Tooltip>
+        )}
+      </div>
+      {expanded && (
+        <div className={styles.toolCallBody}>
+          <div className={styles.toolCallRow}>
+            <span className={styles.toolCallRowLabel}>输入:</span>
+            <pre style={{ margin: "4px 0 0", whiteSpace: "pre-wrap" }}>
+              {safeStringify(toolCall.input)}
+            </pre>
+          </div>
+          {toolCall.status !== "running" && (
+            <div className={styles.toolCallRow}>
+              <span className={styles.toolCallRowLabel}>输出:</span>
+              <pre style={{ margin: "4px 0 0", whiteSpace: "pre-wrap" }}>
+                {safeStringify(toolCall.output)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default ToolCallBadge;

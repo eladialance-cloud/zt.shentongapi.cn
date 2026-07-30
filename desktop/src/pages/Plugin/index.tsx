@@ -1,1 +1,294 @@
-﻿// 鎻掍欢甯傚満椤?- v0.3.1// 甯冨眬锛氶《閮ㄦ爣棰?+ 涓夌骇璧勬簮褰掑睘绛涢€?+ 鎼滅储 + 鎺ㄨ崘杞挱 + 鍗＄墖缃戞牸// 浣跨敤 v0.3.1 璁捐浠ょ墝 + SkillTag 鍏变韩缁勪欢// 璋冪敤 GET /plugins?category=&keyword=import { useCallback, useEffect, useState } from 'react'import { useNavigate } from 'react-router-dom'import {  Breadcrumb,  Button,  Card,  Carousel,  Col,  Empty,  Input,  Row,  Segmented,  Select,  Spin,  Tag,  message} from 'antd'import {  AppstoreOutlined,  ArrowRightOutlined,  ArrowLeftOutlined,  DownloadOutlined,  FireOutlined,  DollarOutlined,  HomeOutlined,  PlusOutlined,  SearchOutlined,  StarOutlined} from '@ant-design/icons'import SkillTag from '@/components/SkillTag'import * as pluginApi from '@/api/plugin-api'import type { Plugin, PluginType, PluginMarketQuery } from '@/types/plugin'import type { OwnerType } from '@/types/resource'import { OWNER_TYPE_LABELS, OWNER_TYPE_TAG_COLOR } from '@/types/resource'import styles from './styles.module.css'/** 鍒嗙被閫夐」 */const CATEGORY_OPTIONS: Array<{ label: string; value: string }> = [  { label: '鍏ㄩ儴鍒嗙被', value: '' },  { label: '宸ュ叿', value: 'tool' },  { label: '杩炴帴鍣?, value: 'connector' },  { label: '鐭ヨ瘑搴?, value: 'knowledge_base' },  { label: '宸ヤ綔娴?, value: 'workflow' }]/** 涓夌骇璧勬簮褰掑睘绛涢€夐€夐」 */const OWNER_TYPE_SEGMENTS: Array<{ label: string; value: 'all' | OwnerType }> = [  { label: '鍏ㄩ儴', value: 'all' },  { label: '瀹樻柟', value: 'official' },  { label: '鍥㈤槦', value: 'team' },  { label: '鎴戠殑', value: 'user' }]/** 绫诲瀷涓枃鏄剧ず */function typeLabel(type: PluginType): string {  switch (type) {    case 'tool':      return '宸ュ叿'    case 'connector':      return '杩炴帴鍣?    case 'knowledge_base':      return '鐭ヨ瘑搴?    case 'workflow':      return '宸ヤ綔娴?    default:      return type  }}/** 鏍规嵁 plugin type 鎺ㄦ柇 SkillTag 绫诲瀷 */function pluginTypeToSkillType(type: PluginType): 'flow' | 'reasoning' | 'tool' {  switch (type) {    case 'workflow':      return 'flow'    case 'knowledge_base':      return 'reasoning'    case 'tool':    case 'connector':    default:      return 'tool'  }}/** 鎺ㄨ崘浣嶅崰浣嶆暟鎹紙涓庡悗绔珮 callCount 鎻掍欢鍚堝苟灞曠ず锛?*/const FEATURED_FALLBACK = [  { id: -1, name: '缃戦〉鎼滅储 Pro', description: '闆嗘垚涓绘祦鎼滅储寮曟搸锛屾敮鎸佸疄鏃舵绱?, color: 'var(--color-primary)' },  { id: -2, name: '鏂囨。瑙ｆ瀽鍣?, description: 'PDF / Word / Excel 涓€閿В鏋?, color: 'var(--color-purple)' },  { id: -3, name: '鍥惧儚璇嗗埆', description: 'OCR + 鐗╀綋璇嗗埆 + 鍦烘櫙鐞嗚В', color: 'var(--color-success)' }]export default function PluginMarket() {  const navigate = useNavigate()  const [plugins, setPlugins] = useState<Plugin[]>([])  const [loading, setLoading] = useState(false)  const [category, setCategory] = useState<string>('')  const [keyword, setKeyword] = useState('')  const [installingIds, setInstallingIds] = useState<Set<number>>(new Set())  const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | OwnerType>('all')  const loadPlugins = useCallback(async (query: PluginMarketQuery = {}) => {    setLoading(true)    try {      const result = await pluginApi.listMarketPlugins(query)      setPlugins(result.list || [])    } catch (err) {      console.error('[PluginMarket] load failed:', err)      message.error('鍔犺浇鎻掍欢甯傚満澶辫触')      setPlugins([])    } finally {      setLoading(false)    }  }, [])  useEffect(() => {    void loadPlugins({})  }, [loadPlugins])  const handleOwnerTypeChange = (value: 'all' | OwnerType) => {    setOwnerTypeFilter(value)    // ownerType 涓嶅湪鍚庣 PluginMarketQuery 濂戠害涓紝浠呭仛瀹㈡埛绔繃婊?    void loadPlugins({      category: (category as PluginType) || undefined,      keyword: keyword || undefined    })  }  const handleCategoryChange = (value: string) => {    setCategory(value)    void loadPlugins({      category: value || undefined,      keyword: keyword || undefined    })  }  const handleSearch = (value: string) => {    setKeyword(value)    void loadPlugins({      category: (category as PluginType) || undefined,      keyword: value || undefined    })  }  const handleInstall = async (plugin: Plugin) => {    setInstallingIds((prev) => new Set(prev).add(plugin.id))    try {      await pluginApi.installPlugin(plugin.id)      message.success(`鎻掍欢 ${plugin.name} 瀹夎鎴愬姛`)      void loadPlugins({        category: (category as PluginType) || undefined,        keyword: keyword || undefined      })    } catch (err) {      console.error('[PluginMarket] install failed:', err)      message.error('瀹夎澶辫触: ' + (err as Error).message)    } finally {      setInstallingIds((prev) => {        const next = new Set(prev)        next.delete(plugin.id)        return next      })    }  }  const handleUse = (plugin: Plugin) => {    message.info(`鍗冲皢浣跨敤鎻掍欢 ${plugin.name}锛岃鍦ㄥ璇濋〉閫夋嫨璇ユ彃浠禶)    navigate('/chat')  }  const handleViewDetail = (plugin: Plugin) => {    navigate(`/plugins/${plugin.id}`)  }  const handleNewPlugin = () => {    message.info('鏂板缓鎻掍欢鍔熻兘寮€鍙戜腑')  }  const handleBack = () => {    navigate('/dashboard')  }  /** 鎺ㄨ崘浣嶏細鍙?callCount Top 3锛屼笉瓒崇敤鍗犱綅 */  const featuredPlugins = plugins.length >= 3    ? [...plugins].sort((a, b) => (b.callCount ?? 0) - (a.callCount ?? 0)).slice(0, 3)    : []  const featuredDisplay = featuredPlugins.length > 0    ? featuredPlugins.map((p) => ({        id: p.id,        name: p.name,        description: p.description,        color: 'var(--color-primary)'      }))    : FEATURED_FALLBACK  /**   * 瀹㈡埛绔寜 ownerType 杩囨护锛堝悗绔?PluginMarketQuery 濂戠害鏈惈 ownerType锛?   * 榛樿缂哄け ownerType 瀛楁鏃舵寜 'user' 澶勭悊   */  const filteredPlugins = ownerTypeFilter === 'all'    ? plugins    : plugins.filter((p) => {        const ot = (p as Plugin & { ownerType?: OwnerType }).ownerType || 'user'        return ot === ownerTypeFilter      })  return (    <div className={styles.pageContainer}>      <Breadcrumb        className={styles.breadcrumb}        items={[{ title: <><HomeOutlined /> 棣栭〉</> }, { title: '鎻掍欢甯傚満' }]}      />      <div className={styles.pageHeader}>        <div className={styles.pageTitle}>          <AppstoreOutlined style={{ color: 'var(--color-primary)' }} />          <span>鎻掍欢甯傚満</span>        </div>        <div className={styles.headerActions}>          <Button icon={<ArrowLeftOutlined />} onClick={handleBack}>杩斿洖</Button>          <Button type="primary" icon={<PlusOutlined />} onClick={handleNewPlugin}>            鏂板缓鎻掍欢          </Button>        </div>      </div>      {/* Tab 瀵艰埅 */}      <div className={styles.tabNav}>        <div className={`${styles.tabItem} ${styles.tabItemActive}`} onClick={() => navigate('/plugins')}>          鎻掍欢甯傚満        </div>        <div className={styles.tabItem} onClick={() => navigate('/plugins/installed')}>          宸插畨瑁?        </div>        <div className={styles.tabItem} onClick={() => navigate('/plugins/logs')}>          璋冪敤璁板綍        </div>      </div>      {/* 鎺ㄨ崘浣嶈疆鎾?*/}      {featuredDisplay.length > 0 && (        <Carousel autoplay className={styles.featuredCarousel}>          {featuredDisplay.map((f) => (            <div key={f.id}>              <div className={styles.featuredCard} style={{ background: `linear-gradient(135deg, ${f.color} 0%, var(--color-bg-container) 100%)` }}>                <div className={styles.featuredContent}>                  <Tag color="gold" style={{ marginBottom: 8 }}>鎺ㄨ崘</Tag>                  <h3 className={styles.featuredTitle}>{f.name}</h3>                  <p className={styles.featuredDesc}>{f.description}</p>                  <Button                    type="primary"                    ghost                    onClick={() => f.id > 0 && handleViewDetail(plugins.find((p) => p.id === f.id)!)}                  >                    鏌ョ湅璇︽儏 <ArrowRightOutlined />                  </Button>                </div>              </div>            </div>          ))}        </Carousel>      )}      {/* 涓夌骇璧勬簮褰掑睘绛涢€?*/}      <div className={styles.ownerFilter}>        <Segmented          value={ownerTypeFilter}          onChange={(val) => handleOwnerTypeChange(val as 'all' | OwnerType)}          options={OWNER_TYPE_SEGMENTS}        />      </div>      {/* 绛涢€?+ 鎼滅储 */}      <div className={styles.filterBar}>        <Select          value={category}          onChange={handleCategoryChange}          options={CATEGORY_OPTIONS}          style={{ width: 160 }}          placeholder="閫夋嫨鍒嗙被"        />        <Input.Search          className={styles.searchInput}          placeholder="鎼滅储鎻掍欢鍚嶇О鎴栨弿杩?.."          allowClear          enterButton={<><SearchOutlined /> 鎼滅储</>}          onSearch={handleSearch}        />      </div>      {/* 鎻掍欢鍗＄墖缃戞牸 */}      <Spin spinning={loading}>        {filteredPlugins.length === 0 && !loading ? (          <div className={styles.emptyState}>            <AppstoreOutlined className={styles.emptyStateIcon} />            <div className={styles.emptyStateText}>              {plugins.length === 0 ? '鏆傛棤鎻掍欢' : '褰撳墠绛涢€夋潯浠朵笅鏆傛棤鎻掍欢'}            </div>          </div>        ) : (          <Row gutter={[16, 16]}>            {filteredPlugins.map((plugin) => {              const ownerType: OwnerType = (plugin as Plugin & { ownerType?: OwnerType }).ownerType || 'user'              return (                <Col xs={24} sm={12} md={8} lg={6} key={plugin.id}>                  <Card                    className={styles.pluginCard}                    bordered={false}                    hoverable                    onClick={() => handleViewDetail(plugin)}                    actions={[                      <DownloadOutlined                        key="install"                        onClick={(e) => {                          e.stopPropagation()                          if (!plugin.isInstalled) handleInstall(plugin)                        }}                        style={{ color: plugin.isInstalled ? 'var(--color-text-quaternary)' : 'var(--color-primary)' }}                      />,                      <StarOutlined key="star" style={{ color: 'var(--color-warning)' }} />,                      <span key="use" onClick={(e) => { e.stopPropagation(); handleUse(plugin) }} style={{ fontSize: 18 }}>浣跨敤</span>                    ]}                  >                    <Card.Meta                      avatar={                        <div className={styles.pluginIcon}>                          <AppstoreOutlined />                        </div>                      }                      title={                        <div className={styles.cardTitle}>                          <span>{plugin.name}</span>                          {plugin.isOfficial && (                            <Tag color="processing" style={{ fontSize: 10 }}>瀹樻柟</Tag>                          )}                          <Tag color={OWNER_TYPE_TAG_COLOR[ownerType]} style={{ fontSize: 10 }}>                            {OWNER_TYPE_LABELS[ownerType]}                          </Tag>                        </div>                      }                      description={                        <div>                          <div className={styles.cardDescription}>{plugin.description}</div>                          <div className={styles.cardMeta}>                            <SkillTag type={pluginTypeToSkillType(plugin.type)} size="small">                              {typeLabel(plugin.type)}                            </SkillTag>                            <span className={styles.metaItem}>                              <StarOutlined style={{ color: 'var(--color-warning)' }} />                              {plugin.rating?.toFixed(1) ?? '-'}                            </span>                            <span className={styles.metaItem}>                              <FireOutlined />                              {plugin.callCount ?? 0}                            </span>                            {plugin.pricing?.pricePerCall != null && plugin.pricing.pricePerCall > 0 && (                              <span className={styles.creditsValue}>                                <DollarOutlined />                                {plugin.pricing.pricePerCall}                              </span>                            )}                          </div>                          <div className={styles.cardMeta}>                            <span className={styles.metaItem}>v{plugin.version}</span>                            <span className={styles.metaItem}>浣滆€? {plugin.author}</span>                          </div>                        </div>                      }                    />                    <div className={styles.cardFooter}>                      {plugin.isInstalled ? (                        <Button disabled block>宸插畨瑁?/Button>                      ) : (                        <Button                          type="primary"                          icon={<DownloadOutlined />}                          loading={installingIds.has(plugin.id)}                          onClick={(e) => { e.stopPropagation(); handleInstall(plugin) }}                          block                        >                          瀹夎                        </Button>                      )}                    </div>                  </Card>                </Col>              )            })}          </Row>        )}      </Spin>    </div>  )}
+// 插件市场页
+// 布局：顶部标题 + Tab 导航 + 筛选/搜索 + 插件卡片网格
+// 调用 GET /plugins/market?category=&keyword=
+
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Button, Input, Select, Spin, Tag, message } from "antd";
+import {
+  AppstoreOutlined,
+  ArrowLeftOutlined,
+  DownloadOutlined,
+  MessageOutlined,
+  SearchOutlined,
+  StarOutlined,
+  FireOutlined,
+  DollarOutlined,
+} from "@ant-design/icons";
+import * as pluginApi from "@/api/plugin-api";
+import type { Plugin, PluginType, PluginMarketQuery } from "@/types/plugin";
+import styles from "./styles.module.css";
+
+/** 分类选项 */
+const CATEGORY_OPTIONS: Array<{ label: string; value: string }> = [
+  { label: "全部分类", value: "" },
+  { label: "工具", value: "tool" },
+  { label: "连接器", value: "connector" },
+  { label: "知识库", value: "knowledge_base" },
+  { label: "工作流", value: "workflow" },
+];
+
+/** 类型标签 className 映射 */
+function typeTagClass(type: PluginType): string {
+  switch (type) {
+    case "tool":
+      return styles.typeTagTool;
+    case "connector":
+      return styles.typeTagConnector;
+    case "knowledge_base":
+      return styles.typeTagKb;
+    case "workflow":
+      return styles.typeTagWorkflow;
+    default:
+      return "";
+  }
+}
+
+/** 类型中文显示 */
+function typeLabel(type: PluginType): string {
+  switch (type) {
+    case "tool":
+      return "工具";
+    case "connector":
+      return "连接器";
+    case "knowledge_base":
+      return "知识库";
+    case "workflow":
+      return "工作流";
+    default:
+      return type;
+  }
+}
+
+export default function PluginMarket() {
+  const navigate = useNavigate();
+
+  const [plugins, setPlugins] = useState<Plugin[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [category, setCategory] = useState<string>("");
+  const [keyword, setKeyword] = useState("");
+  const [installingIds, setInstallingIds] = useState<Set<number>>(new Set());
+
+  /** 加载市场列表 */
+  const loadPlugins = useCallback(async (query: PluginMarketQuery = {}) => {
+    setLoading(true);
+    try {
+      const result = await pluginApi.listMarketPlugins(query);
+      setPlugins(result.list || []);
+    } catch (err) {
+      console.error("[PluginMarket] load failed:", err);
+      message.error("加载插件市场失败");
+      setPlugins([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPlugins({});
+  }, [loadPlugins]);
+
+  /** 分类切换 */
+  const handleCategoryChange = (value: string) => {
+    setCategory(value);
+    void loadPlugins({
+      category: value || undefined,
+      keyword: keyword || undefined,
+    });
+  };
+
+  /** 搜索 */
+  const handleSearch = (value: string) => {
+    setKeyword(value);
+    void loadPlugins({
+      category: (category as PluginType) || undefined,
+      keyword: value || undefined,
+    });
+  };
+
+  /** 安装插件 */
+  const handleInstall = async (plugin: Plugin) => {
+    setInstallingIds((prev) => new Set(prev).add(plugin.id));
+    try {
+      await pluginApi.installPlugin(plugin.id);
+      message.success(`插件 ${plugin.name} 安装成功`);
+      // 刷新列表（更新 isInstalled）
+      void loadPlugins({
+        category: (category as PluginType) || undefined,
+        keyword: keyword || undefined,
+      });
+    } catch (err) {
+      console.error("[PluginMarket] install failed:", err);
+      message.error("安装失败: " + (err as Error).message);
+    } finally {
+      setInstallingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(plugin.id);
+        return next;
+      });
+    }
+  };
+
+  /** 使用插件 → 跳转对话页 */
+  const handleUse = (plugin: Plugin) => {
+    message.info(`即将使用插件 ${plugin.name}，请在对话页选择该插件`);
+    navigate("/chat");
+  };
+
+  /** 返回 */
+  const handleBack = () => {
+    navigate("/dashboard");
+  };
+
+  return (
+    <div className={styles.pageContainer}>
+      <div className={styles.pageHeader}>
+        <div className={styles.pageTitle}>
+          <AppstoreOutlined />
+          <span>插件市场</span>
+        </div>
+        <Button
+          className={styles.backBtn}
+          icon={<ArrowLeftOutlined />}
+          onClick={handleBack}
+        >
+          返回
+        </Button>
+      </div>
+
+      {/* Tab 导航 */}
+      <div className={styles.tabNav}>
+        <div
+          className={`${styles.tabItem} ${styles.tabItemActive}`}
+          onClick={() => navigate("/plugins")}
+        >
+          插件市场
+        </div>
+        <div
+          className={styles.tabItem}
+          onClick={() => navigate("/plugins/installed")}
+        >
+          已安装
+        </div>
+        <div
+          className={styles.tabItem}
+          onClick={() => navigate("/plugins/logs")}
+        >
+          调用记录
+        </div>
+      </div>
+
+      {/* 筛选 + 搜索 */}
+      <div className={styles.filterBar}>
+        <Select
+          value={category}
+          onChange={handleCategoryChange}
+          options={CATEGORY_OPTIONS}
+          style={{ width: 160 }}
+          placeholder="选择分类"
+        />
+        <Input.Search
+          className={styles.searchInput}
+          placeholder="搜索插件名称或描述..."
+          allowClear
+          enterButton={
+            <>
+              <SearchOutlined /> 搜索
+            </>
+          }
+          onSearch={handleSearch}
+        />
+      </div>
+
+      {/* 插件卡片网格 */}
+      <Spin spinning={loading}>
+        {plugins.length === 0 && !loading ? (
+          <div className={styles.emptyState}>
+            <AppstoreOutlined className={styles.emptyStateIcon} />
+            <div className={styles.emptyStateText}>暂无插件</div>
+          </div>
+        ) : (
+          <div className={styles.pluginGrid}>
+            {plugins.map((plugin) => (
+              <div key={plugin.id} className={styles.pluginCard}>
+                <div className={styles.cardBody}>
+                  <div className={styles.cardHeader}>
+                    <div className={styles.cardTitle}>
+                      <span>{plugin.name}</span>
+                      {plugin.isOfficial && (
+                        <span className={styles.officialBadge}>官方</span>
+                      )}
+                    </div>
+                    <Tag
+                      className={`${styles.typeTag} ${typeTagClass(plugin.type)}`}
+                    >
+                      {typeLabel(plugin.type)}
+                    </Tag>
+                  </div>
+                  <div className={styles.cardDescription}>
+                    {plugin.description}
+                  </div>
+                  <div className={styles.cardMeta}>
+                    <span className={styles.metaItem}>
+                      <StarOutlined className={styles.ratingValue} />
+                      <span className={styles.ratingValue}>
+                        {plugin.rating?.toFixed(1) ?? "-"}
+                      </span>
+                    </span>
+                    <span className={styles.metaItem}>
+                      <FireOutlined />
+                      {plugin.callCount ?? 0} 次
+                    </span>
+                    {plugin.pricing?.pricePerCall != null &&
+                      plugin.pricing.pricePerCall > 0 && (
+                        <span className={styles.metaItem}>
+                          <DollarOutlined />
+                          <span className={styles.creditsValue}>
+                            {plugin.pricing.pricePerCall} 积分/次
+                          </span>
+                        </span>
+                      )}
+                    <span className={styles.metaItem}>
+                      作者: {plugin.author}
+                    </span>
+                    <span className={styles.metaItem}>v{plugin.version}</span>
+                  </div>
+                </div>
+
+                <div className={styles.cardFooter}>
+                  {plugin.isInstalled ? (
+                    <Button
+                      className={styles.installBtnInstalled}
+                      disabled
+                      block
+                    >
+                      已安装
+                    </Button>
+                  ) : (
+                    <Button
+                      type="primary"
+                      className={styles.installBtn}
+                      icon={<DownloadOutlined />}
+                      loading={installingIds.has(plugin.id)}
+                      onClick={() => handleInstall(plugin)}
+                      block
+                    >
+                      安装
+                    </Button>
+                  )}
+                  <Button
+                    className={styles.useBtn}
+                    icon={<MessageOutlined />}
+                    onClick={() => handleUse(plugin)}
+                  >
+                    使用
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Spin>
+    </div>
+  );
+}

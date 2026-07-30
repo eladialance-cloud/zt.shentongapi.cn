@@ -1,1 +1,24 @@
-﻿import * as crypto from 'crypto';/** * 瀛楃涓插伐鍏? * 鏁版嵁鍚堝悓鐪熸簮锛歴pec.md - 閰嶇疆绠＄悊 */export const isEmail = (s: string): boolean =>  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);export const isUsername = (s: string): boolean =>  /^[a-zA-Z0-9_]{3,32}$/.test(s);/** * 鐢熸垚闅忔満瀛楃涓诧紙鎷掔粷閲囨牱娉曪紝鏃犳ā鍋忓樊锛? * 浣跨敤 crypto.randomBytes 鐢熸垚闅忔満瀛楄妭锛岄€氳繃鎷掔粷閲囨牱娑堥櫎妯″亸宸? * 鍘熸柟妗?bytes[i] % chars.length 瀛樺湪妯″亸宸紙256 % 62 = 6锛屽墠6瀛楃姒傜巼鍋忛珮锛? * 鏂版柟妗堬細姣忎釜瀛楄妭鍊?< 256 - (256 % chars.length) 鏃舵墠鎺ュ彈锛屽惁鍒欎涪寮冮噸閲囨牱 * @param length 瀛楃涓查暱搴︼紙榛樿 32锛? * @returns 闅忔満瀛楃涓? */export const generateRandomString = (length = 32): string => {  const chars =    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';  const charsLen = chars.length;  // 鎷掔粷閲囨牱闃堝€硷細鍙帴鍙?byte < 256 - (256 % charsLen) 鐨勫€?  const threshold = 256 - (256 % charsLen); // 250  const result: string[] = [];  let byteOffset = 0;  const bufSize = Math.ceil(length * 256 / threshold) + 4;  let buf = crypto.randomBytes(bufSize);  for (let i = 0; i < length; i++) {    // 鎷掔粷閲囨牱锛氳烦杩?>= threshold 鐨勫瓧鑺?    while (byteOffset < buf.length && buf[byteOffset] >= threshold) {      byteOffset++;    }    if (byteOffset >= buf.length) {      buf = crypto.randomBytes(bufSize);      byteOffset = 0;      while (buf[byteOffset] >= threshold) byteOffset++;    }    result.push(chars.charAt(buf[byteOffset] % charsLen));    byteOffset++;  }  return result.join('');};export const maskEmail = (email: string): string => {  const [name, domain] = email.split('@');  return `${name.slice(0, 2)}***@${domain}`;};
+﻿/**
+ * 字符串工具
+ * 数据合同真源：spec.md - 配置管理
+ */
+export const isEmail = (s: string): boolean =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+
+export const isUsername = (s: string): boolean =>
+  /^[a-zA-Z0-9_]{3,32}$/.test(s);
+
+export const generateRandomString = (length = 32): string => {
+  const chars =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+};
+
+export const maskEmail = (email: string): string => {
+  const [name, domain] = email.split('@');
+  return `${name.slice(0, 2)}***@${domain}`;
+};

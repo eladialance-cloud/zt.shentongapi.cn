@@ -1,1 +1,11 @@
-﻿import { Injectable } from '@nestjs/common';const pkg = require('./package.json');const VERSION = pkg.version;@Injectable()export class AppService {  getHealth(): { status: string; version: string; timestamp: number } {    return {      status: 'ok',      version: VERSION,      timestamp: Date.now(),    };  }}
+﻿import { Injectable } from '@nestjs/common';
+
+@Injectable()
+export class AppService {
+  getHealth(): { status: string; timestamp: number } {
+    return {
+      status: 'ok',
+      timestamp: Date.now(),
+    };
+  }
+}

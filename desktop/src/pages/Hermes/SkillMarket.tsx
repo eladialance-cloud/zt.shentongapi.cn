@@ -1,1 +1,259 @@
-﻿// Hermes 鎶€鑳藉寘甯傚満// SubTask 6.2: 鎶€鑳藉競鍦猴紙鎼滅储/鍒嗙被绛涢€?瀹夎锛? 宸插畨瑁呮妧鑳斤紙鍗歌浇/璇勫垎锛?// 璋冪敤 listSkillMarket / listSkillCategories / listInstalledSkills / installSkill / uninstallSkill / rateSkill// embedded=true 鏃朵綔涓?/hermes 椤甸潰鍐呭祵 Tab 娓叉煋锛堟棤澶栧眰 pageContainer锛?import { useCallback, useEffect, useMemo, useState } from 'react'import { useNavigate } from 'react-router-dom'import {  Button,  Card,  Empty,  Input,  InputNumber,  Modal,  Popconfirm,  Rate,  Select,  Spin,  Tag,  message} from 'antd'import {  ArrowLeftOutlined,  ThunderboltOutlined,  ShopOutlined,  CheckCircleOutlined,  DownloadOutlined,  DeleteOutlined,  ReloadOutlined,  AppstoreOutlined} from '@ant-design/icons'import * as hermesApi from '@/api/hermes-api'import type {  HermesSkill,  InstalledSkill,  SkillCategory} from '@/types/hermes'import SkillTag from '@/components/SkillTag'import styles from './styles.module.css'interface SkillMarketProps {  /** 浣滀负鍐呭祵 Tab 娓叉煋鏃朵负 true锛岀渷鐣ュ灞?pageContainer 涓庤繑鍥炴寜閽?*/  embedded?: boolean}export default function HermesSkillMarket({ embedded = false }: SkillMarketProps) {  const navigate = useNavigate()  const [loading, setLoading] = useState(true)  const [market, setMarket] = useState<HermesSkill[]>([])  const [installed, setInstalled] = useState<InstalledSkill[]>([])  const [categories, setCategories] = useState<SkillCategory[]>([])  const [keyword, setKeyword] = useState('')  const [category, setCategory] = useState<string>('')  const [installing, setInstalling] = useState<Record<number, boolean>>({})  const [uninstalling, setUninstalling] = useState<Record<number, boolean>>({})  const [ratingSkill, setRatingSkill] = useState<Record<number, boolean>>({})  const [estimateSkill, setEstimateSkill] = useState<HermesSkill | null>(null)  const [estimateMinutes, setEstimateMinutes] = useState<number>(5)  /** 鍔犺浇甯傚満 + 宸插畨瑁?+ 鍒嗙被 */  const loadData = useCallback(async () => {    setLoading(true)    try {      const [marketList, installedList, categoryList] = await Promise.all([        hermesApi.listSkillMarket(),        hermesApi.listInstalledSkills(),        hermesApi.listSkillCategories()      ])      const installedIdSet = new Set((installedList || []).map((s) => s.id))      setInstalled(installedList || [])      setCategories(categoryList || [])      setMarket(        (marketList || []).map((s) => ({          ...s,          isInstalled: installedIdSet.has(s.id)        }))      )    } catch (err) {      console.error('[HermesSkillMarket] load failed:', err)      message.error('鍔犺浇鎶€鑳藉寘甯傚満澶辫触')    } finally {      setLoading(false)    }  }, [])  useEffect(() => {    void loadData()  }, [loadData])  /** 甯傚満鍒楄〃杩囨护锛堝叧閿瘝 + 鍒嗙被锛?*/  const filteredMarket = useMemo(() => {    const kw = keyword.trim().toLowerCase()    return market.filter((s) => {      if (category && s.category !== category) return false      if (!kw) return true      return (        s.name.toLowerCase().includes(kw) ||        (s.description || '').toLowerCase().includes(kw)      )    })  }, [market, keyword, category])  /** 瀹夎鎶€鑳藉寘 */  const handleInstall = async (skill: HermesSkill) => {    setInstalling((prev) => ({ ...prev, [skill.id]: true }))    try {      await hermesApi.installSkill(skill.id)      message.success(`鎶€鑳藉寘 "${skill.name}" 瀹夎鎴愬姛`)      setMarket((prev) =>        prev.map((s) => (s.id === skill.id ? { ...s, isInstalled: true } : s))      )      // 鍒锋柊宸插畨瑁呭垪琛?      const list = await hermesApi.listInstalledSkills()      setInstalled(list || [])    } catch (err) {      console.error('[HermesSkillMarket] install failed:', err)      message.error('瀹夎澶辫触: ' + (err as Error).message)    } finally {      setInstalling((prev) => ({ ...prev, [skill.id]: false }))    }  }  /** 鍗歌浇鎶€鑳藉寘 */  const handleUninstall = async (skill: InstalledSkill) => {    setUninstalling((prev) => ({ ...prev, [skill.id]: true }))    try {      await hermesApi.uninstallSkill(skill.id)      message.success(`鎶€鑳藉寘 "${skill.name}" 宸插嵏杞絗)      setInstalled((prev) => prev.filter((s) => s.id !== skill.id))      setMarket((prev) =>        prev.map((s) => (s.id === skill.id ? { ...s, isInstalled: false } : s))      )    } catch (err) {      console.error('[HermesSkillMarket] uninstall failed:', err)      message.error('鍗歌浇澶辫触: ' + (err as Error).message)    } finally {      setUninstalling((prev) => ({ ...prev, [skill.id]: false }))    }  }  /** 璇勫垎 */  const handleRate = async (skill: InstalledSkill, rating: number) => {    setRatingSkill((prev) => ({ ...prev, [skill.id]: true }))    try {      const updated = await hermesApi.rateSkill(skill.id, rating)      message.success(`宸蹭负 "${skill.name}" 璇勫垎 ${rating} 鏄焋)      setInstalled((prev) =>        prev.map((s) => (s.id === skill.id ? { ...s, rating: updated.rating ?? rating } : s))      )    } catch (err) {      console.error('[HermesSkillMarket] rate failed:', err)      message.error('璇勫垎澶辫触: ' + (err as Error).message)    } finally {      setRatingSkill((prev) => ({ ...prev, [skill.id]: false }))    }  }  /** 璐圭敤棰勪及 */  const handleOpenEstimate = (skill: HermesSkill) => {    setEstimateSkill(skill)    setEstimateMinutes(5)  }  const estimateCost = (skill: HermesSkill, minutes: number): number => {    return skill.pricePerMinute * minutes  }  /** 甯傚満鍖哄崱鐗?*/  const renderMarketCard = (skill: HermesSkill) => (    <Card key={skill.id} className={styles.skillCard} bordered={false}>      <div className={styles.skillCardBody}>        <div className={styles.skillHeader}>          <div className={styles.skillName}>            <div className={styles.skillIcon}>              <ThunderboltOutlined />            </div>            <span>{skill.name}</span>          </div>          {skill.isInstalled && (            <Tag className={styles.installedTag}>              <CheckCircleOutlined style={{ marginRight: 4 }} />              宸插畨瑁?            </Tag>          )}        </div>        <div className={styles.skillDesc}>{skill.description || '鏆傛棤鎻忚堪'}</div>        <div className={styles.skillMeta}>          <span className={styles.skillAuthor}>浣滆€咃細{skill.author}</span>          <SkillTag type="reasoning" size="small" />        </div>        <div className={styles.skillMeta}>          <span>瀹夎 {skill.installCount.toLocaleString()} 娆?/span>          <span            className={              skill.pricePerMinute === 0                ? styles.skillPriceFree                : styles.skillPrice            }          >            {skill.pricePerMinute === 0              ? '鍏嶈垂'              : `${skill.pricePerMinute} 绉垎/鍒嗛挓`}          </span>        </div>        <div className={styles.skillMeta}>          {skill.version && (            <span style={{ color: 'var(--color-text-tertiary)' }}>              v{skill.version}            </span>          )}          {skill.rating !== undefined && skill.rating > 0 && (            <span style={{ color: 'var(--color-warning)' }}>              鈽?{skill.rating.toFixed(1)}            </span>          )}        </div>        <div className={styles.skillActions}>          {skill.isInstalled ? (            <Button disabled icon={<CheckCircleOutlined />}>              宸插畨瑁?            </Button>          ) : (            <Button              type="primary"              className={styles.primaryBtn}              icon={<DownloadOutlined />}              loading={!!installing[skill.id]}              onClick={() => handleInstall(skill)}            >              瀹夎            </Button>          )}          {skill.pricePerMinute > 0 && (            <Button              className={styles.backBtn}              onClick={() => handleOpenEstimate(skill)}            >              璐圭敤棰勪及            </Button>          )}        </div>      </div>    </Card>  )  /** 宸插畨瑁呭尯鍗＄墖 */  const renderInstalledCard = (skill: InstalledSkill) => (    <Card key={skill.id} className={styles.skillCard} bordered={false}>      <div className={styles.skillCardBody}>        <div className={styles.skillHeader}>          <div className={styles.skillName}>            <div className={styles.skillIcon}>              <ThunderboltOutlined />            </div>            <span>{skill.name}</span>          </div>          <Tag className={styles.installedTag}>            <CheckCircleOutlined style={{ marginRight: 4 }} />            宸插畨瑁?          </Tag>        </div>        <div className={styles.skillDesc}>{skill.description || '鏆傛棤鎻忚堪'}</div>        <div className={styles.skillMeta}>          <span className={styles.skillAuthor}>浣滆€咃細{skill.author}</span>          <SkillTag type="reasoning" size="small" />        </div>        <div className={styles.skillMeta}>          <span>瀹夎 {skill.installCount.toLocaleString()} 娆?/span>          <span            className={              skill.pricePerMinute === 0                ? styles.skillPriceFree                : styles.skillPrice            }          >            {skill.pricePerMinute === 0              ? '鍏嶈垂'              : `${skill.pricePerMinute} 绉垎/鍒嗛挓`}          </span>        </div>        <div className={styles.skillMeta}>          <span className={styles.rateRow}>            <Rate              allowClear              value={skill.rating ?? 0}              disabled={!!ratingSkill[skill.id]}              onChange={(v) => void handleRate(skill, v)}            />          </span>        </div>        <div className={styles.skillActions}>          <Popconfirm            title="纭畾鍗歌浇璇ユ妧鑳藉寘鍚楋紵"            description="鍗歌浇鍚庡凡鎸傝浇鐨勫疄渚嬪皢鏃犳硶璋冪敤姝ゆ妧鑳?            onConfirm={() => handleUninstall(skill)}            okText="鍗歌浇"            cancelText="鍙栨秷"            okButtonProps={{ danger: true }}          >            <Button              danger              icon={<DeleteOutlined />}              loading={!!uninstalling[skill.id]}            >              鍗歌浇            </Button>          </Popconfirm>        </div>      </div>    </Card>  )  const content = (    <Spin spinning={loading}>      {/* ===== 鎶€鑳藉競鍦?===== */}      <div className={styles.sectionCard}>        <div className={styles.sectionTitle}>          <span className={styles.sectionTitleText}>            <ShopOutlined />            鎶€鑳藉競鍦?          </span>          <Button            className={styles.backBtn}            size="small"            icon={<ReloadOutlined />}            onClick={() => void loadData()}          >            鍒锋柊          </Button>        </div>        <div className={styles.filterBar}>          <Select            value={category}            onChange={(v: string) => setCategory(v)}            style={{ width: 160 }}            placeholder="閫夋嫨鍒嗙被"            allowClear            options={[              { label: '鍏ㄩ儴鍒嗙被', value: '' },              ...categories.map((c) => ({ label: c.name, value: c.key }))            ]}          />          <Input.Search            className={styles.searchInput}            placeholder="鎼滅储鎶€鑳藉寘鍚嶇О鎴栨弿杩?.."            allowClear            onSearch={(v) => setKeyword(v)}            onChange={(e) => setKeyword(e.target.value)}          />        </div>        {filteredMarket.length === 0 && !loading ? (          <Empty description="鏆傛棤绗﹀悎鏉′欢鐨勬妧鑳藉寘" style={{ marginTop: 40 }} />        ) : (          <div className={styles.skillGrid}>{filteredMarket.map(renderMarketCard)}</div>        )}      </div>      {/* ===== 宸插畨瑁呮妧鑳?===== */}      <div className={styles.sectionCard} style={{ marginTop: 20 }}>        <div className={styles.sectionTitle}>          <span className={styles.sectionTitleText}>            <AppstoreOutlined />            宸插畨瑁呮妧鑳斤紙{installed.length}锛?          </span>        </div>        {installed.length === 0 && !loading ? (          <Empty description="鏆傛棤宸插畨瑁呮妧鑳藉寘" style={{ marginTop: 40 }} />        ) : (          <div className={styles.skillGrid}>{installed.map(renderInstalledCard)}</div>        )}      </div>      {/* 璐圭敤棰勪及寮圭獥 */}      <Modal        title="璐圭敤棰勪及"        open={!!estimateSkill}        onOk={() => setEstimateSkill(null)}        onCancel={() => setEstimateSkill(null)}        okText="鍏抽棴"        cancelButtonProps={{ style: { display: 'none' } }}      >        {estimateSkill && (          <div>            <p style={{ color: 'var(--color-primary)', marginBottom: 12 }}>              鎶€鑳藉寘锛歿estimateSkill.name}            </p>            <p style={{ color: 'var(--color-text-secondary)', marginBottom: 8 }}>              鍗曚环锛歿estimateSkill.pricePerMinute} 绉垎/鍒嗛挓            </p>            <div style={{ marginBottom: 12 }}>              <span style={{ color: 'var(--color-text-secondary)', marginRight: 8 }}>                棰勮鏃堕暱锛堝垎閽燂級锛?              </span>              <InputNumber                min={1}                max={1440}                value={estimateMinutes}                onChange={(v) => setEstimateMinutes(Number(v) || 1)}              />            </div>            <div className={styles.costEstimate}>              <ThunderboltOutlined />              <span>                棰勪及璐圭敤锛?                <strong style={{ marginLeft: 4 }}>                  {estimateCost(estimateSkill, estimateMinutes).toLocaleString()}                </strong>{' '}                绉垎              </span>            </div>            <p              style={{                color: 'var(--color-text-tertiary)',                fontSize: 11,                marginTop: 8,                lineHeight: 1.5              }}            >              娉細瀹為檯璐圭敤鐢卞悗绔?HermesBillingService 鎸夊疄闄呮墽琛屾椂闀胯绠楋紝              鏈€缁堢Н鍒嗘秷鑰楀彲鍦ㄤ换鍔″巻鍙蹭腑鏌ョ湅銆?            </p>          </div>        )}      </Modal>    </Spin>  )  if (embedded) {    return <div className={styles.tabContent}>{content}</div>  }  return (    <div className={styles.pageContainer}>      <div className={styles.pageHeader}>        <div className={styles.pageTitle}>          <ShopOutlined />          <span>鎶€鑳藉寘甯傚満</span>        </div>        <div className={styles.headerActions}>          <Button            className={styles.backBtn}            icon={<ArrowLeftOutlined />}            onClick={() => navigate('/hermes')}          >            杩斿洖瀹炰緥鍒楄〃          </Button>        </div>      </div>      {content}    </div>  )}
+// Hermes 技能包市场
+// SubTask 13.3 + 13.4: 技能包市场列表 + 安装 + 已安装标记 + 费用预估
+// 调用 GET /hermes/skills/market、POST /hermes/skills/:skillId/install、GET /hermes/skills/installed
+
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  Button,
+  Card,
+  Empty,
+  InputNumber,
+  Modal,
+  Spin,
+  Tag,
+  message,
+} from "antd";
+import {
+  ArrowLeftOutlined,
+  ThunderboltOutlined,
+  ShopOutlined,
+  CheckCircleOutlined,
+  DownloadOutlined,
+} from "@ant-design/icons";
+import * as hermesApi from "@/api/hermes-api";
+import type { HermesSkill, InstalledSkill } from "@/types/hermes";
+import styles from "./styles.module.css";
+
+export default function HermesSkillMarket() {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [skills, setSkills] = useState<HermesSkill[]>([]);
+  const [installedIds, setInstalledIds] = useState<Set<number>>(new Set());
+  const [installing, setInstalling] = useState<Record<number, boolean>>({});
+  const [estimateSkill, setEstimateSkill] = useState<HermesSkill | null>(null);
+  const [estimateMinutes, setEstimateMinutes] = useState<number>(5);
+
+  /** 加载技能包市场 + 已安装列表 */
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [market, installed] = await Promise.all([
+        hermesApi.listSkillMarket(),
+        hermesApi.listInstalledSkills(),
+      ]);
+      const installedIdSet = new Set(
+        installed.map((s: InstalledSkill) => s.id),
+      );
+      setInstalledIds(installedIdSet);
+      // 标记已安装状态
+      setSkills(
+        (market || []).map((s) => ({
+          ...s,
+          isInstalled: installedIdSet.has(s.id),
+        })),
+      );
+    } catch (err) {
+      console.error("[HermesSkillMarket] load failed:", err);
+      message.error("加载技能包市场失败");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  /** 安装技能包 */
+  const handleInstall = async (skill: HermesSkill) => {
+    setInstalling((prev) => ({ ...prev, [skill.id]: true }));
+    try {
+      await hermesApi.installSkill(skill.id);
+      message.success(`技能包 "${skill.name}" 安装成功`);
+      setInstalledIds((prev) => new Set(prev).add(skill.id));
+      setSkills((prev) =>
+        prev.map((s) => (s.id === skill.id ? { ...s, isInstalled: true } : s)),
+      );
+    } catch (err) {
+      console.error("[HermesSkillMarket] install failed:", err);
+      message.error("安装失败: " + (err as Error).message);
+    } finally {
+      setInstalling((prev) => ({ ...prev, [skill.id]: false }));
+    }
+  };
+
+  /** 打开费用预估弹窗 */
+  const handleOpenEstimate = (skill: HermesSkill) => {
+    setEstimateSkill(skill);
+    setEstimateMinutes(5);
+  };
+
+  /** 计算预估费用 */
+  const estimateCost = (skill: HermesSkill, minutes: number): number => {
+    return skill.pricePerMinute * minutes;
+  };
+
+  return (
+    <div className={styles.pageContainer}>
+      <div className={styles.pageHeader}>
+        <div className={styles.pageTitle}>
+          <ShopOutlined />
+          <span>技能包市场</span>
+        </div>
+        <div className={styles.headerActions}>
+          <Button
+            className={styles.backBtn}
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate("/hermes")}
+          >
+            返回实例列表
+          </Button>
+        </div>
+      </div>
+
+      <Spin spinning={loading}>
+        {skills.length === 0 && !loading ? (
+          <Empty description="暂无可用技能包" style={{ marginTop: 80 }} />
+        ) : (
+          <div className={styles.skillGrid}>
+            {skills.map((skill) => (
+              <Card
+                key={skill.id}
+                className={styles.skillCard}
+                bordered={false}
+              >
+                <div className={styles.skillCardBody}>
+                  <div className={styles.skillHeader}>
+                    <div className={styles.skillName}>
+                      <div className={styles.skillIcon}>
+                        <ThunderboltOutlined />
+                      </div>
+                      <span>{skill.name}</span>
+                    </div>
+                    {skill.isInstalled && (
+                      <Tag className={styles.installedTag}>
+                        <CheckCircleOutlined style={{ marginRight: 4 }} />
+                        已安装
+                      </Tag>
+                    )}
+                  </div>
+
+                  <div className={styles.skillDesc}>
+                    {skill.description || "暂无描述"}
+                  </div>
+
+                  <div className={styles.skillMeta}>
+                    <span className={styles.skillAuthor}>
+                      作者：{skill.author}
+                    </span>
+                    <span>安装 {skill.installCount.toLocaleString()} 次</span>
+                  </div>
+
+                  <div className={styles.skillMeta}>
+                    <span
+                      className={
+                        skill.pricePerMinute === 0
+                          ? styles.skillPriceFree
+                          : styles.skillPrice
+                      }
+                    >
+                      {skill.pricePerMinute === 0
+                        ? "免费"
+                        : `${skill.pricePerMinute} 积分/分钟`}
+                    </span>
+                    {skill.version && (
+                      <span style={{ color: "#6e7681" }}>v{skill.version}</span>
+                    )}
+                  </div>
+
+                  <div className={styles.skillActions}>
+                    {skill.isInstalled ? (
+                      <Button disabled icon={<CheckCircleOutlined />}>
+                        已安装
+                      </Button>
+                    ) : (
+                      <Button
+                        type="primary"
+                        className={styles.primaryBtn}
+                        icon={<DownloadOutlined />}
+                        loading={!!installing[skill.id]}
+                        onClick={() => handleInstall(skill)}
+                      >
+                        安装
+                      </Button>
+                    )}
+                    {skill.pricePerMinute > 0 && (
+                      <Button
+                        className={styles.backBtn}
+                        onClick={() => handleOpenEstimate(skill)}
+                      >
+                        费用预估
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </Spin>
+
+      {/* 费用预估弹窗 */}
+      <Modal
+        title="费用预估"
+        open={!!estimateSkill}
+        onOk={() => setEstimateSkill(null)}
+        onCancel={() => setEstimateSkill(null)}
+        okText="关闭"
+        cancelButtonProps={{ style: { display: "none" } }}
+      >
+        {estimateSkill && (
+          <div>
+            <p style={{ color: "#a5b4fc", marginBottom: 12 }}>
+              技能包：{estimateSkill.name}
+            </p>
+            <p style={{ color: "#94a3b8", marginBottom: 8 }}>
+              单价：{estimateSkill.pricePerMinute} 积分/分钟
+            </p>
+            <div style={{ marginBottom: 12 }}>
+              <span style={{ color: "#94a3b8", marginRight: 8 }}>
+                预计时长（分钟）：
+              </span>
+              <InputNumber
+                min={1}
+                max={1440}
+                value={estimateMinutes}
+                onChange={(v) => setEstimateMinutes(Number(v) || 1)}
+              />
+            </div>
+            <div className={styles.costEstimate}>
+              <ThunderboltOutlined />
+              <span>
+                预估费用：
+                <strong style={{ marginLeft: 4 }}>
+                  {estimateCost(
+                    estimateSkill,
+                    estimateMinutes,
+                  ).toLocaleString()}
+                </strong>{" "}
+                积分
+              </span>
+            </div>
+            <p
+              style={{
+                color: "#6e7681",
+                fontSize: 11,
+                marginTop: 8,
+                lineHeight: 1.5,
+              }}
+            >
+              注：实际费用由后端 HermesBillingService 按实际执行时长计算，
+              最终积分消耗可能在任务历史中查看。
+            </p>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}

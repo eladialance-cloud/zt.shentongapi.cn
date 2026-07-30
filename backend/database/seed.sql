@@ -1,4 +1,4 @@
--- =============================================================================
+﻿-- =============================================================================
 -- 深瞳 AI 智能中台 - 种子数据脚本
 -- 数据库：ai_agent
 -- MySQL 版本：8.0+
@@ -55,8 +55,9 @@ ALTER TABLE `membership_plans` AUTO_INCREMENT = 1;
 -- 二、插入角色数据 (3 条)
 -- =============================================================================
 -- permissions 字段为 JSON 数组，列出该角色的权限标识
-INSERT INTO `roles` (`name`, `description`, `permissions`) VALUES
+INSERT INTO `roles` (`name`, `code`, `description`, `permissions`) VALUES
 (
+  'super_admin',
   'super_admin',
   '超级管理员 - 拥有系统所有权限',
   JSON_ARRAY(
@@ -70,6 +71,7 @@ INSERT INTO `roles` (`name`, `description`, `permissions`) VALUES
 ),
 (
   'admin',
+  'admin',
   '管理员 - 拥有运营管理权限',
   JSON_ARRAY(
     'agent:review', 'agent:publish',
@@ -80,6 +82,7 @@ INSERT INTO `roles` (`name`, `description`, `permissions`) VALUES
   )
 ),
 (
+  'user',
   'user',
   '普通用户 - 拥有基础使用权限',
   JSON_ARRAY(
@@ -105,7 +108,7 @@ VALUES
 (
   'admin',
   'admin@example.com',
-  '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
+  '$2b$12$5.4NWtoO/vcIplDWk.yBKupS8vFWgZG6xCVcJITB5pMAuyxsWSJfW',
   '13800000001',
   'https://cdn.example.com/avatars/admin.png',
   'active',
@@ -117,7 +120,7 @@ VALUES
 (
   'test',
   'test@example.com',
-  '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWz',
+  '$2b$12$ltRbwpQ9a0lN5YdL.rafoODf.oRftbiBa3LIufLGqWGhUmoZvgngy',
   '13800000002',
   'https://cdn.example.com/avatars/test.png',
   'active',

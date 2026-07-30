@@ -1,4 +1,4 @@
-import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+﻿import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -28,7 +28,8 @@ import { StorageModule } from './modules/storage/storage.module';
 import { RagModule } from './modules/rag/rag.module';
 import { McpModule } from './modules/mcp/mcp.module';
 import { N8nModule } from './modules/n8n/n8n.module';
-import { OpcModule } from './modules/opc/opc.module';
+import { ChannelModule } from './modules/channel/channel.module';
+import { TeamModule } from './modules/team/team.module';
 import { HermesModule } from './modules/hermes/hermes.module';
 import { SkillStoreModule } from './modules/skill-store/skill-store.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
@@ -100,7 +101,8 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     RagModule,
     McpModule,
     N8nModule,
-    OpcModule,
+    ChannelModule,
+    TeamModule,
     HermesModule,
     StatisticsModule,
     SystemModule,
@@ -150,8 +152,8 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 })
 export class AppModule implements NestModule {
   /**
-   * 全局注册 HMAC 验签中间件（在 JwtAuthGuard 之前执行）
-   * 数据合同真源：Task 32 - 数据安全设计
+   * 鍏ㄥ眬娉ㄥ唽 HMAC 楠岀涓棿浠讹紙鍦?JwtAuthGuard 涔嬪墠鎵ц锛?
+   * 鏁版嵁鍚堝悓鐪熸簮锛歍ask 32 - 鏁版嵁瀹夊叏璁捐
    */
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(HmacVerifyMiddleware).forRoutes('*');

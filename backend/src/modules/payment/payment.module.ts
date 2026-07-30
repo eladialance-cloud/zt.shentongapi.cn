@@ -1,1 +1,25 @@
-﻿import { Module } from '@nestjs/common';import { TypeOrmModule } from '@nestjs/typeorm';import { CommonModule } from '../../common/common.module';import { MembershipPlanEntity } from './entities/membership-plan.entity';import { PaymentRecordEntity } from './entities/payment-record.entity';import { RechargeOrderEntity } from './entities/recharge-order.entity';import { RevenueRecordEntity } from './entities/revenue-record.entity';import { WithdrawalRecordEntity } from './entities/withdrawal-record.entity';import { SystemConfigEntity } from '../admin-system/entities/system-config.entity';import { PaymentController } from './controllers/payment.controller';import { AdminPlanController } from './controllers/admin-plan.controller';import { PaymentService } from './services/payment.service';import { CreditsModule } from '../credits/credits.module';import { AdminAuthModule } from '../admin-auth/admin-auth.module';@Module({  imports: [    TypeOrmModule.forFeature([      MembershipPlanEntity,      PaymentRecordEntity,      RechargeOrderEntity,      RevenueRecordEntity,      WithdrawalRecordEntity,      SystemConfigEntity,    ]),    CreditsModule,    CommonModule,    AdminAuthModule,  ],  controllers: [PaymentController, AdminPlanController],  providers: [PaymentService],  exports: [PaymentService],})export class PaymentModule {}
+﻿import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { MembershipPlanEntity } from './entities/membership-plan.entity';
+import { PaymentRecordEntity } from './entities/payment-record.entity';
+import { RechargeOrderEntity } from './entities/recharge-order.entity';
+import { RevenueRecordEntity } from './entities/revenue-record.entity';
+import { WithdrawalRecordEntity } from './entities/withdrawal-record.entity';
+import { PaymentController } from './controllers/payment.controller';
+import { PaymentService } from './services/payment.service';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([
+      MembershipPlanEntity,
+      PaymentRecordEntity,
+      RechargeOrderEntity,
+      RevenueRecordEntity,
+      WithdrawalRecordEntity,
+    ]),
+  ],
+  controllers: [PaymentController],
+  providers: [PaymentService],
+  exports: [PaymentService],
+})
+export class PaymentModule {}

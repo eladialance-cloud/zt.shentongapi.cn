@@ -1,314 +1,252 @@
-﻿// 璺ㄥ钩鍙拌繍琛屾椂璺緞瑙ｆ瀽鍣紙Task 2 + Task 9.1锛?//
-// 鑱岃矗锛?// - 瑙ｆ瀽 N8N / OpenClaw / MCP Gateway 涓変釜鏈湴鏈嶅姟杩愯鏃剁殑鍏ュ彛缁濆璺緞
-// - 瑙ｆ瀽浼樺厛绾э細鍐呯疆 extraResources 鈫?userData 琛ヤ竵 鈫?瀹夸富鏈哄懡浠ゅ洖閫€
-// - 鏍￠獙杩愯鏃舵枃浠跺畬鏁存€э紙SHA-256锛屾祦寮忓鐞嗗ぇ鏂囦欢锛?// - 璇诲彇 manifest.json锛圱ask 9.1锛氭瘮瀵?builtin 涓?userData 鐨?version 瀛楁锛岃繑鍥炶緝鏂拌€咃級
+﻿// 跨平台运行时路径解析器（Task 2 + Task 9.1）
 //
-// 璇存槑锛?// - 鏈嶅姟 key 鍗崇洰褰曞悕锛歯8n 鈫?runtime/n8n/锛宮cp 鈫?runtime/mcp/锛堥潪 mcp-gateway锛?// - 鍏ュ彛鏂囦欢鍚嶅湪 manifest 鐨?entry 瀛楁涓紙濡?mcp 鏈嶅姟鐨?win32 鍏ュ彛鏄?mcp-gateway.exe锛?// - 寮€鍙戠幆澧冧笅 process.resourcesPath 鎸囧悜 electron 鑷韩鐩綍锛岄渶鐢?process.cwd() 鍏滃簳
+// 职责：
+// - 解析 N8N / OpenClaw / MCP Gateway / Hermes Agent 四个本地服务运行时的入口绝对路径
+// - 解析优先级：内置 extraResources → userData 补丁 → 宿主机命令回退
+// - 校验运行时文件完整性（SHA-256，流式处理大文件）
+// - 读取 manifest.json（Task 9.1：比对 builtin 与 userData 的 version 字段，返回较新者）
+//
+// 说明：
+// - 服务 key 即目录名：n8n → runtime/n8n/，mcp → runtime/mcp/（非 mcp-gateway）
+// - 入口文件名在 manifest 的 entry 字段中（如 mcp 服务的 win32 入口是 mcp-gateway.exe）
+// - 开发环境下 process.resourcesPath 指向 electron 自身目录，需用 process.cwd() 兜底
 
-import { app } from 'electron'
-import * as path from 'node:path'
-import * as fs from 'node:fs'
-import * as crypto from 'node:crypto'
-import { execFileSync } from 'node:child_process'
-import type { ServiceName, RuntimeManifest, ResolvedRuntime } from '../shared/types'
+import { app } from "electron";
+import * as path from "node:path";
+import * as fs from "node:fs";
+import * as crypto from "node:crypto";
+import { execSync } from "node:child_process";
+import type {
+  ServiceName,
+  RuntimeManifest,
+  ResolvedRuntime,
+} from "../shared/types";
 
-/** Windows 涓婃煡鎵惧懡浠ょ殑瀹屾暣璺緞锛堜笉渚濊禆 where 鍛戒护锛?*/
-function findCommandFullPath(cmd: string): string | null {
-  // 1. 灏濊瘯 where/which锛圥ATH 宸蹭慨澶嶇殑鎯呭喌涓嬪彲鑳藉彲鐢級
-  //    浣跨敤 execFileSync + 鍙傛暟鏁扮粍锛岄伩鍏?execSync 瀛楃涓叉嫾鎺ュ鑷寸殑鍛戒护娉ㄥ叆
-  try {
-    const tool = process.platform === 'win32' ? 'where' : 'which'
-    const result = execFileSync(tool, [cmd], {
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      timeout: 5000,
-      windowsHide: true
-    }).trim().split(/\r?\n/)
-    // Windows 涓?where 鍙兘杩斿洖鏃犳墿灞曞悕鐨?shell wrapper锛屼笉鑳界洿鎺?spawn
-    // 鍙帴鍙楀甫鍙墽琛屾墿灞曞悕鐨勮矾寰?    if (process.platform === 'win32') {
-      const exeExt = ['.exe', '.cmd', '.bat', '.ps1']
-      for (const line of result) {
-        const p = line.trim()
-        if (p && exeExt.some(ext => p.toLowerCase().endsWith(ext))) {
-          return p
-        }
-      }
-    } else {
-      if (result[0]) return result[0].trim()
-    }
-  } catch {
-    // where 澶辫触锛岀户缁墜鍔ㄦ煡鎵?  }
-
-  // 2. 鎵嬪姩閬嶅巻 PATH 涓殑鐩綍
-  if (process.platform === 'win32') {
-    // Windows 涓婂彧鍖归厤甯︽墿灞曞悕鐨勫彲鎵ц鏂囦欢锛?exe/.cmd/.bat/.ps1锛?    // 鏃犳墿灞曞悕鐨勬枃浠讹紙濡?npm 鍒涘缓鐨?shell wrapper锛変笉鑳界洿鎺?spawn
-    const variants = [`${cmd}.exe`, `${cmd}.cmd`, `${cmd}.bat`, `${cmd}.ps1`]
-    const pathDirs = (process.env.PATH || '').split(';').filter(Boolean)
-    for (const dir of pathDirs) {
-      for (const variant of variants) {
-        const fullPath = path.join(dir, variant)
-        try {
-          if (fs.statSync(fullPath).isFile()) return fullPath
-        } catch {
-          // not found
-        }
-      }
-    }
-  } else {
-    const pathDirs = (process.env.PATH || '').split(':').filter(Boolean)
-    for (const dir of pathDirs) {
-      const fullPath = path.join(dir, cmd)
-      try {
-        if (fs.statSync(fullPath).isFile()) return fullPath
-      } catch {
-        // not found
-      }
-    }
-  }
-
-  return null
-}
-
-/** 瀹夸富鏈哄洖閫€鍛戒护鏄犲皠锛堟湇鍔?key -> 鍛戒护鍚?+ 榛樿鍙傛暟锛?*/
+/** 宿主机回退命令映射（服务 key -> 命令名 + 默认参数） */
 const HOST_COMMANDS: Record<ServiceName, { cmd: string; args: string[] }> = {
-  n8n: { cmd: 'n8n', args: ['start'] },
-  openclaw: { cmd: 'openclaw', args: ['gateway', 'start'] },
-  mcp: { cmd: 'mcp-gateway', args: [] },
-  hermes: { cmd: 'hermes', args: ['gateway', 'run'] }
-}
+  n8n: { cmd: "n8n", args: ["start"] },
+  openclaw: { cmd: "openclaw", args: [] },
+  mcp: { cmd: "mcp-gateway", args: [] },
+  hermes: { cmd: "hermes", args: [] },
+};
 
-/** 鍐呯疆/userData 杩愯鏃舵墍闇€鐨勬湇鍔″惎鍔ㄥ弬鏁帮紙.cmd 鍖呰鏂囦欢闇€瑕佹樉寮忎紶閫掞級 */
-const RUNTIME_ARGS: Record<ServiceName, string[]> = {
-  n8n: ['start'],
-  openclaw: ['gateway', 'start'],
-  mcp: [],
-  hermes: ['gateway', 'run']
-}
-
-/** 浜戠閮ㄧ讲鐨勬湇鍔★紙涓嶅湪 manifest 涓紝璺宠繃鏈湴璺緞瑙ｆ瀽涓庡畬鏁存€ф牎楠岋級 */
-const CLOUD_SERVICES: ReadonlySet<ServiceName> = new Set<ServiceName>()
-
-/** 鍐呯疆杩愯鏃舵牴鐩綍锛氭墦鍖呭悗涓?process.resourcesPath/runtime锛屽紑鍙戠幆澧冧负 cwd/runtime */
+/** 内置运行时根目录：打包后为 process.resourcesPath/runtime，开发环境为 cwd/runtime */
 function getBuiltinRuntimePath(): string {
   if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'runtime')
+    return path.join(process.resourcesPath, "runtime");
   }
-  return path.join(process.cwd(), 'runtime')
+  return path.join(process.cwd(), "runtime");
 }
 
-/** userData 杩愯鏃舵牴鐩綍锛氱敤浜?CDN 涓嬭浇鐨勮ˉ涓佺増鏈?*/
+/** userData 运行时根目录：用于 CDN 下载的补丁版本 */
 function getUserDataRuntimePath(): string {
-  return path.join(app.getPath('userData'), 'runtime')
+  return path.join(app.getPath("userData"), "runtime");
 }
 
-/** 妫€娴嬪涓绘満鍛戒护鏄惁瀛樺湪锛歐indows 鐢?where + 鎵嬪姩閬嶅巻 PATH */
+/** 检测宿主机命令是否存在：Windows 用 where，Linux/Mac 用 which */
 function findHostCommand(cmd: string): boolean {
-  return findCommandFullPath(cmd) !== null
+  try {
+    const tool = process.platform === "win32" ? "where" : "which";
+    execSync(`${tool} ${cmd}`, { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-/** 娴佸紡璁＄畻鏂囦欢 SHA-256锛堝吋瀹瑰ぇ鏂囦欢锛?*/
+/** 流式计算文件 SHA-256（兼容大文件） */
 function computeFileSha256(filePath: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const hash = crypto.createHash('sha256')
-    const stream = fs.createReadStream(filePath)
-    stream.on('data', (chunk) => hash.update(chunk))
-    stream.on('end', () => resolve(hash.digest('hex')))
-    stream.on('error', reject)
-  })
+    const hash = crypto.createHash("sha256");
+    const stream = fs.createReadStream(filePath);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("end", () => resolve(hash.digest("hex")));
+    stream.on("error", reject);
+  });
 }
 
 /**
- * 璇诲彇鍗曚釜 manifest.json 鏂囦欢
- * 瑙ｆ瀽澶辫触鎴栨牸寮忎笉鍚堟硶杩斿洖 null
+ * 读取单个 manifest.json 文件
+ * 解析失败或格式不合法返回 null
  */
 function readManifestFile(filePath: string): RuntimeManifest | null {
   try {
-    if (!fs.existsSync(filePath)) return null
-    const raw = fs.readFileSync(filePath, 'utf-8')
-    const parsed = JSON.parse(raw) as RuntimeManifest
+    if (!fs.existsSync(filePath)) return null;
+    const raw = fs.readFileSync(filePath, "utf-8");
+    const parsed = JSON.parse(raw) as RuntimeManifest;
     if (parsed && parsed.services) {
-      return parsed
+      return parsed;
     }
-    return null
+    return null;
   } catch {
-    // 璇诲彇/瑙ｆ瀽澶辫触
-    return null
+    // 读取/解析失败
+    return null;
   }
 }
 
 /**
- * 姣旇緝涓や釜璇箟鍖栫増鏈瓧绗︿覆锛坢ajor.minor.patch锛? * 杩斿洖鍊?> 0 琛ㄧず a 杈冩柊锛? 0 琛ㄧず b 杈冩柊锛? 琛ㄧず鐩哥瓑
- * 闈炴硶鐗堟湰鎸?0.0.0 澶勭悊
+ * 比较两个语义化版本字符串（major.minor.patch）
+ * 返回值 > 0 表示 a 较新，< 0 表示 b 较新，0 表示相等
+ * 非法版本按 0.0.0 处理
  */
 function compareSemver(a: string, b: string): number {
   const parseSemver = (v: string): [number, number, number] => {
-    if (!v || typeof v !== 'string') return [0, 0, 0]
-    const parts = v.split('.').map((s) => {
-      const n = parseInt(s, 10)
-      return Number.isNaN(n) ? 0 : n
-    })
-    return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0]
-  }
-  const [aMaj, aMin, aPatch] = parseSemver(a)
-  const [bMaj, bMin, bPatch] = parseSemver(b)
-  if (aMaj !== bMaj) return aMaj - bMaj
-  if (aMin !== bMin) return aMin - bMin
-  return aPatch - bPatch
+    if (!v || typeof v !== "string") return [0, 0, 0];
+    const parts = v.split(".").map((s) => {
+      const n = parseInt(s, 10);
+      return Number.isNaN(n) ? 0 : n;
+    });
+    return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
+  };
+  const [aMaj, aMin, aPatch] = parseSemver(a);
+  const [bMaj, bMin, bPatch] = parseSemver(b);
+  if (aMaj !== bMaj) return aMaj - bMaj;
+  if (aMin !== bMin) return aMin - bMin;
+  return aPatch - bPatch;
 }
 
 /**
- * 姣旇緝涓や釜 manifest 鐨勬湇鍔＄増鏈紝杩斿洖杈冩柊鑰咃紙Task 9.1锛? *
- * - 涓よ€呴兘涓?null 鈫?null
- * - 鍏朵腑涓€涓负 null 鈫?杩斿洖鍙︿竴涓? * - 涓よ€呴兘瀛樺湪 鈫?姣旇緝 manifest.version 瀛楁锛堣涔夊寲鐗堟湰姣旇緝锛夛紝杩斿洖杈冨ぇ鑰? * - 鐗堟湰鐩哥瓑鏃朵紭鍏堣繑鍥?userData锛堜繚鐣欒ˉ涓佷紭鍏堣涔夛級
+ * 比较两个 manifest 的服务版本，返回较新者（Task 9.1）
+ *
+ * - 两者都为 null → null
+ * - 其中一个为 null → 返回另一个
+ * - 两者都存在 → 比较 manifest.version 字段（语义化版本比较），返回较大者
+ * - 版本相等时优先返回 userData（保留补丁优先语义）
  */
 export function pickNewerManifest(
   builtin: RuntimeManifest | null,
-  userData: RuntimeManifest | null
+  userData: RuntimeManifest | null,
 ): RuntimeManifest | null {
-  if (!builtin && !userData) return null
-  if (!builtin) return userData
-  if (!userData) return builtin
+  if (!builtin && !userData) return null;
+  if (!builtin) return userData;
+  if (!userData) return builtin;
 
-  const cmp = compareSemver(builtin.version, userData.version)
-  // cmp > 0 琛ㄧず builtin 杈冩柊锛沜mp < 0 琛ㄧず userData 杈冩柊锛?  // cmp === 0 鏃朵紭鍏堣繑鍥?userData锛堣ˉ涓佷紭鍏堣涔夛級
-  if (cmp > 0) return builtin
-  return userData
+  const cmp = compareSemver(builtin.version, userData.version);
+  // userData 版本 >= builtin → 用 userData（补丁优先）
+  if (cmp >= 0) return userData;
+  // builtin 更新（例如 electron-updater 更新后自带新 runtime）
+  return builtin;
 }
 
 /**
- * 璇诲彇 manifest.json
- * 浼樺厛绾э細姣斿 builtin 涓?userData manifest 鐨?version 瀛楁锛岃繑鍥炶緝鏂拌€咃紙Task 9.1锛? * 瑙ｆ瀽澶辫触杩斿洖 null
+ * 读取 manifest.json
+ * 优先级：比对 builtin 与 userData manifest 的 version 字段，返回较新者（Task 9.1）
+ * 解析失败返回 null
  */
 export function loadManifest(): RuntimeManifest | null {
   const builtin = readManifestFile(
-    path.join(getBuiltinRuntimePath(), 'manifest.json')
-  )
+    path.join(getBuiltinRuntimePath(), "manifest.json"),
+  );
   const userData = readManifestFile(
-    path.join(getUserDataRuntimePath(), 'manifest.json')
-  )
-  return pickNewerManifest(builtin, userData)
+    path.join(getUserDataRuntimePath(), "manifest.json"),
+  );
+  return pickNewerManifest(builtin, userData);
 }
 
 /**
- * 瑙ｆ瀽鏈嶅姟鍏ュ彛璺緞锛岃繑鍥炲惎鍔ㄥ懡浠ょ粍鍚? *
- * 瑙ｆ瀽浼樺厛绾ч摼璺紙渚濇妫€鏌ワ紝杩斿洖棣栦釜瀛樺湪璺緞鐨勶級锛? * 1. 鍐呯疆 extraResources: resourcesPath/runtime/<service>/<entry>
- * 2. userData 琛ヤ竵: userData/runtime/<service>/<entry>
- * 3. 瀹夸富鏈哄懡浠ゅ洖閫€: 閫氳繃 which/where 妫€娴嬪懡浠ゆ槸鍚﹀瓨鍦? *
- * 鍐呯疆/userData 鏉ユ簮锛歝md = 鍏ュ彛鏂囦欢缁濆璺緞锛宎rgs = []
- * 瀹夸富鏈烘潵婧愶細cmd = 鍛戒护鍚嶏紝args = 鏈嶅姟鐗瑰畾鍙傛暟锛坣8n 鐢?['start']锛屽叾浠栦负 []锛? */
+ * 解析服务入口路径，返回启动命令组合
+ *
+ * 解析优先级链路（依次检查，返回首个存在路径的）：
+ * 1. 内置 extraResources: resourcesPath/runtime/<service>/<entry>
+ * 2. userData 补丁: userData/runtime/<service>/<entry>
+ * 3. 宿主机命令回退: 通过 which/where 检测命令是否存在
+ *
+ * 内置/userData 来源：cmd = 入口文件绝对路径，args = []
+ * 宿主机来源：cmd = 命令名，args = 服务特定参数（n8n 用 ['start']，其他为 []）
+ */
 export function resolve(name: ServiceName): ResolvedRuntime | null {
-  // 浜戠鏈嶅姟锛堜笉鍦?manifest 涓級涓嶈В鏋愭湰鍦板叆鍙?  if (CLOUD_SERVICES.has(name)) return null
+  const manifest = loadManifest();
 
-  const manifest = loadManifest()
-
-  // 浠?manifest 鑾峰彇褰撳墠骞冲彴鐨勫叆鍙ｆ枃浠跺悕
-  let entryFile: string | null = null
+  // 从 manifest 获取当前平台的入口文件名
+  let entryFile: string | null = null;
   if (manifest) {
-    const serviceEntry = manifest.services[name]
+    const serviceEntry = manifest.services[name];
     if (serviceEntry) {
-      // cloud 绫诲瀷鏈嶅姟涓嶈В鏋愭湰鍦板叆鍙?      if (serviceEntry.type === 'cloud') {
-        return null
-      }
-      entryFile = serviceEntry.entry[process.platform] ?? null
+      entryFile = serviceEntry.entry[process.platform] ?? null;
     }
   }
 
-  // 1. 鍐呯疆 extraResources + 2. userData 琛ヤ竵
-  // Windows 涓?CDN 褰掓。瑙ｅ帇鍚庡叆鍙ｄ负 <entry>.cmd 鍖呰鏂囦欢锛?  // - openclaw: manifest entry 涓?openclaw.exe锛屽疄闄呮枃浠?openclaw.exe.cmd
-  // - n8n 渚挎惡鐗? manifest entry 涓?n8n.exe锛堟垨 n8n.exe.cmd锛夛紝瀹為檯鏂囦欢 n8n.exe.cmd
-  //   n8n.exe.cmd 鏄寘瑁呰剼鏈紝鍐呴儴璋冪敤渚挎惡鐗?node/node.exe 鎵ц node_modules/n8n/bin/n8n
-  // 渚挎惡鐗堢洰褰曠粨鏋勶細<runtime>/<service>/{n8n.exe.cmd, n8n, node/, node_modules/, package.json}
-  // 褰?manifest entry 涓嶄互 .cmd 缁撳熬鏃讹紝闇€棰濆妫€鏌?<entry>.cmd 鍙樹綋
+  // 1. 内置 extraResources
   if (entryFile) {
-    const entry = entryFile
-    const resolveFromDir = (
-      baseDir: string,
-      source: 'builtin' | 'userData'
-    ): ResolvedRuntime | null => {
-      const entryPath = path.join(baseDir, name, entry)
-      const runtimeArgs = RUNTIME_ARGS[name] ?? []
-      if (fs.existsSync(entryPath)) {
-        return { cmd: entryPath, args: runtimeArgs, env: { ...process.env }, source }
-      }
-      // Windows: 妫€鏌?<entry>.cmd 鍙樹綋锛圕DN 褰掓。鐨?.cmd 鍖呰鏂囦欢锛屽 n8n.exe.cmd锛?      // 浠呭綋 entry 鏈韩涓嶄互 .cmd 缁撳熬鏃舵鏌ワ紝閬垮厤鏌ユ壘 n8n.exe.cmd.cmd锛圱ask 4 鍙兘灏?entry 鏀逛负 n8n.exe.cmd锛?      if (process.platform === 'win32' && !entry.toLowerCase().endsWith('.cmd')) {
-        const cmdPath = `${entryPath}.cmd`
-        if (fs.existsSync(cmdPath)) {
-          return { cmd: cmdPath, args: runtimeArgs, env: { ...process.env }, source }
-        }
-      }
-      return null
+    const builtinPath = path.join(getBuiltinRuntimePath(), name, entryFile);
+    if (fs.existsSync(builtinPath)) {
+      return {
+        cmd: builtinPath,
+        args: [],
+        env: { ...process.env },
+        source: "builtin",
+      };
     }
-    const builtin = resolveFromDir(getBuiltinRuntimePath(), 'builtin')
-    if (builtin) return builtin
-    const userData = resolveFromDir(getUserDataRuntimePath(), 'userData')
-    if (userData) return userData
+
+    // 2. userData 补丁
+    const userDataPath = path.join(getUserDataRuntimePath(), name, entryFile);
+    if (fs.existsSync(userDataPath)) {
+      return {
+        cmd: userDataPath,
+        args: [],
+        env: { ...process.env },
+        source: "userData",
+      };
+    }
   }
 
-  // 3. 瀹夸富鏈哄懡浠ゅ洖閫€
-  const hostCmd = HOST_COMMANDS[name]
-  const fullPath = findCommandFullPath(hostCmd.cmd)
-  if (fullPath) {
+  // 3. 宿主机命令回退
+  const hostCmd = HOST_COMMANDS[name];
+  if (findHostCommand(hostCmd.cmd)) {
     return {
-      cmd: fullPath,
+      cmd: hostCmd.cmd,
       args: hostCmd.args,
       env: { ...process.env },
-      source: 'host'
-    }
+      source: "host",
+    };
   }
 
-  return null
+  return null;
 }
 
 /**
- * 鏍￠獙鏈嶅姟杩愯鏃跺畬鏁存€? *
- * - 璇诲彇 manifest 涓鏈嶅姟鐨?sha256[platform-arch]
- * - 绌哄瓧绗︿覆锛堟瀯寤烘湡鏈～鍏咃級鈫?妫€鏌?resolve 鑳藉惁鎵惧埌杩愯鏃讹紝鎵惧埌鍒欒繑鍥?true
- * - builtin/userData 鏉ユ簮锛氬綊妗ｅ畬鏁存€у凡鐢?runtime-downloader 鍦ㄤ笅杞?瑙ｅ帇鏃堕獙璇侊紝
- *   杩欓噷鍙渶纭鍏ュ彛鏂囦欢瀛樺湪鍗冲彲
- * - host 鏉ユ簮鏃犲彲鏍￠獙鏂囦欢锛岀洿鎺ヨ繑鍥?true
+ * 校验服务运行时完整性（SHA-256）
+ *
+ * - 读取 manifest 中该服务的 sha256[platform-arch]
+ * - 空字符串（构建期未填充）→ 返回 true（开发环境兼容，跳过校验）
+ * - 否则计算入口文件 SHA-256 并比对
+ * - 仅校验 builtin/userData 来源的文件，host 来源无可校验文件
  */
 export async function verifyIntegrity(name: ServiceName): Promise<boolean> {
-  // 浜戠鏈嶅姟璺宠繃瀹屾暣鎬ф牎楠?  if (CLOUD_SERVICES.has(name)) return true
+  const manifest = loadManifest();
+  if (!manifest) return false;
 
-  const manifest = loadManifest()
-  if (!manifest) return false
+  const serviceEntry = manifest.services[name];
+  if (!serviceEntry) return false;
 
-  const serviceEntry = manifest.services[name]
-  if (!serviceEntry) return false
+  const platformKey = `${process.platform}-${process.arch}`;
+  const expectedHash = serviceEntry.sha256[platformKey];
 
-  // cloud 绫诲瀷锛坢anifest 涓爣璁帮級璺宠繃瀹屾暣鎬ф牎楠?  if (serviceEntry.type === 'cloud') return true
+  // 构建期未填充：跳过校验
+  if (!expectedHash) return true;
 
-  const platformKey = `${process.platform}-${process.arch}`
-  const expectedHash = serviceEntry.sha256[platformKey]
-
-  // 鏋勫缓鏈熸湭濉厖锛氭鏌ヨ繍琛屾椂鏄惁瀹為檯瀛樺湪锛坮esolve 鑳藉惁鎵惧埌鍛戒护锛?  if (!expectedHash) {
-    const resolved = resolve(name)
-    return resolved !== null
+  // 解析入口文件路径（仅 builtin / userData 来源有效）
+  const resolved = resolve(name);
+  if (!resolved || resolved.source === "host") {
+    // 期望有内置文件但未找到
+    return false;
   }
 
-  // 瑙ｆ瀽鍏ュ彛鏂囦欢璺緞
-  const resolved = resolve(name)
-  if (!resolved) {
-    // 杩愯鏃舵湭瀹夎
-    return false
+  try {
+    const actualHash = await computeFileSha256(resolved.cmd);
+    return actualHash === expectedHash;
+  } catch {
+    return false;
   }
-
-  // host 鏉ユ簮锛坣pm 鍏ㄥ眬瀹夎锛夋棤娉曟牎楠屾枃浠跺畬鏁存€э紝鐩存帴杩斿洖 true
-  if (resolved.source === 'host') {
-    return true
-  }
-
-  // 鍐呯疆/userData 鏉ユ簮锛氬綊妗ｅ畬鏁存€у凡鐢?runtime-downloader 鍦ㄤ笅杞?瑙ｅ帇鏃堕獙璇侊紝
-  // 鏃犻渶鍐嶅皢鍏ュ彛鏂囦欢鍝堝笇涓庡綊妗ｅ搱甯屾瘮杈冿紝鍏ュ彛鏂囦欢瀛樺湪鍗宠涓哄畬鏁?  return true
 }
 
-/** 鏍￠獙鎵€鏈夋湇鍔★紝杩斿洖鍚勬湇鍔″畬鏁存€?*/
+/** 校验所有服务，返回各服务完整性 */
 export async function verifyAll(): Promise<Record<ServiceName, boolean>> {
   const [n8n, openclaw, mcp, hermes] = await Promise.all([
-    verifyIntegrity('n8n'),
-    verifyIntegrity('openclaw'),
-    verifyIntegrity('mcp'),
-    verifyIntegrity('hermes')
-  ])
-  return { n8n, openclaw, mcp, hermes }
+    verifyIntegrity("n8n"),
+    verifyIntegrity("openclaw"),
+    verifyIntegrity("mcp"),
+    verifyIntegrity("hermes"),
+  ]);
+  return { n8n, openclaw, mcp, hermes };
 }

@@ -1,1 +1,331 @@
-﻿// 宸ヤ綔娴佺紪杈戝櫒锛圢8N iframe 宓屽叆锛? v0.3.1// 椤堕儴宸ュ叿鏍忥細淇濆瓨 / 婵€娲?/ 鍋滅敤 / 娴嬭瘯 + 鍙充晶宸ヤ綔娴佸睘鎬ч潰鏉?// 淇濈暀鎵€鏈?N8N iframe + postMessage 鍚屾閫昏緫// 浣跨敤 v0.3.1 璁捐浠ょ墝import { useCallback, useEffect, useRef, useState } from 'react'import { useNavigate, useParams } from 'react-router-dom'import { Button, Card, Form, Input, Progress, Select, Space, message } from 'antd'import {  ArrowLeftOutlined,  ReloadOutlined,  ThunderboltOutlined,  LoadingOutlined,  CheckCircleOutlined,  CloseCircleOutlined,  SaveOutlined,  PlayCircleOutlined,  PauseCircleOutlined,  ExperimentOutlined} from '@ant-design/icons'import { n8nApi } from '@/api/n8n-api'import type { N8nInstance } from '@/api/n8n-api'import styles from './styles.module.css'/** N8N 鏈嶅姟鍦板潃 */const N8N_URL = 'http://127.0.0.1:5678/workflow'/** N8N 鍋ュ悍妫€鏌ュ湴鍧€ */const N8N_HEALTH_URL = 'http://127.0.0.1:5678/healthz'const MAX_HEALTH_CHECK_RETRIES = 30const HEALTH_CHECK_INTERVAL = 1000const IFRAME_LOAD_TIMEOUT = 15000type LoadState = 'starting' | 'running' | 'error' | 'iframe-loading' | 'ready'const CATEGORY_OPTIONS = [  { label: '鑷姩鍖?, value: 'automation' },  { label: '闆嗘垚', value: 'integration' },  { label: '鏁版嵁澶勭悊', value: 'data_processing' },  { label: '鍏朵粬', value: 'other' }]export default function WorkflowEditor() {  const navigate = useNavigate()  const { instanceId } = useParams<{ instanceId: string }>()  const instanceIdNum = instanceId ? Number(instanceId) : NaN  const iframeRef = useRef<HTMLIFrameElement | null>(null)  const healthCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)  const iframeLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)  const [state, setState] = useState<LoadState>('starting')  const [progress, setProgress] = useState(0)  const [errorMessage, setErrorMessage] = useState<string>('')  const [retryCount, setRetryCount] = useState(0)  const [syncing, setSyncing] = useState(false)  const [instance, setInstance] = useState<N8nInstance | null>(null)  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null)  const [manualSyncing, setManualSyncing] = useState(false)  const [activating, setActivating] = useState(false)  const [propertiesForm] = Form.useForm()  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)  useEffect(() => {    if (!Number.isFinite(instanceIdNum)) return    void (async () => {      try {        const inst = await n8nApi.getInstance(instanceIdNum)        setInstance(inst)        // 鍒濆鍖栧彸渚у睘鎬ч潰鏉?        propertiesForm.setFieldsValue({          name: inst?.name || '',          description: inst?.description || '',          category: 'automation'        })      } catch (err) {      }    })()  }, [instanceIdNum, propertiesForm])  const checkN8nHealth = useCallback(async (): Promise<boolean> => {    try {      const controller = new AbortController()      const timeoutId = setTimeout(() => controller.abort(), 2000)      const resp = await fetch(N8N_HEALTH_URL, { method: 'GET', signal: controller.signal })      clearTimeout(timeoutId)      return resp.ok    } catch {      return false    }  }, [])  const startN8n = useCallback(async () => {    setState('starting')    setProgress(0)    setErrorMessage('')    const alreadyRunning = await checkN8nHealth()    if (alreadyRunning) {      setProgress(100)      setState('iframe-loading')      return    }    try {      const ok = await window.electronAPI.service.start('n8n')      if (!ok) {        setState('error')        setErrorMessage('N8N 瀛愯繘绋嬪惎鍔ㄥけ璐ワ紝璇锋鏌ユ湰鍦版槸鍚﹀凡瀹夎 n8n銆?)        return      }    } catch (err) {      setState('error')      setErrorMessage('璋冪敤涓昏繘绋嬪惎鍔?N8N 澶辫触: ' + (err as Error).message)      return    }    let retries = 0    const tick = async () => {      retries += 1      setProgress(Math.min(95, Math.round((retries / MAX_HEALTH_CHECK_RETRIES) * 100)))      const healthy = await checkN8nHealth()      if (healthy) {        setProgress(100)        setState('iframe-loading')        return      }      if (retries >= MAX_HEALTH_CHECK_RETRIES) {        setState('error')        setErrorMessage(          `N8N 鏈嶅姟鍦?${MAX_HEALTH_CHECK_RETRIES} 绉掑唴鏈氨缁€傝纭 n8n 宸插畨瑁呭苟鐩戝惉 127.0.0.1:5678銆俙        )        return      }      healthCheckTimerRef.current = setTimeout(tick, HEALTH_CHECK_INTERVAL)    }    healthCheckTimerRef.current = setTimeout(tick, HEALTH_CHECK_INTERVAL)  }, [checkN8nHealth])  useEffect(() => {    void startN8n()    return () => {      if (healthCheckTimerRef.current) {        clearTimeout(healthCheckTimerRef.current)        healthCheckTimerRef.current = null      }      if (iframeLoadTimerRef.current) {        clearTimeout(iframeLoadTimerRef.current)        iframeLoadTimerRef.current = null      }    }  }, [startN8n])  const handleIframeLoad = useCallback(() => {    if (iframeLoadTimerRef.current) {      clearTimeout(iframeLoadTimerRef.current)      iframeLoadTimerRef.current = null    }    setState('ready')  }, [])  useEffect(() => {    if (state !== 'iframe-loading') return    iframeLoadTimerRef.current = setTimeout(() => {      setState('ready')    }, IFRAME_LOAD_TIMEOUT)    return () => {      if (iframeLoadTimerRef.current) {        clearTimeout(iframeLoadTimerRef.current)        iframeLoadTimerRef.current = null      }    }  }, [state])  const postMessageToN8n = useCallback((type: string, payload: unknown) => {    const iframe = iframeRef.current    if (!iframe || !iframe.contentWindow) return    try {      iframe.contentWindow.postMessage({ type, payload }, N8N_URL)    } catch (err) {      console.warn('[WorkflowEditor] postMessage failed:', err)    }  }, [])  const syncWorkflowToBackend = useCallback(    async (workflowJson: unknown) => {      if (!Number.isFinite(instanceIdNum)) {        return      }      setSyncing(true)      try {        await n8nApi.updateInstance(instanceIdNum, { config: { workflowJson } })        message.success('宸ヤ綔娴侀厤缃凡鍚屾鍒板悗绔?)      } catch (err) {        console.error('[WorkflowEditor] sync workflow to backend failed:', err)        message.error('鍚屾宸ヤ綔娴佸埌鍚庣澶辫触: ' + (err as Error).message)      } finally {        setSyncing(false)      }    },    [instanceIdNum]  )  const handleManualSync = useCallback(async () => {    if (!Number.isFinite(instanceIdNum)) {      message.warning('璇峰厛淇濆瓨瀹炰緥')      return    }    setManualSyncing(true)    try {      const inst = await n8nApi.getInstance(instanceIdNum)      const workflowJson = inst?.config?.workflowJson      if (!workflowJson) {        message.warning('N8N 瀹炰緥涓湭鎵惧埌宸ヤ綔娴?JSON')        return      }      await n8nApi.updateInstance(instanceIdNum, { config: { workflowJson } })      setLastSyncTime(new Date())      message.success('宸ヤ綔娴侀厤缃凡鍚屾鍒板悗绔?)    } catch (err) {      console.error('[WorkflowEditor] manual sync failed:', err)      message.error('鎵嬪姩鍚屾澶辫触: ' + (err as Error).message)    } finally {      setManualSyncing(false)    }  }, [instanceIdNum])  useEffect(() => {    const handler = (event: MessageEvent) => {      if (event.origin !== 'http://127.0.0.1:5678') return      const data = event.data as { type?: string; payload?: unknown } | undefined      if (!data || typeof data !== 'object') return      switch (data.type) {        case 'workflow:saved':          message.success('宸ヤ綔娴侀厤缃凡淇濆瓨')          void syncWorkflowToBackend(data.payload)          break        case 'workflow:loaded':          message.info('宸ヤ綔娴侀厤缃凡鍔犺浇')          break        case 'workflow:error':          message.warning('N8N 鎶ュ憡閿欒: ' + String(data.payload ?? ''))          break        default:          break      }    }    window.addEventListener('message', handler)    return () => window.removeEventListener('message', handler)  }, [syncWorkflowToBackend])  /** 宸ュ叿鏍忥細淇濆瓨閰嶇疆 */  const handleSave = () => {    postMessageToN8n('workflow:save', { timestamp: Date.now() })  }  /** 宸ュ叿鏍忥細婵€娲诲伐浣滄祦 */  const handleActivate = async () => {    if (!instance) {      message.warning('鏈叧鑱斿疄渚嬶紝鏃犳硶婵€娲?)      return    }    setActivating(true)    try {      await n8nApi.activateWorkflow(instance.id, String(instance.id))      message.success('宸ヤ綔娴佸凡婵€娲?)      setInstance({ ...instance, status: 'running' })    } catch (err) {      console.error('[WorkflowEditor] activate failed:', err)      message.error('婵€娲诲け璐? ' + (err as Error).message)    } finally {      setActivating(false)    }  }  /** 宸ュ叿鏍忥細鍋滅敤宸ヤ綔娴?*/  const handleDeactivate = async () => {    if (!instance) {      message.warning('鏈叧鑱斿疄渚嬶紝鏃犳硶鍋滅敤')      return    }    setActivating(true)    try {      await n8nApi.deactivateWorkflow(instance.id, String(instance.id))      message.success('宸ヤ綔娴佸凡鍋滅敤')      setInstance({ ...instance, status: 'stopped' })    } catch (err) {      console.error('[WorkflowEditor] deactivate failed:', err)      message.error('鍋滅敤澶辫触: ' + (err as Error).message)    } finally {      setActivating(false)    }  }  /** 宸ュ叿鏍忥細娴嬭瘯宸ヤ綔娴?*/  const handleTest = () => {    postMessageToN8n('workflow:test', { timestamp: Date.now() })    message.info('宸插悜 N8N 鍙戦€佹祴璇曟墽琛岃姹?)  }  const handleLoad = () => {    postMessageToN8n('workflow:load', { timestamp: Date.now() })  }  const handleBack = () => {    navigate('/workflow')  }  const handleRetry = () => {    setRetryCount((c) => c + 1)    void startN8n()  }  /** 鍙充晶灞炴€ч潰鏉夸繚瀛?*/  const handlePropertiesSave = async () => {    try {      const values = await propertiesForm.validateFields()      if (!Number.isFinite(instanceIdNum)) {        message.info('灞炴€у凡淇濆瓨鍒版湰鍦帮紙鏈叧鑱斿悗绔疄渚嬶級')        return      }      await n8nApi.updateInstance(instanceIdNum, {        name: values.name,        description: values.description      })      message.success('宸ヤ綔娴佸睘鎬у凡淇濆瓨')    } catch (err) {      if (err && typeof err === 'object' && 'errorFields' in err) return      console.error('[WorkflowEditor] save properties failed:', err)      message.error('淇濆瓨灞炴€уけ璐? ' + (err as Error).message)    }  }  const isActivated = instance?.status === 'running'  return (    <div className={styles.editorContainer}>      {/* 椤堕儴宸ュ叿鏍?*/}      <div className={styles.editorHeader}>        <div className={styles.editorTitle}>          <ThunderboltOutlined style={{ color: 'var(--color-primary)' }} />          <span>N8N 宸ヤ綔娴佺紪杈戝櫒</span>          {Number.isFinite(instanceIdNum) && (            <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginLeft: 8 }}>              瀹炰緥 #{instanceIdNum}{instance ? ` 路 ${instance.name}` : ''}            </span>          )}          {syncing && (            <span style={{ fontSize: 12, color: 'var(--color-primary)', marginLeft: 8 }}>              <LoadingOutlined style={{ marginRight: 4 }} />鍚屾涓?..            </span>          )}        </div>        <Space className={styles.toolbarActions}>          <Button icon={<SaveOutlined />} onClick={handleSave} disabled={state !== 'ready'}>            淇濆瓨          </Button>          {isActivated ? (            <Button icon={<PauseCircleOutlined />} onClick={handleDeactivate} loading={activating} disabled={state !== 'ready'}>              鍋滅敤            </Button>          ) : (            <Button type="primary" icon={<PlayCircleOutlined />} onClick={handleActivate} loading={activating} disabled={state !== 'ready'}>              婵€娲?            </Button>          )}          <Button icon={<ExperimentOutlined />} onClick={handleTest} disabled={state !== 'ready'}>            娴嬭瘯          </Button>          <Button icon={<ReloadOutlined />} onClick={handleLoad} disabled={state !== 'ready'}>            鍔犺浇閰嶇疆          </Button>          <Button onClick={handleManualSync} loading={manualSyncing} disabled={!Number.isFinite(instanceIdNum)}>            鍚屾鍚庣          </Button>          <Button icon={<ArrowLeftOutlined />} onClick={handleBack}>杩斿洖</Button>        </Space>      </div>      <div className={styles.editorBody}>        {/* 涓诲尯锛歩frame */}        <div className={styles.editorMain}>          {(state === 'iframe-loading' || state === 'ready') && (            <iframe              ref={iframeRef}              className={styles.editorIframe}              src={N8N_URL}              onLoad={handleIframeLoad}              title="N8N Workflow Editor"              sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals"            />          )}          {state === 'starting' && (            <div className={styles.loadingOverlay}>              <LoadingOutlined className={styles.loadingIcon} />              <div className={styles.loadingTitle}>姝ｅ湪鍚姩 N8N 鏈嶅姟...</div>              <Progress                percent={progress}                strokeColor={{ from: 'var(--color-primary)', to: 'var(--color-purple)' }}                style={{ width: 280 }}                status="active"              />              <div className={styles.loadingHint}>                N8N 瀛愯繘绋嬫鍦ㄥ惎鍔ㄥ苟鐩戝惉 127.0.0.1:5678锛岃绋嶅€欍€?                <br />                棣栨鍚姩鍙兘闇€瑕佹暟鍗佺銆?              </div>            </div>          )}          {state === 'iframe-loading' && (            <div className={styles.loadingOverlay}>              <LoadingOutlined className={styles.loadingIcon} />              <div className={styles.loadingTitle}>姝ｅ湪鍔犺浇 N8N 缂栬緫鍣ㄧ晫闈?..</div>              <div className={styles.loadingHint}>N8N 鏈嶅姟宸插氨缁紝姝ｅ湪鍔犺浇缂栬緫鍣?UI銆?/div>            </div>          )}          {state === 'error' && (            <div className={styles.loadingOverlay}>              <CloseCircleOutlined className={styles.loadingIcon} style={{ color: 'var(--color-error)' }} />              <div className={styles.loadingTitle}>N8N 鍚姩澶辫触</div>              <div className={styles.loadingError}>{errorMessage}</div>              <Button type="primary" icon={<ReloadOutlined />} onClick={handleRetry}>閲嶈瘯</Button>            </div>          )}          {state === 'ready' && retryCount === -1 && (            <div className={styles.loadingOverlay} style={{ pointerEvents: 'none' }}>              <CheckCircleOutlined className={styles.loadingIcon} style={{ color: 'var(--color-success)' }} />              <div className={styles.loadingTitle}>N8N 缂栬緫鍣ㄥ凡灏辩华</div>            </div>          )}        </div>        {/* 鍙充晶灞炴€ч潰鏉?*/}        {!rightPanelCollapsed && (          <div className={styles.propertiesPanel}>            <div className={styles.propertiesHeader}>              <span className={styles.propertiesTitle}>宸ヤ綔娴佸睘鎬?/span>              <Button type="text" size="small" onClick={() => setRightPanelCollapsed(true)}>                鏀惰捣              </Button>            </div>            <div className={styles.propertiesBody}>              <Card size="small" bordered={false} className={styles.propertiesCard}>                <Form form={propertiesForm} layout="vertical">                  <Form.Item name="name" label="鍚嶇О" rules={[{ required: true, message: '璇疯緭鍏ュ悕绉? }]}>                    <Input placeholder="宸ヤ綔娴佸悕绉? />                  </Form.Item>                  <Form.Item name="description" label="鎻忚堪">                    <Input.TextArea placeholder="宸ヤ綔娴佹弿杩?.." autoSize={{ minRows: 2, maxRows: 4 }} />                  </Form.Item>                  <Form.Item name="category" label="鍒嗙被">                    <Select options={CATEGORY_OPTIONS} placeholder="閫夋嫨鍒嗙被" />                  </Form.Item>                  <Button type="primary" block onClick={handlePropertiesSave} icon={<SaveOutlined />}>                    淇濆瓨灞炴€?                  </Button>                </Form>              </Card>              {lastSyncTime && (                <div className={styles.syncTip}>                  涓婃鍚屾锛歿lastSyncTime.toLocaleString('zh-CN', { hour12: false })}                </div>              )}            </div>          </div>        )}        {rightPanelCollapsed && (          <Button            className={styles.expandPanelBtn}            type="default"            onClick={() => setRightPanelCollapsed(false)}          >            灞曞紑灞炴€?          </Button>        )}      </div>    </div>  )}
+// 工作流编辑器（N8N iframe 嵌入）
+//
+// 实现说明：
+// - iframe 嵌入 http://127.0.0.1:5678/workflow
+// - 通过 window.electronAPI.service.start('n8n') 启动 N8N 子进程
+// - 加载状态：检测 N8N 服务是否运行，未运行时显示"启动中..."进度
+// - 通过 postMessage 与 N8N 通信（保存/加载工作流配置）
+// - 返回按钮
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Button, Progress, message } from "antd";
+import {
+  ArrowLeftOutlined,
+  ReloadOutlined,
+  ThunderboltOutlined,
+  LoadingOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+} from "@ant-design/icons";
+import styles from "./styles.module.css";
+
+/** N8N 服务地址 */
+const N8N_URL = "http://127.0.0.1:5678/workflow";
+/** N8N 健康检查地址 */
+const N8N_HEALTH_URL = "http://127.0.0.1:5678/healthz";
+/** 健康检查最大尝试次数 */
+const MAX_HEALTH_CHECK_RETRIES = 30;
+/** 健康检查间隔（ms） */
+const HEALTH_CHECK_INTERVAL = 1000;
+/** iframe 加载超时（ms） */
+const IFRAME_LOAD_TIMEOUT = 15000;
+
+/** 加载状态 */
+type LoadState = "starting" | "running" | "error" | "iframe-loading" | "ready";
+
+export default function WorkflowEditor() {
+  const navigate = useNavigate();
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const healthCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const iframeLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [state, setState] = useState<LoadState>("starting");
+  const [progress, setProgress] = useState(0);
+  const [errorMessage, setErrorMessage] = useState<string>("");
+  const [retryCount, setRetryCount] = useState(0);
+
+  /** 检测 N8N 服务是否运行（healthz） */
+  const checkN8nHealth = useCallback(async (): Promise<boolean> => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const resp = await fetch(N8N_HEALTH_URL, {
+        method: "GET",
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return resp.ok;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  /** 启动 N8N 子进程并轮询健康检查 */
+  const startN8n = useCallback(async () => {
+    setState("starting");
+    setProgress(0);
+    setErrorMessage("");
+
+    // 1. 先检测是否已经在运行
+    const alreadyRunning = await checkN8nHealth();
+    if (alreadyRunning) {
+      setProgress(100);
+      setState("iframe-loading");
+      return;
+    }
+
+    // 2. 调用主进程启动 N8N 子进程
+    try {
+      const ok = await window.electronAPI.service.start("n8n");
+      if (!ok) {
+        setState("error");
+        setErrorMessage("N8N 子进程启动失败，请检查本地是否已安装 n8n。");
+        return;
+      }
+    } catch (err) {
+      setState("error");
+      setErrorMessage("调用主进程启动 N8N 失败: " + (err as Error).message);
+      return;
+    }
+
+    // 3. 轮询健康检查
+    let retries = 0;
+    const tick = async () => {
+      retries += 1;
+      setProgress(
+        Math.min(95, Math.round((retries / MAX_HEALTH_CHECK_RETRIES) * 100)),
+      );
+      const healthy = await checkN8nHealth();
+      if (healthy) {
+        setProgress(100);
+        setState("iframe-loading");
+        return;
+      }
+      if (retries >= MAX_HEALTH_CHECK_RETRIES) {
+        setState("error");
+        setErrorMessage(
+          `N8N 服务在 ${MAX_HEALTH_CHECK_RETRIES} 秒内未就绪。请确认 n8n 已安装并监听 127.0.0.1:5678。`,
+        );
+        return;
+      }
+      healthCheckTimerRef.current = setTimeout(tick, HEALTH_CHECK_INTERVAL);
+    };
+    healthCheckTimerRef.current = setTimeout(tick, HEALTH_CHECK_INTERVAL);
+  }, [checkN8nHealth]);
+
+  // 组件挂载：自动启动 N8N
+  useEffect(() => {
+    void startN8n();
+    return () => {
+      if (healthCheckTimerRef.current) {
+        clearTimeout(healthCheckTimerRef.current);
+        healthCheckTimerRef.current = null;
+      }
+      if (iframeLoadTimerRef.current) {
+        clearTimeout(iframeLoadTimerRef.current);
+        iframeLoadTimerRef.current = null;
+      }
+    };
+  }, [startN8n]);
+
+  /** iframe 加载完成 */
+  const handleIframeLoad = useCallback(() => {
+    if (iframeLoadTimerRef.current) {
+      clearTimeout(iframeLoadTimerRef.current);
+      iframeLoadTimerRef.current = null;
+    }
+    setState("ready");
+  }, []);
+
+  /** 设置 iframe 加载超时 */
+  useEffect(() => {
+    if (state !== "iframe-loading") return;
+    iframeLoadTimerRef.current = setTimeout(() => {
+      // 超时仍未触发 onLoad，可能是跨域阻止了 load 事件，直接置为 ready
+      setState("ready");
+    }, IFRAME_LOAD_TIMEOUT);
+    return () => {
+      if (iframeLoadTimerRef.current) {
+        clearTimeout(iframeLoadTimerRef.current);
+        iframeLoadTimerRef.current = null;
+      }
+    };
+  }, [state]);
+
+  /** 通过 postMessage 向 N8N 发送消息 */
+  const postMessageToN8n = useCallback((type: string, payload: unknown) => {
+    const iframe = iframeRef.current;
+    if (!iframe || !iframe.contentWindow) return;
+    try {
+      iframe.contentWindow.postMessage({ type, payload }, N8N_URL);
+    } catch (err) {
+      console.warn("[WorkflowEditor] postMessage failed:", err);
+    }
+  }, []);
+
+  /** 接收 N8N postMessage 消息 */
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      // 仅信任 N8N origin
+      if (event.origin !== "http://127.0.0.1:5678") return;
+      const data = event.data as
+        { type?: string; payload?: unknown } | undefined;
+      if (!data || typeof data !== "object") return;
+      switch (data.type) {
+        case "workflow:saved":
+          message.success("工作流配置已保存");
+          break;
+        case "workflow:loaded":
+          message.info("工作流配置已加载");
+          break;
+        case "workflow:error":
+          message.warning("N8N 报告错误: " + String(data.payload ?? ""));
+          break;
+        default:
+          break;
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
+  /** 保存工作流配置（postMessage） */
+  const handleSave = () => {
+    postMessageToN8n("workflow:save", { timestamp: Date.now() });
+  };
+
+  /** 加载工作流配置（postMessage） */
+  const handleLoad = () => {
+    postMessageToN8n("workflow:load", { timestamp: Date.now() });
+  };
+
+  /** 返回 */
+  const handleBack = () => {
+    navigate("/workflow");
+  };
+
+  /** 重试 */
+  const handleRetry = () => {
+    setRetryCount((c) => c + 1);
+    void startN8n();
+  };
+
+  return (
+    <div className={styles.editorContainer}>
+      {/* 顶部栏 */}
+      <div className={styles.editorHeader}>
+        <div className={styles.editorTitle}>
+          <ThunderboltOutlined />
+          <span>N8N 工作流编辑器</span>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Button
+            className={styles.backBtn}
+            onClick={handleSave}
+            disabled={state !== "ready"}
+          >
+            保存配置
+          </Button>
+          <Button
+            className={styles.backBtn}
+            onClick={handleLoad}
+            disabled={state !== "ready"}
+          >
+            加载配置
+          </Button>
+          <Button
+            className={styles.backBtn}
+            icon={<ArrowLeftOutlined />}
+            onClick={handleBack}
+          >
+            返回
+          </Button>
+        </div>
+      </div>
+
+      {/* 编辑器主体 */}
+      <div className={styles.editorBody}>
+        {/* iframe */}
+        {(state === "iframe-loading" || state === "ready") && (
+          <iframe
+            ref={iframeRef}
+            className={styles.editorIframe}
+            src={N8N_URL}
+            onLoad={handleIframeLoad}
+            title="N8N Workflow Editor"
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals"
+          />
+        )}
+
+        {/* 加载中遮罩 */}
+        {state === "starting" && (
+          <div className={styles.loadingOverlay}>
+            <LoadingOutlined className={styles.loadingIcon} />
+            <div className={styles.loadingTitle}>正在启动 N8N 服务...</div>
+            <Progress
+              percent={progress}
+              strokeColor={{ from: "#6366f1", to: "#8b5cf6" }}
+              style={{ width: 280 }}
+              status="active"
+            />
+            <div className={styles.loadingHint}>
+              N8N 子进程正在启动并监听 127.0.0.1:5678，请稍候。
+              <br />
+              首次启动可能需要数十秒。
+            </div>
+          </div>
+        )}
+
+        {/* iframe 加载中 */}
+        {state === "iframe-loading" && (
+          <div className={styles.loadingOverlay}>
+            <LoadingOutlined className={styles.loadingIcon} />
+            <div className={styles.loadingTitle}>
+              正在加载 N8N 编辑器界面...
+            </div>
+            <div className={styles.loadingHint}>
+              N8N 服务已就绪，正在加载编辑器 UI。
+            </div>
+          </div>
+        )}
+
+        {/* 错误状态 */}
+        {state === "error" && (
+          <div className={styles.loadingOverlay}>
+            <CloseCircleOutlined
+              className={styles.loadingIcon}
+              style={{ color: "#f87171" }}
+            />
+            <div className={styles.loadingTitle}>N8N 启动失败</div>
+            <div className={styles.loadingError}>{errorMessage}</div>
+            <Button
+              type="primary"
+              className={styles.retryBtn}
+              icon={<ReloadOutlined />}
+              onClick={handleRetry}
+            >
+              重试
+            </Button>
+          </div>
+        )}
+
+        {/* ready 状态指示（短暂显示，随后由 iframe 覆盖） */}
+        {state === "ready" && retryCount === -1 && (
+          <div
+            className={styles.loadingOverlay}
+            style={{ pointerEvents: "none" }}
+          >
+            <CheckCircleOutlined
+              className={styles.loadingIcon}
+              style={{ color: "#34d399" }}
+            />
+            <div className={styles.loadingTitle}>N8N 编辑器已就绪</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

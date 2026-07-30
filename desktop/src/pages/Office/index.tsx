@@ -1,9 +1,9 @@
-/**
- * Office — AI办公室主页面
+﻿/**
+ * Office 鈥?AI鍔炲叕瀹や富椤甸潰
  *
  * Spec upgrade-office-to-isometric-25d Task 1:
- *   - 移除 3D 分支 (OfficeScene / AgentSprite / styles.module.css)
- *   - 不再提供 3D/2D 视图切换，始终渲染等距 2.5D 画布 (通过 Office2DPage 内部使用 OfficeIsoCanvas)
+ *   - 绉婚櫎 3D 鍒嗘敮 (OfficeScene / AgentSprite / styles.module.css)
+ *   - 涓嶅啀鎻愪緵 3D/2D 瑙嗗浘鍒囨崲锛屽缁堟覆鏌撶瓑璺?2.5D 鐢诲竷 (閫氳繃 Office2DPage 鍐呴儴浣跨敤 OfficeIsoCanvas)
  */
 
 import { useState, useCallback, useEffect } from 'react';
@@ -17,60 +17,57 @@ import {
   listInstances,
   executeTask
 } from '@/api/hermes-api';
-import * as opcApi from '@/api/opc-api';
+import * as teamApi from '@/api/team-api';
 import { listPublishedAnnouncements } from '@/api/announcement-api';
 import type { CallType, HermesInstance } from '@/types/hermes';
-import type { OPCTeam, TeamMember } from '@/types/opc';
+import type { Team, TeamMember } from '@/types/team';
 
 const STATUS_TAG_MAP: Record<string, { color: string; text: string }> = {
-  working:     { color: 'cyan',   text: '工作中' },
-  idle:        { color: 'default', text: '空闲' },
-  error:       { color: 'red',    text: '异常' },
-  meeting:     { color: 'orange', text: '会议中' },
-  dispatching: { color: 'gold',   text: '派发中' },
+  working:     { color: 'cyan',   text: '宸ヤ綔涓? },
+  idle:        { color: 'default', text: '绌洪棽' },
+  error:       { color: 'red',    text: '寮傚父' },
+  meeting:     { color: 'orange', text: '浼氳涓? },
+  dispatching: { color: 'gold',   text: '娲惧彂涓? },
 };
 
 const TASK_TYPE_OPTIONS: Array<{ label: string; value: CallType }> = [
-  { label: '技能执行', value: 'skill_execute' },
-  { label: '工具调用', value: 'tool_call' },
-  { label: 'Agent调用', value: 'agent_invoke' },
-  { label: '工作流执行', value: 'workflow_run' },
+  { label: '鎶€鑳芥墽琛?, value: 'skill_execute' },
+  { label: '宸ュ叿璋冪敤', value: 'tool_call' },
+  { label: 'Agent璋冪敤', value: 'agent_invoke' },
+  { label: '宸ヤ綔娴佹墽琛?, value: 'workflow_run' },
 ];
 
 export default function Office() {
   const [selectedAgent, setSelectedAgent] = useState<AgentInfo | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
-  const [teams, setTeams] = useState<OPCTeam[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [bulletins, setBulletins] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
 
-  // 派发任务弹窗状态
-  const [dispatchModalOpen, setDispatchModalOpen] = useState(false);
+  // 娲惧彂浠诲姟寮圭獥鐘舵€?  const [dispatchModalOpen, setDispatchModalOpen] = useState(false);
   const [dispatchAgentId, setDispatchAgentId] = useState<number | undefined>(undefined);
   const [taskType, setTaskType] = useState<CallType>('skill_execute');
   const [taskInput, setTaskInput] = useState('');
   const [dispatchLoading, setDispatchLoading] = useState(false);
 
-  /** 加载 Agent 列表 */
+  /** 鍔犺浇 Agent 鍒楄〃 */
   const loadAgents = useCallback(async () => {
     setLoading(true);
     try {
-      // K2 fix: 增加 8s 超时保护，防止后端不可达时页面永久转圈
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('请求超时')), 8000)
+      // K2 fix: 澧炲姞 8s 瓒呮椂淇濇姢锛岄槻姝㈠悗绔笉鍙揪鏃堕〉闈㈡案涔呰浆鍦?      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('璇锋眰瓒呮椂')), 8000)
       );
 
-      // 1. 加载团队列表（opcApi.listTeams 已从分页对象提取 .list）
-      const teamList = await Promise.race([
-        opcApi.listTeams(),
+      // 1. 鍔犺浇鍥㈤槦鍒楄〃锛坥pcApi.listTeams 宸蹭粠鍒嗛〉瀵硅薄鎻愬彇 .list锛?      const teamList = await Promise.race([
+        teamApi.listTeams(),
         timeoutPromise,
-      ]) as OPCTeam[];
+      ]) as Team[];
       setTeams(teamList || []);
 
-      // 2. 并行加载所有 Hermes 实例（用于匹配 Agent 详情：名称、状态、技能）
+      // 2. 骞惰鍔犺浇鎵€鏈?Hermes 瀹炰緥锛堢敤浜庡尮閰?Agent 璇︽儏锛氬悕绉般€佺姸鎬併€佹妧鑳斤級
       let instances: HermesInstance[] = [];
       try {
         instances = await listInstances();
@@ -78,12 +75,11 @@ export default function Office() {
         console.error('[Office] load hermes instances failed', err);
       }
 
-      // 3. 对每个团队加载 Agent 仓库（agentId 列表）
-      const agentIdsByTeam: Record<number, Array<{ teamId: number; agentId: number }>> = {};
+      // 3. 瀵规瘡涓洟闃熷姞杞?Agent 浠撳簱锛坅gentId 鍒楄〃锛?      const agentIdsByTeam: Record<number, Array<{ teamId: number; agentId: number }>> = {};
       await Promise.all(
         (teamList || []).map(async (team) => {
           try {
-            const teamAgents = await opcApi.listMembers(team.id);
+            const teamAgents = await teamApi.listMembers(team.id);
             agentIdsByTeam[team.id] = (teamAgents || []).map((a: TeamMember) => ({
               teamId: team.id,
               agentId: a.agentId,
@@ -95,13 +91,12 @@ export default function Office() {
         })
       );
 
-      // 4. 转换为 AgentInfo（用 Hermes 实例匹配 agentId 获取详情）
-      const mapped = teamMembersToAgents(teamList || [], agentIdsByTeam, instances);
+      // 4. 杞崲涓?AgentInfo锛堢敤 Hermes 瀹炰緥鍖归厤 agentId 鑾峰彇璇︽儏锛?      const mapped = teamMembersToAgents(teamList || [], agentIdsByTeam, instances);
       setAgents(mapped);
       setLoadError(null);
     } catch (err) {
       console.error('[Office] load agents failed', err);
-      setLoadError('加载团队和成员列表失败，请检查 OPC 服务是否正常');
+      setLoadError('鍔犺浇鍥㈤槦鍜屾垚鍛樺垪琛ㄥけ璐ワ紝璇锋鏌?OPC 鏈嶅姟鏄惁姝ｅ父');
       setAgents([]);
       setTeams([]);
     } finally {
@@ -113,14 +108,13 @@ export default function Office() {
     void loadAgents();
   }, [loadAgents]);
 
-  /** 加载公告（每 60 秒轮询）
-   * K10 fix: /admin/announcements 端点需要 adminToken，普通用户调用会 401。
-   *   首次失败后停止轮询，避免持续 401 错误。*/
+  /** 鍔犺浇鍏憡锛堟瘡 60 绉掕疆璇級
+   * K10 fix: /admin/announcements 绔偣闇€瑕?adminToken锛屾櫘閫氱敤鎴疯皟鐢ㄤ細 401銆?   *   棣栨澶辫触鍚庡仠姝㈣疆璇紝閬垮厤鎸佺画 401 閿欒銆?/
   const loadBulletins = useCallback(async () => {
     try {
       const { list } = await listPublishedAnnouncements({ page: 1, pageSize: 10 });
       const texts = list.map((a) => {
-        const prefix = a.type === 'warning' ? '⚠️' : a.type === 'success' ? '✅' : '📢';
+        const prefix = a.type === 'warning' ? '鈿狅笍' : a.type === 'success' ? '鉁? : '馃摙';
         return `${prefix} ${a.title}`;
       });
       setBulletins(texts);
@@ -159,7 +153,7 @@ export default function Office() {
       setSelectedAgent((prev) => prev ? {
         ...prev,
         status,
-        currentTask: status === 'working' ? '处理任务中' : null,
+        currentTask: status === 'working' ? '澶勭悊浠诲姟涓? : null,
         progress: status === 'working' ? Math.min(100, inst.resourceUsage?.cpuPercent ?? 0) : 0,
       } : prev);
     } catch (err) {
@@ -171,16 +165,16 @@ export default function Office() {
     setDrawerOpen(false);
   }, []);
 
-  /** 启动/停止 Agent */
+  /** 鍚姩/鍋滄 Agent */
   const handleToggleAgent = useCallback(async (agent: AgentInfo) => {
     setStarting(true);
     try {
       if (agent.status === 'idle' || agent.status === 'error') {
         await startInstance(agent.id);
-        message.success(`${agent.name} 已启动`);
+        message.success(`${agent.name} 宸插惎鍔╜);
       } else {
         await stopInstance(agent.id);
-        message.success(`${agent.name} 已停止`);
+        message.success(`${agent.name} 宸插仠姝);
       }
       const inst = await getInstance(agent.id);
       const status: AgentInfo['status'] =
@@ -189,40 +183,40 @@ export default function Office() {
       const updated: AgentInfo = {
         ...agent,
         status,
-        currentTask: status === 'working' ? '处理任务中' : null,
+        currentTask: status === 'working' ? '澶勭悊浠诲姟涓? : null,
         progress: status === 'working' ? Math.min(100, inst.resourceUsage?.cpuPercent ?? 0) : 0,
       };
       setSelectedAgent(updated);
       setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
     } catch (err) {
       console.error('[Office] toggle agent failed', err);
-      message.error('操作失败');
+      message.error('鎿嶄綔澶辫触');
     } finally {
       setStarting(false);
     }
   }, []);
 
-  /** 打开派发任务弹窗 */
+  /** 鎵撳紑娲惧彂浠诲姟寮圭獥 */
   const handleDispatchTask = useCallback(() => {
     if (agents.length === 0) {
-      message.warning('暂无可用的 Agent 实例');
+      message.warning('鏆傛棤鍙敤鐨?Agent 瀹炰緥');
       return;
     }
-    // 默认选中第一个 agent
+    // 榛樿閫変腑绗竴涓?agent
     setDispatchAgentId(agents[0].id);
     setTaskType('skill_execute');
     setTaskInput('');
     setDispatchModalOpen(true);
   }, [agents]);
 
-  /** 提交派发任务 */
+  /** 鎻愪氦娲惧彂浠诲姟 */
   const handleSubmitTask = useCallback(async () => {
     if (!dispatchAgentId) {
-      message.warning('请选择目标 Agent');
+      message.warning('璇烽€夋嫨鐩爣 Agent');
       return;
     }
     if (!taskInput.trim()) {
-      message.warning('请输入任务内容');
+      message.warning('璇疯緭鍏ヤ换鍔″唴瀹?);
       return;
     }
 
@@ -231,31 +225,31 @@ export default function Office() {
       const dto = {
         callType: taskType,
         input: { text: taskInput.trim() },
-        target: taskType === 'skill_execute' ? '通用技能' : taskType === 'tool_call' ? '通用工具' : taskType === 'agent_invoke' ? '通用Agent' : '通用工作流',
+        target: taskType === 'skill_execute' ? '閫氱敤鎶€鑳? : taskType === 'tool_call' ? '閫氱敤宸ュ叿' : taskType === 'agent_invoke' ? '閫氱敤Agent' : '閫氱敤宸ヤ綔娴?,
       };
       const result = await executeTask(dispatchAgentId, dto);
       const statusText = result.status === 'success'
-        ? '执行成功'
+        ? '鎵ц鎴愬姛'
         : result.status === 'failed'
-          ? '执行失败'
+          ? '鎵ц澶辫触'
           : result.status === 'timeout'
-            ? '执行超时'
-            : '执行完成';
-      message.success(`任务${statusText}`);
-      // 刷新 agent 列表
+            ? '鎵ц瓒呮椂'
+            : '鎵ц瀹屾垚';
+      message.success(`浠诲姟${statusText}`);
+      // 鍒锋柊 agent 鍒楄〃
       void loadAgents();
       setDispatchModalOpen(false);
       setTaskInput('');
     } catch (err) {
       console.error('[Office] dispatch task failed', err);
-      message.error('任务派发失败');
+      message.error('浠诲姟娲惧彂澶辫触');
     } finally {
       setDispatchLoading(false);
     }
   }, [dispatchAgentId, taskInput, taskType, loadAgents]);
 
   const statusInfo = selectedAgent
-    ? STATUS_TAG_MAP[selectedAgent.status] ?? { color: 'default', text: '未知' }
+    ? STATUS_TAG_MAP[selectedAgent.status] ?? { color: 'default', text: '鏈煡' }
     : null;
 
   const outfitColor = selectedAgent
@@ -271,7 +265,7 @@ export default function Office() {
       gap: 12,
       background: 'var(--color-bg-layout)',
     }}>
-      {/* ====== 头部 ====== */}
+      {/* ====== 澶撮儴 ====== */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -279,7 +273,7 @@ export default function Office() {
         gap: 12,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 22 }}>🏢</span>
+          <span style={{ fontSize: 22 }}>馃彚</span>
           <h2 style={{
             margin: 0,
             fontSize: 20,
@@ -289,12 +283,11 @@ export default function Office() {
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',
           }}>
-            AI办公室
-          </h2>
+            AI鍔炲叕瀹?          </h2>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* 派发任务 */}
+          {/* 娲惧彂浠诲姟 */}
           <Button
             type="primary"
             onClick={handleDispatchTask}
@@ -308,12 +301,12 @@ export default function Office() {
               boxShadow: '0 0 8px rgba(0, 212, 255, 0.3)',
             }}
           >
-            + 派发任务
+            + 娲惧彂浠诲姟
           </Button>
         </div>
       </div>
 
-      {/* ====== 内容区：等距 2.5D 画布 ====== */}
+      {/* ====== 鍐呭鍖猴細绛夎窛 2.5D 鐢诲竷 ====== */}
       <div style={{
         flex: 1,
         position: 'relative',
@@ -327,7 +320,7 @@ export default function Office() {
           </div>
         ) : (
           <>
-            {/* 等距 2.5D 画布 (Office2DPage 内部使用 OfficeIsoCanvas) */}
+            {/* 绛夎窛 2.5D 鐢诲竷 (Office2DPage 鍐呴儴浣跨敤 OfficeIsoCanvas) */}
             <div style={{
               width: '100%',
               height: '100%',
@@ -340,7 +333,7 @@ export default function Office() {
               <Office2DPage embedded />
             </div>
 
-            {/* 错误提示浮层 */}
+            {/* 閿欒鎻愮ず娴眰 */}
             {loadError && (
               <div style={{
                 position: 'absolute',
@@ -360,15 +353,15 @@ export default function Office() {
                 pointerEvents: 'auto',
               }}>
                 <span style={{ color: '#ff4d4f' }}>
-                  ⚠️ {loadError}
+                  鈿狅笍 {loadError}
                 </span>
                 <Button size="small" onClick={() => void loadAgents()} style={{ marginLeft: '12px' }}>
-                  重试
+                  閲嶈瘯
                 </Button>
               </div>
             )}
 
-            {/* 空数据提示浮层 - 仅在明确无团队且无加载错误时显示，但不遮挡画布 */}
+            {/* 绌烘暟鎹彁绀烘诞灞?- 浠呭湪鏄庣‘鏃犲洟闃熶笖鏃犲姞杞介敊璇椂鏄剧ず锛屼絾涓嶉伄鎸＄敾甯?*/}
             {agents.length === 0 && !loadError && !loading && (
               <div style={{
                 position: 'absolute',
@@ -386,14 +379,14 @@ export default function Office() {
                 zIndex: 15,
                 whiteSpace: 'nowrap',
               }}>
-                后端未返回团队数据，当前展示模拟环境
+                鍚庣鏈繑鍥炲洟闃熸暟鎹紝褰撳墠灞曠ず妯℃嫙鐜
               </div>
             )}
           </>
         )}
       </div>
 
-      {/* ====== Agent详情 Drawer ====== */}
+      {/* ====== Agent璇︽儏 Drawer ====== */}
       <Drawer
         title={null}
         open={drawerOpen}
@@ -410,7 +403,7 @@ export default function Office() {
       >
         {selectedAgent && statusInfo && (
           <div>
-            {/* 头部头像 + 名字 + 状态 */}
+            {/* 澶撮儴澶村儚 + 鍚嶅瓧 + 鐘舵€?*/}
             <div style={{
               display: 'flex',
               flexDirection: 'column',
@@ -456,7 +449,7 @@ export default function Office() {
               </Tag>
             </div>
 
-            {/* 状态信息 */}
+            {/* 鐘舵€佷俊鎭?*/}
             <div style={{ marginBottom: 16, marginTop: 16 }}>
               <div style={{
                 fontSize: 12,
@@ -466,8 +459,7 @@ export default function Office() {
                 marginBottom: 8,
                 textTransform: 'uppercase',
               }}>
-                状态信息
-              </div>
+                鐘舵€佷俊鎭?              </div>
               <div style={{
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -475,9 +467,9 @@ export default function Office() {
                 padding: '4px 0',
                 fontSize: 13,
               }}>
-                <span style={{ color: 'var(--color-text-tertiary)' }}>当前任务</span>
+                <span style={{ color: 'var(--color-text-tertiary)' }}>褰撳墠浠诲姟</span>
                 <span style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>
-                  {selectedAgent.currentTask ?? '无'}
+                  {selectedAgent.currentTask ?? '鏃?}
                 </span>
               </div>
               <div style={{
@@ -487,7 +479,7 @@ export default function Office() {
                 padding: '4px 0',
                 fontSize: 13,
               }}>
-                <span style={{ color: 'var(--color-text-tertiary)' }}>进度</span>
+                <span style={{ color: 'var(--color-text-tertiary)' }}>杩涘害</span>
                 <span style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>
                   {selectedAgent.progress}%
                 </span>
@@ -502,7 +494,7 @@ export default function Office() {
               </div>
             </div>
 
-            {/* 技能 */}
+            {/* 鎶€鑳?*/}
             <div style={{ marginBottom: 16 }}>
               <div style={{
                 fontSize: 12,
@@ -512,8 +504,7 @@ export default function Office() {
                 marginBottom: 8,
                 textTransform: 'uppercase',
               }}>
-                技能
-              </div>
+                鎶€鑳?              </div>
               <div style={{
                 display: 'flex',
                 flexWrap: 'wrap',
@@ -537,7 +528,7 @@ export default function Office() {
               </div>
             </div>
 
-            {/* 操作按钮 */}
+            {/* 鎿嶄綔鎸夐挳 */}
             <div style={{ display: 'flex', gap: 8, marginTop: 24 }}>
               <Button
                 block
@@ -553,7 +544,7 @@ export default function Office() {
                 loading={starting}
                 onClick={() => handleToggleAgent(selectedAgent)}
               >
-                {selectedAgent.status === 'idle' ? '启动' : '停止'}
+                {selectedAgent.status === 'idle' ? '鍚姩' : '鍋滄'}
               </Button>
               <Button
                 block
@@ -566,26 +557,26 @@ export default function Office() {
                   color: 'var(--color-text-secondary)',
                 }}
               >
-                关闭
+                鍏抽棴
               </Button>
             </div>
           </div>
         )}
       </Drawer>
 
-      {/* ====== 派发任务弹窗 ====== */}
+      {/* ====== 娲惧彂浠诲姟寮圭獥 ====== */}
       <Modal
-        title="派发任务"
+        title="娲惧彂浠诲姟"
         open={dispatchModalOpen}
         onCancel={() => setDispatchModalOpen(false)}
         onOk={handleSubmitTask}
         confirmLoading={dispatchLoading}
-        okText="派发"
-        cancelText="取消"
+        okText="娲惧彂"
+        cancelText="鍙栨秷"
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '8px 0' }}>
           <div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 4 }}>选择 Agent</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 4 }}>閫夋嫨 Agent</div>
             <Select
               style={{ width: '100%' }}
               value={dispatchAgentId}
@@ -597,7 +588,7 @@ export default function Office() {
             />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 4 }}>任务类型</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 4 }}>浠诲姟绫诲瀷</div>
             <Select
               style={{ width: '100%' }}
               value={taskType}
@@ -606,12 +597,12 @@ export default function Office() {
             />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 4 }}>任务内容</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 4 }}>浠诲姟鍐呭</div>
             <Input.TextArea
               rows={4}
               value={taskInput}
               onChange={(e) => setTaskInput(e.target.value)}
-              placeholder="请输入任务描述..."
+              placeholder="璇疯緭鍏ヤ换鍔℃弿杩?.."
             />
           </div>
         </div>

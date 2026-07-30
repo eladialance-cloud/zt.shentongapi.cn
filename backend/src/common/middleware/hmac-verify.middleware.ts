@@ -1,130 +1,80 @@
-﻿import { Injectable, Logger, NestMiddleware } from '@nestjs/common';
+﻿import { Injectable, NestMiddleware } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Reflector } from '@nestjs/core';
 import { Request, Response, NextFunction } from 'express';
 import * as crypto from 'crypto';
 import { RedisService } from '../services/redis.service';
-import { REQUIRE_HMAC_KEY } from '../decorators/require-hmac.decorator';
 
-/** 鏃堕棿鎴冲厑璁哥殑鏃堕挓婕傜Щ锛堟绉掞級 */
+/** 时间戳允许的时钟漂移（毫秒） */
 const TIMESTAMP_DRIFT_MS = 5 * 60 * 1000;
-/** nonce 闃查噸鏀句繚鐣欐椂闀匡紙绉掞級 */
+/** nonce 防重放保留时长（秒） */
 const NONCE_TTL_SECONDS = 300;
-/** Redis nonce 闆嗗悎 key */
+/** Redis nonce 集合 key */
 const NONCE_SET_KEY = 'hmac:nonces';
 
 /**
- * HMAC 楠岀涓棿浠? * 鏁版嵁鍚堝悓鐪熸簮锛歍ask 32 - 鏁版嵁瀹夊叏璁捐
- * 鏍￠獙娴佺▼锛? *   1. 鎻愬彇 X-Timestamp / X-Nonce / X-Signature headers
- *   2. 鏍￠獙 timestamp 鏃堕挓婕傜Щ锛埪? 鍒嗛挓锛? *   3. HMAC-SHA256(secretKey, `${method}\n${path}\n${timestamp}\n${nonce}\n${bodyMd5}`) 楠岀
- *   4. Redis nonce 闃查噸鏀撅紙SADD hmac:nonces锛屽凡瀛樺湪鍒?NONCE_REPLAYED锛? * 楠岀澶辫触杩斿洖 SIGNATURE_INVALID锛圚TTP 401锛? *
- * 楠岀绛栫暐锛? *   - 璺敱鏍囪 @RequireHmac锛氬己鍒堕獙绛撅紝鏈惡甯?X-Signature 杩斿洖 401
- *   - 璺敱鏈爣璁?@RequireHmac锛氭惡甯?X-Signature 鏃朵弗鏍奸獙绛撅紝鏈惡甯﹀垯鏀捐锛堢敱 JwtAuthGuard 鍏滃簳锛? * 鍏ㄥ眬娉ㄥ唽浜?JwtAuthGuard 涔嬪墠锛堜腑闂翠欢澶╃劧鍏堜簬瀹堝崼鎵ц锛夈€? */
+ * HMAC 验签中间件
+ * 数据合同真源：Task 32 - 数据安全设计
+ * 校验流程：
+ *   1. 提取 X-Timestamp / X-Nonce / X-Signature headers
+ *   2. 校验 timestamp 时钟漂移（±5 分钟）
+ *   3. HMAC-SHA256(secretKey, `${method}\n${path}\n${timestamp}\n${nonce}\n${bodyMd5}`) 验签
+ *   4. Redis nonce 防重放（SADD hmac:nonces，已存在则 NONCE_REPLAYED）
+ * 验签失败返回 SIGNATURE_INVALID（HTTP 401）
+ *
+ * 验签策略：仅在请求携带 X-Signature 时启用严格验签；
+ *           未携带则放行（由 JwtAuthGuard 兜底鉴权），等价于 @Public() 跳过公开接口。
+ *           全局注册于 JwtAuthGuard 之前（中间件天然先于守卫执行）。
+ */
 @Injectable()
 export class HmacVerifyMiddleware implements NestMiddleware {
-  private readonly logger = new Logger('HmacVerifyMiddleware');
-
   constructor(
     private redis: RedisService,
     private config: ConfigService,
-    private reflector: Reflector,
   ) {}
 
   async use(req: Request, res: Response, next: NextFunction): Promise<void> {
     const signature = req.header('x-signature');
-    // 鏈惡甯︾鍚嶅ご锛氭鏌ヨ矾鐢辨槸鍚︽爣璁?@RequireHmac锛屾爣璁板垯寮哄埗楠岀杩斿洖 401
+    // 未携带签名头：跳过 HMAC 校验，交由后续守卫处理（公开接口/普通 JWT 客户端）
     if (!signature) {
-      if (this.isHmacRequired(req)) {
-        return this.fail(res, 'SIGNATURE_REQUIRED', '姝ゆ帴鍙ｈ姹?HMAC 楠岀');
-      }
       return next();
     }
 
     const timestamp = req.header('x-timestamp');
     const nonce = req.header('x-nonce');
     if (!timestamp || !nonce) {
-      return this.fail(res, 'SIGNATURE_INVALID', '缂哄皯楠岀瀛楁');
+      return this.fail(res, 'SIGNATURE_INVALID', '缺少验签字段');
     }
 
-    // 鏃堕挓婕傜Щ鏍￠獙
+    // 时钟漂移校验
     const ts = Number(timestamp);
     if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > TIMESTAMP_DRIFT_MS) {
-      return this.fail(res, 'SIGNATURE_INVALID', '鏃堕棿鎴宠秴鍑哄厑璁告紓绉昏寖鍥?);
+      return this.fail(res, 'SIGNATURE_INVALID', '时间戳超出允许漂移范围');
     }
 
-    // nonce 闃查噸鏀?    const added = await this.redis.saddIfAbsent(NONCE_SET_KEY, nonce, NONCE_TTL_SECONDS);
+    // nonce 防重放
+    const added = await this.redis.saddIfAbsent(NONCE_SET_KEY, nonce, NONCE_TTL_SECONDS);
     if (!added) {
-      return this.fail(res, 'NONCE_REPLAYED', '璇锋眰宸茶繃鏈熸垨閲嶅');
+      return this.fail(res, 'NONCE_REPLAYED', '请求已过期或重复');
     }
 
-    // 璁＄畻绛惧悕
-    const secretKey = this.config.get<string>('HMAC_SECRET');
-    if (!secretKey) {
-      throw new Error('ConfigurationError: HMAC_SECRET is required');
-    }
-    // 鐢ㄦ埛绾у瘑閽ュ弬涓庣鍚嶈绠楋細灏?x-api-key 澶翠笌鍏ㄥ眬 HMAC_SECRET 缁勫悎锛?    // 闃叉鍏ㄥ眬瀵嗛挜娉勯湶鍚庣敤鎴风骇瀵嗛挜褰㈠悓铏氳
-    const userApiKey = req.header('x-api-key') || '';
-    if (!userApiKey && req.method !== 'GET') {
-      this.logger.warn(
-        `HMAC verification without api-key for write operation: ${req.method} ${req.path}`,
-      );
-    }
-    const signingKey = `${secretKey}:${userApiKey}`;
+    // 计算签名
+    const secretKey = this.config.get<string>('HMAC_SECRET', 'shentong-ai-hmac-secret');
     const bodyMd5 = this.computeBodyMd5(req);
     const path = req.originalUrl || req.url || '';
     const raw = `${req.method}\n${path}\n${timestamp}\n${nonce}\n${bodyMd5}`;
     const expected = crypto
-      .createHmac('sha256', signingKey)
+      .createHmac('sha256', secretKey)
       .update(raw, 'utf8')
       .digest('hex');
 
     if (!this.safeEqual(expected, signature)) {
-      return this.fail(res, 'SIGNATURE_INVALID', '绛惧悕鏍￠獙澶辫触');
+      return this.fail(res, 'SIGNATURE_INVALID', '签名校验失败');
     }
 
     next();
   }
 
-  /**
-   * 妫€鏌ヨ矾鐢辨槸鍚﹂€氳繃 @RequireHmac 瑁呴グ鍣ㄦ爣璁伴渶瑕佸己鍒堕獙绛?   * 閬嶅巻 req.route.stack锛屼粠 handler 涓婃寕杞界殑 controllerClass 璇诲彇绫荤骇鍏冩暟鎹紝
-   * 鍚屾椂璇诲彇鏂规硶绾у厓鏁版嵁銆?   * 娉ㄦ剰锛歭ayer.constructor 鏄?Express Layer 绫伙紝骞堕潪 Controller 绫伙紝涓嶈兘鐢ㄤ簬绫荤骇瑁呴グ鍣ㄥ垽瀹氥€?   */
-  private isHmacRequired(req: Request): boolean {
-    const route = (req as any).route;
-    if (!route || !route.stack || route.stack.length === 0) {
-      return false;
-    }
-
-    for (const layer of route.stack) {
-      const handler = layer?.handle;
-      if (!handler || typeof handler !== 'function') {
-        continue;
-      }
-
-      // 鏂规硶绾?@RequireHmac
-      if (
-        this.reflector.getAllAndOverride<boolean>(REQUIRE_HMAC_KEY, [
-          handler,
-        ]) === true
-      ) {
-        return true;
-      }
-
-      // Controller 绫荤骇 @RequireHmac锛歂estJS 鍦?handler 涓婃寕杞?controllerClass
-      const controllerClass =
-        handler.controllerClass || handler.__controllerClass__;
-      if (
-        controllerClass &&
-        this.reflector.getAllAndOverride<boolean>(REQUIRE_HMAC_KEY, [
-          controllerClass,
-        ]) === true
-      ) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /** 璁＄畻璇锋眰浣?MD5锛堜紭鍏堜娇鐢ㄥ師濮?body锛屽洖閫€ JSON 搴忓垪鍖栵級 */
+  /** 计算请求体 MD5（优先使用原始 body，回退 JSON 序列化） */
   private computeBodyMd5(req: Request): string {
     const raw = (req as any).rawBody;
     let payload: string;
@@ -138,7 +88,7 @@ export class HmacVerifyMiddleware implements NestMiddleware {
     return crypto.createHash('md5').update(payload, 'utf8').digest('hex');
   }
 
-  /** 甯搁噺鏃堕棿姣旇緝锛岄槻鏃跺簭鏀诲嚮 */
+  /** 常量时间比较，防时序攻击 */
   private safeEqual(a: string, b: string): boolean {
     const bufA = Buffer.from(a, 'hex');
     const bufB = Buffer.from(b, 'hex');

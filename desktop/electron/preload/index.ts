@@ -1,6 +1,7 @@
-﻿// 棰勫姞杞借剼鏈?- 閫氳繃 contextBridge 鏆撮湶瀹夊叏 API 缁欐覆鏌撹繘绋?// 鍚敤 contextIsolation: true锛宯odeIntegration: false
+// 预加载脚本 - 通过 contextBridge 暴露安全 API 给渲染进程
+// 启用 contextIsolation: true，nodeIntegration: false
 
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import type {
   ServiceName,
   ServiceInfo,
@@ -11,164 +12,132 @@ import type {
   ElectronAPI,
   RuntimeAPI,
   RuntimeDownloadProgress,
-  RuntimeUpdateResult,
-  RemoteControlAPI,
-  RemoteControlPlatform,
-  RemoteControlSettings,
-  RemoteControlStatus,
-  RemoteCommandResult,
-  AuthAPI
-} from '../shared/types'
+} from "../shared/types";
 
 const electronAPI: ElectronAPI = {
   service: {
-    getStatus: () => ipcRenderer.invoke('service:getStatus'),
+    getStatus: () => ipcRenderer.invoke("service:getStatus"),
     status: (name: ServiceName) =>
-      ipcRenderer.invoke('service:status', name) as Promise<ServiceInfo>,
-    list: () => ipcRenderer.invoke('service:list') as Promise<ServiceInfo[]>,
-    start: (name: ServiceName) => ipcRenderer.invoke('service:start', name),
-    stop: (name: ServiceName) => ipcRenderer.invoke('service:stop', name),
-    restart: (name: ServiceName) => ipcRenderer.invoke('service:restart', name),
-    checkEnv: () => ipcRenderer.invoke('service:checkEnv'),
-    install: (name: ServiceName) => ipcRenderer.invoke('service:install', name),
-    onStatusChanged: (callback: (payload: ServiceStatusChangedPayload) => void) => {
+      ipcRenderer.invoke("service:status", name) as Promise<ServiceInfo>,
+    list: () => ipcRenderer.invoke("service:list") as Promise<ServiceInfo[]>,
+    start: (name: ServiceName) => ipcRenderer.invoke("service:start", name),
+    stop: (name: ServiceName) => ipcRenderer.invoke("service:stop", name),
+    restart: (name: ServiceName) => ipcRenderer.invoke("service:restart", name),
+    checkEnv: () => ipcRenderer.invoke("service:checkEnv"),
+    install: (name: ServiceName) => ipcRenderer.invoke("service:install", name),
+    onStatusChanged: (
+      callback: (payload: ServiceStatusChangedPayload) => void,
+    ) => {
       const handler = (
         _event: IpcRendererEvent,
-        payload: ServiceStatusChangedPayload
-      ): void => callback(payload)
-      ipcRenderer.on('service:status-changed', handler)
+        payload: ServiceStatusChangedPayload,
+      ): void => callback(payload);
+      ipcRenderer.on("service:status-changed", handler);
       return () => {
-        ipcRenderer.removeListener('service:status-changed', handler)
-      }
+        ipcRenderer.removeListener("service:status-changed", handler);
+      };
     },
     onError: (callback: (payload: ServiceErrorPayload) => void) => {
       const handler = (
         _event: IpcRendererEvent,
-        payload: ServiceErrorPayload
-      ): void => callback(payload)
-      ipcRenderer.on('service:error', handler)
+        payload: ServiceErrorPayload,
+      ): void => callback(payload);
+      ipcRenderer.on("service:error", handler);
       return () => {
-        ipcRenderer.removeListener('service:error', handler)
-      }
-    }
+        ipcRenderer.removeListener("service:error", handler);
+      };
+    },
   },
   app: {
-    getVersion: () => ipcRenderer.invoke('app:getVersion'),
-    checkUpdate: () => ipcRenderer.invoke('app:checkUpdate'),
-    quitAndInstall: () => ipcRenderer.invoke('app:quitAndInstall')
+    getVersion: () => ipcRenderer.invoke("app:getVersion"),
+    checkUpdate: () => ipcRenderer.invoke("app:checkUpdate"),
+    quitAndInstall: () => ipcRenderer.invoke("app:quitAndInstall"),
   },
   updater: {
-    check: () => ipcRenderer.invoke('update:check'),
-    download: () => ipcRenderer.invoke('update:download'),
-    install: () => ipcRenderer.invoke('update:install'),
+    check: () => ipcRenderer.invoke("update:check"),
+    download: () => ipcRenderer.invoke("update:download"),
+    install: () => ipcRenderer.invoke("update:install"),
     onStatus: (callback: (payload: UpdateStatusPayload) => void) => {
       const handler = (
         _event: IpcRendererEvent,
-        payload: UpdateStatusPayload
-      ): void => callback(payload)
-      ipcRenderer.on('update:status', handler)
+        payload: UpdateStatusPayload,
+      ): void => callback(payload);
+      ipcRenderer.on("update:status", handler);
       return () => {
-        ipcRenderer.removeListener('update:status', handler)
-      }
-    }
+        ipcRenderer.removeListener("update:status", handler);
+      };
+    },
   },
   window: {
-    minimize: () => ipcRenderer.send('window:minimize'),
-    maximize: () => ipcRenderer.send('window:maximize'),
-    close: () => ipcRenderer.send('window:close')
+    minimize: () => ipcRenderer.send("window:minimize"),
+    maximize: () => ipcRenderer.send("window:maximize"),
+    close: () => ipcRenderer.send("window:close"),
   },
   device: {
-    getFingerprint: () => ipcRenderer.invoke('device:getFingerprint')
+    getFingerprint: () => ipcRenderer.invoke("device:getFingerprint"),
   },
   db: {
-    // 鐧诲綍鍚庤皟鐢細鐢?userId + dbSecret 娲剧敓瀵嗛挜 鈫?鍒濆鍖?SQLCipher锛涘け璐ヨ繑鍥?false锛堥檷绾фā寮忥級
-    initialize: (userId: string, dbSecret: string) =>
-      ipcRenderer.invoke('db:initialize', userId, dbSecret) as Promise<boolean>,
-    // 鍚屾鏌ヨ闄嶇骇鐘舵€侊紙sendSync 闃诲锛屼粎璇诲竷灏斿€硷紝寮€閿€鏋佸皬锛?    isDegraded: () => ipcRenderer.sendSync('db:isDegraded') as boolean,
-    // 鐧诲嚭鏃跺叧闂暟鎹簱锛坒ire-and-forget锛?    close: () => {
-      ipcRenderer.send('db:close')
-    }
+    // 登录后调用：派生密钥 → 初始化 SQLCipher；失败返回 false（降级模式）
+    initialize: (userToken: string) =>
+      ipcRenderer.invoke("db:initialize", userToken) as Promise<boolean>,
+    // 同步查询降级状态（sendSync 阻塞，仅读布尔值，开销极小）
+    isDegraded: () => ipcRenderer.sendSync("db:isDegraded") as boolean,
+    // 登出时关闭数据库（fire-and-forget）
+    close: () => {
+      ipcRenderer.send("db:close");
+    },
   },
   syncQueue: {
-    enqueue: (item) => ipcRenderer.invoke('syncQueue:enqueue', item) as Promise<number>,
-    getPending: (limit) => ipcRenderer.invoke('syncQueue:getPending', limit) as Promise<SyncQueueRow[]>,
-    getByStatus: (status) => ipcRenderer.invoke('syncQueue:getByStatus', status) as Promise<SyncQueueRow[]>,
+    enqueue: (item) =>
+      ipcRenderer.invoke("syncQueue:enqueue", item) as Promise<number>,
+    getPending: (limit) =>
+      ipcRenderer.invoke("syncQueue:getPending", limit) as Promise<
+        SyncQueueRow[]
+      >,
     updateStatus: (id, status, retryCount, errorMessage) =>
-      ipcRenderer.invoke('syncQueue:updateStatus', id, status, retryCount, errorMessage) as Promise<void>,
-    exists: (client_txn_id) => ipcRenderer.invoke('syncQueue:exists', client_txn_id) as Promise<boolean>
+      ipcRenderer.invoke(
+        "syncQueue:updateStatus",
+        id,
+        status,
+        retryCount,
+        errorMessage,
+      ) as Promise<void>,
+    exists: (client_txn_id) =>
+      ipcRenderer.invoke("syncQueue:exists", client_txn_id) as Promise<boolean>,
   },
-  credential: {
-    set: (key: string, value: string) => ipcRenderer.invoke('credential:set', key, value) as Promise<void>,
-    get: (key: string) => ipcRenderer.invoke('credential:get', key) as Promise<string | null>,
-    delete: (key: string) => ipcRenderer.invoke('credential:delete', key) as Promise<void>
-  },
-  hermes: {
-    setLlmProxyKey: (key: string) => ipcRenderer.invoke('hermes:set-llm-proxy-key', key),
-  }
-}
+};
 
 const runtimeAPI: RuntimeAPI = {
-  verify: () => ipcRenderer.invoke('runtime:verify'),
-  verifyOne: (name: ServiceName) => ipcRenderer.invoke('runtime:verify-one', name),
-  download: (name: ServiceName) => ipcRenderer.invoke('runtime:download', name),
-  cancelDownload: (name: ServiceName) => ipcRenderer.invoke('runtime:cancel-download', name),
-  onDownloadProgress: (callback: (progress: RuntimeDownloadProgress) => void) => {
+  verify: () => ipcRenderer.invoke("runtime:verify"),
+  verifyOne: (name: ServiceName) =>
+    ipcRenderer.invoke("runtime:verify-one", name),
+  download: (name: ServiceName) => ipcRenderer.invoke("runtime:download", name),
+  cancelDownload: (name: ServiceName) =>
+    ipcRenderer.invoke("runtime:cancel-download", name),
+  onDownloadProgress: (
+    callback: (progress: RuntimeDownloadProgress) => void,
+  ) => {
     const handler = (
       _event: IpcRendererEvent,
-      progress: RuntimeDownloadProgress
-    ): void => callback(progress)
-    ipcRenderer.on('runtime:download-progress', handler)
+      progress: RuntimeDownloadProgress,
+    ): void => callback(progress);
+    ipcRenderer.on("runtime:download-progress", handler);
     return () => {
-      ipcRenderer.removeListener('runtime:download-progress', handler)
-    }
+      ipcRenderer.removeListener("runtime:download-progress", handler);
+    };
   },
-  checkUpdate: () => ipcRenderer.invoke('runtime:check-update') as Promise<RuntimeUpdateResult>
-}
-
-// 杩滅▼鎺у埗 API锛圱ask 14 - Feishu/WeCom IM 杩滅▼浠诲姟娲惧彂锛?const remoteControlAPI: RemoteControlAPI = {
-  getStatus: () =>
-    ipcRenderer.invoke('remoteControl:getStatus') as Promise<RemoteControlStatus>,
-  bind: (platform: RemoteControlPlatform, config: { webhookUrl: string }) =>
-    ipcRenderer.invoke('remoteControl:bind', platform, config) as Promise<boolean>,
-  unbind: (platform: RemoteControlPlatform) =>
-    ipcRenderer.invoke('remoteControl:unbind', platform) as Promise<void>,
-  enable: () => ipcRenderer.invoke('remoteControl:enable') as Promise<void>,
-  disable: () => ipcRenderer.invoke('remoteControl:disable') as Promise<void>,
-  updateSettings: (settings: RemoteControlSettings) =>
-    ipcRenderer.invoke('remoteControl:updateSettings', settings) as Promise<void>,
-  getSettings: () =>
-    ipcRenderer.invoke('remoteControl:getSettings') as Promise<RemoteControlSettings>,
-  onCommandResult: (callback: (result: RemoteCommandResult) => void) => {
-    const handler = (
-      _event: IpcRendererEvent,
-      result: RemoteCommandResult
-    ): void => callback(result)
-    ipcRenderer.on('remoteControl:command-result', handler)
-    return () => {
-      ipcRenderer.removeListener('remoteControl:command-result', handler)
-    }
-  }
-}
-
-// 璁よ瘉淇℃伅鏌ヨ API锛圛PC 妗ユ帴锛氫粠涓昏繘绋嬭幏鍙?token / apiBase锛屼緵 RemoteControl 璋冪敤鐪熷疄鍚庣 API锛?const authApi: AuthAPI = {
-  getToken: () => ipcRenderer.invoke('auth:getToken') as Promise<string | null>,
-  getApiBase: () => ipcRenderer.invoke('auth:getApiBase') as Promise<string>
-}
+};
 
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electronAPI', electronAPI)
-    contextBridge.exposeInMainWorld('runtime', runtimeAPI)
-    contextBridge.exposeInMainWorld('remoteControl', remoteControlAPI)
-    contextBridge.exposeInMainWorld('authApi', authApi)
+    contextBridge.exposeInMainWorld("electronAPI", electronAPI);
+    contextBridge.exposeInMainWorld("runtime", runtimeAPI);
   } catch (err) {
-    console.error('[preload] exposeInMainWorld failed:', err)
+    console.error("[preload] exposeInMainWorld failed:", err);
   }
 } else {
-  // 瀹夊叏绛栫暐锛歝ontext isolation 蹇呴』鍚敤锛坰andbox:true + contextIsolation:true锛?  // 绂佺敤 context isolation 鏃剁洿鎺ユ毚闇?ipcRenderer 鍒?window 鏄弗閲嶅畨鍏ㄦ紡娲?  // 涓嶆彁渚?fallback 鈥斺€?鎶涘嚭閿欒缁堟鍔犺浇锛屽己鍒跺惎鐢?contextIsolation
-  throw new Error(
-    '[preload] CRITICAL: context isolation is disabled. ' +
-    'Refusing to load preload script for security. ' +
-    'Enable sandbox:true and contextIsolation:true in BrowserWindow options.'
-  )
+  // @ts-expect-error fallback when context isolation disabled
+  window.electronAPI = electronAPI;
+  // @ts-expect-error fallback when context isolation disabled
+  window.runtime = runtimeAPI;
 }

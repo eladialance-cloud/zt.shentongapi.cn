@@ -1,12 +1,12 @@
-// 管理端主布局 - SubTask 17.7
+﻿// 管理后台主布局 - SubTask 17.7
 //
-// 结构：顶栏(48px,logo + 管理员头像菜单) + 侧边栏(200px,12 项菜单) + 内容区(Outlet)
-// 侧边栏菜单:仪表盘/用户管理/Key池/Agent/工作流/插件/模型/财务/审核/统计/版本/系统
+// 结构：顶栏 48px, logo + 管理员头像菜单 + 侧边栏 200px, 15 项菜单 + 内容区 (Outlet)
 
 import { useMemo } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { Avatar, Dropdown, Menu, type MenuProps } from 'antd'
 import {
+  ApiOutlined,
   AppstoreOutlined,
   BarChartOutlined,
   CloudServerOutlined,
@@ -16,6 +16,7 @@ import {
   LogoutOutlined,
   RobotOutlined,
   SafetyCertificateOutlined,
+  SendOutlined,
   SettingOutlined,
   TeamOutlined,
   ToolOutlined,
@@ -35,18 +36,21 @@ interface MenuItem {
 }
 
 const MENU_ITEMS: MenuItem[] = [
-  { key: 'dashboard', label: '仪表盘', icon: <DashboardOutlined />, path: '/admin/dashboard' },
-  { key: 'users', label: '用户管理', icon: <TeamOutlined />, path: '/admin/users' },
-  { key: 'apikey-pool', label: 'Key 池', icon: <KeyOutlined />, path: '/admin/api-key-pool' },
-  { key: 'agent', label: 'Agent', icon: <RobotOutlined />, path: '/admin/agents' },
-  { key: 'workflow', label: '工作流', icon: <AppstoreOutlined />, path: '/admin/workflows' },
-  { key: 'plugin', label: '插件', icon: <ToolOutlined />, path: '/admin/plugins' },
-  { key: 'model', label: '模型', icon: <CloudServerOutlined />, path: '/admin/models' },
-  { key: 'finance', label: '财务', icon: <DollarOutlined />, path: '/admin/finance' },
-  { key: 'audit', label: '审核', icon: <AuditOutlined />, path: '/admin/audit' },
-  { key: 'stats', label: '统计', icon: <BarChartOutlined />, path: '/admin/stats' },
-  { key: 'version', label: '版本', icon: <CloudSyncOutlined />, path: '/admin/versions' },
-  { key: 'system', label: '系统', icon: <SettingOutlined />, path: '/admin/system' }
+  { key: ''dashboard'', label: ''仪表盘'', icon: <DashboardOutlined />, path: ''/admin/dashboard'' },
+  { key: ''users'', label: ''用户管理'', icon: <TeamOutlined />, path: ''/admin/users'' },
+  { key: ''apikey-pool'', label: ''Key 池'', icon: <KeyOutlined />, path: ''/admin/api-key-pool'' },
+  { key: ''agent'', label: ''Agent'', icon: <RobotOutlined />, path: ''/admin/agents'' },
+  { key: ''workflow'', label: ''工作流'', icon: <AppstoreOutlined />, path: ''/admin/workflows'' },
+  { key: ''plugin'', label: ''插件'', icon: <ToolOutlined />, path: ''/admin/plugins'' },
+  { key: ''model'', label: ''模型'', icon: <CloudServerOutlined />, path: ''/admin/models'' },
+  { key: ''finance'', label: ''财务'', icon: <DollarOutlined />, path: ''/admin/finance'' },
+  { key: ''audit'', label: ''审核'', icon: <AuditOutlined />, path: ''/admin/audit'' },
+  { key: ''stats'', label: ''统计'', icon: <BarChartOutlined />, path: ''/admin/stats'' },
+  { key: ''version'', label: ''版本'', icon: <CloudSyncOutlined />, path: ''/admin/versions'' },
+  { key: ''team'', label: ''团队'', icon: <TeamOutlined />, path: ''/admin/teams'' },
+  { key: ''channel'', label: ''渠道'', icon: <ApiOutlined />, path: ''/admin/channels'' },
+  { key: ''publish'', label: ''发布'', icon: <SendOutlined />, path: ''/admin/publish'' },
+  { key: ''system'', label: ''系统'', icon: <SettingOutlined />, path: ''/admin/system'' }
 ]
 
 export default function AdminLayout() {
@@ -59,10 +63,10 @@ export default function AdminLayout() {
     const matched = MENU_ITEMS.find((item) =>
       location.pathname.startsWith(item.path)
     )
-    return matched?.key || 'dashboard'
+    return matched?.key || ''dashboard''
   }, [location.pathname])
 
-  const menuItems: MenuProps['items'] = useMemo(
+  const menuItems: MenuProps[''items''] = useMemo(
     () =>
       MENU_ITEMS.map((item) => ({
         key: item.key,
@@ -76,74 +80,46 @@ export default function AdminLayout() {
   const handleLogout = async () => {
     try {
       await adminLogout()
-    } catch {
-      // 后端登出失败不阻塞
-    }
+    } catch {}
     clearAdminAuth()
-    navigate('/admin/login', { replace: true })
+    navigate(''/admin/login'', { replace: true })
   }
 
-  const userMenuItems: MenuProps['items'] = [
+  const userMenuItems: MenuProps[''items''] = [
     {
-      key: 'roles',
-      icon: <SafetyCertificateOutlined />,
-      label: '角色权限',
-      onClick: () => navigate('/admin/roles')
-    },
-    {
-      key: 'logs',
-      icon: <AuditOutlined />,
-      label: '操作日志',
-      onClick: () => navigate('/admin/operation-logs')
-    },
-    { type: 'divider' },
-    {
-      key: 'logout',
+      key: ''logout'',
       icon: <LogoutOutlined />,
-      label: '退出登录',
-      onClick: handleLogout
-    }
+      label: ''退出登录'',
+      onClick: handleLogout,
+    },
   ]
 
   return (
     <div className={styles.layout}>
-      {/* 顶栏 */}
-      <div className={styles.topbar}>
-        <div className={styles.topbarLeft}>
-          <SafetyCertificateOutlined className={styles.topbarLogo} />
-          <span className={styles.topbarTitle}>深瞳AI 管理后台</span>
+      <div className={styles.topBar}>
+        <div className={styles.logo}>
+          <SafetyCertificateOutlined style={{ fontSize: 18, color: ''#4F6EF7'' }} />
+          <span className={styles.logoText}>深瞳AI-智能中台 · 管理后台</span>
         </div>
-        <div className={styles.topbarRight}>
+        <div className={styles.topRight}>
           <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <Avatar
-                size={28}
-                icon={<UserOutlined />}
-                src={user?.avatar}
-                style={{ background: 'rgba(56, 189, 248, 0.25)' }}
-              />
-              <span className={styles.adminName}>{user?.username || '管理员'}</span>
+            <div className={styles.userInfo}>
+              <Avatar size="small" icon={<UserOutlined />} />
+              <span className={styles.userName}>{user?.username || ''管理员''}</span>
             </div>
           </Dropdown>
         </div>
       </div>
-
       <div className={styles.body}>
-        {/* 侧边栏 */}
         <div className={styles.sidebar}>
           <Menu
             mode="inline"
             selectedKeys={[selectedKey]}
             items={menuItems}
-            style={{
-              background: 'transparent',
-              borderInlineEnd: 'none'
-            }}
+            style={{ background: ''transparent'', borderRight: ''none'' }}
             theme="dark"
           />
         </div>
-
-        {/* 内容区 */}
         <div className={styles.content}>
           <Outlet />
         </div>

@@ -1,1 +1,125 @@
-﻿import { Injectable, Logger, forwardRef, Inject } from '@nestjs/common';import { InjectRepository } from '@nestjs/typeorm';import { Repository, In } from 'typeorm';import { AgentEntity } from '../entities/agent.entity';import { OpenClawInstanceEntity } from '../../openclaw/entities/openclaw-instance.entity';import { RedisService } from '../../../common/services/redis.service';import { OpenClawService } from '../../openclaw/services/openclaw.service';/** Agent 鍏抽敭瀛楁鍙樻洿鏃堕渶瑙﹀彂 OpenClaw 鍚屾 */const SYNC_TRIGGER_FIELDS: ReadonlySet<string> = new Set([  'name',  'systemPrompt',  'modelId',  'modelConfig',  'outputRule',  'useCodex',  'description',  'allowedPluginIds',]);/** * 鐢ㄦ埛绔?Agent 甯傚満鏈嶅姟 * 鏁版嵁鍚堝悓鐪熸簮锛歍ask 20 - Agent 甯傚満绠＄悊锛堢敤鎴风瑙嗗浘锛? * * 鐑偣鍒楄〃鏌ヨ璧?Redis 缂撳瓨锛圚-13锛夛紝鍑忓皯鏁版嵁搴撳帇鍔涖€? */@Injectable()export class AgentService {  private static readonly CACHE_KEY = 'cache:agent:list';  private static readonly CACHE_TTL = 300; // 5 鍒嗛挓  private readonly logger = new Logger(AgentService.name);  constructor(    @InjectRepository(AgentEntity)    private readonly agentRepo: Repository<AgentEntity>,    @InjectRepository(OpenClawInstanceEntity)    private readonly openclawInstanceRepo: Repository<OpenClawInstanceEntity>,    private readonly redis: RedisService,    @Inject(forwardRef(() => OpenClawService))    private readonly openClawService: OpenClawService,  ) {}  /** 鑾峰彇宸蹭笂鏋?Agent 鍒楄〃锛堝甫 Redis 缂撳瓨锛孴TL 5 鍒嗛挓锛?*/  async findAll(): Promise<AgentEntity[]> {    const cached = await this.redis.get(AgentService.CACHE_KEY);    if (cached) {      try {        return JSON.parse(cached) as AgentEntity[];      } catch {        // 缂撳瓨鎹熷潖锛岀户缁煡 DB      }    }    const result = await this.agentRepo.find({      where: { status: 'published', officialVisible: true },      order: { publishedAt: 'DESC' },    });    await this.redis.set(      AgentService.CACHE_KEY,      JSON.stringify(result),      AgentService.CACHE_TTL,    );    return result;  }  /** 鏂板 Agent */  async create(data: Partial<AgentEntity>): Promise<AgentEntity> {    const agent = this.agentRepo.create(data);    const saved = await this.agentRepo.save(agent);    await this.redis.del(AgentService.CACHE_KEY);    return saved;  }  /** 鏇存柊 Agent */  async update(id: number, data: Partial<AgentEntity>): Promise<void> {    // 妫€娴嬪叧閿瓧娈垫槸鍚﹀彉鏇?    const hasSyncField = Object.keys(data).some((key) => SYNC_TRIGGER_FIELDS.has(key));    await this.agentRepo.update(id, data as any);    await this.redis.del(AgentService.CACHE_KEY);    // 鍏抽敭瀛楁鍙樻洿鏃惰嚜鍔ㄥ悓姝ュ埌鎵€鏈夊叧鑱旂殑鍦ㄧ嚎 OpenClaw 瀹炰緥    if (hasSyncField) {      await this.syncToOpenClawInstances(id);    }  }  /**   * 灏?Agent 閰嶇疆鍚屾鍒版墍鏈夊叧鑱旂殑鍦ㄧ嚎 OpenClaw 瀹炰緥   * 鍚屾澶辫触涓嶅奖鍝嶄富娴佺▼锛屼粎璁板綍璀﹀憡鏃ュ織   */  private async syncToOpenClawInstances(agentId: number): Promise<void> {    try {      const instances = await this.openclawInstanceRepo.find({        where: { agentId, status: In(['online', 'error']) },      });      if (instances.length === 0) return;      this.logger.log(        `Agent ${agentId} 鍏抽敭瀛楁鍙樻洿锛屽悓姝ュ埌 ${instances.length} 涓?OpenClaw 瀹炰緥`,      );      for (const inst of instances) {        try {          const result = await this.openClawService.syncAgent(inst.userId, inst.id);          if (!result.success) {            this.logger.warn(              `鍚屾 Agent ${agentId} 鍒?OpenClaw 瀹炰緥 ${inst.id} 澶辫触: ${result.message}`,            );          }        } catch (err) {          this.logger.warn(            `鍚屾 Agent ${agentId} 鍒?OpenClaw 瀹炰緥 ${inst.id} 寮傚父: ${(err as Error).message}`,          );        }      }    } catch (err) {      this.logger.error(        `鏌ヨ OpenClaw 瀹炰緥澶辫触 (agentId=${agentId}): ${(err as Error).message}`,      );    }  }  /** 鍒犻櫎 Agent */  async remove(id: number): Promise<void> {    await this.agentRepo.delete(id);    await this.redis.del(AgentService.CACHE_KEY);  }  health() {    return { status: 'ok', module: 'agent' };  }}
+﻿import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { AgentEntity } from '../entities/agent.entity';
+
+const DISPLAY_NAMES: Record<string, string> = {
+  office: '办公',
+  programming: '编程',
+  copywriting: '文案',
+  data_analysis: '数据分析',
+  other: '其他',
+};
+
+@Injectable()
+export class AgentService {
+  constructor(
+    @InjectRepository(AgentEntity)
+    private readonly agentRepo: Repository<AgentEntity>,
+  ) {}
+
+  health() {
+    return { status: 'ok', module: 'agent' };
+  }
+
+  async listPublished(query: {
+    page: number;
+    pageSize: number;
+    category?: string;
+    keyword?: string;
+    sort?: string;
+  }) {
+    const { page, pageSize, category, keyword, sort } = query;
+    const qb = this.agentRepo.createQueryBuilder('a');
+    qb.where('a.status = :status', { status: 'published' });
+    qb.andWhere('a.official_visible = :visible', { visible: true });
+
+    if (category) {
+      qb.andWhere('a.category = :category', { category });
+    }
+    if (keyword) {
+      qb.andWhere('(a.name LIKE :kw OR a.description LIKE :kw)', { kw: `%${keyword}%` });
+    }
+
+    switch (sort) {
+      case 'popular': qb.orderBy('a.call_count', 'DESC'); break;
+      case 'rating': qb.orderBy('a.rating', 'DESC'); break;
+      default: qb.orderBy('a.published_at', 'DESC'); break;
+    }
+
+    qb.skip((page - 1) * pageSize).take(pageSize);
+    const [agents, total] = await qb.getManyAndCount();
+
+    return {
+      list: agents.map(a => this.toListItem(a)),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  async listCategories() {
+    const rows = await this.agentRepo
+      .createQueryBuilder('a')
+      .select('a.category', 'category')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('a.status = :status', { status: 'published' })
+      .andWhere('a.official_visible = :visible', { visible: true })
+      .groupBy('a.category')
+      .getRawMany<{ category: string; cnt: string }>();
+
+    return rows.map(r => ({
+      category: r.category,
+      displayName: DISPLAY_NAMES[r.category] || r.category,
+      agentCount: Number(r.cnt),
+    }));
+  }
+
+  async getDetail(id: number) {
+    const agent = await this.agentRepo.findOne({ where: { id } });
+    if (!agent) return null;
+    return this.toDetail(agent);
+  }
+
+  private toListItem(a: AgentEntity) {
+    return {
+      id: a.id,
+      name: a.name,
+      description: a.description || '',
+      avatar: a.avatar,
+      category: a.category,
+      tags: a.tags || [],
+      modelId: a.modelId,
+      pricePerCall: a.pricePerCall,
+      rating: Number(a.rating) || 0,
+      ratingCount: a.ratingCount,
+      callCount: a.callCount,
+      isOfficial: a.isOfficial,
+      sourceCategory: a.sourceCategory,
+    };
+  }
+
+  private toDetail(agent: AgentEntity) {
+    return {
+      id: agent.id,
+      name: agent.name,
+      description: agent.description || '',
+      avatar: agent.avatar,
+      systemPrompt: agent.systemPrompt,
+      usageExample: agent.usageExample,
+      category: agent.category,
+      tags: agent.tags || [],
+      modelId: agent.modelId,
+      pricePerCall: agent.pricePerCall,
+      rating: Number(agent.rating) || 0,
+      ratingCount: agent.ratingCount,
+      callCount: agent.callCount,
+      isOfficial: agent.isOfficial,
+      sourceCategory: agent.sourceCategory,
+      sourceName: agent.sourceName,
+      createdAt: agent.createdAt?.toISOString(),
+      publishedAt: agent.publishedAt?.toISOString(),
+    };
+  }
+}

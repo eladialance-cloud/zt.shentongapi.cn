@@ -1,1 +1,377 @@
-﻿// 绠＄悊绔璇佷笌鏉冮檺 API//// 绔偣濂戠害锛?//   POST   /admin/auth/login                 绠＄悊鍛樼櫥褰?//   POST   /admin/auth/logout                绠＄悊鍛樼櫥鍑?//   GET    /admin/auth/profile               褰撳墠绠＄悊鍛樹俊鎭?+ 鏉冮檺//   POST   /admin/auth/change-password       淇敼绠＄悊鍛樺瘑鐮侊紙棣栨鐧诲綍寮哄埗鏀瑰瘑锛?//   GET    /admin/roles                      瑙掕壊鍒楄〃//   PUT    /admin/roles/:id/permissions      鏇存柊瑙掕壊鏉冮檺//   GET    /admin/operation-logs             鎿嶄綔鏃ュ織鏌ヨ//// 璇存槑锛?//   绠＄悊绔娇鐢ㄧ嫭绔?adminToken,涓嶄笌鐢ㄦ埛绔?token 娣锋穯銆?//   姝ゆ枃浠跺鍑虹殑 adminRequest 鏄墍鏈?admin-api 鏂囦欢鍏辩敤鐨?HTTP helper,//   瀹冨熀浜庣嫭绔嬬殑 axios 瀹炰緥,鍦ㄨ姹傚ご鎵嬪姩娉ㄥ叆 Authorization: Bearer ${adminToken}銆?//   涔嬫墍浠ヤ笉澶嶇敤 httpClient: httpClient 鐨勮姹傛嫤鎴櫒浼氭敞鍏ョ敤鎴风 accessToken,//   浼氳鐩栫鐞嗙 token,鍥犳杩欓噷浣跨敤鐙珛瀹炰緥閬垮厤鍐茬獊銆?import axios, { type AxiosRequestConfig } from 'axios'import { BusinessError, NetworkError } from '@/utils/errors'import { useAdminAuthStore } from '@/store/admin-auth'import type {  AdminLoginDto,  AdminLoginResponse,  AdminRole,  AdminUser,  OperationLog,  OperationLogQuery,  Permission,  PermissionCode,  AdminPaginatedResult} from '@/types/admin-auth'/** API 鍩虹鍦板潃 */const ADMIN_API_BASE_URL =  import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api'/** 鍚庣鏍囧噯鍝嶅簲浣?*/interface ApiResponse<T = unknown> {  code: number  message: string  data: T}/** 绠＄悊绔笓鐢?axios 瀹炰緥(鐙珛浜庣敤鎴风 httpClient) */const adminAxios = axios.create({  baseURL: ADMIN_API_BASE_URL,  timeout: 30000,  withCredentials: true,  headers: {    'Content-Type': 'application/json'  }})/** 401 璺宠浆鍘绘姈鏃堕棿鎴?閬垮厤骞跺彂 401 瑙﹀彂澶氭纭烦杞?*/let lastRedirectAt = 0/** 鍝嶅簲鎷︽埅鍣?瑙ｅ寘 data + 涓氬姟鐮佹鏌?+ 缃戠粶閿欒 */adminAxios.interceptors.response.use(  (response) => {    const body = response.data as ApiResponse    if (body && typeof body.code === 'number') {      if (body.code === 0) {        return body.data      }      throw new BusinessError(body.code, body.message || '璇锋眰澶辫触', body.data)    }    return response.data  },  (error) => {    if (!error.response) {      const isTimeout =        error.code === 'ECONNABORTED' ||        (typeof error.message === 'string' && error.message.includes('timeout'))      return Promise.reject(        new NetworkError(isTimeout ? '璇锋眰瓒呮椂' : '缃戠粶杩炴帴澶辫触', {          isTimeout,          cause: error        })      )    }    // 401: token 杩囨湡鎴栨棤鏁?    // - 鐧诲綍鎺ュ彛 401(璐﹀彿/瀵嗙爜閿欒):涓嶆竻闄?auth(鏈氨涓虹┖)銆佷笉璺宠浆(宸插湪鐧诲綍椤?    // - 鍏朵粬鎺ュ彛 401:娓呴櫎鐧诲綍鎬佸苟璺宠浆鐧诲綍椤?2 绉掑幓鎶栭伩鍏嶅苟鍙?401 澶氭璺宠浆    // 娉?妗岄潰绔娇鐢?createHashRouter,璺宠浆閫氳繃 window.location.hash 瑙﹀彂,    //    涓?Web Admin 鐨?window.location.href 涓嶅悓(鍚庤€呭熀浜?history 璺敱)    if (error.response.status === 401) {      const reqUrl =        error.config?.url || error.response?.config?.url || ''      if (reqUrl.includes('/admin/auth/login')) {        return Promise.reject(new BusinessError(401, '璐﹀彿鎴栧瘑鐮侀敊璇?))      }      useAdminAuthStore.getState().clearAdminAuth()      if (!window.location.hash.endsWith('/login')) {        if (Date.now() - lastRedirectAt > 2000) {          lastRedirectAt = Date.now()          window.location.hash = '#/admin/login'        }      }      return Promise.reject(        new BusinessError(401, '鐧诲綍宸茶繃鏈燂紝璇烽噸鏂扮櫥褰?)      )    }    const body = error.response.data as ApiResponse | undefined    const msg =      body?.message || error.message || `璇锋眰澶辫触 (${error.response.status})`    if (body && typeof body.code === 'number' && body.code !== 0) {      return Promise.reject(new BusinessError(body.code, msg, body.data))    }    return Promise.reject(      new BusinessError(error.response.status, msg, body?.data)    )  })/** * 绠＄悊绔€氱敤璇锋眰鏂规硶(鍏跺畠 admin-api 鏂囦欢搴斿鐢ㄦ鏂规硶) * 鑷姩浠?adminStore 璇诲彇 token 骞舵敞鍏?Authorization 澶淬€? */export async function adminRequest<T = unknown>(  method: 'get' | 'post' | 'put' | 'patch' | 'delete',  url: string,  options: {    data?: unknown    params?: Record<string, unknown>  } = {}): Promise<T> {  const token = useAdminAuthStore.getState().token  const headers: Record<string, string> = {}  if (token) {    headers.Authorization = `Bearer ${token}`  }  const config: AxiosRequestConfig = {    method,    url,    headers,    params: options.params,    data: options.data  }  // 鍝嶅簲鎷︽埅鍣ㄥ凡瑙ｅ寘 data,姝ゅ鐩存帴鏂█涓?T  return adminAxios.request(config) as unknown as Promise<T>}// ===== 鏉冮檺缂栫爜甯搁噺(鍓嶇纭紪鐮? =====/** 鍏ㄩ儴鏉冮檺瀹氫箟(鎸夊垎缁勭粍缁?渚涜鑹叉潈闄愮紪杈戞爲浣跨敤) */export const ALL_PERMISSIONS: Permission[] = [  // 鐢ㄦ埛绠＄悊  { code: 'user:read', name: '鏌ョ湅鐢ㄦ埛', group: '鐢ㄦ埛绠＄悊', description: '鏌ヨ鐢ㄦ埛鍒楄〃涓庤鎯? },  { code: 'user:write', name: '缂栬緫鐢ㄦ埛', group: '鐢ㄦ埛绠＄悊', description: '灏佺/瑙ｅ皝/璋冩暣绛夌骇' },  // Agent  { code: 'agent:read', name: '鏌ョ湅 Agent', group: 'Agent 绠＄悊', description: '鏌ヨ Agent 鍒楄〃' },  { code: 'agent:write', name: '缂栬緫 Agent', group: 'Agent 绠＄悊', description: '涓婁笅鏋?閰嶇疆 Agent' },  { code: 'agent:approve', name: '瀹℃牳 Agent', group: 'Agent 绠＄悊', description: '瀹℃壒 Agent 涓婃灦' },  // 宸ヤ綔娴?  { code: 'workflow:read', name: '鏌ョ湅宸ヤ綔娴?, group: '宸ヤ綔娴佺鐞?, description: '鏌ヨ宸ヤ綔娴? },  { code: 'workflow:write', name: '缂栬緫宸ヤ綔娴?, group: '宸ヤ綔娴佺鐞?, description: '閰嶇疆宸ヤ綔娴? },  { code: 'workflow:approve', name: '瀹℃牳宸ヤ綔娴?, group: '宸ヤ綔娴佺鐞?, description: '瀹℃壒宸ヤ綔娴? },  // 鎻掍欢  { code: 'plugin:read', name: '鏌ョ湅鎻掍欢', group: '鎻掍欢绠＄悊', description: '鏌ヨ鎻掍欢' },  { code: 'plugin:write', name: '缂栬緫鎻掍欢', group: '鎻掍欢绠＄悊', description: '閰嶇疆鎻掍欢' },  { code: 'plugin:approve', name: '瀹℃牳鎻掍欢', group: '鎻掍欢绠＄悊', description: '瀹℃壒鎻掍欢' },  // 妯″瀷  { code: 'model:read', name: '鏌ョ湅妯″瀷', group: '妯″瀷绠＄悊', description: '鏌ヨ妯″瀷閰嶇疆' },  { code: 'model:write', name: '缂栬緫妯″瀷', group: '妯″瀷绠＄悊', description: '閰嶇疆妯″瀷' },  // 绉垎  { code: 'credits:read', name: '鏌ョ湅绉垎', group: '绉垎绠＄悊', description: '鏌ヨ绉垎璐︽埛' },  { code: 'credits:adjust', name: '璋冩暣绉垎', group: '绉垎绠＄悊', description: '鎵嬪姩璋冩暣浣欓' },  // 璐㈠姟  { code: 'payment:read', name: '鏌ョ湅璁㈠崟', group: '璐㈠姟绠＄悊', description: '鏌ヨ鍏呭€艰鍗? },  { code: 'payment:refund', name: '閫€娆?, group: '璐㈠姟绠＄悊', description: '澶勭悊閫€娆? },  // 瀹℃牳  { code: 'audit:read', name: '鏌ョ湅瀹℃牳', group: '瀹℃牳涓績', description: '鏌ヨ瀹℃牳浠诲姟' },  { code: 'audit:process', name: '澶勭悊瀹℃牳', group: '瀹℃牳涓績', description: '瀹℃壒澶勭悊' },  // 缁熻  { code: 'stats:read', name: '鏌ョ湅缁熻', group: '缁熻涓績', description: '鏌ョ湅缁熻鎶ヨ〃' },  // 鐗堟湰  { code: 'version:read', name: '鏌ョ湅鐗堟湰', group: '鐗堟湰绠＄悊', description: '鏌ヨ鐗堟湰' },  { code: 'version:write', name: '鍙戝竷鐗堟湰', group: '鐗堟湰绠＄悊', description: '鍙戝竷/鍥炴粴鐗堟湰' },  // 绯荤粺  { code: 'system:read', name: '鏌ョ湅绯荤粺', group: '绯荤粺绠＄悊', description: '鏌ョ湅绯荤粺閰嶇疆' },  { code: 'system:write', name: '缂栬緫绯荤粺', group: '绯荤粺绠＄悊', description: '淇敼绯荤粺閰嶇疆' },  // Key 姹?  { code: 'apikey_pool:read', name: '鏌ョ湅 Key 姹?, group: 'Key 姹犵鐞?, description: '鏌ヨ API Key 姹? },  { code: 'apikey_pool:write', name: '缂栬緫 Key 姹?, group: 'Key 姹犵鐞?, description: '澧炲垹鏀?Key' },  // MCP 绠＄悊  { code: 'mcp:read', name: '鏌ョ湅 MCP', group: 'MCP 绠＄悊', description: '鏌ヨ MCP 鏈嶅姟/宸ュ叿/璧勬簮' },  { code: 'mcp:write', name: '缂栬緫 MCP', group: 'MCP 绠＄悊', description: '閰嶇疆 MCP 鏈嶅姟/宸ュ叿/璧勬簮' },  // OSS 瀛樺偍  { code: 'oss:read', name: '鏌ョ湅瀛樺偍', group: '瀛樺偍绠＄悊', description: '鏌ヨ OSS 閰嶇疆' },  { code: 'oss:write', name: '缂栬緫瀛樺偍', group: '瀛樺偍绠＄悊', description: '閰嶇疆 OSS' },  // 浠诲姟涓績  { code: 'task:read', name: '鏌ョ湅浠诲姟', group: '浠诲姟绠＄悊', description: '鏌ヨ浠诲姟璇︽儏' },  { code: 'task:write', name: '绠＄悊浠诲姟', group: '浠诲姟绠＄悊', description: '鍒犻櫎浠诲姟' },  // Agent 鎵╁睍  { code: 'agent_ext:read', name: '鏌ョ湅Agent鎵╁睍', group: 'Agent 鎵╁睍', description: '鏌ヨ閮ㄩ棬/鏍囩' },  { code: 'agent_ext:write', name: '缂栬緫Agent鎵╁睍', group: 'Agent 鎵╁睍', description: '绠＄悊閮ㄩ棬/鏍囩' },  // 宸ヤ綔娴佸簱  { code: 'workflow_lib:read', name: '鏌ョ湅宸ヤ綔娴佸簱', group: '宸ヤ綔娴佸簱', description: '鏌ヨ宸ヤ綔娴佹ā鏉? },  { code: 'workflow_lib:write', name: '缂栬緫宸ヤ綔娴佸簱', group: '宸ヤ綔娴佸簱', description: '绠＄悊宸ヤ綔娴佹ā鏉? }]/** 鎵€鏈夋潈闄愮紪鐮佸垪琛?*/export const ALL_PERMISSION_CODES: PermissionCode[] = ALL_PERMISSIONS.map(  (p) => p.code)/** * 绠＄悊鍛樼櫥褰? * POST /admin/auth/login  body: { username, password, captcha } */export async function adminLogin(  dto: AdminLoginDto): Promise<AdminLoginResponse> {  return adminRequest<AdminLoginResponse>('post', '/admin/auth/login', {    data: dto  })}/** * 绠＄悊鍛樼櫥鍑? * POST /admin/auth/logout */export async function adminLogout(): Promise<void> {  await adminRequest<void>('post', '/admin/auth/logout')}/** * 鑾峰彇褰撳墠绠＄悊鍛樹俊鎭?+ 鏉冮檺 * GET /admin/auth/profile */export async function getAdminProfile(): Promise<{  user: AdminUser  permissions: PermissionCode[]}> {  return adminRequest<{ user: AdminUser; permissions: PermissionCode[] }>(    'get',    '/admin/auth/profile'  )}/** * 淇敼绠＄悊鍛樺瘑鐮侊紙棣栨鐧诲綍寮哄埗鏀瑰瘑锛? * POST /admin/auth/change-password  body: { oldPassword, newPassword } */export async function changeAdminPassword(  oldPassword: string,  newPassword: string): Promise<void> {  await adminRequest<void>('post', '/admin/auth/change-password', {    data: { oldPassword, newPassword }  })}/** * 瑙掕壊鍒楄〃 * GET /admin/roles */export async function listAdminRoles(): Promise<AdminRole[]> {  return adminRequest<AdminRole[]>('get', '/admin/roles')}/** * 鏇存柊瑙掕壊鏉冮檺 * PUT /admin/roles/:id/permissions  body: { permissionCodes: string[] } */export async function updateRolePermissions(  roleId: number,  permissionCodes: PermissionCode[]): Promise<void> {  await adminRequest<void>('put', `/admin/roles/${roleId}/permissions`, {    data: { permissionCodes }  })}/** * 鎿嶄綔鏃ュ織鏌ヨ * GET /admin/operation-logs?userId=&type=&startTime=&endTime=&page=&pageSize= */export async function listOperationLogs(  query: OperationLogQuery = {}): Promise<AdminPaginatedResult<OperationLog>> {  return adminRequest<AdminPaginatedResult<OperationLog>>(    'get',    '/admin/operation-logs',    { params: query as Record<string, unknown> }  )}export default {  adminRequest,  adminLogin,  adminLogout,  getAdminProfile,  changeAdminPassword,  listAdminRoles,  updateRolePermissions,  listOperationLogs,  ALL_PERMISSIONS,  ALL_PERMISSION_CODES}
+// 管理端认证与权限 API
+//
+// 端点契约：
+//   POST   /admin/auth/login                 管理员登录
+//   POST   /admin/auth/logout                管理员登出
+//   GET    /admin/auth/profile               当前管理员信息 + 权限
+//   GET    /admin/roles                      角色列表
+//   PUT    /admin/roles/:id/permissions      更新角色权限
+//   GET    /admin/operation-logs             操作日志查询
+//
+// 说明：
+//   管理端使用独立 adminToken,不与用户端 token 混淆。
+//   此文件导出的 adminRequest 是所有 admin-api 文件共用的 HTTP helper,
+//   它基于独立的 axios 实例,在请求头手动注入 Authorization: Bearer ${adminToken}。
+//   之所以不复用 httpClient: httpClient 的请求拦截器会注入用户端 accessToken,
+//   会覆盖管理端 token,因此这里使用独立实例避免冲突。
+
+import axios, { type AxiosRequestConfig } from "axios";
+import { BusinessError, NetworkError } from "@/utils/errors";
+import { useAdminAuthStore } from "@/store/admin-auth";
+import type {
+  AdminLoginDto,
+  AdminLoginResponse,
+  AdminRole,
+  AdminUser,
+  OperationLog,
+  OperationLogQuery,
+  Permission,
+  PermissionCode,
+  AdminPaginatedResult,
+} from "@/types/admin-auth";
+
+/** API 基础地址 */
+const ADMIN_API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:3001/api";
+
+/** 后端标准响应体 */
+interface ApiResponse<T = unknown> {
+  code: number;
+  message: string;
+  data: T;
+}
+
+/** 管理端专用 axios 实例(独立于用户端 httpClient) */
+const adminAxios = axios.create({
+  baseURL: ADMIN_API_BASE_URL,
+  timeout: 30000,
+  withCredentials: true,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+/** 响应拦截器:解包 data + 业务码检查 + 网络错误 */
+adminAxios.interceptors.response.use(
+  (response) => {
+    const body = response.data as ApiResponse;
+    if (body && typeof body.code === "number") {
+      if (body.code === 0) {
+        return body.data;
+      }
+      throw new BusinessError(body.code, body.message || "请求失败", body.data);
+    }
+    return response.data;
+  },
+  (error) => {
+    if (!error.response) {
+      const isTimeout =
+        error.code === "ECONNABORTED" ||
+        (typeof error.message === "string" &&
+          error.message.includes("timeout"));
+      return Promise.reject(
+        new NetworkError(isTimeout ? "请求超时" : "网络连接失败", {
+          isTimeout,
+          cause: error,
+        }),
+      );
+    }
+    const body = error.response.data as ApiResponse | undefined;
+    const msg =
+      body?.message || error.message || `请求失败 (${error.response.status})`;
+    if (body && typeof body.code === "number" && body.code !== 0) {
+      return Promise.reject(new BusinessError(body.code, msg, body.data));
+    }
+    return Promise.reject(
+      new BusinessError(error.response.status, msg, body?.data),
+    );
+  },
+);
+
+/**
+ * 管理端通用请求方法(其它 admin-api 文件应复用此方法)
+ * 自动从 adminStore 读取 token 并注入 Authorization 头。
+ */
+export async function adminRequest<T = unknown>(
+  method: "get" | "post" | "put" | "patch" | "delete",
+  url: string,
+  options: {
+    data?: unknown;
+    params?: Record<string, unknown>;
+  } = {},
+): Promise<T> {
+  const token = useAdminAuthStore.getState().token;
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const config: AxiosRequestConfig = {
+    method,
+    url,
+    headers,
+    params: options.params,
+    data: options.data,
+  };
+  // 响应拦截器已解包 data,此处直接断言为 T
+  return adminAxios.request(config) as unknown as Promise<T>;
+}
+
+// ===== 权限编码常量(前端硬编码) =====
+
+/** 全部权限定义(按分组组织,供角色权限编辑树使用) */
+export const ALL_PERMISSIONS: Permission[] = [
+  // 用户管理
+  {
+    code: "user:read",
+    name: "查看用户",
+    group: "用户管理",
+    description: "查询用户列表与详情",
+  },
+  {
+    code: "user:write",
+    name: "编辑用户",
+    group: "用户管理",
+    description: "封禁/解封/调整等级",
+  },
+  // Agent
+  {
+    code: "agent:read",
+    name: "查看 Agent",
+    group: "Agent 管理",
+    description: "查询 Agent 列表",
+  },
+  {
+    code: "agent:write",
+    name: "编辑 Agent",
+    group: "Agent 管理",
+    description: "上下架/配置 Agent",
+  },
+  {
+    code: "agent:approve",
+    name: "审核 Agent",
+    group: "Agent 管理",
+    description: "审批 Agent 上架",
+  },
+  // 工作流
+  {
+    code: "workflow:read",
+    name: "查看工作流",
+    group: "工作流管理",
+    description: "查询工作流",
+  },
+  {
+    code: "workflow:write",
+    name: "编辑工作流",
+    group: "工作流管理",
+    description: "配置工作流",
+  },
+  {
+    code: "workflow:approve",
+    name: "审核工作流",
+    group: "工作流管理",
+    description: "审批工作流",
+  },
+  // 插件
+  {
+    code: "plugin:read",
+    name: "查看插件",
+    group: "插件管理",
+    description: "查询插件",
+  },
+  {
+    code: "plugin:write",
+    name: "编辑插件",
+    group: "插件管理",
+    description: "配置插件",
+  },
+  {
+    code: "plugin:approve",
+    name: "审核插件",
+    group: "插件管理",
+    description: "审批插件",
+  },
+  // 模型
+  {
+    code: "model:read",
+    name: "查看模型",
+    group: "模型管理",
+    description: "查询模型配置",
+  },
+  {
+    code: "model:write",
+    name: "编辑模型",
+    group: "模型管理",
+    description: "配置模型",
+  },
+  // 积分
+  {
+    code: "credits:read",
+    name: "查看积分",
+    group: "积分管理",
+    description: "查询积分账户",
+  },
+  {
+    code: "credits:adjust",
+    name: "调整积分",
+    group: "积分管理",
+    description: "手动调整余额",
+  },
+  // 财务
+  {
+    code: "payment:read",
+    name: "查看订单",
+    group: "财务管理",
+    description: "查询充值订单",
+  },
+  {
+    code: "payment:refund",
+    name: "退款",
+    group: "财务管理",
+    description: "处理退款",
+  },
+  // 审核
+  {
+    code: "audit:read",
+    name: "查看审核",
+    group: "审核中心",
+    description: "查询审核任务",
+  },
+  {
+    code: "audit:process",
+    name: "处理审核",
+    group: "审核中心",
+    description: "审批处理",
+  },
+  // 统计
+  {
+    code: "stats:read",
+    name: "查看统计",
+    group: "统计中心",
+    description: "查看统计报表",
+  },
+  // 版本
+  {
+    code: "version:read",
+    name: "查看版本",
+    group: "版本管理",
+    description: "查询版本",
+  },
+  {
+    code: "version:write",
+    name: "发布版本",
+    group: "版本管理",
+    description: "发布/回滚版本",
+  },
+  // 系统
+  {
+    code: "system:read",
+    name: "查看系统",
+    group: "系统管理",
+    description: "查看系统配置",
+  },
+  {
+    code: "system:write",
+    name: "编辑系统",
+    group: "系统管理",
+    description: "修改系统配置",
+  },
+  // Key 池
+  {
+    code: "apikey_pool:read",
+    name: "查看 Key 池",
+    group: "Key 池管理",
+    description: "查询 API Key 池",
+  },
+  {
+    code: "apikey_pool:write",
+    name: "编辑 Key 池",
+    group: "Key 池管理",
+    description: "增删改 Key",
+  },
+];
+
+/** 所有权限编码列表 */
+export const ALL_PERMISSION_CODES: PermissionCode[] = ALL_PERMISSIONS.map(
+  (p) => p.code,
+);
+
+/**
+ * 管理员登录
+ * POST /admin/auth/login  body: { username, password, captcha }
+ */
+export async function adminLogin(
+  dto: AdminLoginDto,
+): Promise<AdminLoginResponse> {
+  return adminRequest<AdminLoginResponse>("post", "/admin/auth/login", {
+    data: dto,
+  });
+}
+
+/**
+ * 管理员登出
+ * POST /admin/auth/logout
+ */
+export async function adminLogout(): Promise<void> {
+  await adminRequest<void>("post", "/admin/auth/logout");
+}
+
+/**
+ * 获取当前管理员信息 + 权限
+ * GET /admin/auth/profile
+ */
+export async function getAdminProfile(): Promise<{
+  user: AdminUser;
+  permissions: PermissionCode[];
+}> {
+  return adminRequest<{ user: AdminUser; permissions: PermissionCode[] }>(
+    "get",
+    "/admin/auth/profile",
+  );
+}
+
+/**
+ * 角色列表
+ * GET /admin/roles
+ */
+export async function listAdminRoles(): Promise<AdminRole[]> {
+  return adminRequest<AdminRole[]>("get", "/admin/roles");
+}
+
+/**
+ * 更新角色权限
+ * PUT /admin/roles/:id/permissions  body: { permissionCodes: string[] }
+ */
+export async function updateRolePermissions(
+  roleId: number,
+  permissionCodes: PermissionCode[],
+): Promise<void> {
+  await adminRequest<void>("put", `/admin/roles/${roleId}/permissions`, {
+    data: { permissionCodes },
+  });
+}
+
+/**
+ * 操作日志查询
+ * GET /admin/operation-logs?userId=&type=&startTime=&endTime=&page=&pageSize=
+ */
+export async function listOperationLogs(
+  query: OperationLogQuery = {},
+): Promise<AdminPaginatedResult<OperationLog>> {
+  return adminRequest<AdminPaginatedResult<OperationLog>>(
+    "get",
+    "/admin/operation-logs",
+    { params: query as Record<string, unknown> },
+  );
+}
+
+export default {
+  adminRequest,
+  adminLogin,
+  adminLogout,
+  getAdminProfile,
+  listAdminRoles,
+  updateRolePermissions,
+  listOperationLogs,
+  ALL_PERMISSIONS,
+  ALL_PERMISSION_CODES,
+};

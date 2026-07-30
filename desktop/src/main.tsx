@@ -1,1 +1,8 @@
-﻿// v0.3.1 design tokens - MUST be imported firstimport './styles/design-tokens.css';import './styles/typography.css';import './styles/spacing.css';import './styles/shadows.css';import './styles/animations.css';// 娓叉煋杩涚▼鍏ュ彛 - React 18 createRoot// 鍔犺浇 antd ConfigProvider锛堜腑鏂?zhCN锛夈€丷eact Router銆乑ustand storeimport ReactDOM from 'react-dom/client'import App from '@/App'import '@/styles/global.css'ReactDOM.createRoot(document.getElementById('root')!).render(<App />)
+// 渲染进程入口 - React 18 createRoot
+// 加载 antd ConfigProvider（中文 zhCN）、React Router、Zustand store
+
+import ReactDOM from "react-dom/client";
+import App from "@/App";
+import "@/styles/global.css";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(<App />);

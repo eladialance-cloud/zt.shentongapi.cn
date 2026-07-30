@@ -1,1 +1,17 @@
-﻿import { Body, Controller, Get, Param, Post } from '@nestjs/common';import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';import { Public } from '../../../common/decorators/public.decorator';import {  CurrentUser,  ICurrentUser,} from '../../../common/decorators/current-user.decorator';import { RagService } from '../services/rag.service';@ApiTags('RAG')@ApiBearerAuth()@Controller('rag')export class RagController {  constructor(private readonly service: RagService) {}  @Public()  @Get('health')  @ApiOperation({ summary: '鍋ュ悍妫€鏌? })  health() {    return this.service.health();  }  @Post('retrieve')  @ApiOperation({ summary: '妫€绱㈢煡璇嗗簱' })  retrieve(    @CurrentUser() user: ICurrentUser,    @Body() body: { knowledgeBaseId: number; query: string; topK?: number },  ) {    return this.service.retrieve(user.userId, body);  }  @Post('augment')  @ApiOperation({ summary: '澧炲己鎻愮ず璇? })  augment(    @CurrentUser() user: ICurrentUser,    @Body() body: { query: string; retrievedDocs: any[] },  ) {    return this.service.augmentPrompt(user.userId, body);  }  @Post('index')  @ApiOperation({ summary: '绱㈠紩鏂囨。' })  index(    @CurrentUser() user: ICurrentUser,    @Body()    body: {      knowledgeBaseId: number;      documentId: number;      content: string;      chunkSize?: number;      overlap?: number;    },  ) {    return this.service.indexDocument(user.userId, body);  }  @Post('reindex/:knowledgeBaseId')  @ApiOperation({ summary: '閲嶆柊绱㈠紩鐭ヨ瘑搴? })  reindex(    @CurrentUser() user: ICurrentUser,    @Param('knowledgeBaseId') knowledgeBaseId: number,  ) {    return this.service.reindexKnowledgeBase(user.userId, Number(knowledgeBaseId));  }}
+﻿import { Controller, Get } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Public } from '../../../common/decorators/public.decorator';
+import { RagService } from '../services/rag.service';
+
+@ApiTags('RAG')
+@ApiBearerAuth()
+@Controller('rag')
+export class RagController {
+  constructor(private readonly service: RagService) {}
+
+  @Public()
+  @Get('health')
+  health() {
+    return this.service.health();
+  }
+}

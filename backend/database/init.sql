@@ -1,4 +1,4 @@
--- =============================================================================
+﻿-- =============================================================================
 -- 深瞳 AI 智能中台 - 数据库初始化脚本
 -- 数据库：ai_agent
 -- MySQL 版本：8.0+
@@ -46,6 +46,8 @@ CREATE TABLE `users` (
   `invite_code` VARCHAR(32) DEFAULT NULL COMMENT '邀请码',
   `needs_tenant_setup` BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否需要重新创建租户资源',
   must_change_password BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否需要修改密码',
+  `llm_proxy_key` VARCHAR(64) DEFAULT NULL COMMENT 'LLM代理密钥',
+  UNIQUE KEY `uniq_users_llm_proxy_key` (`llm_proxy_key`),
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),

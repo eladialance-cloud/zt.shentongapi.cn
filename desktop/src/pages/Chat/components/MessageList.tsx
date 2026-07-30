@@ -1,1 +1,139 @@
-﻿// 娑堟伅鍒楄〃缁勪欢 - v0.3.1// 娓叉煋娑堟伅姘旀场浣跨敤 ChatBubble 鍏变韩缁勪欢// 宸ュ叿璋冪敤灞曠ず浣跨敤 ToolCallPanel 鍏变韩缁勪欢// 鍔╂墜娑堟伅搴曢儴鏄剧ず璁¤垂淇℃伅锛堟祦寮忓畬鎴愬悗锛?// 鑷姩婊氬姩鍒板簳閮?import { useEffect, useRef } from 'react'import { Space, Tag } from 'antd'import { RobotOutlined, UserOutlined } from '@ant-design/icons'import ChatBubble from '@/components/ChatBubble'import ToolCallPanel from '@/components/ToolCallPanel'import type { ChatMessage, ToolCallInfo } from '@/types/chat'import styles from '../styles.module.css'interface MessageListProps {  /** 娑堟伅鍒楄〃 */  messages: ChatMessage[]  /** 姝ｅ湪娴佸紡鐢熸垚鐨勫姪鎵嬫秷鎭唴瀹癸紙杩藉姞鍦ㄦ渶鍚庯級 */  streamingContent?: string  /** 鏄惁姝ｅ湪娴佸紡涓?*/  streaming?: boolean  /** 娴佸紡鏈熼棿鏀跺埌鐨勫伐鍏疯皟鐢?*/  streamingToolCalls?: ChatMessage['toolCalls']}/** 鏍煎紡鍖栨椂闂?*/function formatTime(date: Date): string {  const d = new Date(date)  const pad = (n: number) => n.toString().padStart(2, '0')  return `${pad(d.getHours())}:${pad(d.getMinutes())}`}/** 灏嗗唴閮?ToolCallInfo 鏄犲皠涓?ToolCallPanel 鐨?status 绫诲瀷 */function mapToolCallStatus(s: ToolCallInfo['status']): 'success' | 'error' | 'running' {  if (s === 'running') return 'running'  if (s === 'failed') return 'error'  return 'success'}export function MessageList({  messages,  streamingContent,  streaming = false,  streamingToolCalls}: MessageListProps) {  const containerRef = useRef<HTMLDivElement>(null)  /** 鑷姩婊氬姩鍒板簳閮?*/  useEffect(() => {    const el = containerRef.current    if (!el) return    el.scrollTop = el.scrollHeight  }, [messages, streamingContent, streamingToolCalls])  return (    <div className={styles.messageListContainer} ref={containerRef}>      {messages.map((msg) => {        const isUser = msg.role === 'user'        const role = isUser ? 'user' : msg.role === 'system' ? 'system' : 'assistant'        const avatar = isUser ? '馃懁' : '馃'        return (          <div            key={msg.id}            className={`${styles.messageRow} ${isUser ? styles.messageRowUser : ''}`}          >            <div              style={{                width: 32,                height: 32,                borderRadius: '50%',                flexShrink: 0,                display: 'flex',                alignItems: 'center',                justifyContent: 'center',                fontSize: 16,                background: isUser ? 'var(--color-primary)' : 'var(--color-bg-container)',                color: isUser ? '#fff' : 'var(--color-primary)',                border: isUser ? 'none' : '1px solid var(--color-primary-light)'              }}            >              {isUser ? <UserOutlined /> : <RobotOutlined />}            </div>            <div className={`${styles.messageBubbleWrap} ${isUser ? styles.messageBubbleWrapUser : ''}`}>              <ChatBubble                type="text"                role={role}                content={msg.content}                avatar={avatar}                timestamp={formatTime(msg.createdAt)}              />              {/* 闄勪欢灞曠ず */}              {msg.attachments && msg.attachments.length > 0 && (                <div className={styles.messageAttachments}>                  {msg.attachments.map((att) => (                    <span key={att.fileId} className={styles.attachmentChip}>                      {att.fileName}                    </span>                  ))}                </div>              )}              {/* 宸ュ叿璋冪敤灞曠ず - 浣跨敤 ToolCallPanel 鍏变韩缁勪欢 */}              {msg.toolCalls && msg.toolCalls.length > 0 && (                <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 8 }}>                  {msg.toolCalls.map((tc) => (                    <ToolCallPanel                      key={tc.id}                      toolName={tc.name}                      input={tc.input}                      output={tc.output}                      duration={tc.duration}                      status={mapToolCallStatus(tc.status)}                    />                  ))}                </Space>              )}              {/* 璁¤垂淇℃伅 */}              {msg.tokenUsage && (                <div className={styles.messageMeta}>                  <Tag color="default">                    tokens: {msg.tokenUsage.promptTokens ?? 0} / {msg.tokenUsage.completionTokens ?? 0}                  </Tag>                  {typeof msg.creditsCost === 'number' && msg.creditsCost > 0 && (                    <span className={styles.creditsBadge}>馃拵 {msg.creditsCost}</span>                  )}                </div>              )}            </div>          </div>        )      })}      {/* 娴佸紡鏈熼棿鏄剧ず涓存椂姘旀场 */}      {streaming && (        <div className={styles.messageRow}>          <div            style={{              width: 32,              height: 32,              borderRadius: '50%',              flexShrink: 0,              display: 'flex',              alignItems: 'center',              justifyContent: 'center',              fontSize: 16,              background: 'var(--color-bg-container)',              color: 'var(--color-primary)',              border: '1px solid var(--color-primary-light)'            }}          >            <RobotOutlined />          </div>          <div className={styles.messageBubbleWrap}>            {streamingContent ? (              <ChatBubble type="text" role="assistant" content={streamingContent} avatar="馃" />            ) : (              <ChatBubble type="thinking" role="assistant" content="" avatar="馃" />            )}            {streamingToolCalls && streamingToolCalls.length > 0 && (              <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 8 }}>                {streamingToolCalls.map((tc) => (                  <ToolCallPanel                    key={tc.id}                    toolName={tc.name}                    input={tc.input}                    output={tc.output}                    duration={tc.duration}                    status={mapToolCallStatus(tc.status)}                  />                ))}              </Space>            )}          </div>        </div>      )}    </div>  )}export default MessageList
+// 消息列表组件 - 中间消息区
+// 渲染消息气泡，区分用户/助手
+// - 助手消息支持工具调用展示
+// - 助手消息底部显示计费信息（流式完成后）
+// - 自动滚动到底部
+
+import { useEffect, useRef } from "react";
+import { Avatar } from "antd";
+import { RobotOutlined, UserOutlined } from "@ant-design/icons";
+import type { ChatMessage } from "@/types/chat";
+import { ToolCallBadge } from "./ToolCallBadge";
+import { CreditsBadge } from "./CreditsBadge";
+import styles from "../styles.module.css";
+
+interface MessageListProps {
+  /** 消息列表 */
+  messages: ChatMessage[];
+  /** 正在流式生成的助手消息内容（追加在最后） */
+  streamingContent?: string;
+  /** 是否正在流式中 */
+  streaming?: boolean;
+  /** 流式期间收到的工具调用 */
+  streamingToolCalls?: ChatMessage["toolCalls"];
+}
+
+/** 格式化时间 */
+function formatTime(date: Date): string {
+  const d = new Date(date);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+export function MessageList({
+  messages,
+  streamingContent,
+  streaming = false,
+  streamingToolCalls,
+}: MessageListProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  /** 自动滚动到底部 */
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages, streamingContent, streamingToolCalls]);
+
+  return (
+    <div className={styles.messageListContainer} ref={containerRef}>
+      {messages.map((msg) => {
+        const isUser = msg.role === "user";
+        return (
+          <div
+            key={msg.id}
+            className={`${styles.messageRow} ${isUser ? styles.messageRowUser : ""}`}
+          >
+            <Avatar
+              size={32}
+              icon={isUser ? <UserOutlined /> : <RobotOutlined />}
+              className={`${styles.messageAvatar} ${
+                isUser
+                  ? styles.messageAvatarUser
+                  : styles.messageAvatarAssistant
+              }`}
+            />
+            <div
+              className={`${styles.messageBubbleWrap} ${
+                isUser ? styles.messageBubbleWrapUser : ""
+              }`}
+            >
+              <div
+                className={`${styles.messageBubble} ${
+                  isUser
+                    ? styles.messageBubbleUser
+                    : styles.messageBubbleAssistant
+                }`}
+              >
+                {msg.content}
+              </div>
+              {/* 附件展示 */}
+              {msg.attachments && msg.attachments.length > 0 && (
+                <div className={styles.messageAttachments}>
+                  {msg.attachments.map((att) => (
+                    <span key={att.fileId} className={styles.attachmentChip}>
+                      📎 {att.fileName}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {/* 工具调用 */}
+              {!isUser &&
+                msg.toolCalls &&
+                msg.toolCalls.map((tc) => (
+                  <ToolCallBadge key={tc.id} toolCall={tc} />
+                ))}
+              {/* 元信息 */}
+              <div className={styles.messageMeta}>
+                <span>{formatTime(msg.createdAt)}</span>
+                {!isUser && msg.creditsCost != null && msg.creditsCost > 0 && (
+                  <CreditsBadge cost={msg.creditsCost} />
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* 流式生成中的消息（助手消息，左对齐） */}
+      {streaming && (
+        <div className={styles.messageRow}>
+          <Avatar
+            size={32}
+            icon={<RobotOutlined />}
+            className={`${styles.messageAvatar} ${styles.messageAvatarAssistant}`}
+          />
+          <div className={styles.messageBubbleWrap}>
+            {streamingToolCalls && streamingToolCalls.length > 0 && (
+              <>
+                {streamingToolCalls.map((tc) => (
+                  <ToolCallBadge key={tc.id} toolCall={tc} />
+                ))}
+              </>
+            )}
+            <div
+              className={`${styles.messageBubble} ${styles.messageBubbleAssistant} ${styles.messageBubbleStreaming}`}
+            >
+              {streamingContent || "..."}
+            </div>
+            <div className={styles.messageMeta}>
+              <span>生成中...</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default MessageList;

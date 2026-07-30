@@ -1,1 +1,89 @@
-﻿// 绠＄悊绔璇?store - 鐙珛浜庣敤鎴风 auth store//// 璁捐渚濇嵁锛歍ask 17 - 绠＄悊绔笁灞傚畧鍗?鍓嶇閮ㄥ垎)// - token: 绠＄悊绔闂护鐗?鐙珛瀛樺偍,涓嶄笌鐢ㄦ埛绔?token 娣锋穯)// - expiresAt: 浠ょ墝杩囨湡鏃堕棿(姣鏃堕棿鎴?// - user: 绠＄悊鍛樼敤鎴蜂俊鎭?// - permissions: 鏉冮檺缂栫爜鍒楄〃// - hasPermission(code): 鏉冮檺妫€鏌ユ柟娉?渚?PermissionGate 缁勪欢浣跨敤// - refreshAdminToken(): 璋冪敤 /admin/auth/refresh 缁湡 token//// 鎸佷箙鍖栫瓥鐣?H-05 淇):// - token / expiresAt: 鏀圭敤 Electron SafeStorage 鍔犲瘑瀛樺偍,涓嶅啀鍐欏叆 localStorage// - user / permissions: 鎸佷箙鍖栧埌 localStorage(闈炴晱鎰熸暟鎹?鐢ㄤ簬鍒锋柊椤甸潰鍚庢仮澶?UI)import { create } from 'zustand'import { persist } from 'zustand/middleware'import axios from 'axios'import type { AdminUser, PermissionCode } from '@/types/admin-auth'/** 绠＄悊绔?API 鍩虹鍦板潃(涓庣敤鎴风澶嶇敤鍚屼竴鍚庣鏈嶅姟,/admin/* 璺敱鍓嶇紑) */const ADMIN_API_BASE_URL =  import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api'interface AdminAuthState {  /** 绠＄悊绔闂护鐗?*/  token: string | null  /** 浠ょ墝杩囨湡鏃堕棿(姣鏃堕棿鎴? */  expiresAt: number | null  /** 绠＄悊鍛樼敤鎴蜂俊鎭?*/  user: AdminUser | null  /** 鏉冮檺缂栫爜鍒楄〃 */  permissions: PermissionCode[]  /** 璁剧疆璁よ瘉淇℃伅(鐧诲綍鎴愬姛鍚庤皟鐢? */  setAdminAuth: (    token: string,    expiresAt: number,    user: AdminUser,    permissions: PermissionCode[]  ) => void  /** 閫€鍑虹櫥褰?璋冪敤鍚庣鐧诲嚭 + 娓呴櫎 SafeStorage + 娓呴櫎鐘舵€? */  clearAdminAuth: () => void  /** 鍒锋柊 admin token(鎴愬姛杩斿洖 true,澶辫触璋冪敤 clearAdminAuth 骞惰繑鍥?false) */  refreshAdminToken: () => Promise<boolean>  /** 妫€鏌ユ槸鍚﹀凡璁よ瘉(token 瀛樺湪涓旀湭杩囨湡) */  isAuthenticated: () => boolean  /** 妫€鏌ユ槸鍚︽嫢鏈夋煇鏉冮檺 */  hasPermission: (code: string) => boolean  /** 鏇存柊绠＄悊鍛樹俊鎭?*/  updateAdminUser: (user: AdminUser) => void  /** 鏇存柊鏉冮檺鍒楄〃 */  updatePermissions: (permissions: PermissionCode[]) => void}export const useAdminAuthStore = create<AdminAuthState>()(  persist(    (set, get) => ({      token: null,      expiresAt: null,      user: null,      permissions: [],      setAdminAuth: (token, expiresAt, user, permissions) => {        // H-05 淇:token 鍚屾瀛樺叆 SafeStorage(鍔犲瘑),localStorage 浠呭瓨闈炴晱鎰熺殑 user/permissions        window.electronAPI?.credential?.set('admin-token', token).catch(() => {          // SafeStorage 涓嶅彲鐢ㄦ椂闄嶇骇(token 浠呭湪鍐呭瓨涓?鍒锋柊椤甸潰鍚庝涪澶?        })        set({ token, expiresAt, user, permissions })      },      clearAdminAuth: () => {        // H-05 淇:璋冪敤鍚庣鐧诲嚭(澶辫触涓嶉樆濉炲墠绔竻鐞?        const { token } = get()        if (token) {          axios            .post(              `${ADMIN_API_BASE_URL}/admin/auth/logout`,              {},              {                headers: { Authorization: `Bearer ${token}` },                timeout: 5000              }            )            .catch(() => {              // 鍚庣鐧诲嚭澶辫触涓嶉樆濉?            })        }        // 娓呴櫎 SafeStorage 涓殑 admin 鍑嵁        window.electronAPI?.credential?.delete('admin-token').catch(() => {          // SafeStorage 鍒犻櫎澶辫触涓嶉樆濉?        })        set({ token: null, expiresAt: null, user: null, permissions: [] })      },      refreshAdminToken: async () => {        const { token } = get()        if (!token) return false        try {          const resp = await axios.post(            `${ADMIN_API_BASE_URL}/admin/auth/refresh`,            {},            { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 }          )          if (resp.data?.code !== 0) return false          const { token: newToken, expiresAt: newExpires } = resp.data.data          await window.electronAPI?.credential?.set('admin-token', newToken)          set({ token: newToken, expiresAt: newExpires })          return true        } catch {          get().clearAdminAuth()          return false        }      },      isAuthenticated: () => {        const { token, expiresAt } = get()        if (!token) return false        if (expiresAt && Date.now() >= expiresAt) return false        return true      },      hasPermission: (code) => {        const { permissions } = get()        return permissions.includes(code as PermissionCode)      },      updateAdminUser: (user) => set({ user }),      updatePermissions: (permissions) => set({ permissions })    }),    {      name: 'admin-auth-storage',      // H-05 淇:token 鏀圭敤 SafeStorage 鍔犲瘑瀛樺偍,localStorage 浠呭瓨闈炴晱鎰熺殑 user/permissions      partialize: (state) => ({        user: state.user,        permissions: state.permissions      })    }  ))
+// 管理端认证 store - 独立于用户端 auth store
+//
+// 设计依据：Task 17 - 管理端三层守卫(前端部分)
+// - token: 管理端访问令牌(独立存储,不与用户端 token 混淆)
+// - expiresAt: 令牌过期时间(毫秒时间戳)
+// - user: 管理员用户信息
+// - permissions: 权限编码列表
+// - hasPermission(code): 权限检查方法,供 PermissionGate 组件使用
+//
+// 持久化策略:token / expiresAt / user / permissions 全部持久化
+// (管理端 token 较长期,且需支持刷新页面后保持登录态)
+
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import type { AdminUser, PermissionCode } from "@/types/admin-auth";
+
+interface AdminAuthState {
+  /** 管理端访问令牌 */
+  token: string | null;
+  /** 令牌过期时间(毫秒时间戳) */
+  expiresAt: number | null;
+  /** 管理员用户信息 */
+  user: AdminUser | null;
+  /** 权限编码列表 */
+  permissions: PermissionCode[];
+
+  /** 设置认证信息(登录成功后调用) */
+  setAdminAuth: (
+    token: string,
+    expiresAt: number,
+    user: AdminUser,
+    permissions: PermissionCode[],
+  ) => void;
+  /** 退出登录(清除状态) */
+  clearAdminAuth: () => void;
+  /** 检查是否已认证(token 存在且未过期) */
+  isAuthenticated: () => boolean;
+  /** 检查是否拥有某权限 */
+  hasPermission: (code: string) => boolean;
+  /** 更新管理员信息 */
+  updateAdminUser: (user: AdminUser) => void;
+  /** 更新权限列表 */
+  updatePermissions: (permissions: PermissionCode[]) => void;
+}
+
+export const useAdminAuthStore = create<AdminAuthState>()(
+  persist(
+    (set, get) => ({
+      token: null,
+      expiresAt: null,
+      user: null,
+      permissions: [],
+
+      setAdminAuth: (token, expiresAt, user, permissions) => {
+        set({ token, expiresAt, user, permissions });
+      },
+
+      clearAdminAuth: () => {
+        set({ token: null, expiresAt: null, user: null, permissions: [] });
+      },
+
+      isAuthenticated: () => {
+        const { token, expiresAt } = get();
+        if (!token) return false;
+        if (expiresAt && Date.now() >= expiresAt) return false;
+        return true;
+      },
+
+      hasPermission: (code) => {
+        const { permissions } = get();
+        return permissions.includes(code as PermissionCode);
+      },
+
+      updateAdminUser: (user) => set({ user }),
+
+      updatePermissions: (permissions) => set({ permissions }),
+    }),
+    {
+      name: "admin-auth-storage",
+      // 全部持久化(管理端需支持刷新保持登录态)
+      partialize: (state) => ({
+        token: state.token,
+        expiresAt: state.expiresAt,
+        user: state.user,
+        permissions: state.permissions,
+      }),
+    },
+  ),
+);

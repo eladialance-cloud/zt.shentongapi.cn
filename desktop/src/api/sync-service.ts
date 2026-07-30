@@ -1,1 +1,368 @@
-﻿// SyncService - 瀹㈡埛绔?鈫?浜戠鏁版嵁鍚屾//// 涓婅鍚屾锛堝鎴风 鈫?浜戠锛夛細//   - pushPendingQueue(): 璇诲彇 local_sync_queue 鐨?pending 璁板綍锛屾壒閲?POST /sync/batch//   - 姣忔壒鏈€澶?100 鏉★紱鎴愬姛鈫抯ynced锛屽け璐モ啋retry_count++锛? 娆″悗鏍?failed锛?//// 涓嬭鍚屾锛堜簯绔?鈫?瀹㈡埛绔級锛?//   - 鐩戝惉 wsClient 7 绫绘帹閫佷簨浠?鈫?鏇存柊鏈湴缂撳瓨锛坋mit 浜嬩欢渚?store 鐩戝惉锛?//   - pullIncremental(since, types): GET /sync/pull 鑾峰彇澧為噺鏁版嵁//// 瑙﹀彂鏃舵満锛?//   - 缃戠粶鎭㈠锛坥fflineQueue.onOnline锛夆啋 pushPendingQueue//   - 瀹氭椂浠诲姟锛堟瘡 5 鍒嗛挓锛夆啋 pushPendingQueue//   - 搴旂敤鍚姩 鈫?涓€娆″閲忔媺鍙?import { httpClient } from './http-client'import { wsClient } from './ws-client'import { offlineQueue } from './offline-queue'import { BusinessError, NetworkError } from '@/utils/errors'import type { SyncQueueItem, SyncQueueRow } from '@shared/types'/** 涓婅鍚屾鎵归噺鍝嶅簲 */interface SyncBatchResponse {  success: boolean  processed: number  errors: Array<{ client_txn_id: string; error: string }>}/** 涓嬭鎷夊彇鍝嶅簲锛堝悇瀹炰綋绫诲瀷鐨勫閲忔暟鎹級 */interface SyncPullResponse {  agents?: unknown[]  workflowTemplates?: unknown[]  plugins?: unknown[]  credits?: unknown  announcements?: unknown[]  models?: unknown[]  userLevel?: unknown  [key: string]: unknown}/** SyncService 浜嬩欢 */export type SyncServiceEvent =  | 'sync:push:complete'  | 'sync:push:error'  | 'sync:pull:complete'  | 'sync:cache:updated'type EventHandler = (...args: unknown[]) => void/** 姣忔壒鏈€澶ф潯鏁?*/const BATCH_SIZE = 100/** 鏈€澶ч噸璇曟鏁帮紙瓒呰繃鍒欐爣璁?failed锛?*/const MAX_RETRY = 3/** 瀹氭椂鍚屾闂撮殧锛? 鍒嗛挓锛?*/const SYNC_INTERVAL = 5 * 60 * 1000/** 缂撳瓨鏇存柊浜嬩欢绫诲瀷 鈫?鎺ㄩ€佷簨浠跺悕鏄犲皠 */const PUSH_EVENT_NAMES = [  'agent:updated',  'workflow:template:updated',  'plugin:updated',  'credits:updated',  'announcement:new',  'model:updated',  'user:level:updated'] as const/** localStorage 閿細鏈€杩戝悓姝ユ椂闂存埑锛堟寔涔呭寲锛屽簲鐢ㄩ噸鍚悗浠嶅彲澧為噺鍚屾锛?*/const LAST_SYNC_KEY = 'sync:lastSyncTime'/** 璇诲彇鏈€杩戝悓姝ユ椂闂达紙浠?localStorage 鎭㈠锛屾棤璁板綍鏃惰繑鍥?epoch锛?*/function getLastSyncTime(): Date {  const stored = localStorage.getItem(LAST_SYNC_KEY)  return stored ? new Date(parseInt(stored, 10)) : new Date(0)}/** 鍐欏叆鏈€杩戝悓姝ユ椂闂村埌 localStorage */function setLastSyncTime(time: Date): void {  localStorage.setItem(LAST_SYNC_KEY, time.getTime().toString())}/** 鍚屾浜掓枼閿?Promise锛堥槻姝?push/pull 骞跺彂鎵ц浜х敓绔炴€侊級 */let syncLockPromise: Promise<void> = Promise.resolve()/** 鐢ㄤ簰鏂ラ攣鍖呰鍚屾鎿嶄綔锛岀‘淇?push/pull 涓茶鎵ц锛沠inally 濮嬬粓閲婃斁閿侀伩鍏嶆閿?*/async function withSyncLock<T>(fn: () => Promise<T>): Promise<T> {  const previousLock = syncLockPromise  let releaseLock: () => void  syncLockPromise = new Promise<void>((resolve) => {    releaseLock = resolve  })  await previousLock  try {    return await fn()  } finally {    releaseLock!()  }}class SyncService {  /** 瀹氭椂鍣?*/  private syncTimer: ReturnType<typeof setInterval> | null = null  /** 鏈€杩戝悓姝ユ椂闂达紙鐢ㄤ簬澧為噺鎷夊彇锛屼粠 localStorage 鎭㈠锛?*/  private lastSyncTime: Date = getLastSyncTime()  /** 鏄惁姝ｅ湪鎵ц涓婅鍚屾锛堥槻姝㈠苟鍙戯級 */  private pushing = false  /** 鏄惁姝ｅ湪鎵ц涓嬭鎷夊彇 */  private pulling = false  /** 鏄惁宸插垵濮嬪寲 */  private initialized = false  /** 浜嬩欢澶勭悊鍣?*/  private handlers = new Map<string, Set<EventHandler>>()  constructor() {    // 鏆備笉鑷姩鍒濆鍖栵紝绛夊緟 init() 璋冪敤  }  // ===== 浜嬩欢绯荤粺 =====  on(event: SyncServiceEvent, handler: EventHandler): void {    if (!this.handlers.has(event)) {      this.handlers.set(event, new Set())    }    this.handlers.get(event)!.add(handler)  }  off(event: SyncServiceEvent, handler: EventHandler): void {    this.handlers.get(event)?.delete(handler)  }  private emit(event: SyncServiceEvent, ...args: unknown[]): void {    this.handlers.get(event)?.forEach((h) => {      try {        h(...args)      } catch (err) {        console.error(`[sync-service] handler error for "${event}":`, err)      }    })  }  // ===== 鍒濆鍖?=====  /** 鍒濆鍖栧悓姝ユ湇鍔★紙搴旂敤鍚姩鏃惰皟鐢級 */  init(): void {    if (this.initialized) return    this.initialized = true    // 1. 娉ㄥ唽缃戠粶鎭㈠鍥炶皟 鈫?瑙﹀彂涓婅鍚屾    offlineQueue.onOnline(() => {      this.pushPendingQueue().catch((err) => {        console.error('[sync-service] online push error:', err)      })    })    // 2. 鐩戝惉 wsClient 鎺ㄩ€佷簨浠?鈫?鏇存柊鏈湴缂撳瓨    this.registerPushListeners()    // 3. 鐩戝惉 wsClient 澧為噺鎷夊彇缁撴灉    wsClient.on('ws:sync:result', (data: unknown) => {      this.handlePullResult(data as SyncPullResponse)    })    // 4. 鍚姩瀹氭椂涓婅鍚屾锛堟瘡 5 鍒嗛挓锛?    this.syncTimer = setInterval(() => {      this.pushPendingQueue().catch((err) => {        console.error('[sync-service] timer push error:', err)      })    }, SYNC_INTERVAL)    // 5. 搴旂敤鍚姩鏃舵墽琛屼竴娆″閲忔媺鍙栵紙lastSyncTime 宸蹭粠 localStorage 鎭㈠锛?    this.pullIncremental(this.lastSyncTime).catch((err) => {      console.error('[sync-service] startup pull error:', err)    })  }  /** 閿€姣侊紙鐧诲嚭鏃惰皟鐢級 */  destroy(): void {    if (this.syncTimer) {      clearInterval(this.syncTimer)      this.syncTimer = null    }    this.initialized = false  }  // ===== 涓婅鍚屾 =====  /** 鎺ㄩ€佸緟鍚屾闃熷垪鍒颁簯绔紙浜掓枼閿侀槻姝笌 pull 骞跺彂锛?*/  async pushPendingQueue(): Promise<void> {    return withSyncLock(async () => {      if (this.pushing) {        return      }      if (!offlineQueue.isOnline()) {        return      }      this.pushing = true      try {        // 寰幆澶勭悊鐩村埌娌℃湁 pending 璁板綍        let hasMore = true        while (hasMore) {          const items = await this.getPendingItems()          if (items.length === 0) {            hasMore = false            break          }          await this.pushBatch(items)          // 濡傛灉鍙栨弧浜嗕竴鎵癸紝鍙兘杩樻湁鏇村          hasMore = items.length >= BATCH_SIZE        }        this.emit('sync:push:complete')      } catch (err) {        console.error('[sync-service] push error:', err)        this.emit('sync:push:error', err)      } finally {        this.pushing = false      }    })  }  /** 璇诲彇涓€鎵?pending 璁板綍 */  private async getPendingItems(): Promise<SyncQueueRow[]> {    if (!window.electronAPI?.syncQueue) return []    return window.electronAPI.syncQueue.getPending(BATCH_SIZE)  }  /** 鎺ㄩ€佷竴鎵硅褰曞埌浜戠锛堝惈閿欒鍒嗙被锛氱綉缁滈敊璇彲閲嶈瘯锛屼笟鍔￠敊璇洿鎺ユ爣璁?failed锛?*/  private async pushBatch(items: SyncQueueRow[]): Promise<void> {    // 鏋勯€犺姹備綋锛堝彧鍙?SyncQueueItem 闇€瑕佺殑瀛楁锛?    const payload: { items: SyncQueueItem[] } = {      items: items.map((row) => ({        client_txn_id: row.client_txn_id,        entity_type: row.entity_type,        entity_id: row.entity_id,        operation: row.operation,        payload: row.payload      }))    }    try {      const response = await httpClient.post<SyncBatchResponse>('/sync/batch', payload)      // 鏋勯€犻敊璇储寮?      const errorMap = new Map<string, string>()      if (response.errors?.length) {        for (const err of response.errors) {          errorMap.set(err.client_txn_id, err.error)        }      }      // 閫愭潯鏇存柊鐘舵€?      for (const item of items) {        const errMsg = errorMap.get(item.client_txn_id)        if (errMsg) {          // 涓氬姟閿欒锛氭爣璁拌鏉′负 failed锛岀户缁鐞嗘壒娆″唴鍏朵粬鏉＄洰          await this.markBusinessFailed(item, errMsg)        } else {          // 璇ユ潯鎴愬姛          await this.markSynced(item)        }      }    } catch (err) {      // 鏁存壒璇锋眰澶辫触锛屾寜閿欒绫诲瀷鍒嗙被澶勭悊      const errorMsg = err instanceof Error ? err.message : String(err)      if (this.isRetryableError(err)) {        // 缃戠粶閿欒 / 5xx锛氫繚鎸?pending锛宨ncrement retry_count锛屼綔涓烘暣鎵归噸璇?        for (const item of items) {          await this.markFailed(item, errorMsg)        }      } else {        // 涓氬姟閿欒锛?xx锛夛細鏍囪涓?failed锛岄噸璇曟棤鎰忎箟        for (const item of items) {          await this.markBusinessFailed(item, errorMsg)        }      }      throw err    }  }  /** 鍒ゆ柇閿欒鏄惁涓哄彲閲嶈瘯鐨勭綉缁滈敊璇紙瓒呮椂銆佹柇缃戙€?xx锛?*/  private isRetryableError(err: unknown): boolean {    // NetworkError锛堣秴鏃躲€佹柇缃戙€丏NS 澶辫触锛夆啋 鍙噸璇?    if (err instanceof NetworkError) return true    // BusinessError锛氭寜 HTTP 鐘舵€佺爜鍒嗙被锛?= 500 涓哄彲閲嶈瘯锛? 500 涓轰笟鍔￠敊璇?    if (err instanceof BusinessError) return err.code >= 500    // 鏈煡閿欒锛堝 plain Error锛変繚瀹堣涓哄彲閲嶈瘯    return true  }  /** 鏍囪涓哄凡鍚屾 */  private async markSynced(item: SyncQueueRow): Promise<void> {    if (!window.electronAPI?.syncQueue) return    await window.electronAPI.syncQueue.updateStatus(item.id, 'synced', item.retry_count)  }  /** 鏍囪涓轰笟鍔￠敊璇け璐ワ紙鐩存帴 failed锛屼笉鍙備笌鑷姩閲嶈瘯锛?*/  private async markBusinessFailed(item: SyncQueueRow, errorMessage: string): Promise<void> {    if (!window.electronAPI?.syncQueue) return    await window.electronAPI.syncQueue.updateStatus(      item.id,      'failed',      item.retry_count,      errorMessage    )  }  /** 鏍囪涓哄彲閲嶈瘯澶辫触锛坮etry_count++锛岃秴杩?MAX_RETRY 鍒欐爣 failed锛?*/  private async markFailed(item: SyncQueueRow, errorMessage: string): Promise<void> {    if (!window.electronAPI?.syncQueue) return    const newRetryCount = item.retry_count + 1    if (newRetryCount >= MAX_RETRY) {      // 瓒呰繃鏈€澶ч噸璇曟鏁帮紝鏍囪涓?failed      await window.electronAPI.syncQueue.updateStatus(        item.id,        'failed',        newRetryCount,        `Max retries exceeded: ${errorMessage}`      )    } else {      // 淇濇寔 pending锛屼笅娆＄户缁噸璇?      await window.electronAPI.syncQueue.updateStatus(        item.id,        'pending',        newRetryCount,        errorMessage      )    }  }  // ===== 涓嬭鍚屾 =====  /** 澧為噺鎷夊彇锛堜簯绔?鈫?瀹㈡埛绔紝浜掓枼閿侀槻姝笌 push 骞跺彂锛?*/  async pullIncremental(since: Date, types?: string[]): Promise<void> {    return withSyncLock(async () => {      if (this.pulling) {        return      }      if (!offlineQueue.isOnline()) {        return      }      this.pulling = true      try {        const params: Record<string, string> = {          since: since.toISOString()        }        if (types && types.length > 0) {          params.types = types.join(',')        }        const response = await httpClient.get<SyncPullResponse>('/sync/pull', { params })        this.handlePullResult(response)        // 鏇存柊鏈€杩戝悓姝ユ椂闂村苟鎸佷箙鍖栧埌 localStorage        this.lastSyncTime = new Date()        setLastSyncTime(this.lastSyncTime)        wsClient.setLastSyncTime(this.lastSyncTime)      } catch (err) {        console.error('[sync-service] pull error:', err)      } finally {        this.pulling = false      }    })  }  /** 澶勭悊澧為噺鎷夊彇缁撴灉 / WS 鎺ㄩ€佺粨鏋?*/  private handlePullResult(data: SyncPullResponse): void {    if (!data) return    // 鏇存柊鏈€杩戝悓姝ユ椂闂村苟鎸佷箙鍖栧埌 localStorage    this.lastSyncTime = new Date()    setLastSyncTime(this.lastSyncTime)    wsClient.setLastSyncTime(this.lastSyncTime)    // 瑙﹀彂缂撳瓨鏇存柊浜嬩欢锛堜緵 store 鐩戝惉锛?    this.emit('sync:pull:complete', data)    this.emit('sync:cache:updated', data)  }  /** 娉ㄥ唽 wsClient 鎺ㄩ€佷簨浠剁洃鍚?*/  private registerPushListeners(): void {    for (const eventName of PUSH_EVENT_NAMES) {      wsClient.on(eventName, (data: unknown) => {        // 鏀跺埌鎺ㄩ€佸悗鏇存柊缂撳瓨锛坋mit 浜嬩欢渚?store 澶勭悊锛?        this.emit('sync:cache:updated', { type: eventName, data })      })    }    // 閲嶈繛鍚庣殑澧為噺鎷夊彇缁撴灉    wsClient.on('ws:connected', () => {      // wsClient 鍐呴儴宸茶嚜鍔ㄨЕ鍙?sync:pull锛岃繖閲屼笉鍐嶉噸澶?    })  }  // ===== 鐘舵€佹煡璇?=====  /** 鑾峰彇鏈€杩戝悓姝ユ椂闂达紙浠?localStorage 鎭㈠锛屾案涓嶄负 null锛?*/  getLastSyncTime(): Date {    return this.lastSyncTime  }  /** 閲嶈瘯鎵€鏈?failed 鐘舵€佺殑璁板綍锛氶噸缃负 pending 骞惰Е鍙戜笂琛屽悓姝?*/  async retryFailed(): Promise<void> {    const failed = await offlineQueue.getByStatus('failed')    if (!window.electronAPI?.syncQueue || failed.length === 0) return    // 閲嶇疆澶辫触璁板綍涓?pending锛宺etry_count 褰掗浂    for (const item of failed) {      await window.electronAPI.syncQueue.updateStatus(item.id, 'pending', 0)    }    // 閲嶆柊瑙﹀彂涓婅鍚屾锛坧ushPendingQueue 鍐呴儴浼氳幏鍙栦簰鏂ラ攣锛?    await this.pushPendingQueue()  }}/** 鍚屾鏈嶅姟鍗曚緥 */export const syncService = new SyncService()export default syncService
+﻿// SyncService - 客户端 ↔ 云端数据同步
+//
+// 上行同步（客户端 → 云端）：
+//   - pushPendingQueue(): 读取 local_sync_queue 的 pending 记录，批量 POST /sync/batch
+//   - 每批最多 100 条；成功→synced，失败→retry_count++（3 次后标 failed）
+//
+// 下行同步（云端 → 客户端）：
+//   - 监听 wsClient 7 类推送事件 → 更新本地缓存（emit 事件供 store 监听）
+//   - pullIncremental(since, types): GET /sync/pull 获取增量数据
+//
+// 触发时机：
+//   - 网络恢复（offlineQueue.onOnline）→ pushPendingQueue
+//   - 定时任务（每 5 分钟）→ pushPendingQueue
+//   - 应用启动 → 一次增量拉取
+
+import { httpClient } from "./http-client";
+import { wsClient } from "./ws-client";
+import { offlineQueue } from "./offline-queue";
+import type { SyncQueueItem, SyncQueueRow } from "@shared/types";
+
+/** 上行同步批量响应 */
+interface SyncBatchResponse {
+  success: boolean;
+  processed: number;
+  errors: Array<{ client_txn_id: string; error: string }>;
+}
+
+/** 下行拉取响应（各实体类型的增量数据） */
+interface SyncPullResponse {
+  agents?: unknown[];
+  workflowTemplates?: unknown[];
+  plugins?: unknown[];
+  credits?: unknown;
+  announcements?: unknown[];
+  models?: unknown[];
+  userLevel?: unknown;
+  [key: string]: unknown;
+}
+
+/** SyncService 事件 */
+export type SyncServiceEvent =
+  | "sync:push:complete"
+  | "sync:push:error"
+  | "sync:pull:complete"
+  | "sync:cache:updated";
+
+type EventHandler = (...args: unknown[]) => void;
+
+/** 每批最大条数 */
+const BATCH_SIZE = 100;
+/** 最大重试次数（超过则标记 failed） */
+const MAX_RETRY = 3;
+/** 指数退避基础延迟（毫秒），公式：2^retry_count * BASE_DELAY，上限 5 分钟 */
+const BASE_BACKOFF_MS = 2000;
+/** 最大退避延迟（5 分钟） */
+const MAX_BACKOFF_MS = 5 * 60 * 1000;
+/** 定时同步间隔（5 分钟） */
+const SYNC_INTERVAL = 5 * 60 * 1000;
+
+/** 缓存更新事件类型 → 推送事件名映射 */
+const PUSH_EVENT_NAMES = [
+  "agent:updated",
+  "workflow:template:updated",
+  "plugin:updated",
+  "credits:updated",
+  "announcement:new",
+  "model:updated",
+  "user:level:updated",
+] as const;
+
+class SyncService {
+  /** 定时器 */
+  private syncTimer: ReturnType<typeof setInterval> | null = null;
+  /** 最近同步时间（用于增量拉取） */
+  private lastSyncTime: Date | null = null;
+  /** 是否正在执行上行同步（防止并发） */
+  private pushing = false;
+  /** 是否正在执行下行拉取 */
+  private pulling = false;
+  /** 是否已初始化 */
+  private initialized = false;
+
+  /** 事件处理器 */
+  private handlers = new Map<string, Set<EventHandler>>();
+
+  constructor() {
+    // 暂不自动初始化，等待 init() 调用
+  }
+
+  // ===== 事件系统 =====
+
+  on(event: SyncServiceEvent, handler: EventHandler): void {
+    if (!this.handlers.has(event)) {
+      this.handlers.set(event, new Set());
+    }
+    this.handlers.get(event)!.add(handler);
+  }
+
+  off(event: SyncServiceEvent, handler: EventHandler): void {
+    this.handlers.get(event)?.delete(handler);
+  }
+
+  private emit(event: SyncServiceEvent, ...args: unknown[]): void {
+    this.handlers.get(event)?.forEach((h) => {
+      try {
+        h(...args);
+      } catch (err) {
+        console.error(`[sync-service] handler error for "${event}":`, err);
+      }
+    });
+  }
+
+  // ===== 初始化 =====
+
+  /** 初始化同步服务（应用启动时调用） */
+  init(): void {
+    if (this.initialized) return;
+    this.initialized = true;
+
+    // 1. 注册网络恢复回调 → 触发上行同步
+    offlineQueue.onOnline(() => {
+      this.pushPendingQueue().catch((err) => {
+        console.error("[sync-service] online push error:", err);
+      });
+    });
+
+    // 2. 监听 wsClient 推送事件 → 更新本地缓存
+    this.registerPushListeners();
+
+    // 3. 监听 wsClient 增量拉取结果
+    wsClient.on("ws:sync:result", (data: unknown) => {
+      this.handlePullResult(data as SyncPullResponse);
+    });
+
+    // 4. 启动定时上行同步（每 5 分钟）
+    this.syncTimer = setInterval(() => {
+      this.pushPendingQueue().catch((err) => {
+        console.error("[sync-service] timer push error:", err);
+      });
+    }, SYNC_INTERVAL);
+
+    // 5. 应用启动时执行一次增量拉取
+    this.pullIncremental(this.lastSyncTime ?? new Date(0)).catch((err) => {
+      console.error("[sync-service] startup pull error:", err);
+    });
+  }
+
+  /** 销毁（登出时调用） */
+  destroy(): void {
+    if (this.syncTimer) {
+      clearInterval(this.syncTimer);
+      this.syncTimer = null;
+    }
+    this.initialized = false;
+  }
+
+  // ===== 上行同步 =====
+
+  /** 推送待同步队列到云端 */
+  async pushPendingQueue(): Promise<void> {
+    if (this.pushing) {
+      console.log("[sync-service] push already in progress, skip");
+      return;
+    }
+    if (!offlineQueue.isOnline()) {
+      console.log("[sync-service] offline, skip push");
+      return;
+    }
+
+    this.pushing = true;
+    try {
+      // 循环处理直到没有 pending 记录
+      let hasMore = true;
+      while (hasMore) {
+        const items = await this.getPendingItems();
+        if (items.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        await this.pushBatch(items);
+
+        // 如果取满了一批，可能还有更多
+        hasMore = items.length >= BATCH_SIZE;
+      }
+      this.emit("sync:push:complete");
+    } catch (err) {
+      console.error("[sync-service] push error:", err);
+      this.emit("sync:push:error", err);
+    } finally {
+      this.pushing = false;
+    }
+  }
+
+  /** 读取一批 pending 记录 */
+  private async getPendingItems(): Promise<SyncQueueRow[]> {
+    if (!window.electronAPI?.syncQueue) return [];
+    const items = await window.electronAPI.syncQueue.getPending(BATCH_SIZE);
+    // 指数退避：跳过未到重试时间的条目（2^retry_count * 2s，上限 5min）
+    const now = Date.now();
+    return items.filter((item: SyncQueueRow) => {
+      if (item.retry_count <= 0) return true;
+      const delay = Math.min(Math.pow(2, item.retry_count) * BASE_BACKOFF_MS, MAX_BACKOFF_MS);
+      const nextRetryAt = new Date(item.updated_at).getTime() + delay;
+      return now >= nextRetryAt;
+    });
+  }
+
+  /** 推送一批记录到云端 */
+  private async pushBatch(items: SyncQueueRow[]): Promise<void> {
+    // 构造请求体（只取 SyncQueueItem 需要的字段）
+    const payload: { items: SyncQueueItem[] } = {
+      items: items.map((row) => ({
+        client_txn_id: row.client_txn_id,
+        entity_type: row.entity_type,
+        entity_id: row.entity_id,
+        operation: row.operation,
+        payload: row.payload,
+      })),
+    };
+
+    try {
+      const response = await httpClient.post<SyncBatchResponse>(
+        "/sync/batch",
+        payload,
+      );
+
+      // 构造错误索引
+      const errorMap = new Map<string, string>();
+      if (response.errors?.length) {
+        for (const err of response.errors) {
+          errorMap.set(err.client_txn_id, err.error);
+        }
+      }
+
+      // 逐条更新状态
+      for (const item of items) {
+        const errMsg = errorMap.get(item.client_txn_id);
+        if (errMsg) {
+          // 该条失败
+          await this.markFailed(item, errMsg);
+        } else {
+          // 该条成功
+          await this.markSynced(item);
+        }
+      }
+    } catch (err) {
+      // 整批请求失败（网络错误等），所有条目重试
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      for (const item of items) {
+        await this.markFailed(item, errorMsg);
+      }
+      throw err;
+    }
+  }
+
+  /** 标记为已同步 */
+  private async markSynced(item: SyncQueueRow): Promise<void> {
+    if (!window.electronAPI?.syncQueue) return;
+    await window.electronAPI.syncQueue.updateStatus(
+      item.id,
+      "synced",
+      item.retry_count,
+    );
+  }
+
+  /** 标记为失败（retry_count++，超过 MAX_RETRY 则标 failed） */
+  private async markFailed(
+    item: SyncQueueRow,
+    errorMessage: string,
+  ): Promise<void> {
+    if (!window.electronAPI?.syncQueue) return;
+    const newRetryCount = item.retry_count + 1;
+    if (newRetryCount >= MAX_RETRY) {
+      // 超过最大重试次数，标记为 failed
+      await window.electronAPI.syncQueue.updateStatus(
+        item.id,
+        "failed",
+        newRetryCount,
+        `Max retries exceeded: ${errorMessage}`,
+      );
+    } else {
+      // 保持 pending，下次继续重试
+      await window.electronAPI.syncQueue.updateStatus(
+        item.id,
+        "pending",
+        newRetryCount,
+        errorMessage,
+      );
+    }
+  }
+
+  // ===== 下行同步 =====
+
+  /** 增量拉取（云端 → 客户端） */
+  async pullIncremental(since: Date, types?: string[]): Promise<void> {
+    if (this.pulling) {
+      console.log("[sync-service] pull already in progress, skip");
+      return;
+    }
+    if (!offlineQueue.isOnline()) {
+      console.log("[sync-service] offline, skip pull");
+      return;
+    }
+
+    this.pulling = true;
+    try {
+      const params: Record<string, string> = {
+        since: since.toISOString(),
+      };
+      if (types && types.length > 0) {
+        params.types = types.join(",");
+      }
+
+      const response = await httpClient.get<SyncPullResponse>("/sync/pull", {
+        params,
+      });
+      this.handlePullResult(response);
+
+      // 更新最近同步时间
+      this.lastSyncTime = new Date();
+      wsClient.setLastSyncTime(this.lastSyncTime);
+    } catch (err) {
+      console.error("[sync-service] pull error:", err);
+    } finally {
+      this.pulling = false;
+    }
+  }
+
+  /** 处理增量拉取结果 / WS 推送结果 */
+  private handlePullResult(data: SyncPullResponse): void {
+    if (!data) return;
+
+    // 更新最近同步时间
+    this.lastSyncTime = new Date();
+    wsClient.setLastSyncTime(this.lastSyncTime);
+
+    // 触发缓存更新事件（供 store 监听）
+    this.emit("sync:pull:complete", data);
+    this.emit("sync:cache:updated", data);
+  }
+
+  /** 注册 wsClient 推送事件监听 */
+  private registerPushListeners(): void {
+    for (const eventName of PUSH_EVENT_NAMES) {
+      wsClient.on(eventName, (data: unknown) => {
+        // 收到推送后更新缓存（emit 事件供 store 处理）
+        this.emit("sync:cache:updated", { type: eventName, data });
+      });
+    }
+
+    // 重连后的增量拉取结果
+    wsClient.on("ws:connected", () => {
+      // wsClient 内部已自动触发 sync:pull，这里不再重复
+    });
+  }
+
+  // ===== 状态查询 =====
+
+  /** 获取最近同步时间 */
+  getLastSyncTime(): Date | null {
+    return this.lastSyncTime;
+  }
+}
+
+/** 同步服务单例 */
+export const syncService = new SyncService();
+export default syncService;

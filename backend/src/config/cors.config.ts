@@ -1,1 +1,14 @@
-﻿import { ConfigService } from '@nestjs/config';/** * CORS 璺ㄥ煙閰嶇疆 * 鏁版嵁鍚堝悓鐪熸簮锛歴pec.md - CORS 涓庡畨鍏? */export const corsConfig = (config: ConfigService) => {  const origins =    config.get<string>('CORS_ORIGINS') || 'http://localhost:3000';  if (origins === '*') {    if (process.env.NODE_ENV === 'production') {      throw new Error(        'CORS_ORIGINS 涓嶈兘涓?* (鐢熶骇鐜)锛岃閰嶇疆绮剧‘鍩熷悕鍒楄〃锛堥€楀彿鍒嗛殧锛?,      );    }    // 闈炵敓浜х幆澧?fallback 鍒版湰鍦板紑鍙戝煙鍚?    return {      origin: ['http://localhost:3000', 'http://localhost:5173'],      credentials: true,    };  }  return {    origin: origins.split(','),    credentials: true,  };};
+﻿import { ConfigService } from '@nestjs/config';
+
+/**
+ * CORS 跨域配置
+ * 数据合同真源：spec.md - CORS 与安全
+ */
+export const corsConfig = (config: ConfigService) => {
+  const origins =
+    config.get<string>('CORS_ORIGINS') || 'http://localhost:3000';
+  return {
+    origin: origins.split(','),
+    credentials: true,
+  };
+};

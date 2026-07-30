@@ -1,1 +1,57 @@
-﻿// 鐭ヨ瘑搴撴ā鍧楃被鍨嬪畾涔?// 鏁版嵁鍚堝悓鐪熸簮锛歍ask 11 鐭ヨ瘑搴撳姛鑳芥ā鍧?/** 鐭ヨ瘑搴撳洓灞傜骇锛坴0.3.1 Task 26锛? *  - public:   鍏叡鐭ヨ瘑搴擄紙瀹樻柟缁存姢锛屽叏骞冲彴鍏变韩锛? *  - role:     瑙掕壊鐭ヨ瘑搴擄紙鎸?AI 鍛樺伐瑙掕壊鍒掑垎锛屽鍟嗗姟/鍐呭/浜や粯锛? *  - case:     妗堜緥鐭ヨ瘑搴擄紙鍥㈤槦/鐢ㄦ埛娌夋穩鐨勫疄鎴樻渚嬶級 *  - industry: 琛屼笟鐭ヨ瘑搴擄紙鎸夊瀭鐩磋涓氬垝鍒嗭紝濡傞噾铻?鍒堕€?闆跺敭锛? */export type KnowledgeLayer = 'public' | 'role' | 'case' | 'industry'/** 鐭ヨ瘑搴撳垪琛ㄨ繃婊ゅ弬鏁帮紙v0.3.1 Task 26锛?*/export interface KnowledgeFilter {  /** 鎸夊眰绾ц繃婊?*/  layer?: KnowledgeLayer  /** 鎸夊垎绫昏繃婊?*/  category?: string  /** 鎸夊綊灞炶繃婊?*/  ownerType?: 'official' | 'team' | 'user'  /** 鍏抽敭璇?*/  keyword?: string}/** 鐭ヨ瘑搴?*/export interface KnowledgeBase {  id: number  name: string  description: string  /** 鎵€灞炲眰绾э紙v0.3.1 Task 26锛?*/  layer: KnowledgeLayer  /** 鍒嗙被 key */  category: string  documentCount: number  /** 鏍囩 */  tags: string[]  /** 褰掑睘绫诲瀷锛堝畼鏂?鍥㈤槦/鐢ㄦ埛锛?*/  ownerType: 'official' | 'team' | 'user'  /** 鏈€鍚庢洿鏂版椂闂?*/  lastUpdated: string  createdAt: Date  updatedAt?: Date}/** 鍒涘缓鐭ヨ瘑搴?DTO锛坴0.3.1 Task 26锛屽惈灞傜骇瀛楁锛?*/export interface CreateKnowledgeLayerBaseDto {  name: string  description?: string  layer: KnowledgeLayer  category: string  tags?: string[]  ownerType?: 'official' | 'team' | 'user'}/** 鏇存柊鐭ヨ瘑搴?DTO */export interface UpdateKnowledgeBaseDto {  name?: string  description?: string  category?: string  tags?: string[]  layer?: KnowledgeLayer}/** 鐭ヨ瘑搴撴枃妗ｅ垎鍧楃姸鎬?*/export type ChunkStatus = 'pending' | 'processing' | 'completed' | 'failed'/** 鐭ヨ瘑搴撴枃妗?*/export interface KnowledgeDocument {  id: number  knowledgeBaseId: number  fileName: string  fileSize: number  mimeType: string  chunkStatus: ChunkStatus  chunkCount: number  /** 鍒嗗潡閿欒淇℃伅锛坈hunkStatus=failed 鏃跺瓨鍦級 */  errorMessage?: string  createdAt: Date  updatedAt?: Date}/** 妫€绱㈢粨鏋滅墖娈?*/export interface SearchResult {  id: string  content: string  /** 鐩镐技搴﹀垎鏁帮紙0-1锛?*/  score: number  documentId: number  documentName: string  /** 鍏冩暟鎹紙椤电爜銆佸垎鍧椾綅缃瓑锛?*/  metadata?: unknown}/** 鍒涘缓鐭ヨ瘑搴?DTO */export interface CreateKnowledgeBaseDto {  name: string  description?: string}/** 鍒嗛〉缁撴灉 */export interface PaginatedResult<T> {  list: T[]  total: number  page: number  pageSize: number  totalPages: number}
+// 知识库模块类型定义
+// 数据合同真源：Task 11 知识库功能模块
+
+/** 知识库 */
+export interface KnowledgeBase {
+  id: number;
+  name: string;
+  description: string;
+  documentCount: number;
+  createdAt: Date;
+  updatedAt?: Date;
+}
+
+/** 知识库文档分块状态 */
+export type ChunkStatus = "pending" | "processing" | "completed" | "failed";
+
+/** 知识库文档 */
+export interface KnowledgeDocument {
+  id: number;
+  knowledgeBaseId: number;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  chunkStatus: ChunkStatus;
+  chunkCount: number;
+  /** 分块错误信息（chunkStatus=failed 时存在） */
+  errorMessage?: string;
+  createdAt: Date;
+  updatedAt?: Date;
+}
+
+/** 检索结果片段 */
+export interface SearchResult {
+  id: string;
+  content: string;
+  /** 相似度分数（0-1） */
+  score: number;
+  documentId: number;
+  documentName: string;
+  /** 元数据（页码、分块位置等） */
+  metadata?: unknown;
+}
+
+/** 创建知识库 DTO */
+export interface CreateKnowledgeBaseDto {
+  name: string;
+  description?: string;
+}
+
+/** 分页结果 */
+export interface PaginatedResult<T> {
+  list: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}

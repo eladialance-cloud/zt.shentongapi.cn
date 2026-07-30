@@ -1,1 +1,139 @@
-﻿/** * TopBar 鈥?v1.0 椤堕儴鏍? * 48px 楂樺害: 鈱楰 鎼滅储鎸夐挳 + 绉垎 + 閫氱煡 + 鐢ㄦ埛澶村儚 * 鎼滅储鍔熻兘杩佺Щ鍒?CommandPalette锛堢敱 MainLayout 绠＄悊锛? */import { useEffect, useState } from 'react'import { useNavigate } from 'react-router-dom'import {  Avatar,  Badge,  Button,  Dropdown,  Empty,  Tooltip,  type MenuProps} from 'antd'import {  BellOutlined,  LogoutOutlined,  UserOutlined,  SearchOutlined,} from '@ant-design/icons'import CreditDisplay from '@/components/CreditDisplay'import { useAuthStore } from '@/store/auth'import { useCreditsStore } from '@/store/credits'import styles from './TopBar.module.css'interface NotificationItem {  id: number  title: string  time: string  read: boolean  category: 'task' | 'system' | 'team'}const NOTIFICATIONS: NotificationItem[] = [  { id: 1, title: '宸ヤ綔娴佹墽琛屽畬鎴? 鍐呭鐢熸垚 v2', time: '鍒氬垰', read: false, category: 'task' },  { id: 2, title: '绯荤粺宸叉洿鏂拌嚦 v0.4.8', time: '1 灏忔椂鍓?, read: false, category: 'system' },  { id: 3, title: '鍥㈤槦閭€璇? 鍟嗗姟AI灏忕粍', time: '鏄ㄥぉ', read: false, category: 'team' }]interface TopBarProps {  onOpenSearch: () => void}export default function TopBar({ onOpenSearch }: TopBarProps) {  const navigate = useNavigate()  const [unreadCount, setUnreadCount] = useState(    NOTIFICATIONS.filter((n) => !n.read).length  )  const user = useAuthStore((s) => s.user)  const logout = useAuthStore((s) => s.logout)  const balance = useCreditsStore((s) => s.balance)  const loaded = useCreditsStore((s) => s.loaded)  const displayBalance = loaded ? balance : 1000  // 鈱楰 蹇嵎閿墦寮€鍛戒护闈㈡澘  useEffect(() => {    const handler = (e: KeyboardEvent) => {      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {        e.preventDefault()        onOpenSearch()      }    }    document.addEventListener('keydown', handler)    return () => document.removeEventListener('keydown', handler)  }, [onOpenSearch])  const handleLogout = async () => {    await logout()    navigate('/login', { replace: true })  }  const userMenuItems: MenuProps['items'] = [    {      key: 'profile',      icon: <UserOutlined />,      label: '涓汉淇℃伅',      onClick: () => navigate('/profile')    },    {      key: 'switch',      icon: <UserOutlined />,      label: '鍒囨崲璐﹀彿',      onClick: handleLogout    },    { type: 'divider' },    {      key: 'logout',      icon: <LogoutOutlined />,      label: '閫€鍑虹櫥褰?,      onClick: handleLogout    }  ]  const notificationContent = (    <div className={styles.notificationList}>      {NOTIFICATIONS.length === 0 ? (        <Empty description="鏆傛棤閫氱煡" />      ) : (        NOTIFICATIONS.map((n) => (          <div            key={n.id}            className={styles.notificationItem}            onClick={() => setUnreadCount((c) => Math.max(0, c - 1))}          >            <div className={styles.notificationTitle}>              {!n.read && <span className={styles.notificationDot} />}              {n.title}            </div>            <div className={styles.notificationTime}>{n.time}</div>          </div>        ))      )}    </div>  )  const username =    user?.username ||    (typeof localStorage !== 'undefined'      ? localStorage.getItem('username') || '鐢ㄦ埛'      : '鐢ㄦ埛')  const avatarLetter = (username || '鐢?).charAt(0).toUpperCase()  return (    <header className={styles.topbar}>      {/* 宸︿晶: 鈱楰 鎼滅储鎸夐挳 */}      <div className={styles.left}>        <Button          type="text"          className={styles.searchBtn}          onClick={onOpenSearch}          icon={<SearchOutlined />}        >          <span className={styles.searchPlaceholder}>鎼滅储...</span>          <kbd className={styles.shortcutHint}>鈱楰</kbd>        </Button>      </div>      {/* 鍙充晶: 绉垎 + 閫氱煡 + 澶村儚 */}      <div className={styles.right}>        <div          className={styles.credits}          onClick={() => navigate('/credits')}          role="button"          tabIndex={0}        >          <CreditDisplay            value={displayBalance}            lowThreshold={100}            size="default"          />        </div>        <Dropdown          dropdownRender={() => notificationContent}          trigger={['click']}          placement="bottomRight"        >          <Badge count={unreadCount} size="small" offset={[-2, 2]}>            <BellOutlined className={styles.iconBtn} />          </Badge>        </Dropdown>        <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">          <div className={styles.avatarWrap}>            <Avatar size={28} className={styles.avatar}>              {avatarLetter}            </Avatar>          </div>        </Dropdown>      </div>    </header>  )}
+﻿// 顶栏 - 方案B
+// 48px 高度:logo + 搜索框 + 通知 + 积分余额 + 头像菜单
+// (页面标题已由顶部 Tab 栏体现,此处不再显示)
+
+import { useNavigate } from "react-router-dom";
+import { Avatar, Badge, Dropdown, Input, Popover, type MenuProps } from "antd";
+import {
+  BellOutlined,
+  GiftOutlined,
+  LogoutOutlined,
+  UserOutlined,
+  DashboardOutlined,
+} from "@ant-design/icons";
+import { useAuthStore } from "@/store/auth";
+import { useCreditsStore } from "@/store/credits";
+import styles from "./styles.module.css";
+
+interface NotificationItem {
+  id: number;
+  title: string;
+  time: string;
+  read: boolean;
+}
+
+/** Mock 通知列表 */
+const NOTIFICATIONS: NotificationItem[] = [
+  { id: 1, title: "欢迎使用深瞳AI-智能中台", time: "刚刚", read: false },
+  { id: 2, title: "您的积分已到账", time: "1 小时前", read: false },
+  { id: 3, title: "系统已更新到最新版本", time: "昨天", read: true },
+];
+
+export default function TopBar() {
+  const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
+  const balance = useCreditsStore((s) => s.balance);
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login", { replace: true });
+  };
+
+  const userMenuItems: MenuProps["items"] = [
+    {
+      key: "profile",
+      icon: <UserOutlined />,
+      label: "个人设置",
+      onClick: () => navigate("/settings"),
+    },
+    {
+      key: "admin",
+      icon: <DashboardOutlined />,
+      label: "管理后台",
+      onClick: () => navigate("/admin/login"),
+    },
+    { type: "divider" },
+    {
+      key: "logout",
+      icon: <LogoutOutlined />,
+      label: "退出登录",
+      onClick: handleLogout,
+    },
+  ];
+
+  const unreadCount = NOTIFICATIONS.filter((n) => !n.read).length;
+
+  const notificationContent = (
+    <div className={styles.notificationList}>
+      {NOTIFICATIONS.length === 0 ? (
+        <div className={styles.notificationEmpty}>暂无通知</div>
+      ) : (
+        NOTIFICATIONS.map((n) => (
+          <div key={n.id} className={styles.notificationItem}>
+            <div className={styles.notificationTitle}>
+              {!n.read && <span className={styles.notificationDot} />}
+              {n.title}
+            </div>
+            <div className={styles.notificationTime}>{n.time}</div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+
+  return (
+    <div className={styles.topbar}>
+      {/* 左侧:logo */}
+      <div className={styles.topbarLeft}>
+        <span className={styles.logo}>深瞳AI-智能中台</span>
+      </div>
+
+      {/* 中间:搜索框 */}
+      <div className={styles.topbarCenter}>
+        <Input.Search
+          placeholder="搜索 Agent/工作流/知识库..."
+          className={styles.searchInput}
+          size="middle"
+          variant="filled"
+        />
+      </div>
+
+      {/* 右侧:通知 + 积分 + 头像 */}
+      <div className={styles.topbarRight}>
+        <Popover
+          content={notificationContent}
+          title="通知"
+          trigger="click"
+          placement="bottomRight"
+        >
+          <Badge count={unreadCount} size="small">
+            <BellOutlined className={styles.iconBtn} />
+          </Badge>
+        </Popover>
+
+        <div
+          className={styles.creditsBadge}
+          onClick={() => navigate("/credits")}
+          role="button"
+          tabIndex={0}
+        >
+          <GiftOutlined />
+          <span>{balance}</span>
+        </div>
+
+        <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+          <div className={styles.avatarWrap}>
+            <Avatar
+              size={28}
+              icon={<UserOutlined />}
+              src={user?.avatar}
+              className={styles.avatar}
+            />
+            <span className={styles.username}>{user?.username || "用户"}</span>
+          </div>
+        </Dropdown>
+      </div>
+    </div>
+  );
+}

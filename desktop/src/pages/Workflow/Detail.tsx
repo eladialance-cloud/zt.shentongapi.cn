@@ -1,1 +1,390 @@
-﻿// 宸ヤ綔娴佽鎯呴〉 - v0.3.1// 椤堕儴锛氬伐浣滄祦鍚嶇О + 鐘舵€?+ 鎿嶄綔鎸夐挳// Tabs锛氭瑙堬紙鑺傜偣鍒楄〃 + 鏈€杩戞墽琛岋級/ 鎵ц鍘嗗彶锛堣〃鏍硷級/ 閰嶇疆锛堣〃鍗曪級// 淇濈暀 N8N 鍏宠仈 + 鎵ц杞閫昏緫// 浣跨敤 v0.3.1 璁捐浠ょ墝 + SkillTagimport { useCallback, useEffect, useRef, useState } from 'react'import { useNavigate, useParams } from 'react-router-dom'import {  Breadcrumb,  Button,  Card,  Col,  Empty,  Form,  Input,  Row,  Select,  Spin,  Switch,  Table,  Tabs,  Tag,  Tooltip,  Typography,  message} from 'antd'import type { TableColumnsType } from 'antd'import {  ArrowLeftOutlined,  PlayCircleOutlined,  ThunderboltOutlined,  PictureOutlined,  ClockCircleOutlined,  DollarOutlined,  HomeOutlined,  NodeIndexOutlined,  HistoryOutlined,  SettingOutlined} from '@ant-design/icons'import SkillTag from '@/components/SkillTag'import * as workflowApi from '@/api/workflow-api'import { n8nApi } from '@/api/n8n-api'import type { N8nWorkflow } from '@/api/n8n-api'import type {  WorkflowTemplate,  WorkflowExecution,  WorkflowExecutionStatus} from '@/types/workflow'import styles from './styles.module.css'const { TextArea } = Inputconst { Text } = Typographyconst CATEGORY_OPTIONS = [  { label: '鑷姩鍖?, value: 'automation' },  { label: '闆嗘垚', value: 'integration' },  { label: '鏁版嵁澶勭悊', value: 'data_processing' },  { label: '鍏朵粬', value: 'other' }]function categoryLabel(category: string): string {  switch (category) {    case 'automation':      return '鑷姩鍖?    case 'integration':      return '闆嗘垚'    case 'data_processing':      return '鏁版嵁澶勭悊'    default:      return '鍏朵粬'  }}function categoryToSkillType(category: string): 'flow' | 'reasoning' | 'tool' {  switch (category) {    case 'automation':      return 'flow'    case 'data_processing':      return 'reasoning'    case 'integration':    default:      return 'tool'  }}function statusLabel(status: WorkflowExecutionStatus): string {  switch (status) {    case 'success':      return '鎴愬姛'    case 'failed':      return '澶辫触'    case 'running':      return '杩愯涓?    case 'canceled':      return '宸插彇娑?    default:      return status  }}function statusTagColor(status: WorkflowExecutionStatus): string {  switch (status) {    case 'success':      return 'success'    case 'failed':      return 'error'    case 'running':      return 'processing'    default:      return 'default'  }}function formatJson(value: unknown): string {  if (value == null) return '-'  if (typeof value === 'string') return value  try {    return JSON.stringify(value, null, 2)  } catch {    return String(value)  }}function formatDuration(ms?: number): string {  if (ms == null) return '-'  if (ms < 1000) return `${ms} ms`  return `${(ms / 1000).toFixed(2)} s`}function formatTime(value: unknown): string {  if (!value) return '-'  const d = new Date(value as string)  if (isNaN(d.getTime())) return String(value)  return d.toLocaleString('zh-CN', { hour12: false })}export default function WorkflowDetail() {  const navigate = useNavigate()  const { id } = useParams<{ id: string }>()  const workflowId = id ? Number(id) : NaN  const [template, setTemplate] = useState<WorkflowTemplate | null>(null)  const [executions, setExecutions] = useState<WorkflowExecution[]>([])  const [loading, setLoading] = useState(false)  const [executing, setExecuting] = useState(false)  const [inputText, setInputText] = useState('{}')  const [lastResult, setLastResult] = useState<WorkflowExecution | null>(null)  const [activeTab, setActiveTab] = useState<string>('overview')  const [configForm] = Form.useForm()  // N8N 宸ヤ綔娴佹縺娲荤姸鎬?  const [n8nWorkflow, setN8nWorkflow] = useState<N8nWorkflow | null>(null)  const [togglingActive, setTogglingActive] = useState(false)  // N8N 鎵ц鐘舵€佽疆璇?  const [n8nExecutionStatus, setN8nExecutionStatus] = useState<Record<string, unknown> | null>(null)  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)  const pollExecutionStatus = useCallback(    async (instanceId: number, executionId: string, retries = 5) => {      try {        const status = await n8nApi.getExecutionStatus(instanceId, executionId)        setN8nExecutionStatus(status)        const statusStr = String((status as Record<string, unknown>)?.status ?? '')        if (statusStr === 'running' && retries > 0) {          pollTimerRef.current = setTimeout(            () => void pollExecutionStatus(instanceId, executionId, retries - 1),            2000          )        }      } catch (err) {        console.warn('[WorkflowDetail] poll n8n execution status failed:', err)      }    },    []  )  useEffect(() => {    return () => {      if (pollTimerRef.current) {        clearTimeout(pollTimerRef.current)        pollTimerRef.current = null      }    }  }, [])  const loadData = useCallback(async () => {    if (!Number.isFinite(workflowId)) return    setLoading(true)    try {      const [tpl, execResult] = await Promise.all([        workflowApi.getTemplate(workflowId),        workflowApi.listExecutions({ workflowId, pageSize: 50 })      ])      setTemplate(tpl)      setExecutions(execResult.list || [])      // 鍒濆鍖栭厤缃〃鍗?      configForm.setFieldsValue({        name: tpl?.name || '',        description: tpl?.description || '',        category: tpl?.category || 'other'      })      try {        const instances = await n8nApi.listInstances()        let matched: N8nWorkflow | null = null        for (const inst of instances) {          try {            const wfs = await n8nApi.listWorkflows(inst.id)            const found = wfs.find(              (w) => w.name === tpl.name || w.workflowId === String(tpl.id)            )            if (found) {              matched = found              break            }          } catch {            // 鍗曚釜瀹炰緥鏌ヨ澶辫触锛岀户缁笅涓€涓?          }        }        setN8nWorkflow(matched)      } catch (err) {        console.warn('[WorkflowDetail] load n8n workflows failed:', err)        setN8nWorkflow(null)      }    } catch (err) {      console.error('[WorkflowDetail] load failed:', err)      message.error('鍔犺浇宸ヤ綔娴佽鎯呭け璐?)    } finally {      setLoading(false)    }  }, [workflowId, configForm])  useEffect(() => {    void loadData()  }, [loadData])  const handleExecute = async () => {    if (!Number.isFinite(workflowId)) return    let input: unknown    try {      input = JSON.parse(inputText || '{}')    } catch (err) {      message.error('杈撳叆涓嶆槸鍚堟硶鐨?JSON: ' + (err as Error).message)      return    }    setExecuting(true)    setN8nExecutionStatus(null)    try {      const n8nContext = n8nWorkflow        ? { instanceId: n8nWorkflow.instanceId, workflowId: n8nWorkflow.workflowId }        : undefined      const result = await workflowApi.executeWorkflow(workflowId, input, n8nContext)      setLastResult(result)      message.success('宸ヤ綔娴佹墽琛屽畬鎴?)      if (n8nWorkflow && result.output && typeof result.output === 'object') {        const n8nResult = result.output as { executionId?: string }        if (n8nResult.executionId) {          void pollExecutionStatus(n8nWorkflow.instanceId, n8nResult.executionId)        }      }      void loadData()    } catch (err) {      console.error('[WorkflowDetail] execute failed:', err)      message.error('宸ヤ綔娴佹墽琛屽け璐? ' + (err as Error).message)    } finally {      setExecuting(false)    }  }  const handleToggleActive = async (checked: boolean) => {    if (!n8nWorkflow) return    setTogglingActive(true)    try {      if (checked) {        await n8nApi.activateWorkflow(n8nWorkflow.instanceId, n8nWorkflow.workflowId)        message.success('宸ヤ綔娴佸凡婵€娲?)      } else {        await n8nApi.deactivateWorkflow(n8nWorkflow.instanceId, n8nWorkflow.workflowId)        message.success('宸ヤ綔娴佸凡鍋滅敤')      }      setN8nWorkflow((prev) => (prev ? { ...prev, active: checked } : prev))    } catch (err) {      console.error('[WorkflowDetail] toggle active failed:', err)      message.error((checked ? '婵€娲? : '鍋滅敤') + '宸ヤ綔娴佸け璐? ' + (err as Error).message)    } finally {      setTogglingActive(false)    }  }  const handleBack = () => {    navigate('/workflow')  }  /** 閰嶇疆 Tab 淇濆瓨 */  const handleConfigSave = async () => {    try {      const values = await configForm.validateFields()      // TODO(backend): 璋冪敤 PATCH /workflow/templates/:id 鏇存柊閰嶇疆      message.info('閰嶇疆淇濆瓨鍔熻兘寮€鍙戜腑锛堝緟鍚庣鏀寔锛?)    } catch (err) {      if (err && typeof err === 'object' && 'errorFields' in err) return      console.error('[WorkflowDetail] save config failed:', err)    }  }  const historyColumns: TableColumnsType<WorkflowExecution> = [    { title: 'ID', dataIndex: 'id', key: 'id', width: 70 },    {      title: '寮€濮嬫椂闂?,      dataIndex: 'createdAt',      key: 'createdAt',      width: 180,      render: (v: string) => formatTime(v)    },    {      title: '鑰楁椂',      dataIndex: 'durationMs',      key: 'durationMs',      width: 100,      render: (v: number) => formatDuration(v)    },    {      title: '鐘舵€?,      dataIndex: 'status',      key: 'status',      width: 100,      render: (status: WorkflowExecutionStatus) => (        <Tag color={statusTagColor(status)}>{statusLabel(status)}</Tag>      )    },    {      title: '缁撴灉',      dataIndex: 'output',      key: 'output',      ellipsis: true,      render: (v: unknown) => (        <Text type="secondary" ellipsis style={{ fontSize: 12 }}>          {formatJson(v)}        </Text>      )    }  ]  if (loading && !template) {    return (      <div className={styles.pageContainer}>        <Spin fullscreen tip="鍔犺浇涓?.." />      </div>    )  }  if (!template) {    return (      <div className={styles.pageContainer}>        <div className={styles.emptyState}>          <ThunderboltOutlined className={styles.emptyStateIcon} />          <div className={styles.emptyStateText}>宸ヤ綔娴佷笉瀛樺湪鎴栧姞杞藉け璐?/div>          <Button icon={<ArrowLeftOutlined />} onClick={handleBack}>杩斿洖鍒楄〃</Button>        </div>      </div>    )  }  return (    <div className={styles.pageContainer}>      <Breadcrumb        className={styles.breadcrumb}        items={[{ title: <><HomeOutlined /> 棣栭〉</> }, { title: '宸ヤ綔娴?, href: '/workflow' }, { title: template.name }]}      />      {/* 椤堕儴锛氬悕绉?+ 鐘舵€?+ 鎿嶄綔 */}      <div className={styles.pageHeader}>        <div className={styles.pageTitle}>          <ThunderboltOutlined style={{ color: 'var(--color-primary)' }} />          <span>{template.name}</span>          {n8nWorkflow && (            <Tag color={n8nWorkflow.active ? 'success' : 'default'}>              {n8nWorkflow.active ? '宸叉縺娲? : '宸插仠鐢?}            </Tag>          )}        </div>        <div className={styles.headerActions}>          {n8nWorkflow ? (            <Tooltip title={n8nWorkflow.active ? '鐐瑰嚮鍋滅敤' : '鐐瑰嚮婵€娲?}>              <Switch                checked={n8nWorkflow.active}                loading={togglingActive}                onChange={handleToggleActive}              />            </Tooltip>          ) : (            <Tooltip title="璇ユā鏉挎湭鍏宠仈 N8N 宸ヤ綔娴?>              <Switch disabled />            </Tooltip>          )}          <Button type="primary" icon={<PlayCircleOutlined />} onClick={handleExecute} loading={executing}>            鎵ц          </Button>          <Button icon={<ArrowLeftOutlined />} onClick={handleBack}>杩斿洖</Button>        </div>      </div>      <Tabs        activeKey={activeTab}        onChange={setActiveTab}        items={[          {            key: 'overview',            label: <><NodeIndexOutlined /> 姒傝</>,            children: (              <Row gutter={[16, 16]}>                <Col xs={24} lg={12}>                  <Card                    className={styles.detailCard}                    bordered={false}                    title="鍩烘湰淇℃伅"                  >                    <div className={styles.detailDescription}>{template.description}</div>                    <div className={styles.overviewMeta}>                      <SkillTag type={categoryToSkillType(template.category)}>                        {categoryLabel(template.category)}                      </SkillTag>                      {template.pricePerExecution != null && template.pricePerExecution > 0 && (                        <Tag color="processing">                          <DollarOutlined /> {template.pricePerExecution} 绉垎/娆?                        </Tag>                      )}                    </div>                    <div className={styles.detailPreview}>                      {template.previewImage ? (                        <img src={template.previewImage} alt={template.name} />                      ) : (                        <PictureOutlined className={styles.detailPreviewPlaceholder} />                      )}                    </div>                  </Card>                </Col>                <Col xs={24} lg={12}>                  <Card                    className={styles.detailCard}                    bordered={false}                    title={<><HistoryOutlined /> 鏈€杩戞墽琛?/>}                  >                    {executions.length === 0 ? (                      <Empty description="鏆傛棤鎵ц璁板綍" image={Empty.PRESENTED_IMAGE_SIMPLE} />                    ) : (                      <Table<WorkflowExecution>                        columns={historyColumns}                        dataSource={executions.slice(0, 5)}                        rowKey="id"                        size="small"                        pagination={false}                        scroll={{ x: 'max-content' }}                      />                    )}                  </Card>                </Col>              </Row>            )          },          {            key: 'history',            label: <><ClockCircleOutlined /> 鎵ц鍘嗗彶</>,            children: (              <Card className={styles.detailCard} bordered={false}>                <Table<WorkflowExecution>                  columns={historyColumns}                  dataSource={executions}                  rowKey="id"                  size="small"                  pagination={{ pageSize: 10, showSizeChanger: false }}                  scroll={{ x: 'max-content' }}                  loading={loading}                  locale={{ emptyText: '鏆傛棤鎵ц璁板綍' }}                />              </Card>            )          },          {            key: 'config',            label: <><SettingOutlined /> 閰嶇疆</>,            children: (              <Card className={styles.detailCard} bordered={false} title="宸ヤ綔娴侀厤缃?>                <Form form={configForm} layout="vertical" style={{ maxWidth: 600 }}>                  <Form.Item name="name" label="鍚嶇О" rules={[{ required: true, message: '璇疯緭鍏ュ悕绉? }]}>                    <Input placeholder="宸ヤ綔娴佸悕绉? />                  </Form.Item>                  <Form.Item name="description" label="鎻忚堪">                    <TextArea placeholder="宸ヤ綔娴佹弿杩?.." autoSize={{ minRows: 3, maxRows: 6 }} />                  </Form.Item>                  <Form.Item name="category" label="鍒嗙被">                    <Select options={CATEGORY_OPTIONS} />                  </Form.Item>                  <Form.Item label="瀵规墍鏈夎€呭彲瑙?>                    <Switch defaultChecked />                    <Text type="secondary" style={{ marginLeft: 12, fontSize: 12 }}>                      寮€鍚悗鍥㈤槦鎴愬憳鍙姝ゅ伐浣滄祦                    </Text>                  </Form.Item>                  <Button type="primary" onClick={handleConfigSave}>淇濆瓨閰嶇疆</Button>                </Form>              </Card>            )          }        ]}      />      {/* 鎵ц杈撳叆涓庣粨鏋滐紙姒傝 Tab 涔嬪涔熶繚鐣欏叆鍙ｏ級 */}      {activeTab === 'overview' && (        <Card className={styles.detailCard} bordered={false} title={<><PlayCircleOutlined /> 蹇€熸墽琛?/>}>          <TextArea            value={inputText}            onChange={(e) => setInputText(e.target.value)}            placeholder="杈撳叆 JSON 鏍煎紡鐨勫伐浣滄祦杈撳叆鍙傛暟..."            autoSize={{ minRows: 4, maxRows: 10 }}            className={styles.inputTextarea}          />          <Button            type="primary"            icon={<PlayCircleOutlined />}            onClick={handleExecute}            loading={executing}            style={{ marginTop: 12 }}          >            鎵ц宸ヤ綔娴?          </Button>          {lastResult && (            <div style={{ marginTop: 16 }}>              <div className={styles.sectionTitle}>                <ThunderboltOutlined /> 鏈€杩戞墽琛岀粨鏋?              </div>              <div className={styles.resultBlock}>{formatJson(lastResult.output)}</div>              <div className={styles.resultMeta}>                <Tag color={statusTagColor(lastResult.status)}>                  {statusLabel(lastResult.status)}                </Tag>                <span className={styles.resultMetaItem}>                  <ClockCircleOutlined /> 鑰楁椂: {formatDuration(lastResult.durationMs)}                </span>                <span className={styles.resultMetaItem}>                  <DollarOutlined /> 绉垎娑堣€? <span className={styles.creditsCost}>{lastResult.creditsCost ?? 0}</span>                </span>                <span className={styles.resultMetaItem}>鏃堕棿: {formatTime(lastResult.createdAt)}</span>              </div>              {n8nExecutionStatus && (                <div style={{ marginTop: 12 }}>                  <div className={styles.sectionTitle}>                    <ClockCircleOutlined /> N8N 鎵ц鐘舵€?                  </div>                  <div className={styles.schemaBlock}>{formatJson(n8nExecutionStatus)}</div>                </div>              )}            </div>          )}        </Card>      )}    </div>  )}
+// 工作流详情页
+// 展示：模板信息（名称/描述/预览图/输入输出 Schema）+ 执行历史 + 执行按钮
+// 调用 GET /workflow/templates/:id、GET /workflow/executions?workflowId=、POST /workflow/:id/execute
+
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { Button, Input, Spin, Table, Tag, Typography, message } from "antd";
+import type { TableColumnsType } from "antd";
+import {
+  ArrowLeftOutlined,
+  PlayCircleOutlined,
+  ThunderboltOutlined,
+  PictureOutlined,
+  ClockCircleOutlined,
+  DollarOutlined,
+} from "@ant-design/icons";
+import * as workflowApi from "@/api/workflow-api";
+import type {
+  WorkflowTemplate,
+  WorkflowExecution,
+  WorkflowExecutionStatus,
+} from "@/types/workflow";
+import styles from "./styles.module.css";
+
+const { TextArea } = Input;
+const { Text } = Typography;
+
+/** 状态标签 className */
+function statusTagClass(status: WorkflowExecutionStatus): string {
+  switch (status) {
+    case "success":
+      return styles.statusTagSuccess;
+    case "failed":
+      return styles.statusTagFailed;
+    case "running":
+      return styles.statusTagRunning;
+    case "canceled":
+    default:
+      return styles.statusTagCanceled;
+  }
+}
+
+/** 状态中文显示 */
+function statusLabel(status: WorkflowExecutionStatus): string {
+  switch (status) {
+    case "success":
+      return "成功";
+    case "failed":
+      return "失败";
+    case "running":
+      return "运行中";
+    case "canceled":
+      return "已取消";
+    default:
+      return status;
+  }
+}
+
+/** 格式化 JSON 用于显示 */
+function formatJson(value: unknown): string {
+  if (value == null) return "-";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+/** 格式化耗时 */
+function formatDuration(ms?: number): string {
+  if (ms == null) return "-";
+  if (ms < 1000) return `${ms} ms`;
+  return `${(ms / 1000).toFixed(2)} s`;
+}
+
+/** 格式化时间 */
+function formatTime(value: unknown): string {
+  if (!value) return "-";
+  const d = new Date(value as string);
+  if (isNaN(d.getTime())) return String(value);
+  return d.toLocaleString("zh-CN", { hour12: false });
+}
+
+export default function WorkflowDetail() {
+  const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
+  const workflowId = id ? Number(id) : NaN;
+
+  const [template, setTemplate] = useState<WorkflowTemplate | null>(null);
+  const [executions, setExecutions] = useState<WorkflowExecution[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [inputText, setInputText] = useState("{}");
+  const [lastResult, setLastResult] = useState<WorkflowExecution | null>(null);
+
+  /** 加载模板详情 + 执行历史 */
+  const loadData = useCallback(async () => {
+    if (!Number.isFinite(workflowId)) return;
+    setLoading(true);
+    try {
+      const [tpl, execResult] = await Promise.all([
+        workflowApi.getTemplate(workflowId),
+        workflowApi.listExecutions({ workflowId, pageSize: 50 }),
+      ]);
+      setTemplate(tpl);
+      setExecutions(execResult.list || []);
+    } catch (err) {
+      console.error("[WorkflowDetail] load failed:", err);
+      message.error("加载工作流详情失败");
+    } finally {
+      setLoading(false);
+    }
+  }, [workflowId]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  /** 执行工作流 */
+  const handleExecute = async () => {
+    if (!Number.isFinite(workflowId)) return;
+    let input: unknown;
+    try {
+      input = JSON.parse(inputText || "{}");
+    } catch (err) {
+      message.error("输入不是合法的 JSON: " + (err as Error).message);
+      return;
+    }
+
+    setExecuting(true);
+    try {
+      const result = await workflowApi.executeWorkflow(workflowId, input);
+      setLastResult(result);
+      message.success("工作流执行完成");
+      // 刷新执行历史
+      void loadData();
+    } catch (err) {
+      console.error("[WorkflowDetail] execute failed:", err);
+      message.error("工作流执行失败: " + (err as Error).message);
+    } finally {
+      setExecuting(false);
+    }
+  };
+
+  /** 返回列表 */
+  const handleBack = () => {
+    navigate("/workflow");
+  };
+
+  /** 执行历史表格列定义 */
+  const columns: TableColumnsType<WorkflowExecution> = [
+    {
+      title: "ID",
+      dataIndex: "id",
+      key: "id",
+      width: 70,
+    },
+    {
+      title: "状态",
+      dataIndex: "status",
+      key: "status",
+      width: 100,
+      render: (status: WorkflowExecutionStatus) => (
+        <Tag className={statusTagClass(status)}>{statusLabel(status)}</Tag>
+      ),
+    },
+    {
+      title: "耗时",
+      dataIndex: "durationMs",
+      key: "durationMs",
+      width: 100,
+      render: (v: number) => formatDuration(v),
+    },
+    {
+      title: "积分消耗",
+      dataIndex: "creditsCost",
+      key: "creditsCost",
+      width: 100,
+      render: (v: number) => (
+        <span className={styles.creditsCost}>{v ?? 0}</span>
+      ),
+    },
+    {
+      title: "输出",
+      dataIndex: "output",
+      key: "output",
+      ellipsis: true,
+      render: (v: unknown) => (
+        <Text style={{ color: "#8b949e", fontSize: 12 }} ellipsis>
+          {formatJson(v)}
+        </Text>
+      ),
+    },
+    {
+      title: "时间",
+      dataIndex: "createdAt",
+      key: "createdAt",
+      width: 180,
+      render: (v: string) => formatTime(v),
+    },
+  ];
+
+  if (loading && !template) {
+    return (
+      <div className={styles.pageContainer}>
+        <Spin
+          fullscreen
+          tip="加载中..."
+          style={{ background: "rgba(10, 14, 26, 0.85)" }}
+        />
+      </div>
+    );
+  }
+
+  if (!template) {
+    return (
+      <div className={styles.pageContainer}>
+        <div className={styles.emptyState}>
+          <ThunderboltOutlined className={styles.emptyStateIcon} />
+          <div className={styles.emptyStateText}>工作流不存在或加载失败</div>
+          <Button
+            className={styles.backBtn}
+            icon={<ArrowLeftOutlined />}
+            onClick={handleBack}
+          >
+            返回列表
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.pageContainer}>
+      {/* 顶部导航 */}
+      <div className={styles.pageHeader}>
+        <div className={styles.pageTitle}>
+          <ThunderboltOutlined />
+          <span>{template.name}</span>
+        </div>
+        <Button
+          className={styles.backBtn}
+          icon={<ArrowLeftOutlined />}
+          onClick={handleBack}
+        >
+          返回列表
+        </Button>
+      </div>
+
+      <div className={styles.detailContainer}>
+        {/* 模板基本信息 */}
+        <div className={styles.detailCard}>
+          <div className={styles.detailHeader}>
+            <div>
+              <h2 className={styles.detailTitle}>{template.name}</h2>
+              <Tag className={styles.categoryTag}>{template.category}</Tag>
+            </div>
+          </div>
+          <div className={styles.detailDescription}>{template.description}</div>
+
+          {/* 预览图 */}
+          <div className={styles.detailPreview}>
+            {template.previewImage ? (
+              <img src={template.previewImage} alt={template.name} />
+            ) : (
+              <PictureOutlined className={styles.detailPreviewPlaceholder} />
+            )}
+          </div>
+
+          {/* 输入输出 Schema */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 16,
+              marginTop: 16,
+            }}
+          >
+            <div>
+              <div className={styles.sectionTitle}>
+                <ArrowLeftOutlined style={{ transform: "rotate(180deg)" }} />
+                输入 Schema
+              </div>
+              <div className={styles.schemaBlock}>
+                {formatJson(template.inputSchema)}
+              </div>
+            </div>
+            <div>
+              <div className={styles.sectionTitle}>
+                <ArrowLeftOutlined />
+                输出 Schema
+              </div>
+              <div className={styles.schemaBlock}>
+                {formatJson(template.outputSchema)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 执行区 */}
+        <div className={styles.detailCard}>
+          <div className={styles.sectionTitle}>
+            <PlayCircleOutlined />
+            执行工作流
+            {template.pricePerExecution != null &&
+              template.pricePerExecution > 0 && (
+                <span
+                  className={styles.creditsCost}
+                  style={{ marginLeft: 12, fontSize: 12 }}
+                >
+                  每次执行消耗 {template.pricePerExecution} 积分
+                </span>
+              )}
+          </div>
+          <div className={styles.inputArea}>
+            <TextArea
+              className={styles.inputTextarea}
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="输入 JSON 格式的工作流输入参数..."
+              autoSize={{ minRows: 4, maxRows: 10 }}
+            />
+            <Button
+              type="primary"
+              className={styles.executeBtn}
+              icon={<PlayCircleOutlined />}
+              onClick={handleExecute}
+              loading={executing}
+            >
+              执行工作流
+            </Button>
+          </div>
+
+          {/* 最近一次执行结果 */}
+          {lastResult && (
+            <div style={{ marginTop: 16 }}>
+              <div className={styles.sectionTitle}>
+                <ThunderboltOutlined />
+                最近执行结果
+              </div>
+              <div className={styles.resultBlock}>
+                {formatJson(lastResult.output)}
+              </div>
+              <div className={styles.resultMeta}>
+                <span className={styles.resultMetaItem}>
+                  <Tag className={statusTagClass(lastResult.status)}>
+                    {statusLabel(lastResult.status)}
+                  </Tag>
+                </span>
+                <span className={styles.resultMetaItem}>
+                  <ClockCircleOutlined />
+                  耗时: {formatDuration(lastResult.durationMs)}
+                </span>
+                <span className={styles.resultMetaItem}>
+                  <DollarOutlined />
+                  积分消耗:{" "}
+                  <span className={styles.creditsCost}>
+                    {lastResult.creditsCost ?? 0}
+                  </span>
+                </span>
+                <span className={styles.resultMetaItem}>
+                  时间: {formatTime(lastResult.createdAt)}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 执行历史 */}
+        <div className={styles.historyTableWrapper}>
+          <div className={styles.sectionTitle}>
+            <ClockCircleOutlined />
+            执行历史
+          </div>
+          <Table<WorkflowExecution>
+            columns={columns}
+            dataSource={executions}
+            rowKey="id"
+            size="small"
+            pagination={{ pageSize: 10, showSizeChanger: false }}
+            scroll={{ x: "max-content" }}
+            loading={loading}
+            locale={{ emptyText: "暂无执行记录" }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}

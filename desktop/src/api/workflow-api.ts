@@ -1,1 +1,79 @@
-﻿// 宸ヤ綔娴佹ā鍧?API//// 绔偣濂戠害锛堝悗绔疄闄呰矾寰勶紝鍏ㄥ眬鍓嶇紑 /api锛屾帶鍒跺櫒 @Controller('workflows')锛夛細//   GET    /workflows                          宸ヤ綔娴佸垪琛紙鏀寔 category / keyword锛?//   GET    /workflows/:id                      宸ヤ綔娴佽鎯?//   POST   /workflows/:id/execute              鎵ц宸ヤ綔娴侊紙body: { input }锛?//   GET    /workflows/me/executions            鎴戠殑鎵ц鍘嗗彶鍒楄〃锛堟敮鎸?workflowId锛?//// 娉細鏈枃浠朵腑 listTemplates/getTemplate 褰撳墠璋冪敤 /workflow/templates锛堟棫濂戠害锛夛紝//     涓庡悗绔?/workflows 瀛樺湪璺緞宸紓锛圥0/P1 绾у埆闂锛屽緟鍚庣画 Task 淇浠ｇ爜瀵归綈锛夈€?//     executeWorkflow 涓?listExecutions 宸插榻愬悗绔?/workflows/:id/execute 涓?/workflows/me/executions銆?import { httpClient } from './http-client'import { n8nApi } from './n8n-api'import type {  WorkflowTemplate,  WorkflowExecution,  WorkflowTemplateQuery,  WorkflowExecutionQuery,  PaginatedResult} from '@/types/workflow'/** * 宸ヤ綔娴佹ā鏉垮垪琛? * GET /workflow/templates?category=&keyword=&ownerType= * * Task 13: query.ownerType 浼氳閫忎紶涓??ownerType=official|team|user銆? * TODO(backend): 鍚庣闇€鏀寔璇ヨ繃婊ゅ弬鏁帮紱鏈敮鎸佸墠浼氬拷鐣ユ湭鐭ュ弬鏁帮紝鍓嶇涓嶆姤閿欍€? */export async function listTemplates(  query: WorkflowTemplateQuery = {}): Promise<PaginatedResult<WorkflowTemplate>> {  return httpClient.get<PaginatedResult<WorkflowTemplate>>('/workflow/templates', {    params: query  })}/** * 宸ヤ綔娴佹ā鏉胯鎯? * GET /workflow/templates/:id */export async function getTemplate(id: number): Promise<WorkflowTemplate> {  return httpClient.get<WorkflowTemplate>(`/workflow/templates/${id}`)}/** * N8N 妗ユ帴涓婁笅鏂囷紙鍙€夛級 * * 褰撲紶鍏ユ鍙傛暟鏃讹紝executeWorkflow 浼氫紭鍏堝皾璇曢€氳繃 N8N 瀹炰緥瑙﹀彂宸ヤ綔娴侊紱 * 鑻ヨЕ鍙戝け璐ュ垯閫忔槑鍥為€€鍒?/workflow/:id/execute 绔偣銆? */export interface N8nExecuteContext {  instanceId: number  workflowId: string}/** * 鎵ц宸ヤ綔娴? * * 浼樺厛绾э細 *   1. 鑻ユ彁渚?n8nContext锛屽厛灏濊瘯 n8nApi.triggerWorkflow(instanceId, workflowId, input) *   2. 鍥為€€鍒?POST /workflow/:id/execute * * 鍥為€€瀵硅皟鐢ㄦ柟閫忔槑锛堣繑鍥炵被鍨嬩竴鑷达級銆? * * @param id 宸ヤ綔娴佹ā鏉?ID * @param input 鎵ц杈撳叆鍙傛暟 * @param n8nContext 鍙€夌殑 N8N 瀹炰緥 + 宸ヤ綔娴佷笂涓嬫枃 */export async function executeWorkflow(  id: number,  input: unknown,  n8nContext?: N8nExecuteContext): Promise<WorkflowExecution> {  // 1. 浼樺厛灏濊瘯 N8N 瀹炰緥瑙﹀彂  if (n8nContext) {    try {      const inputData =        input != null && typeof input === 'object'          ? (input as Record<string, unknown>)          : undefined      const result = await n8nApi.triggerWorkflow(        n8nContext.instanceId,        n8nContext.workflowId,        inputData      )      // 灏?N8N 瑙﹀彂缁撴灉杞崲涓?WorkflowExecution 鏍煎紡      return {        id: 0,        workflowId: id,        status: 'success',        input,        output: result,        creditsCost: 0,        createdAt: new Date()      }    } catch (err) {      console.warn(        '[workflow-api] n8n triggerWorkflow failed, falling back to /workflow/:id/execute:',        err      )    }  }  // 2. 鍥為€€鍒扮幇鏈夊悗绔鐐?  return httpClient.post<WorkflowExecution>(`/workflows/${id}/execute`, { input })}/** * 宸ヤ綔娴佹墽琛屽巻鍙? * GET /workflows/me/executions?workflowId= */export async function listExecutions(  query: WorkflowExecutionQuery = {}): Promise<PaginatedResult<WorkflowExecution>> {  return httpClient.get<PaginatedResult<WorkflowExecution>>('/workflows/me/executions', {    params: query  })}export default {  listTemplates,  getTemplate,  executeWorkflow,  listExecutions}
+// 工作流模块 API
+//
+// 端点契约：
+//   GET    /workflow/templates               工作流模板列表（支持 category / keyword）
+//   GET    /workflow/templates/:id           工作流模板详情
+//   POST   /workflow/:id/execute             执行工作流（body: { input }）
+//   GET    /workflow/executions              执行历史列表（支持 workflowId）
+
+import { httpClient } from "./http-client";
+import type {
+  WorkflowTemplate,
+  WorkflowExecution,
+  WorkflowTemplateQuery,
+  WorkflowExecutionQuery,
+  PaginatedResult,
+} from "@/types/workflow";
+
+/**
+ * 工作流模板列表
+ * GET /workflow/templates?category=&keyword=
+ */
+export async function listTemplates(
+  query: WorkflowTemplateQuery = {},
+): Promise<PaginatedResult<WorkflowTemplate>> {
+  return httpClient.get<PaginatedResult<WorkflowTemplate>>(
+    "/workflow/templates",
+    {
+      params: query,
+    },
+  );
+}
+
+/**
+ * 工作流模板详情
+ * GET /workflow/templates/:id
+ */
+export async function getTemplate(id: number): Promise<WorkflowTemplate> {
+  return httpClient.get<WorkflowTemplate>(`/workflow/templates/${id}`);
+}
+
+/**
+ * 执行工作流
+ * POST /workflow/:id/execute
+ *
+ * 后端在执行前会扣减 pricePerExecution 积分。
+ *
+ * @param id 工作流模板 ID
+ * @param input 执行输入参数
+ */
+export async function executeWorkflow(
+  id: number,
+  input: unknown,
+): Promise<WorkflowExecution> {
+  return httpClient.post<WorkflowExecution>(`/workflow/${id}/execute`, {
+    input,
+  });
+}
+
+/**
+ * 工作流执行历史
+ * GET /workflow/executions?workflowId=
+ */
+export async function listExecutions(
+  query: WorkflowExecutionQuery = {},
+): Promise<PaginatedResult<WorkflowExecution>> {
+  return httpClient.get<PaginatedResult<WorkflowExecution>>(
+    "/workflow/executions",
+    {
+      params: query,
+    },
+  );
+}
+
+export default {
+  listTemplates,
+  getTemplate,
+  executeWorkflow,
+  listExecutions,
+};

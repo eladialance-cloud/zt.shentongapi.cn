@@ -1,1 +1,232 @@
-﻿// 鐭ヨ瘑搴撳垪琛ㄩ〉 - v0.3.1// 甯冨眬锛氶《閮?4 灞傜骇 Tabs + 鎼滅储 + 鐭ヨ瘑搴撳崱鐗囩綉鏍?// 4 灞傦細鍏叡鍩虹搴?/ 宀椾綅涓撳睘搴?/ 妗堜緥搴?/ 琛屼笟閫氱敤搴?// 璋冪敤 GET /knowledge/bases銆丳OST /knowledge/bases銆丏ELETE /knowledge/bases/:idimport { useCallback, useEffect, useMemo, useState } from 'react'import { useNavigate } from 'react-router-dom'import {  Button,  Form,  Input,  Modal,  Popconfirm,  Spin,  Tabs,  Tag,  message} from 'antd'import {  BookOutlined,  DeleteOutlined,  FileTextOutlined,  PlusOutlined,  SearchOutlined} from '@ant-design/icons'import * as kbApi from '@/api/knowledge-api'import type { KnowledgeBase, CreateKnowledgeBaseDto } from '@/types/knowledge'import styles from './styles.module.css'/** 鐭ヨ瘑搴?4 灞傜骇 */type KnowledgeLayer = 'public' | 'position' | 'case' | 'industry'const LAYER_TABS: Array<{ key: KnowledgeLayer | 'all'; label: string }> = [  { key: 'all', label: '鍏ㄩ儴' },  { key: 'public', label: '鍏叡鍩虹搴? },  { key: 'position', label: '宀椾綅涓撳睘搴? },  { key: 'case', label: '妗堜緥搴? },  { key: 'industry', label: '琛屼笟閫氱敤搴? }]const LAYER_LABEL: Record<KnowledgeLayer, string> = {  public: '鍏叡鍩虹搴?,  position: '宀椾綅涓撳睘搴?,  case: '妗堜緥搴?,  industry: '琛屼笟閫氱敤搴?}const LAYER_BADGE_CLASS: Record<KnowledgeLayer, string> = {  public: styles.layerBadgePublic,  position: styles.layerBadgePosition,  case: styles.layerBadgeCase,  industry: styles.layerBadgeIndustry}/** 瀹㈡埛绔寜绱㈠紩鎺ㄦ柇灞傜骇锛堝悗绔湭杩斿洖 layer 瀛楁鏃朵娇鐢級 */function inferLayer(index: number): KnowledgeLayer {  const layers: KnowledgeLayer[] = ['public', 'position', 'case', 'industry']  return layers[index % layers.length]}/** 鏍煎紡鍖栨椂闂?*/function formatTime(value: unknown): string {  if (!value) return '-'  const d = new Date(value as string)  if (isNaN(d.getTime())) return String(value)  return d.toLocaleString('zh-CN', { hour12: false })}export default function KnowledgeList() {  const navigate = useNavigate()  const [bases, setBases] = useState<KnowledgeBase[]>([])  const [loading, setLoading] = useState(false)  const [createOpen, setCreateOpen] = useState(false)  const [createForm] = Form.useForm<CreateKnowledgeBaseDto>()  const [creating, setCreating] = useState(false)  const [layerTab, setLayerTab] = useState<KnowledgeLayer | 'all'>('all')  const [keyword, setKeyword] = useState('')  /** 鍔犺浇鐭ヨ瘑搴撳垪琛?*/  const loadBases = useCallback(async () => {    setLoading(true)    try {      const list = await kbApi.listKnowledgeBases()      setBases(list || [])    } catch (err) {      console.error('[KnowledgeList] load failed:', err)      message.error('鍔犺浇鐭ヨ瘑搴撳垪琛ㄥけ璐?)      setBases([])    } finally {      setLoading(false)    }  }, [])  useEffect(() => {    void loadBases()  }, [loadBases])  /** 鏂板缓鐭ヨ瘑搴?*/  const handleCreate = async () => {    try {      const values = await createForm.validateFields()      setCreating(true)      await kbApi.createKnowledgeBase(values)      message.success('鐭ヨ瘑搴撳垱寤烘垚鍔?)      setCreateOpen(false)      createForm.resetFields()      void loadBases()    } catch (err) {      // validateFields 澶辫触涓嶅脊閿?      if (err && typeof err === 'object' && 'errorFields' in err) return      console.error('[KnowledgeList] create failed:', err)      message.error('鍒涘缓鐭ヨ瘑搴撳け璐? ' + (err as Error).message)    } finally {      setCreating(false)    }  }  /** 鍒犻櫎鐭ヨ瘑搴?*/  const handleDelete = async (kb: KnowledgeBase) => {    try {      await kbApi.deleteKnowledgeBase(kb.id)      message.success(`鐭ヨ瘑搴?${kb.name} 宸插垹闄)      setBases((prev) => prev.filter((k) => k.id !== kb.id))    } catch (err) {      console.error('[KnowledgeList] delete failed:', err)      message.error('鍒犻櫎澶辫触: ' + (err as Error).message)    }  }  /** 杩涘叆鏂囨。绠＄悊 */  const handleEnter = (kb: KnowledgeBase) => {    navigate(`/knowledge/${kb.id}/documents`)  }  /** 杩涘叆妫€绱㈡祴璇?*/  const handleSearch = (kb: KnowledgeBase) => {    navigate(`/knowledge/${kb.id}/search`)  }  /** 鎸夊眰绾?+ 鍏抽敭璇嶈繃婊?*/  const filteredBases = useMemo(() => {    const kw = keyword.trim().toLowerCase()    return bases      .map((kb, idx) => ({ kb, layer: inferLayer(idx) }))      .filter(({ kb, layer }) => {        if (layerTab !== 'all' && layer !== layerTab) return false        if (!kw) return true        return (          kb.name.toLowerCase().includes(kw) ||          (kb.description || '').toLowerCase().includes(kw)        )      })  }, [bases, layerTab, keyword])  return (    <div className={styles.pageContainer}>      <div className={styles.pageHeader}>        <div className={styles.pageTitle}>          <BookOutlined />          <span>鐭ヨ瘑搴?/span>        </div>        <div className={styles.headerActions}>          <Input.Search            placeholder="鎼滅储鐭ヨ瘑搴撳悕绉版垨鎻忚堪"            allowClear            value={keyword}            onChange={(e) => setKeyword(e.target.value)}            style={{ width: 240 }}            prefix={<SearchOutlined />}          />          <Button            type="primary"            icon={<PlusOutlined />}            onClick={() => setCreateOpen(true)}          >            鏂板缓鐭ヨ瘑搴?          </Button>        </div>      </div>      <Tabs        activeKey={layerTab}        onChange={(key) => setLayerTab(key as KnowledgeLayer | 'all')}        items={LAYER_TABS.map((t) => ({ key: t.key, label: t.label }))}        className={styles.layerTabs}      />      <Spin spinning={loading}>        {filteredBases.length === 0 && !loading ? (          <div className={styles.emptyState}>            <BookOutlined className={styles.emptyStateIcon} />            <div className={styles.emptyStateText}>              鏆傛棤鐭ヨ瘑搴擄紝鐐瑰嚮鍙充笂瑙?鏂板缓鐭ヨ瘑搴?寮€濮?            </div>          </div>        ) : (          <div className={styles.kbGrid}>            {filteredBases.map(({ kb, layer }) => (              <div key={kb.id} className={styles.kbCard}>                <div className={styles.kbCardIcon}>                  <BookOutlined />                </div>                <div className={styles.kbCardBody}>                  <div className={styles.kbCardTitle}>                    <span>{kb.name}</span>                    <Tag className={`${styles.layerBadge} ${LAYER_BADGE_CLASS[layer]}`}>                      {LAYER_LABEL[layer]}                    </Tag>                  </div>                  <div className={styles.kbCardDescription}>                    {kb.description || '鏆傛棤鎻忚堪'}                  </div>                  <div className={styles.kbCardMeta}>                    <span>                      <FileTextOutlined style={{ marginRight: 4 }} />                      {kb.documentCount ?? 0} 涓枃妗?                    </span>                    <span>鏇存柊浜?{formatTime(kb.updatedAt ?? kb.createdAt)}</span>                  </div>                </div>                <div className={styles.kbCardFooter}>                  <Button                    type="primary"                    onClick={() => handleEnter(kb)}                    block                  >                    鏌ョ湅                  </Button>                  <Button                    icon={<SearchOutlined />}                    onClick={() => handleSearch(kb)}                  />                  <Popconfirm                    title="纭畾鍒犻櫎璇ョ煡璇嗗簱鍚楋紵"                    description="鍒犻櫎鍚庡皢娓呴櫎鎵€鏈夋枃妗ｄ笌鍚戦噺绱㈠紩"                    onConfirm={() => handleDelete(kb)}                    okText="鍒犻櫎"                    cancelText="鍙栨秷"                    okButtonProps={{ danger: true }}                  >                    <Button icon={<DeleteOutlined />} danger />                  </Popconfirm>                </div>              </div>            ))}          </div>        )}      </Spin>      {/* 鏂板缓鐭ヨ瘑搴撳脊绐?*/}      <Modal        title="鏂板缓鐭ヨ瘑搴?        open={createOpen}        onOk={handleCreate}        onCancel={() => {          setCreateOpen(false)          createForm.resetFields()        }}        confirmLoading={creating}        okText="鍒涘缓"        cancelText="鍙栨秷"        destroyOnClose      >        <Form form={createForm} layout="vertical">          <Form.Item            label="鍚嶇О"            name="name"            rules={[              { required: true, message: '璇疯緭鍏ョ煡璇嗗簱鍚嶇О' },              { max: 64, message: '鍚嶇О鏈€澶?64 涓瓧绗? }            ]}          >            <Input placeholder="璇疯緭鍏ョ煡璇嗗簱鍚嶇О" />          </Form.Item>          <Form.Item            label="鎻忚堪"            name="description"            rules={[{ max: 256, message: '鎻忚堪鏈€澶?256 涓瓧绗? }]}          >            <Input.TextArea              rows={3}              placeholder="鍙€夛紝鐭ヨ瘑搴撶敤閫旀弿杩?              maxLength={256}              showCount            />          </Form.Item>        </Form>      </Modal>    </div>  )}
+// 知识库列表页
+// 布局：顶部标题 + 新建按钮 + 知识库卡片网格
+// 调用 GET /knowledge/bases、POST /knowledge/bases、DELETE /knowledge/bases/:id
+
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Button, Form, Input, Modal, Popconfirm, Spin, message } from "antd";
+import {
+  ArrowLeftOutlined,
+  BookOutlined,
+  DeleteOutlined,
+  FileTextOutlined,
+  PlusOutlined,
+  SearchOutlined,
+} from "@ant-design/icons";
+import * as kbApi from "@/api/knowledge-api";
+import type { KnowledgeBase, CreateKnowledgeBaseDto } from "@/types/knowledge";
+import styles from "./styles.module.css";
+
+/** 格式化时间 */
+function formatTime(value: unknown): string {
+  if (!value) return "-";
+  const d = new Date(value as string);
+  if (isNaN(d.getTime())) return String(value);
+  return d.toLocaleString("zh-CN", { hour12: false });
+}
+
+export default function KnowledgeList() {
+  const navigate = useNavigate();
+  const [bases, setBases] = useState<KnowledgeBase[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm] = Form.useForm<CreateKnowledgeBaseDto>();
+  const [creating, setCreating] = useState(false);
+
+  /** 加载知识库列表 */
+  const loadBases = useCallback(async () => {
+    setLoading(true);
+    try {
+      const list = await kbApi.listKnowledgeBases();
+      setBases(list || []);
+    } catch (err) {
+      console.error("[KnowledgeList] load failed:", err);
+      message.error("加载知识库列表失败");
+      setBases([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadBases();
+  }, [loadBases]);
+
+  /** 新建知识库 */
+  const handleCreate = async () => {
+    try {
+      const values = await createForm.validateFields();
+      setCreating(true);
+      await kbApi.createKnowledgeBase(values);
+      message.success("知识库创建成功");
+      setCreateOpen(false);
+      createForm.resetFields();
+      void loadBases();
+    } catch (err) {
+      // validateFields 失败不弹错
+      if (err && typeof err === "object" && "errorFields" in err) return;
+      console.error("[KnowledgeList] create failed:", err);
+      message.error("创建知识库失败: " + (err as Error).message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  /** 删除知识库 */
+  const handleDelete = async (kb: KnowledgeBase) => {
+    try {
+      await kbApi.deleteKnowledgeBase(kb.id);
+      message.success(`知识库 ${kb.name} 已删除`);
+      setBases((prev) => prev.filter((k) => k.id !== kb.id));
+    } catch (err) {
+      console.error("[KnowledgeList] delete failed:", err);
+      message.error("删除失败: " + (err as Error).message);
+    }
+  };
+
+  /** 进入文档管理 */
+  const handleEnter = (kb: KnowledgeBase) => {
+    navigate(`/knowledge/${kb.id}/documents`);
+  };
+
+  /** 进入检索测试 */
+  const handleSearch = (kb: KnowledgeBase) => {
+    navigate(`/knowledge/${kb.id}/search`);
+  };
+
+  /** 返回 */
+  const handleBack = () => {
+    navigate("/dashboard");
+  };
+
+  return (
+    <div className={styles.pageContainer}>
+      <div className={styles.pageHeader}>
+        <div className={styles.pageTitle}>
+          <BookOutlined />
+          <span>知识库</span>
+        </div>
+        <div className={styles.headerActions}>
+          <Button
+            className={styles.backBtn}
+            icon={<ArrowLeftOutlined />}
+            onClick={handleBack}
+          >
+            返回
+          </Button>
+          <Button
+            type="primary"
+            className={styles.newBtn}
+            icon={<PlusOutlined />}
+            onClick={() => setCreateOpen(true)}
+          >
+            新建知识库
+          </Button>
+        </div>
+      </div>
+
+      <Spin spinning={loading}>
+        {bases.length === 0 && !loading ? (
+          <div className={styles.emptyState}>
+            <BookOutlined className={styles.emptyStateIcon} />
+            <div className={styles.emptyStateText}>
+              暂无知识库，点击右上角"新建知识库"开始
+            </div>
+          </div>
+        ) : (
+          <div className={styles.kbGrid}>
+            {bases.map((kb) => (
+              <div key={kb.id} className={styles.kbCard}>
+                <div className={styles.kbCardIcon}>
+                  <BookOutlined />
+                </div>
+                <div className={styles.kbCardBody}>
+                  <div className={styles.kbCardTitle}>{kb.name}</div>
+                  <div className={styles.kbCardDescription}>
+                    {kb.description || "暂无描述"}
+                  </div>
+                  <div className={styles.kbCardMeta}>
+                    <span>
+                      <FileTextOutlined style={{ marginRight: 4 }} />
+                      {kb.documentCount ?? 0} 个文档
+                    </span>
+                    <span>创建于 {formatTime(kb.createdAt)}</span>
+                  </div>
+                </div>
+                <div className={styles.kbCardFooter}>
+                  <Button
+                    type="primary"
+                    className={styles.enterBtn}
+                    onClick={() => handleEnter(kb)}
+                    block
+                  >
+                    进入详情
+                  </Button>
+                  <Button
+                    className={styles.backBtn}
+                    icon={<SearchOutlined />}
+                    onClick={() => handleSearch(kb)}
+                  />
+                  <Popconfirm
+                    title="确定删除该知识库吗？"
+                    description="删除后将清除所有文档与向量索引"
+                    onConfirm={() => handleDelete(kb)}
+                    okText="删除"
+                    cancelText="取消"
+                    okButtonProps={{ danger: true }}
+                  >
+                    <Button
+                      className={styles.deleteBtn}
+                      icon={<DeleteOutlined />}
+                      danger
+                    />
+                  </Popconfirm>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Spin>
+
+      {/* 新建知识库弹窗 */}
+      <Modal
+        title="新建知识库"
+        open={createOpen}
+        onOk={handleCreate}
+        onCancel={() => {
+          setCreateOpen(false);
+          createForm.resetFields();
+        }}
+        confirmLoading={creating}
+        okText="创建"
+        cancelText="取消"
+        destroyOnClose
+      >
+        <Form form={createForm} layout="vertical">
+          <Form.Item
+            label="名称"
+            name="name"
+            rules={[
+              { required: true, message: "请输入知识库名称" },
+              { max: 64, message: "名称最多 64 个字符" },
+            ]}
+          >
+            <Input placeholder="请输入知识库名称" />
+          </Form.Item>
+          <Form.Item
+            label="描述"
+            name="description"
+            rules={[{ max: 256, message: "描述最多 256 个字符" }]}
+          >
+            <Input.TextArea
+              rows={3}
+              placeholder="可选，知识库用途描述"
+              maxLength={256}
+              showCount
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </div>
+  );
+}

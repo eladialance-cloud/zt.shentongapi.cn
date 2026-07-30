@@ -1,11 +1,11 @@
-/**
- * AI办公室 — 区域/工位坐标配置
+﻿/**
+ * AI鍔炲叕瀹?鈥?鍖哄煙/宸ヤ綅鍧愭爣閰嶇疆
  */
 
 import type { HermesInstance } from '@/types/hermes'
-import type { OPCTeam } from '@/types/opc'
+import type { Team } from '@/types/team'
 
-/** 岗位配色映射 */
+/** 宀椾綅閰嶈壊鏄犲皠 */
 export const OUTFIT_COLORS: Record<string, string> = {
   cyan:   '#00d4ff',
   purple: '#b026ff',
@@ -15,15 +15,15 @@ export const OUTFIT_COLORS: Record<string, string> = {
   white:  '#e0e0e0',
 };
 
-/** 状态枚举 */
+/** 鐘舵€佹灇涓?*/
 export type AgentStatus = 'working' | 'idle' | 'error' | 'meeting' | 'dispatching' | 'walking';
 
 export type AccessoryType = 'glasses' | 'pen' | 'toolbelt' | 'folder' | 'headphones' | 'bulb';
 
-/** Agent数据接口 */
+/** Agent鏁版嵁鎺ュ彛 */
 export interface AgentInfo {
   id: number;
-  /** 关联的 OPC 团队 ID */
+  /** 鍏宠仈鐨?team 鍥㈤槦 ID */
   teamId: number;
   name: string;
   position: string;
@@ -33,12 +33,12 @@ export interface AgentInfo {
   currentTask: string | null;
   progress: number;
   skills: string[];
-  /** 在区域中的相对位置 (%) */
+  /** 鍦ㄥ尯鍩熶腑鐨勭浉瀵逛綅缃?(%) */
   posX?: number;
   posY?: number;
 }
 
-/** Hermes实例状态 → AgentStatus 映射 */
+/** Hermes瀹炰緥鐘舵€?鈫?AgentStatus 鏄犲皠 */
 function mapHermesStatus(status: string): AgentStatus {
   switch (status) {
     case 'running': return 'working';
@@ -64,16 +64,16 @@ export function hermesToAgents(instances: HermesInstance[]): AgentInfo[] {
       status,
       outfit: OUTFIT_KEYS[idx % OUTFIT_KEYS.length],
       accessory: ACCESSORIES[idx % ACCESSORIES.length],
-      currentTask: status === 'working' ? '中' : null,
+      currentTask: status === 'working' ? '涓? : null,
       progress: status === 'working' ? Math.min(100, (inst.resourceUsage?.cpuPercent ?? 0)) : 0,
-      skills: inst.skillIds ? inst.skillIds.map((s) => `技能#${s}`) : ['通用'],
+      skills: inst.skillIds ? inst.skillIds.map((s) => `鎶€鑳?${s}`) : ['閫氱敤'],
       posX: 50,
       posY: 50,
     };
   });
 }
 
-/** Agent →  */
+/** Agent 鈫? */
 export const AGENT_ZONE_MAP: Record<number, string> = {
   1: 'workstation_a',
   2: 'workstation_b',
@@ -83,7 +83,7 @@ export const AGENT_ZONE_MAP: Record<number, string> = {
   6: 'lounge',
 };
 
-/** 服务器机柜信息 */
+/** 鏈嶅姟鍣ㄦ満鏌滀俊鎭?*/
 export interface ServerRack {
   id: string;
   name: string;
@@ -92,11 +92,11 @@ export interface ServerRack {
   cpu: number;
   memory: number;
   color: string;
-  /** 标记为云端服务（非本地进程） */
+  /** 鏍囪涓轰簯绔湇鍔★紙闈炴湰鍦拌繘绋嬶級 */
   cloud?: boolean;
 }
 
-/** 看板列定义 */
+/** 鐪嬫澘鍒楀畾涔?*/
 export interface KanbanColumn {
   key: AgentStatus | 'todo' | 'done';
   title: string;
@@ -104,32 +104,29 @@ export interface KanbanColumn {
 }
 
 export const KANBAN_COLUMNS: KanbanColumn[] = [
-  { key: 'todo',        title: '待办',     color: 'var(--color-text-tertiary)' },
-  { key: 'working',     title: '中',   color: '#00d4ff' },
-  { key: 'done',        title: '已完成',   color: '#00ff88' },
-  { key: 'error',       title: '异常',     color: '#ff0080' },
+  { key: 'todo',        title: '寰呭姙',     color: 'var(--color-text-tertiary)' },
+  { key: 'working',     title: '涓?,   color: '#00d4ff' },
+  { key: 'done',        title: '宸插畬鎴?,   color: '#00ff88' },
+  { key: 'error',       title: '寮傚父',     color: '#ff0080' },
 ];
 
 // ============================================================
-// OPC 团队驱动的动态区域
-// ============================================================
+// team 鍥㈤槦椹卞姩鐨勫姩鎬佸尯鍩?// ============================================================
 
 /**
- * 将 OPC 团队 Agent 仓库 + Hermes 实例映射为 AgentInfo
- * - 用 instances 的 id 匹配 agentId 获取 Agent 详情（名称、状态、技能）
- * - 找不到匹配 Hermes 实例时使用兜底值
- * - outfit/accessory 根据 agentId 哈希分配
+ * 灏?team 鍥㈤槦 Agent 浠撳簱 + Hermes 瀹炰緥鏄犲皠涓?AgentInfo
+ * - 鐢?instances 鐨?id 鍖归厤 agentId 鑾峰彇 Agent 璇︽儏锛堝悕绉般€佺姸鎬併€佹妧鑳斤級
+ * - 鎵句笉鍒板尮閰?Hermes 瀹炰緥鏃朵娇鐢ㄥ厹搴曞€? * - outfit/accessory 鏍规嵁 agentId 鍝堝笇鍒嗛厤
  */
 export function teamMembersToAgents(
-  teams: OPCTeam[],
+  teams: Team[],
   agentIdsByTeam: Record<number, Array<{ teamId: number; agentId: number }>>,
   instances: HermesInstance[]
 ): AgentInfo[] {
   const outfitKeys = Object.keys(OUTFIT_COLORS) as Array<keyof typeof OUTFIT_COLORS>
   const accessoryKeys: AccessoryType[] = ['glasses', 'pen', 'toolbelt', 'folder', 'headphones', 'bulb']
 
-  // 构建 Hermes 实例查找表
-  const instanceMap = new Map<number, HermesInstance>()
+  // 鏋勫缓 Hermes 瀹炰緥鏌ユ壘琛?  const instanceMap = new Map<number, HermesInstance>()
   for (const inst of instances) {
     instanceMap.set(inst.id, inst)
   }
@@ -150,9 +147,9 @@ export function teamMembersToAgents(
         status,
         outfit: outfitKeys[hash % outfitKeys.length],
         accessory: accessoryKeys[hash % accessoryKeys.length],
-        currentTask: status === 'working' ? '处理任务中' : null,
+        currentTask: status === 'working' ? '澶勭悊浠诲姟涓? : null,
         progress: status === 'working' ? Math.min(100, inst?.resourceUsage?.cpuPercent ?? 0) : 0,
-        skills: inst?.skillIds ? inst.skillIds.map((s) => `技能#${s}`) : ['通用'],
+        skills: inst?.skillIds ? inst.skillIds.map((s) => `鎶€鑳?${s}`) : ['閫氱敤'],
         posX: 0,
         posY: 0,
       })
@@ -161,13 +158,12 @@ export function teamMembersToAgents(
   return agents
 }
 
-/** 简单字符串哈希 */
+/** 绠€鍗曞瓧绗︿覆鍝堝笇 */
 function hashCode(str: string): number {
   let hash = 0
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i)
     hash = ((hash << 5) - hash) + char
-    hash = hash & hash // 转为32位整数
-  }
+    hash = hash & hash // 杞负32浣嶆暣鏁?  }
   return hash
 }

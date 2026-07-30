@@ -1,1 +1,293 @@
-﻿import { Injectable, NotFoundException } from '@nestjs/common';import { InjectRepository } from '@nestjs/typeorm';import { Repository } from 'typeorm';import { SystemConfigEntity } from './entities/system-config.entity';import { AnnouncementEntity } from './entities/announcement.entity';import { TenantEntity } from './entities/tenant.entity';import { UpdateSystemConfigDto } from './dto/update-system-config.dto';import { ClearCacheDto } from './dto/clear-cache.dto';import { CreateAnnouncementDto } from './dto/create-announcement.dto';import { UpdateAnnouncementDto } from './dto/update-announcement.dto';import { AnnouncementQueryDto } from './dto/announcement-query.dto';import { CreateTenantDto } from './dto/create-tenant.dto';import { UpdateTenantDto } from './dto/update-tenant.dto';import { TenantQueryDto } from './dto/tenant-query.dto';import { EncryptionService } from '../../common/services/encryption.service';/** 鍚勫垎鍖洪粯璁ら厤缃紙棣栨璁块棶鏃惰繑鍥烇級 */const DEFAULT_SECTION_CONFIG: Record<string, Record<string, unknown>> = {  cache: {    l1Ttl: 60,    l2Ttl: 300,    l3Ttl: 3600,  },  rate_limit: {    dailyCallLimitByLevel: { 1: 100, 2: 500, 3: 2000, 4: 10000, 5: 50000 },    concurrencyLimit: 10,    monthlyCreditsLimitByLevel: {      1: 10000,      2: 50000,      3: 200000,      4: 1000000,      5: 5000000,    },  },  notification: {    smtp: {      host: '',      port: 465,      username: '',      from: '',      enabled: false,    },    sms: {      provider: '',      accessKeyId: '',      signName: '',      enabled: false,    },    push: {      appId: '',      enabled: false,    },  },  payment: {    wechat: {      appId: '',      mchId: '',      apiV3Key: '',      serialNo: '',      privateKeyPath: '',      publicKeyPath: '',      notifyUrl: '',      callbackIps: '',      enabled: false,    },    alipay: {      appId: '',      privateKey: '',      publicKey: '',      notifyUrl: '',      enabled: false,    },    stripe: {      secretKey: '',      webhookSecret: '',      enabled: false,    },  },};/** * P0 淇锛氶渶鍔犲瘑瀛樺偍鐨勬晱鎰熷瓧娈佃矾寰? * 鏍煎紡锛歴ection 鈫?瀵硅薄璺緞鏁扮粍 * 鍐欏叆鏃惰嚜鍔ㄥ姞瀵嗭紝璇诲彇鏃惰嚜鍔ㄨВ瀵嗭紝鍓嶇濮嬬粓鎷垮埌鏄庢枃锛堜絾鑴辨晱鏄剧ず锛? */const ENCRYPTED_FIELD_PATHS: Record<string, string[]> = {  payment: [    'wechat.apiV3Key',    'wechat.privateKeyPath',    'alipay.privateKey',    'stripe.secretKey',    'stripe.webhookSecret',  ],  notification: [    'smtp.username',    'sms.accessKeyId',  ],};/** * 绠＄悊绔郴缁熼厤缃湇鍔? * 鏁版嵁鍚堝悓鐪熸簮锛歍ask 28 - 绯荤粺閰嶇疆 / frontend admin-system-api.ts * * 鎻愪緵锛? *   - 绯荤粺閰嶇疆锛坰ystem_config 琛紝鎸?section 鍒嗗尯锛夎鍐? *   - 缂撳瓨娓呯悊锛堝崰浣嶅疄鐜帮紝璁板綍鏃ュ織锛? *   - 绉熸埛锛坱enants 琛級CRUD 涓庡仠鐢?鎭㈠ *   - 鍏憡锛坅nnouncements 琛級CRUD 涓庡彂甯?鎾ゅ洖 * * P0 瀹夊叏淇锛? *   payment/notification 涓晱鎰熷瘑閽ュ瓧娈佃嚜鍔?AES-256-GCM 鍔犲瘑瀛樺偍 */@Injectable()export class AdminSystemService {  constructor(    @InjectRepository(SystemConfigEntity)    private readonly configRepo: Repository<SystemConfigEntity>,    @InjectRepository(AnnouncementEntity)    private readonly announcementRepo: Repository<AnnouncementEntity>,    @InjectRepository(TenantEntity)    private readonly tenantRepo: Repository<TenantEntity>,    private readonly encryptionService: EncryptionService,  ) {}  // ============ 绯荤粺閰嶇疆 ============  /** 鑾峰彇绯荤粺閰嶇疆锛堟寜鍒嗗尯锛? 鑷姩瑙ｅ瘑鏁忔劅瀛楁 */  async getSystemConfig(section: string): Promise<Record<string, unknown>> {    const row = await this.configRepo.findOne({ where: { section } });    if (!row) {      return { ...(DEFAULT_SECTION_CONFIG[section] || {}) };    }    const config = { ...(DEFAULT_SECTION_CONFIG[section] || {}), ...row.configValue };    // 瑙ｅ瘑鏁忔劅瀛楁    return this.decryptSensitiveFields(section, config);  }  /** 鏇存柊绯荤粺閰嶇疆 - 鑷姩鍔犲瘑鏁忔劅瀛楁 */  async updateSystemConfig(dto: UpdateSystemConfigDto): Promise<void> {    const existing = await this.configRepo.findOne({      where: { section: dto.section },    });    const base = existing      ? { ...existing.configValue }      : { ...(DEFAULT_SECTION_CONFIG[dto.section] || {}) };    const merged = { ...base, ...dto.config };    // 鍔犲瘑鏁忔劅瀛楁    const encrypted = this.encryptSensitiveFields(dto.section, merged);    if (existing) {      existing.configValue = encrypted;      await this.configRepo.save(existing);    } else {      const created = this.configRepo.create({        section: dto.section,        configValue: encrypted,      });      await this.configRepo.save(created);    }  }  /**   * 鑾峰彇閰嶇疆鐨勬槑鏂囧瘑閽ワ紙浠呭唴閮ㄦ湇鍔¤皟鐢紝涓嶆毚闇茬粰鍓嶇锛?   * 鐢ㄤ簬 payment.service.ts 绛夐渶瑕佺湡瀹炲瘑閽ョ殑鏈嶅姟   */  async getDecryptedConfig(section: string): Promise<Record<string, unknown>> {    const row = await this.configRepo.findOne({ where: { section } });    if (!row) {      return { ...(DEFAULT_SECTION_CONFIG[section] || {}) };    }    const config = { ...(DEFAULT_SECTION_CONFIG[section] || {}), ...row.configValue };    return this.decryptSensitiveFields(section, config);  }  /** 娓呯┖缂撳瓨锛堝崰浣嶅疄鐜帮紝缁熶竴杩斿洖鎴愬姛锛?*/  async clearCache(dto: ClearCacheDto): Promise<void> {    void dto;  }  // ============ 鍔犲瘑/瑙ｅ瘑鏁忔劅瀛楁 ============  /** 娣卞眰璁剧疆瀵硅薄璺緞鍊?*/  private setDeepValue(obj: Record<string, unknown>, path: string, value: unknown): void {    const keys = path.split('.');    let current: Record<string, unknown> = obj;    for (let i = 0; i < keys.length - 1; i++) {      const key = keys[i];      if (!current[key] || typeof current[key] !== 'object') {        current[key] = {};      }      current = current[key] as Record<string, unknown>;    }    current[keys[keys.length - 1]] = value;  }  /** 娣卞眰鑾峰彇瀵硅薄璺緞鍊?*/  private getDeepValue(obj: Record<string, unknown>, path: string): unknown | undefined {    const keys = path.split('.');    let current: unknown = obj;    for (const key of keys) {      if (current && typeof current === 'object' && key in (current as Record<string, unknown>)) {        current = (current as Record<string, unknown>)[key];      } else {        return undefined;      }    }    return current;  }  /** 鍔犲瘑鎸囧畾鍒嗗尯涓殑鏁忔劅瀛楁 */  private encryptSensitiveFields(section: string, config: Record<string, unknown>): Record<string, unknown> {    const paths = ENCRYPTED_FIELD_PATHS[section];    if (!paths) return config;    const result = { ...config };    for (const path of paths) {      const raw = this.getDeepValue(result, path);      if (raw && typeof raw === 'string' && raw.length > 0) {        // 濡傛灉宸茬粡鏄姞瀵嗘牸寮忥紙iv:authTag:ciphertext锛夛紝鍒欒烦杩?        if (raw.split(':').length === 3 && raw.length > 50) {          continue;        }        this.setDeepValue(result, path, this.encryptionService.encryptAes(raw));      }    }    return result;  }  /** 瑙ｅ瘑鎸囧畾鍒嗗尯涓殑鏁忔劅瀛楁 */  private decryptSensitiveFields(section: string, config: Record<string, unknown>): Record<string, unknown> {    const paths = ENCRYPTED_FIELD_PATHS[section];    if (!paths) return config;    const result = { ...config };    for (const path of paths) {      const encrypted = this.getDeepValue(result, path);      if (encrypted && typeof encrypted === 'string' && encrypted.length > 0) {        // 灏濊瘯瑙ｅ瘑锛涘鏋滆В瀵嗗け璐ワ紙鍙兘杩樻槸鏄庢枃锛夛紝杩斿洖鍘熷鍊?        try {          if (encrypted.split(':').length === 3) {            this.setDeepValue(result, path, this.encryptionService.decryptAes(encrypted));          }        } catch {          // 涓嶆槸鍔犲瘑鏍煎紡锛屼繚鐣欏師濮嬪€?        }      }    }    return result;  }  // ============ 绉熸埛 ============  /** 绉熸埛鍒楄〃锛堝垎椤碉級 */  async listTenants(query: TenantQueryDto) {    const page = Math.max(1, Number(query.page) || 1);    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));    const [rows, total] = await this.tenantRepo      .createQueryBuilder('t')      .orderBy('t.created_at', 'DESC')      .skip((page - 1) * pageSize)      .take(pageSize)      .getManyAndCount();    return {      list: rows.map((r) => this.toTenant(r)),      total,      page,      pageSize,      totalPages: Math.ceil(total / pageSize) || 0,    };  }  /** 鏂板绉熸埛 */  async createTenant(dto: CreateTenantDto) {    const entity = this.tenantRepo.create({      name: dto.name,      quota: {        users: dto.quota.users,        calls: dto.quota.calls,        storage: dto.quota.storage,      },      status: 'active',    });    const saved = await this.tenantRepo.save(entity);    return this.toTenant(saved);  }  /** 鏇存柊绉熸埛 */  async updateTenant(id: number, dto: UpdateTenantDto): Promise<void> {    const tenant = await this.tenantRepo.findOne({ where: { id } });    if (!tenant) {      throw new NotFoundException(`绉熸埛 ${id} 涓嶅瓨鍦╜);    }    if (dto.name !== undefined) tenant.name = dto.name;    if (dto.quota !== undefined) {      tenant.quota = {        users: dto.quota.users,        calls: dto.quota.calls,        storage: dto.quota.storage,      };    }    await this.tenantRepo.save(tenant);  }  /** 鍋滅敤/鎭㈠绉熸埛锛堢姸鎬佸垏鎹級 */  async suspendTenant(id: number): Promise<void> {    const tenant = await this.tenantRepo.findOne({ where: { id } });    if (!tenant) {      throw new NotFoundException(`绉熸埛 ${id} 涓嶅瓨鍦╜);    }    tenant.status = tenant.status === 'active' ? 'suspended' : 'active';    await this.tenantRepo.save(tenant);  }  // ============ 鍏憡 ============  /** 鍏憡鍒楄〃锛堝垎椤碉級 */  async listAnnouncements(query: AnnouncementQueryDto) {    const page = Math.max(1, Number(query.page) || 1);    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));    const qb = this.announcementRepo.createQueryBuilder('a');    if (query.status) {      qb.andWhere('a.status = :status', { status: query.status });    }    qb.orderBy('a.created_at', 'DESC')      .skip((page - 1) * pageSize)      .take(pageSize);    const [rows, total] = await qb.getManyAndCount();    return {      list: rows.map((r) => this.toAnnouncement(r)),      total,      page,      pageSize,      totalPages: Math.ceil(total / pageSize) || 0,    };  }  /** 鏂板鍏憡 */  async createAnnouncement(dto: CreateAnnouncementDto) {    const entity = this.announcementRepo.create({      title: dto.title,      content: dto.content,      type: dto.type,      scope: dto.scope,      targetLevel: dto.targetLevel,      isActive: dto.isActive,      status: 'draft',    });    const saved = await this.announcementRepo.save(entity);    return this.toAnnouncement(saved);  }  /** 鏇存柊鍏憡 */  async updateAnnouncement(    id: number,    dto: UpdateAnnouncementDto,  ): Promise<void> {    const announcement = await this.announcementRepo.findOne({ where: { id } });    if (!announcement) {      throw new NotFoundException(`鍏憡 ${id} 涓嶅瓨鍦╜);    }    if (dto.title !== undefined) announcement.title = dto.title;    if (dto.content !== undefined) announcement.content = dto.content;    if (dto.type !== undefined) announcement.type = dto.type;    if (dto.scope !== undefined) announcement.scope = dto.scope;    if (dto.targetLevel !== undefined)      announcement.targetLevel = dto.targetLevel;    if (dto.isActive !== undefined) announcement.isActive = dto.isActive;    await this.announcementRepo.save(announcement);  }  /** 鍙戝竷鍏憡 */  async publishAnnouncement(id: number): Promise<void> {    const announcement = await this.announcementRepo.findOne({ where: { id } });    if (!announcement) {      throw new NotFoundException(`鍏憡 ${id} 涓嶅瓨鍦╜);    }    announcement.status = 'published';    announcement.publishedAt = new Date();    await this.announcementRepo.save(announcement);  }  /** 鎾ゅ洖鍏憡 */  async unpublishAnnouncement(id: number): Promise<void> {    const announcement = await this.announcementRepo.findOne({ where: { id } });    if (!announcement) {      throw new NotFoundException(`鍏憡 ${id} 涓嶅瓨鍦╜);    }    announcement.status = 'draft';    await this.announcementRepo.save(announcement);  }  /** 鍒犻櫎鍏憡 */  async deleteAnnouncement(id: number): Promise<void> {    const announcement = await this.announcementRepo.findOne({ where: { id } });    if (!announcement) {      throw new NotFoundException(`鍏憡 ${id} 涓嶅瓨鍦╜);    }    await this.announcementRepo.remove(announcement);  }  // ============ 鏄犲皠 ============  private toTenant(r: TenantEntity) {    return {      id: r.id,      name: r.name,      quota: r.quota,      status: r.status,      createdAt: r.createdAt,      updatedAt: r.updatedAt,    };  }  private toAnnouncement(r: AnnouncementEntity) {    return {      id: r.id,      title: r.title,      content: r.content,      type: r.type,      scope: r.scope,      targetLevel: r.targetLevel,      isActive: r.isActive,      status: r.status,      publishedAt: r.publishedAt,      createdAt: r.createdAt,      updatedAt: r.updatedAt,    };  }}
+﻿import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { SystemConfigEntity } from './entities/system-config.entity';
+import { AnnouncementEntity } from './entities/announcement.entity';
+import { TenantEntity } from './entities/tenant.entity';
+import { UpdateSystemConfigDto } from './dto/update-system-config.dto';
+import { ClearCacheDto } from './dto/clear-cache.dto';
+import { CreateAnnouncementDto } from './dto/create-announcement.dto';
+import { UpdateAnnouncementDto } from './dto/update-announcement.dto';
+import { AnnouncementQueryDto } from './dto/announcement-query.dto';
+import { CreateTenantDto } from './dto/create-tenant.dto';
+import { UpdateTenantDto } from './dto/update-tenant.dto';
+import { TenantQueryDto } from './dto/tenant-query.dto';
+
+/** 各分区默认配置（首次访问时返回） */
+const DEFAULT_SECTION_CONFIG: Record<string, Record<string, unknown>> = {
+  cache: {
+    l1Ttl: 60,
+    l2Ttl: 300,
+    l3Ttl: 3600,
+  },
+  rate_limit: {
+    dailyCallLimitByLevel: { 1: 100, 2: 500, 3: 2000, 4: 10000, 5: 50000 },
+    concurrencyLimit: 10,
+    monthlyCreditsLimitByLevel: {
+      1: 10000,
+      2: 50000,
+      3: 200000,
+      4: 1000000,
+      5: 5000000,
+    },
+  },
+  notification: {
+    smtp: {
+      host: '',
+      port: 465,
+      username: '',
+      from: '',
+      enabled: false,
+    },
+    sms: {
+      provider: '',
+      accessKeyId: '',
+      signName: '',
+      enabled: false,
+    },
+    push: {
+      appId: '',
+      enabled: false,
+    },
+  },
+};
+
+/**
+ * 管理端系统配置服务
+ * 数据合同真源：Task 28 - 系统配置 / frontend admin-system-api.ts
+ *
+ * 提供：
+ *   - 系统配置（system_config 表，按 section 分区）读写
+ *   - 缓存清理（占位实现，记录日志）
+ *   - 租户（tenants 表）CRUD 与停用/恢复
+ *   - 公告（announcements 表）CRUD 与发布/撤回
+ */
+@Injectable()
+export class AdminSystemService {
+  constructor(
+    @InjectRepository(SystemConfigEntity)
+    private readonly configRepo: Repository<SystemConfigEntity>,
+    @InjectRepository(AnnouncementEntity)
+    private readonly announcementRepo: Repository<AnnouncementEntity>,
+    @InjectRepository(TenantEntity)
+    private readonly tenantRepo: Repository<TenantEntity>,
+  ) {}
+
+  // ============ 系统配置 ============
+
+  /** 获取系统配置（按分区） */
+  async getSystemConfig(section: string): Promise<Record<string, unknown>> {
+    const row = await this.configRepo.findOne({ where: { section } });
+    if (!row) {
+      return { ...(DEFAULT_SECTION_CONFIG[section] || {}) };
+    }
+    return { ...(DEFAULT_SECTION_CONFIG[section] || {}), ...row.configValue };
+  }
+
+  /** 更新系统配置 */
+  async updateSystemConfig(dto: UpdateSystemConfigDto): Promise<void> {
+    const existing = await this.configRepo.findOne({
+      where: { section: dto.section },
+    });
+    const base = existing
+      ? { ...existing.configValue }
+      : { ...(DEFAULT_SECTION_CONFIG[dto.section] || {}) };
+    const merged = { ...base, ...dto.config };
+    if (existing) {
+      existing.configValue = merged;
+      await this.configRepo.save(existing);
+    } else {
+      const created = this.configRepo.create({
+        section: dto.section,
+        configValue: merged,
+      });
+      await this.configRepo.save(created);
+    }
+  }
+
+  /** 清空缓存（占位实现，统一返回成功） */
+  async clearCache(dto: ClearCacheDto): Promise<void> {
+    // 当前未接入具体缓存中间件，按层级记录意图即可
+    // 实际清理由 CacheModule / Redis 完成时再补充
+    void dto;
+  }
+
+  // ============ 租户 ============
+
+  /** 租户列表（分页） */
+  async listTenants(query: TenantQueryDto) {
+    const page = Math.max(1, Number(query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+    const [rows, total] = await this.tenantRepo
+      .createQueryBuilder('t')
+      .orderBy('t.created_at', 'DESC')
+      .skip((page - 1) * pageSize)
+      .take(pageSize)
+      .getManyAndCount();
+    return {
+      list: rows.map((r) => this.toTenant(r)),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize) || 0,
+    };
+  }
+
+  /** 新增租户 */
+  async createTenant(dto: CreateTenantDto) {
+    const entity = this.tenantRepo.create({
+      name: dto.name,
+      quota: {
+        users: dto.quota.users,
+        calls: dto.quota.calls,
+        storage: dto.quota.storage,
+      },
+      status: 'active',
+    });
+    const saved = await this.tenantRepo.save(entity);
+    return this.toTenant(saved);
+  }
+
+  /** 更新租户 */
+  async updateTenant(id: number, dto: UpdateTenantDto): Promise<void> {
+    const tenant = await this.tenantRepo.findOne({ where: { id } });
+    if (!tenant) {
+      throw new NotFoundException(`租户 ${id} 不存在`);
+    }
+    if (dto.name !== undefined) tenant.name = dto.name;
+    if (dto.quota !== undefined) {
+      tenant.quota = {
+        users: dto.quota.users,
+        calls: dto.quota.calls,
+        storage: dto.quota.storage,
+      };
+    }
+    await this.tenantRepo.save(tenant);
+  }
+
+  /** 停用/恢复租户（状态切换） */
+  async suspendTenant(id: number): Promise<void> {
+    const tenant = await this.tenantRepo.findOne({ where: { id } });
+    if (!tenant) {
+      throw new NotFoundException(`租户 ${id} 不存在`);
+    }
+    tenant.status = tenant.status === 'active' ? 'suspended' : 'active';
+    await this.tenantRepo.save(tenant);
+  }
+
+  // ============ 公告 ============
+
+  /** 公告列表（分页） */
+  async listAnnouncements(query: AnnouncementQueryDto) {
+    const page = Math.max(1, Number(query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+    const qb = this.announcementRepo.createQueryBuilder('a');
+    if (query.status) {
+      qb.andWhere('a.status = :status', { status: query.status });
+    }
+    qb.orderBy('a.created_at', 'DESC')
+      .skip((page - 1) * pageSize)
+      .take(pageSize);
+    const [rows, total] = await qb.getManyAndCount();
+    return {
+      list: rows.map((r) => this.toAnnouncement(r)),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize) || 0,
+    };
+  }
+
+  /** 新增公告 */
+  async createAnnouncement(dto: CreateAnnouncementDto) {
+    const entity = this.announcementRepo.create({
+      title: dto.title,
+      content: dto.content,
+      type: dto.type,
+      scope: dto.scope,
+      targetLevel: dto.targetLevel,
+      isActive: dto.isActive,
+      status: 'draft',
+    });
+    const saved = await this.announcementRepo.save(entity);
+    return this.toAnnouncement(saved);
+  }
+
+  /** 更新公告 */
+  async updateAnnouncement(
+    id: number,
+    dto: UpdateAnnouncementDto,
+  ): Promise<void> {
+    const announcement = await this.announcementRepo.findOne({ where: { id } });
+    if (!announcement) {
+      throw new NotFoundException(`公告 ${id} 不存在`);
+    }
+    if (dto.title !== undefined) announcement.title = dto.title;
+    if (dto.content !== undefined) announcement.content = dto.content;
+    if (dto.type !== undefined) announcement.type = dto.type;
+    if (dto.scope !== undefined) announcement.scope = dto.scope;
+    if (dto.targetLevel !== undefined)
+      announcement.targetLevel = dto.targetLevel;
+    if (dto.isActive !== undefined) announcement.isActive = dto.isActive;
+    await this.announcementRepo.save(announcement);
+  }
+
+  /** 发布公告 */
+  async publishAnnouncement(id: number): Promise<void> {
+    const announcement = await this.announcementRepo.findOne({ where: { id } });
+    if (!announcement) {
+      throw new NotFoundException(`公告 ${id} 不存在`);
+    }
+    announcement.status = 'published';
+    announcement.publishedAt = new Date();
+    await this.announcementRepo.save(announcement);
+  }
+
+  /** 撤回公告 */
+  async unpublishAnnouncement(id: number): Promise<void> {
+    const announcement = await this.announcementRepo.findOne({ where: { id } });
+    if (!announcement) {
+      throw new NotFoundException(`公告 ${id} 不存在`);
+    }
+    announcement.status = 'draft';
+    await this.announcementRepo.save(announcement);
+  }
+
+  /** 删除公告 */
+  async deleteAnnouncement(id: number): Promise<void> {
+    const announcement = await this.announcementRepo.findOne({ where: { id } });
+    if (!announcement) {
+      throw new NotFoundException(`公告 ${id} 不存在`);
+    }
+    await this.announcementRepo.remove(announcement);
+  }
+
+  // ============ 映射 ============
+
+  private toTenant(r: TenantEntity) {
+    return {
+      id: r.id,
+      name: r.name,
+      quota: r.quota,
+      status: r.status,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    };
+  }
+
+  private toAnnouncement(r: AnnouncementEntity) {
+    return {
+      id: r.id,
+      title: r.title,
+      content: r.content,
+      type: r.type,
+      scope: r.scope,
+      targetLevel: r.targetLevel,
+      isActive: r.isActive,
+      status: r.status,
+      publishedAt: r.publishedAt,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    };
+  }
+}

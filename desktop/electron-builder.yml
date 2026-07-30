@@ -1,5 +1,5 @@
-appId: com.shentong.ai
-productName: 深瞳AI
+﻿appId: com.shentong.ai
+productName: 深瞳AI-智能中台
 copyright: Copyright © 2026 Shentong
 directories:
   output: dist/installer-v${version}
@@ -45,7 +45,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: 深瞳AI
+  shortcutName: 深瞳AI-智能中台
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
   installerHeaderIcon: build/icon.ico

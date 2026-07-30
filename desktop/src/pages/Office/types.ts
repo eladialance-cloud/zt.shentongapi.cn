@@ -1,5 +1,5 @@
-/**
- * AI 办公室 2D 画布 — 类型定义 (v0.3.1 Task 7)
+﻿/**
+ * AI 鍔炲叕瀹?2D 鐢诲竷 鈥?绫诲瀷瀹氫箟 (v0.3.1 Task 7)
  */
 
 export type AIEmployeeStatus =
@@ -13,7 +13,7 @@ export type AIEmployeeStatus =
   | 'RESTING'
   | 'OFFLINE';
 
-/** 网格单元类型 */
+/** 缃戞牸鍗曞厓绫诲瀷 */
 export type CellType =
   | 'FLOOR'
   | 'CHAIR'
@@ -23,88 +23,88 @@ export type CellType =
   | 'RESOURCE_DEVICE'
   | 'OBSTACLE';
 
-/** 网格单元 */
+/** 缃戞牸鍗曞厓 */
 export interface GridCell {
-  /** 列 (0-59) */
+  /** 鍒?(0-59) */
   x: number;
-  /** 行 (0-39) */
+  /** 琛?(0-39) */
   y: number;
   type: CellType;
 }
 
-/** 像素坐标 */
+/** 鍍忕礌鍧愭爣 */
 export interface PixelPoint {
   x: number;
   y: number;
 }
 
-/** AI 员工 */
+/** AI 鍛樺伐 */
 export interface AIEmployee {
   id: string;
   name: string;
   emoji: string;
-  role: 'business' | 'content' | 'delivery' | 'finance' | 'service';
+  role: string;
   themeColor: string;
   themeColorLight: string;
-  /** 工位像素坐标 */
+  /** 宸ヤ綅鍍忕礌鍧愭爣 */
   workstation: PixelPoint;
-  /** 当前像素坐标 */
+  /** 褰撳墠鍍忕礌鍧愭爣 */
   currentPos: PixelPoint;
-  /** 目标像素坐标 */
+  /** 鐩爣鍍忕礌鍧愭爣 */
   targetPos: PixelPoint;
   status: AIEmployeeStatus;
-  /** 状态开始时间戳 (ms) */
+  /** 鐘舵€佸紑濮嬫椂闂存埑 (ms) */
   statusStartTime: number;
-  /** A* 像素路径 */
+  /** A* 鍍忕礌璺緞 */
   path: PixelPoint[];
-  /** 今日完成数 */
+  /** 浠婃棩瀹屾垚鏁?*/
   todayCompleted: number;
-  /** 待办数 */
+  /** 寰呭姙鏁?*/
   todoCount: number;
-  /** 移动速度 px/s */
+  /** 绉诲姩閫熷害 px/s */
   moveSpeed?: number;
-  /** 上次重新规划时间 (ms) */
+  /** 涓婃閲嶆柊瑙勫垝鏃堕棿 (ms) */
   lastRepathAt?: number;
-  /** Task 8: 任务完成动画起始时间戳 (ms)，触发 ✅ 弹簧动画 1.0s */
+  /** Task 8: 浠诲姟瀹屾垚鍔ㄧ敾璧峰鏃堕棿鎴?(ms)锛岃Е鍙?鉁?寮圭哀鍔ㄧ敾 1.0s */
   taskCompleteAt?: number;
-  /** Task 8: 任务失败动画起始时间戳 (ms)，触发 ⚠ 抖动动画 0.8s */
+  /** Task 8: 浠诲姟澶辫触鍔ㄧ敾璧峰鏃堕棿鎴?(ms)锛岃Е鍙?鈿?鎶栧姩鍔ㄧ敾 0.8s */
   taskFailedAt?: number;
-  /** Task 7: 当前移动方向（8 方向枚举，MOVING 状态下有效） */
+  /** Task 7: 褰撳墠绉诲姩鏂瑰悜锛? 鏂瑰悜鏋氫妇锛孧OVING 鐘舵€佷笅鏈夋晥锛?*/
   direction?: 'up' | 'down' | 'left' | 'right' | 'up-left' | 'up-right' | 'down-left' | 'down-right';
-  /** Task PNG迁移: 角色 PNG 精灵图模板目录 (对应 src/assets/office/iso/characters/ai-employee-NN/) */
+  /** Task PNG杩佺Щ: 瑙掕壊 PNG 绮剧伒鍥炬ā鏉跨洰褰?(瀵瑰簲 src/assets/office/iso/characters/ai-employee-NN/) */
   charTemplateDir?: string;
 }
 
-/** 任务流边 */
+/** 浠诲姟娴佽竟 */
 export interface TaskFlowEdge {
   id: string;
   fromEmployeeId: string;
   toEmployeeId: string;
   active: boolean;
-  /** 粒子进度数组 (0-1) */
+  /** 绮掑瓙杩涘害鏁扮粍 (0-1) */
   particles: Array<{ progress: number }>;
-  /** 上次粒子生成时间戳 (ms)，用于 20 粒子/秒生成频率控制（可选，向后兼容） */
+  /** 涓婃绮掑瓙鐢熸垚鏃堕棿鎴?(ms)锛岀敤浜?20 绮掑瓙/绉掔敓鎴愰鐜囨帶鍒讹紙鍙€夛紝鍚戝悗鍏煎锛?*/
   lastSpawnAt?: number;
 }
 
-/** 区域定义 */
+/** 鍖哄煙瀹氫箟 */
 export interface OfficeArea {
   id: string;
   label: string;
-  /** 像素坐标 (左上角) */
+  /** 鍍忕礌鍧愭爣 (宸︿笂瑙? */
   x: number;
   y: number;
   width: number;
   height: number;
-  /** 区域颜色 (rgba) */
+  /** 鍖哄煙棰滆壊 (rgba) */
   color: string;
-  /** 入口坐标 (网格坐标) */
+  /** 鍏ュ彛鍧愭爣 (缃戞牸鍧愭爣) */
   entrance?: { x: number; y: number };
-  /** 入口对应的格子类型 */
+  /** 鍏ュ彛瀵瑰簲鐨勬牸瀛愮被鍨?*/
   cellType?: CellType;
 }
 
-/** 家具类型 */
+/** 瀹跺叿绫诲瀷 */
 export type FurnitureType =
   | 'desk'
   | 'chair'
@@ -119,30 +119,30 @@ export type FurnitureType =
   | 'serverCabinet'
   | 'receptionDesk';
 
-/** 家具 */
+/** 瀹跺叿 */
 export interface Furniture {
   type: FurnitureType;
   x: number;
   y: number;
   width: number;
   height: number;
-  /** 额外样式参数 (颜色/旋转) */
+  /** 棰濆鏍峰紡鍙傛暟 (棰滆壊/鏃嬭浆) */
   color?: string;
   label?: string;
 }
 
-/** 热点 */
+/** 鐑偣 */
 export interface Hotspot {
   id: string;
   x: number;
   y: number;
   radius: number;
   label: string;
-  /** 关联员工 id (可选) */
+  /** 鍏宠仈鍛樺伐 id (鍙€? */
   employeeId?: string;
 }
 
-/** 办公室日志事件 */
+/** 鍔炲叕瀹ゆ棩蹇椾簨浠?*/
 export interface OfficeLogEvent {
   id: string;
   timestamp: number;
@@ -152,103 +152,102 @@ export interface OfficeLogEvent {
   text: string;
 }
 
-/** 状态更新事件 (WebSocket) */
+/** 鐘舵€佹洿鏂颁簨浠?(WebSocket) */
 export interface StatusUpdateEvent {
   employeeId: string;
   status: AIEmployeeStatus;
-  /** 关联员工名 (可选) */
+  /** 鍏宠仈鍛樺伐鍚?(鍙€? */
   reason?: string;
 }
 
 /* ============================================================
- * Task 9: 5 种对话气泡类型
- * ============================================================ */
+ * Task 9: 5 绉嶅璇濇皵娉＄被鍨? * ============================================================ */
 
-/** 对话气泡类型 */
+/** 瀵硅瘽姘旀场绫诲瀷 */
 export type ChatBubbleType = 'text' | 'icon' | 'thinking' | 'emotion' | 'voice';
 
-/** 对话气泡实例 */
+/** 瀵硅瘽姘旀场瀹炰緥 */
 export interface OfficeChatBubble {
-  /** 唯一 ID */
+  /** 鍞竴 ID */
   id: string;
-  /** 关联 AI 员工 ID */
+  /** 鍏宠仈 AI 鍛樺伐 ID */
   employeeId: string;
-  /** 气泡类型 */
+  /** 姘旀场绫诲瀷 */
   type: ChatBubbleType;
-  /** 文字/思考/语音字幕内容 */
+  /** 鏂囧瓧/鎬濊€?璇煶瀛楀箷鍐呭 */
   content: string;
-  /** 情绪 emoji / 图标气泡图标 */
+  /** 鎯呯华 emoji / 鍥炬爣姘旀场鍥炬爣 */
   emoji?: string;
-  /** 显示时长 (ms)，默认 3000 */
+  /** 鏄剧ず鏃堕暱 (ms)锛岄粯璁?3000 */
   duration?: number;
-  /** 创建时间戳 (ms) */
+  /** 鍒涘缓鏃堕棿鎴?(ms) */
   createdAt: number;
 }
 
 /* ============================================================
- * Task 10: Demo 场景控制接口
+ * Task 10: Demo 鍦烘櫙鎺у埗鎺ュ彛
  * ============================================================ */
 
-/** Demo 场景控制器 */
+/** Demo 鍦烘櫙鎺у埗鍣?*/
 export interface DemoController {
-  /** Demo 唯一 ID */
+  /** Demo 鍞竴 ID */
   id: string;
-  /** Demo 标题 */
+  /** Demo 鏍囬 */
   title: string;
-  /** Demo 描述 */
+  /** Demo 鎻忚堪 */
   description: string;
-  /** 启动 Demo */
+  /** 鍚姩 Demo */
   play: (ctx: DemoContext) => Promise<void>;
-  /** 停止 Demo */
+  /** 鍋滄 Demo */
   stop: () => void;
 }
 
-/** Demo 上下文（由 Office2DPage 提供） */
+/** Demo 涓婁笅鏂囷紙鐢?Office2DPage 鎻愪緵锛?*/
 export interface DemoContext {
-  /** 切换员工状态（可选 pos 设置目标位置） */
+  /** 鍒囨崲鍛樺伐鐘舵€侊紙鍙€?pos 璁剧疆鐩爣浣嶇疆锛?*/
   setEmployeeStatus: (id: string, status: AIEmployeeStatus, pos?: { x: number; y: number }) => void;
-  /** 添加对话气泡（可选 duration 指定显示时长 ms，默认 3000） */
+  /** 娣诲姞瀵硅瘽姘旀场锛堝彲閫?duration 鎸囧畾鏄剧ず鏃堕暱 ms锛岄粯璁?3000锛?*/
   addBubble: (employeeId: string, type: ChatBubbleType, content: string, emoji?: string, duration?: number) => void;
-  /** 移动员工到指定位置（A* 寻路），返回 Promise 完成时表示到达 */
+  /** 绉诲姩鍛樺伐鍒版寚瀹氫綅缃紙A* 瀵昏矾锛夛紝杩斿洖 Promise 瀹屾垚鏃惰〃绀哄埌杈?*/
   moveEmployee: (id: string, to: { x: number; y: number }, speed?: number) => Promise<void>;
-  /** 更新 Demo 进度条 */
+  /** 鏇存柊 Demo 杩涘害鏉?*/
   showProgress: (percent: number, text: string) => void;
-  /** 显示底部解说文本 */
+  /** 鏄剧ず搴曢儴瑙ｈ鏂囨湰 */
   showNarration: (text: string) => void;
 }
 
-/** Demo 运行时状态 */
+/** Demo 杩愯鏃剁姸鎬?*/
 export interface DemoRuntimeState {
-  /** 是否正在播放 */
+  /** 鏄惁姝ｅ湪鎾斁 */
   isPlaying: boolean;
-  /** 进度百分比 0-100 */
+  /** 杩涘害鐧惧垎姣?0-100 */
   progressPercent: number;
-  /** 进度提示文本 */
+  /** 杩涘害鎻愮ず鏂囨湰 */
   progressText: string;
-  /** 底部解说文本 */
+  /** 搴曢儴瑙ｈ鏂囨湰 */
   narration: string;
 }
 
 /* ============================================================
- * Task 24: 设置面板参数类型
+ * Task 24: 璁剧疆闈㈡澘鍙傛暟绫诲瀷
  * ============================================================ */
 
-/** 性能模式（影响 RAF fps） */
+/** 鎬ц兘妯″紡锛堝奖鍝?RAF fps锛?*/
 export type PerformanceMode = 'high' | 'balanced' | 'power-saving';
 
-/** Office 设置面板参数 */
+/** Office 璁剧疆闈㈡澘鍙傛暟 */
 export interface OfficeSettings {
-  /** 动效开关（false 时停止 RAF 仅渲染静态画面） */
+  /** 鍔ㄦ晥寮€鍏筹紙false 鏃跺仠姝?RAF 浠呮覆鏌撻潤鎬佺敾闈級 */
   animationEnabled: boolean;
-  /** 主题色（更新所有 AI 员工 themeColor） */
+  /** 涓婚鑹诧紙鏇存柊鎵€鏈?AI 鍛樺伐 themeColor锛?*/
   themeColor: string;
-  /** 性能模式：high 60fps / balanced 30fps / power-saving 15fps */
+  /** 鎬ц兘妯″紡锛歨igh 60fps / balanced 30fps / power-saving 15fps */
   performanceMode: PerformanceMode;
-  /** 角色显示数量（1-5，取前 N 个 AI 员工） */
+  /** 瑙掕壊鏄剧ず鏁伴噺锛?-5锛屽彇鍓?N 涓?AI 鍛樺伐锛?*/
   visibleEmployeeCount: number;
 }
 
-/** 默认 Office 设置 */
+/** 榛樿 Office 璁剧疆 */
 export const DEFAULT_OFFICE_SETTINGS: OfficeSettings = {
   animationEnabled: true,
   themeColor: '#1677FF',
@@ -256,10 +255,10 @@ export const DEFAULT_OFFICE_SETTINGS: OfficeSettings = {
   visibleEmployeeCount: 5,
 };
 
-/** localStorage 持久化 key */
+/** localStorage 鎸佷箙鍖?key */
 const OFFICE_SETTINGS_KEY = 'office-settings';
 
-/** 从 localStorage 加载 Office 设置（合并默认值） */
+/** 浠?localStorage 鍔犺浇 Office 璁剧疆锛堝悎骞堕粯璁ゅ€硷級 */
 export function loadOfficeSettings(): OfficeSettings {
   try {
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(OFFICE_SETTINGS_KEY) : null;
@@ -267,16 +266,15 @@ export function loadOfficeSettings(): OfficeSettings {
       return { ...DEFAULT_OFFICE_SETTINGS, ...(JSON.parse(cached) as Partial<OfficeSettings>) };
     }
   } catch {
-    // localStorage 不可用或解析失败：返回默认值
-  }
+    // localStorage 涓嶅彲鐢ㄦ垨瑙ｆ瀽澶辫触锛氳繑鍥為粯璁ゅ€?  }
   return DEFAULT_OFFICE_SETTINGS;
 }
 
-/** 保存 Office 设置到 localStorage */
+/** 淇濆瓨 Office 璁剧疆鍒?localStorage */
 export function saveOfficeSettings(settings: OfficeSettings): void {
   try {
     localStorage.setItem(OFFICE_SETTINGS_KEY, JSON.stringify(settings));
   } catch {
-    // localStorage 不可用：忽略
+    // localStorage 涓嶅彲鐢細蹇界暐
   }
 }

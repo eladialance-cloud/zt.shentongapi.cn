@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Office2DPage — 2D 画布 + 右侧 Drawer (3 个 Tab)
  * (v0.3.1 Task 11)
  *
@@ -11,28 +11,15 @@
  *   - Demo 期间禁用其他热区交互（demoMode=true）
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, ColorPicker, Drawer, Empty, Radio, Slider, Switch, Tag, Tabs, Tooltip } from 'antd';
-import OfficeIsoCanvas from './OfficeIsoCanvas';
-import MeetingRoom from './MeetingRoom';
-import { AI_EMPLOYEES } from './employees';
-import { STATE_LABELS, getStatusVisualColor } from './state-machine';
-import type {
-  AIEmployee,
-  AIEmployeeStatus,
-  ChatBubbleType,
-  DemoContext,
-  DemoController,
-  OfficeLogEvent,
-  OfficeSettings,
-  PerformanceMode,
-  PixelPoint,
-  StatusUpdateEvent,
-  TaskFlowEdge,
-} from './types';
-import { loadOfficeSettings, saveOfficeSettings } from './types';
-import { DEMO_LIST } from './scenarios';
-import TaskFlow from '@/components/TaskFlow';
+
+import { useCallback, useEffect, useMemo, useRef, useState } from '\''react'\'';
+import { Button, ColorPicker, Drawer, Empty, Radio, Slider, Switch, Tag, Tabs, Tooltip } from '\''antd'\'';
+import OfficeIsoCanvas from '\''./OfficeIsoCanvas'\'';
+import MeetingRoom from '\''./MeetingRoom'\'';
+import { AI_EMPLOYEES } from '\''./employees'\'';
+import { loadTeamEmployees, buildDynamicRoleMap } from '\''./dynamic-employees'\'';
+import { listTeams } from '\''@/api/team-api'\'';
+import { STATE_LABELS, getStatusVisualColor } from '\''./state-machine'\'';import TaskFlow from '@/components/TaskFlow';
 import styles from './office-canvas.module.css';
 
 interface Office2DPageProps {

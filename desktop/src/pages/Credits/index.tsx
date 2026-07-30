@@ -1,1 +1,185 @@
-﻿// 绉垎涓績 - v0.3.1 缁煎悎椤?// 椤堕儴 CreditDisplay 澶ф樉绀?+ 鍏呭€煎椁?4 鍗＄墖 + 浣跨敤鍘嗗彶琛ㄦ牸 + 鏀粯鏂瑰紡鍗犱綅// 娴呰壊涓婚锛屼娇鐢?v0.3.1 璁捐浠ょ墝涓?CreditDisplay 鍏变韩缁勪欢import { useCallback, useEffect, useState } from 'react'import {  Breadcrumb,  Button,  Card,  Col,  Empty,  Radio,  Row,  Skeleton,  Spin,  Table,  Tag,  Typography,  message} from 'antd'import type { ColumnsType } from 'antd/es/table'import {  AlipayOutlined,  DollarOutlined,  GiftOutlined,  HomeOutlined,  LockOutlined,  ReloadOutlined,  ThunderboltOutlined,  WechatOutlined} from '@ant-design/icons'import CreditDisplay from '@/components/CreditDisplay'import { useCreditsStore } from '@/store/credits'import { getTransactions, getRechargePlans, createRecharge } from '@/api/credits-api'import type { CreditTransaction, RechargePlan, PaymentMethod } from '@/types/credits'import styles from './styles.module.css'const { Title, Text } = Typography/** 闈欐€?4 妗ｅ厖鍊煎椁愶紙100/500/1000/5000锛夛紝涓庡悗绔?plans 鍚堝苟灞曠ず */const STATIC_PACKAGES: Array<{ id: string; credits: number; price: number; bonus: number; recommended?: boolean }> = [  { id: 'pkg-100', credits: 100, price: 9.9, bonus: 0 },  { id: 'pkg-500', credits: 500, price: 45, bonus: 20 },  { id: 'pkg-1000', credits: 1000, price: 88, bonus: 100, recommended: true },  { id: 'pkg-5000', credits: 5000, price: 399, bonus: 800 }]const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string; icon: React.ReactNode; color: string }> = [  { value: 'wechat', label: '寰俊鏀粯', icon: <WechatOutlined />, color: 'var(--color-success)' },  { value: 'alipay', label: '鏀粯瀹?, icon: <AlipayOutlined />, color: 'var(--color-primary)' },  { value: 'stripe', label: 'Stripe', icon: <ThunderboltOutlined />, color: 'var(--color-purple)' }]export default function Credits() {  const { balance, frozenBalance, totalRecharged, totalConsumed, loaded, fetchBalance } = useCreditsStore()  const [history, setHistory] = useState<CreditTransaction[]>([])  const [historyLoading, setHistoryLoading] = useState(false)  const [plans, setPlans] = useState<RechargePlan[]>([])  const [selectedPkg, setSelectedPkg] = useState<string>('pkg-1000')  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('wechat')  const [submitting, setSubmitting] = useState(false)  useEffect(() => {    void fetchBalance()    void loadHistory()    void loadPlans()  }, [fetchBalance])  const loadHistory = useCallback(async () => {    setHistoryLoading(true)    try {      const result = await getTransactions({ page: 1, pageSize: 10 })      setHistory(result.list || [])    } catch (err) {      console.error('[Credits] load history failed:', err)      setHistory([])    } finally {      setHistoryLoading(false)    }  }, [])  const loadPlans = useCallback(async () => {    try {      const data = await getRechargePlans()      setPlans(data || [])    } catch (err) {      console.warn('[Credits] load plans failed, using static packages:', err)      setPlans([])    }  }, [])  const handleRefresh = async () => {    try {      await Promise.all([fetchBalance(), loadHistory()])      message.success('宸插埛鏂?)    } catch {      message.error('鍒锋柊澶辫触')    }  }  const handleRecharge = async () => {    const staticPkg = STATIC_PACKAGES.find((p) => p.id === selectedPkg)    const matchedPlan = plans.find((p) => p.credits === staticPkg?.credits)    if (matchedPlan) {      setSubmitting(true)      try {        await createRecharge({ planId: matchedPlan.id, paymentMethod })        message.success('璁㈠崟宸插垱寤猴紝璇峰湪鏂扮獥鍙ｅ畬鎴愭敮浠?)      } catch (err) {        console.error('[Credits] recharge failed:', err)        message.error('鍒涘缓璁㈠崟澶辫触: ' + (err as Error).message)      } finally {        setSubmitting(false)      }      return    }    message.info(`閫変腑濂楅锛?{staticPkg?.credits} 绉垎 路 ${paymentMethod}锛堝崰浣嶆紨绀猴級`)  }  const historyColumns: ColumnsType<CreditTransaction> = [    {      title: '鏃ユ湡',      dataIndex: 'createdAt',      key: 'createdAt',      width: 170,      render: (v: string | Date) => new Date(v).toLocaleString('zh-CN', { hour12: false })    },    {      title: '鎻忚堪',      dataIndex: 'remark',      key: 'remark',      ellipsis: true,      render: (v: string, record) => v || record.source || '-'    },    {      title: '閲戦',      dataIndex: 'amount',      key: 'amount',      width: 100,      align: 'right',      render: (v: number) => (        <span style={{ color: v >= 0 ? 'var(--color-success)' : 'var(--color-error)', fontWeight: 600 }}>          {v >= 0 ? '+' : ''}{v}        </span>      )    },    {      title: '浣欓',      dataIndex: 'balanceAfter',      key: 'balanceAfter',      width: 110,      align: 'right',      render: (v: number) => (v?.toLocaleString?.() ?? '-')    }  ]  return (    <div className={styles.page}>      <Breadcrumb        className={styles.breadcrumb}        items={[{ title: <><HomeOutlined /> 棣栭〉</> }, { title: '绉垎涓績' }]}      />      <div className={styles.header}>        <div className={styles.titleArea}>          <DollarOutlined className={styles.titleIcon} />          <div>            <Title level={3} className={styles.title}>绉垎涓績</Title>            <Text type="secondary" className={styles.subtitle}>绠＄悊浣欓銆佸厖鍊间笌娴佹按</Text>          </div>        </div>        <Button icon={<ReloadOutlined />} onClick={handleRefresh}>鍒锋柊</Button>      </div>      {!loaded ? (        <Skeleton active paragraph={{ rows: 6 }} />      ) : (        <>          {/* 椤堕儴锛欳reditDisplay 澶ф樉绀?+ 缁熻 */}          <Card className={styles.balanceCard} bordered={false}>            <Row gutter={[24, 16]} align="middle">              <Col xs={24} md={12}>                <div className={styles.balanceLabel}>褰撳墠浣欓</div>                <CreditDisplay value={balance} size="large" lowThreshold={100} />                <div className={styles.balanceHint}>                  <LockOutlined style={{ marginRight: 4, color: 'var(--color-warning)' }} />                  鍐荤粨 <Text strong>{frozenBalance}</Text> 绉垎                </div>              </Col>              <Col xs={24} md={12}>                <Row gutter={[16, 16]}>                  <Col span={12}>                    <div className={styles.miniStat}>                      <div className={styles.miniStatLabel}>绱鍏呭€?/div>                      <div className={styles.miniStatValue} style={{ color: 'var(--color-success)' }}>                        {totalRecharged.toLocaleString()}                      </div>                    </div>                  </Col>                  <Col span={12}>                    <div className={styles.miniStat}>                      <div className={styles.miniStatLabel}>绱娑堣垂</div>                      <div className={styles.miniStatValue} style={{ color: 'var(--color-error)' }}>                        {totalConsumed.toLocaleString()}                      </div>                    </div>                  </Col>                </Row>              </Col>            </Row>          </Card>          {/* 鍏呭€煎椁愶細4 鍗＄墖 */}          <Card            className={styles.sectionCard}            bordered={false}            title={<><GiftOutlined style={{ marginRight: 6, color: 'var(--color-primary)' }} />鍏呭€煎椁?/>}          >            <Row gutter={[16, 16]}>              {STATIC_PACKAGES.map((pkg) => {                const selected = pkg.id === selectedPkg                return (                  <Col xs={12} md={6} key={pkg.id}>                    <div                      className={`${styles.pkgCard} ${selected ? styles.pkgCardSelected : ''}`}                      onClick={() => setSelectedPkg(pkg.id)}                      role="button"                      tabIndex={0}                    >                      {pkg.recommended && <div className={styles.recommendBadge}>鎺ㄨ崘</div>}                      <div className={styles.pkgCredits}>{pkg.credits.toLocaleString()}</div>                      <div className={styles.pkgCreditsUnit}>绉垎</div>                      {pkg.bonus > 0 && (                        <div className={styles.pkgBonus}>璧犻€?{pkg.bonus} 绉垎</div>                      )}                      <div className={styles.pkgPrice}>                        <span className={styles.pkgPriceCurrency}>楼</span>                        {pkg.price}                      </div>                    </div>                  </Col>                )              })}            </Row>            {/* 鏀粯鏂瑰紡 */}            <div className={styles.paymentSection}>              <Text strong style={{ marginRight: 12 }}>鏀粯鏂瑰紡锛?/Text>              <Radio.Group                value={paymentMethod}                onChange={(e) => setPaymentMethod(e.target.value)}                optionType="button"                buttonStyle="solid"              >                {PAYMENT_METHODS.map((m) => (                  <Radio.Button key={m.value} value={m.value}>                    <span style={{ color: m.color, marginRight: 6 }}>{m.icon}</span>                    {m.label}                  </Radio.Button>                ))}              </Radio.Group>              <Button                type="primary"                size="large"                className={styles.confirmBtn}                loading={submitting}                onClick={handleRecharge}                style={{ marginLeft: 16 }}              >                绔嬪嵆鍏呭€?              </Button>            </div>          </Card>          {/* 浣跨敤鍘嗗彶琛ㄦ牸 */}          <Card            className={styles.sectionCard}            bordered={false}            title={<><ThunderboltOutlined style={{ marginRight: 6, color: 'var(--color-primary)' }} />浣跨敤鍘嗗彶</>}          >            <Spin spinning={historyLoading}>              {history.length === 0 && !historyLoading ? (                <Empty description="鏆傛棤娴佹按璁板綍" />              ) : (                <Table<CreditTransaction>                  rowKey="id"                  columns={historyColumns}                  dataSource={history}                  size="middle"                  pagination={{ pageSize: 10, showSizeChanger: false }}                  scroll={{ x: 'max-content' }}                />              )}            </Spin>          </Card>          {/* 搴曢儴璇存槑 */}          <div className={styles.footerTip}>            <ThunderboltOutlined style={{ color: 'var(--color-primary)', marginRight: 8 }} />            <Text type="secondary" style={{ fontSize: 12 }}>              绉垎鐢ㄤ簬瀵硅瘽璋冪敤銆佹彃浠惰皟鐢ㄣ€佸伐浣滄祦鎵ц绛夈€傚悗绔噰鐢ㄤ笁闃舵璁¤垂锛堝喕缁?鈫?缁撶畻 鈫?閫€琛ワ級锛屼綑棰濆彉鏇村皢閫氳繃 WebSocket 瀹炴椂鎺ㄩ€併€?            </Text>          </div>        </>      )}    </div>  )}
+// 积分中心 - 余额总览页
+// SubTask 6.1
+// 顶部卡片：当前余额（大字体）+ 冻结积分 + 累计充值 + 累计消费 + 充值按钮
+
+import { useEffect } from "react";
+import { Card, Statistic, Button, message, Skeleton } from "antd";
+import {
+  WalletOutlined,
+  LockOutlined,
+  ArrowUpOutlined,
+  ArrowDownOutlined,
+  ThunderboltOutlined,
+  DollarOutlined,
+  ReloadOutlined,
+  UnorderedListOutlined,
+  PieChartOutlined,
+} from "@ant-design/icons";
+import { useNavigate } from "react-router-dom";
+import { useCreditsStore } from "@/store/credits";
+import styles from "./styles.module.css";
+
+export default function CreditsOverview() {
+  const navigate = useNavigate();
+  const {
+    balance,
+    frozenBalance,
+    totalRecharged,
+    totalConsumed,
+    loaded,
+    fetchBalance,
+  } = useCreditsStore();
+
+  useEffect(() => {
+    void fetchBalance();
+  }, [fetchBalance]);
+
+  const handleRefresh = async () => {
+    try {
+      await fetchBalance();
+      message.success("余额已刷新");
+    } catch {
+      message.error("刷新失败");
+    }
+  };
+
+  return (
+    <div className={styles.page}>
+      {/* 顶部标题 */}
+      <div className={styles.header}>
+        <div className={styles.titleArea}>
+          <WalletOutlined className={styles.titleIcon} />
+          <div>
+            <h1 className={styles.title}>积分中心</h1>
+            <div className={styles.subtitle}>管理您的积分余额、充值与流水</div>
+          </div>
+        </div>
+        <Button
+          icon={<ReloadOutlined />}
+          onClick={handleRefresh}
+          className={styles.backBtn}
+        >
+          刷新余额
+        </Button>
+      </div>
+
+      {!loaded ? (
+        <Skeleton active paragraph={{ rows: 4 }} />
+      ) : (
+        <>
+          {/* 余额主卡片 */}
+          <Card className={styles.balanceCard} bordered={false}>
+            <div className={styles.balanceRow}>
+              <div className={styles.balanceMain}>
+                <div className={styles.balanceLabel}>当前余额</div>
+                <div>
+                  <span className={styles.balanceValue}>
+                    {balance.toLocaleString()}
+                  </span>
+                  <span className={styles.balanceUnit}>积分</span>
+                </div>
+              </div>
+              <Button
+                type="primary"
+                size="large"
+                icon={<DollarOutlined />}
+                className={styles.rechargeBtn}
+                onClick={() => navigate("/credits/recharge")}
+              >
+                立即充值
+              </Button>
+            </div>
+          </Card>
+
+          {/* 统计卡片 */}
+          <div className={styles.statsGrid}>
+            <Card className={styles.statCard} bordered={false}>
+              <Statistic
+                title={<span style={{ color: "#8b949e" }}>冻结积分</span>}
+                value={frozenBalance}
+                prefix={<LockOutlined style={{ color: "#fbbf24" }} />}
+                valueStyle={{ color: "#fbbf24" }}
+              />
+            </Card>
+            <Card className={styles.statCard} bordered={false}>
+              <Statistic
+                title={<span style={{ color: "#8b949e" }}>累计充值</span>}
+                value={totalRecharged}
+                prefix={<ArrowUpOutlined style={{ color: "#34d399" }} />}
+                valueStyle={{ color: "#34d399" }}
+              />
+            </Card>
+            <Card className={styles.statCard} bordered={false}>
+              <Statistic
+                title={<span style={{ color: "#8b949e" }}>累计消费</span>}
+                value={totalConsumed}
+                prefix={<ArrowDownOutlined style={{ color: "#f87171" }} />}
+                valueStyle={{ color: "#f87171" }}
+              />
+            </Card>
+          </div>
+        </>
+      )}
+
+      {/* 快捷入口 */}
+      <div className={styles.actionsGrid}>
+        <Card
+          className={styles.actionCard}
+          bordered={false}
+          onClick={() => navigate("/credits/recharge")}
+        >
+          <div className={styles.actionInner}>
+            <DollarOutlined className={styles.actionIcon} />
+            <div className={styles.actionText}>
+              <span className={styles.actionTitle}>充值</span>
+              <span className={styles.actionDesc}>购买积分套餐</span>
+            </div>
+          </div>
+        </Card>
+        <Card
+          className={styles.actionCard}
+          bordered={false}
+          onClick={() => navigate("/credits/transactions")}
+        >
+          <div className={styles.actionInner}>
+            <UnorderedListOutlined className={styles.actionIcon} />
+            <div className={styles.actionText}>
+              <span className={styles.actionTitle}>流水查询</span>
+              <span className={styles.actionDesc}>查看所有积分变动</span>
+            </div>
+          </div>
+        </Card>
+        <Card
+          className={styles.actionCard}
+          bordered={false}
+          onClick={() => navigate("/credits/consumption")}
+        >
+          <div className={styles.actionInner}>
+            <PieChartOutlined className={styles.actionIcon} />
+            <div className={styles.actionText}>
+              <span className={styles.actionTitle}>消费明细</span>
+              <span className={styles.actionDesc}>对话 / 插件 / 工作流</span>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* 底部说明 */}
+      <div
+        style={{
+          marginTop: 24,
+          padding: "12px 16px",
+          background: "rgba(17, 24, 39, 0.6)",
+          border: "1px solid rgba(99, 102, 241, 0.15)",
+          borderRadius: 10,
+        }}
+      >
+        <ThunderboltOutlined style={{ color: "#818cf8", marginRight: 8 }} />
+        <span style={{ color: "#8b949e", fontSize: 12 }}>
+          积分用于对话调用、插件调用、工作流执行等。后端采用三阶段计费（冻结 →
+          结算 → 退补），余额变更将通过 WebSocket 实时推送。
+        </span>
+      </div>
+    </div>
+  );
+}

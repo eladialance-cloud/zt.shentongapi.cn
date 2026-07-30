@@ -1,121 +1,121 @@
 ﻿{
-  "version": "1.0.0",
-  "services": {
-    "n8n": {
-      "type": "local",
-      "version": "1.62.0",
-      "displayName": "N8N",
-      "port": 5678,
-      "entry": {
-        "win32": "n8n.exe",
-        "darwin": "n8n",
-        "linux": "n8n"
-      },
-      "downloadUrl": {
-        "win32-x64": "https://zt.shentongapi.cn/runtime/n8n/1.62.0/n8n-win-x64.tar.gz",
-        "darwin-x64": "",
-        "darwin-arm64": "",
-        "linux-x64": ""
-      },
-      "size": {
-        "win32-x64": 227055390,
-        "darwin-x64": 0,
-        "darwin-arm64": 0,
-        "linux-x64": 0
-      },
-      "sha256": {
-        "win32-x64": "b02a77f427161970eb1ccb644f13e916f589aba7ac74af6dac95fe70e440c1c7",
-        "darwin-x64": "",
-        "darwin-arm64": "",
-        "linux-x64": ""
-      }
-    },
-    "openclaw": {
-      "type": "local",
-      "version": "2026.7.1",
-      "displayName": "OpenClaw",
-      "port": 51096,
-      "entry": {
-        "win32": "openclaw.exe",
-        "darwin": "openclaw",
-        "linux": "openclaw"
-      },
-      "downloadUrl": {
-        "win32-x64": "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-win-x64.tar.gz",
-        "darwin-x64": "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-mac-x64.tar.gz",
-        "darwin-arm64": "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-mac-arm64.tar.gz",
-        "linux-x64": "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-linux-x64.tar.gz"
-      },
-      "size": {
-        "win32-x64": 96425577,
-        "darwin-x64": 0,
-        "darwin-arm64": 0,
-        "linux-x64": 0
-      },
-      "sha256": {
-        "win32-x64": "43d32c7a440e63c748014e78c179d77ca6a0cd686f335bdcb47ee8356c4bcdc2",
-        "darwin-x64": "",
-        "darwin-arm64": "",
-        "linux-x64": ""
-      }
-    },
-    "mcp": {
-      "type": "local",
-      "version": "1.0.0",
-      "displayName": "MCP Gateway",
-      "port": 3100,
-      "entry": {
-        "win32": "mcp-gateway.exe",
-        "darwin": "mcp-gateway",
-        "linux": "mcp-gateway"
-      },
-      "downloadUrl": {
-        "win32-x64": "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-win-x64.tar.gz",
-        "darwin-x64": "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-mac-x64.tar.gz",
-        "darwin-arm64": "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-mac-arm64.tar.gz",
-        "linux-x64": "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-linux-x64.tar.gz"
-      },
-      "size": {
-        "win32-x64": 33004460,
-        "darwin-x64": 0,
-        "darwin-arm64": 0,
-        "linux-x64": 0
-      },
-      "sha256": {
-        "win32-x64": "9948f68e4bf983393e0b1259c497ede10d1954cb25c22c3f5e24e5b6d5414e2e",
-        "darwin-x64": "",
-        "darwin-arm64": "",
-        "linux-x64": ""
-      }
-    },
-    "hermes": {
-      "type": "local",
-      "version": "0.19.0",
-      "displayName": "Hermes Agent",
-      "port": 8642,
-      "entry": {
-        "win32": "hermes.exe",
-        "darwin": "hermes",
-        "linux": "hermes"
-      },
-      "downloadUrl": {
-        "win32-x64": "https://zt.shentongapi.cn/runtime/hermes/0.19.0/hermes-win-x64.tar.gz",
-        "darwin-x64": "",
-        "darwin-arm64": "",
-        "linux-x64": ""
-      },
-      "size": {
-        "win32-x64": 29918268,
-        "darwin-x64": 0,
-        "darwin-arm64": 0,
-        "linux-x64": 0
-      },
-      "sha256": {
-        "win32-x64": "9d22c318dc5d75fb1263348af1f84c2bd622f3a6580568c0ad3026804f8b049f",
-        "darwin-x64": "",
-        "darwin-arm64": "",
-        "linux-x64": ""
-      }
-    }
-  }
+    "version":  "1.0.0",
+    "services":  {
+                     "n8n":  {
+                                 "type":  "local",
+                                 "version":  "1.62.0",
+                                 "displayName":  "N8N",
+                                 "port":  5678,
+                                 "entry":  {
+                                               "win32":  "n8n.exe.cmd",
+                                               "darwin":  "n8n",
+                                               "linux":  "n8n"
+                                           },
+                                 "downloadUrl":  {
+                                                     "win32-x64":  "https://zt.shentongapi.cn/runtime/n8n/1.62.0/n8n-win-x64.tar.gz",
+                                                     "darwin-x64":  "",
+                                                     "darwin-arm64":  "",
+                                                     "linux-x64":  ""
+                                                 },
+                                 "size":  {
+                                              "win32-x64":  174457628,
+                                              "darwin-x64":  0,
+                                              "darwin-arm64":  0,
+                                              "linux-x64":  0
+                                          },
+                                 "sha256":  {
+                                                "win32-x64":  "5c70bde2e63377cb7885d49a2d6a0977378a43de06887c92e8b5dcc5989618d6",
+                                                "darwin-x64":  "",
+                                                "darwin-arm64":  "",
+                                                "linux-x64":  ""
+                                            }
+                             },
+                     "openclaw":  {
+                                      "type":  "local",
+                                      "version":  "2026.7.1",
+                                      "displayName":  "OpenClaw",
+                                      "port":  51096,
+                                      "entry":  {
+                                                    "win32":  "openclaw.exe.cmd",
+                                                    "darwin":  "openclaw",
+                                                    "linux":  "openclaw"
+                                                },
+                                      "downloadUrl":  {
+                                                          "win32-x64":  "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-win-x64.tar.gz",
+                                                          "darwin-x64":  "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-mac-x64.tar.gz",
+                                                          "darwin-arm64":  "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-mac-arm64.tar.gz",
+                                                          "linux-x64":  "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-linux-x64.tar.gz"
+                                                      },
+                                      "size":  {
+                                                   "win32-x64":  90151719,
+                                                   "darwin-x64":  0,
+                                                   "darwin-arm64":  0,
+                                                   "linux-x64":  0
+                                               },
+                                      "sha256":  {
+                                                     "win32-x64":  "90c92672b6bae7964c546ef6696438e860ad90b93924a635dd6a5954323b1085",
+                                                     "darwin-x64":  "",
+                                                     "darwin-arm64":  "",
+                                                     "linux-x64":  ""
+                                                 }
+                                  },
+                     "mcp":  {
+                                 "type":  "local",
+                                 "version":  "1.0.0",
+                                 "displayName":  "MCP Gateway",
+                                 "port":  3100,
+                                 "entry":  {
+                                               "win32":  "mcp-gateway.exe.cmd",
+                                               "darwin":  "mcp-gateway",
+                                               "linux":  "mcp-gateway"
+                                           },
+                                 "downloadUrl":  {
+                                                     "win32-x64":  "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-win-x64.tar.gz",
+                                                     "darwin-x64":  "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-mac-x64.tar.gz",
+                                                     "darwin-arm64":  "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-mac-arm64.tar.gz",
+                                                     "linux-x64":  "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-linux-x64.tar.gz"
+                                                 },
+                                 "size":  {
+                                              "win32-x64":  32964253,
+                                              "darwin-x64":  0,
+                                              "darwin-arm64":  0,
+                                              "linux-x64":  0
+                                          },
+                                 "sha256":  {
+                                                "win32-x64":  "07fa747c7a1d45ba69123b1ecfe00d07d90a6d3bf6b8311be98afbb52b0346fa",
+                                                "darwin-x64":  "",
+                                                "darwin-arm64":  "",
+                                                "linux-x64":  ""
+                                            }
+                             },
+                     "hermes":  {
+                                    "type":  "local",
+                                    "version":  "0.19.0",
+                                    "displayName":  "Hermes Agent",
+                                    "port":  8642,
+                                    "entry":  {
+                                                  "win32":  "hermes.exe.cmd",
+                                                  "darwin":  "hermes",
+                                                  "linux":  "hermes"
+                                              },
+                                    "downloadUrl":  {
+                                                        "win32-x64":  "https://zt.shentongapi.cn/runtime/hermes/0.19.0/hermes-win-x64.tar.gz",
+                                                        "darwin-x64":  "",
+                                                        "darwin-arm64":  "",
+                                                        "linux-x64":  ""
+                                                    },
+                                    "size":  {
+                                                 "win32-x64":  29918236,
+                                                 "darwin-x64":  0,
+                                                 "darwin-arm64":  0,
+                                                 "linux-x64":  0
+                                             },
+                                    "sha256":  {
+                                                   "win32-x64":  "d01780573d729d6783d6d26e80636aad9df4acaeaec68d66b6ef0a90e3d7ca65",
+                                                   "darwin-x64":  "",
+                                                   "darwin-arm64":  "",
+                                                   "linux-x64":  ""
+                                               }
+                                }
+                 }
 }

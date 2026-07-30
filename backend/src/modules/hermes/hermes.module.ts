@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+﻿import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { HermesInstanceEntity } from './entities/hermes-instance.entity';
 import { HermesCallLogEntity } from './entities/hermes-call-log.entity';
@@ -7,6 +7,7 @@ import { HermesSkillRatingEntity } from './entities/hermes-skill-rating.entity';
 import { HermesController } from './controllers/hermes.controller';
 import { HermesService } from './services/hermes.service';
 import { SkillRunnerService } from './services/skill-runner.service';
+import { AIEmployeeService } from './services/ai-employee.service';
 import { InstanceWorkerService } from './services/instance-worker.service';
 import { CreditsModule } from '../credits/credits.module';
 import { McpModule } from '../mcp/mcp.module';
@@ -30,7 +31,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
     SyncModule,
   ],
   controllers: [HermesController],
-  providers: [HermesService, SkillRunnerService, InstanceWorkerService, RolesGuard],
-  exports: [HermesService],
+  providers: [HermesService, SkillRunnerService, InstanceWorkerService, AIEmployeeService, RolesGuard],
+  exports: [HermesService, AIEmployeeService],
 })
 export class HermesModule {}

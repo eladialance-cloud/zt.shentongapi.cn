@@ -1,8 +1,7 @@
-﻿import * as crypto from 'crypto';
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
-import { execFile } from 'child_process';
+﻿import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { In, Repository } from 'typeorm';
+import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -10,9 +9,6 @@ import * as os from 'os';
 import fg from 'fast-glob';
 import { AgentEntity } from '../agent/entities/agent.entity';
 import { AgentReviewEntity } from '../agent/entities/agent-review.entity';
-import { AgentCallLogEntity } from '../agent/entities/agent-call-log.entity';
-import { AgentRatingEntity } from '../agent/entities/agent-rating.entity';
-import { AgentFavoriteEntity } from '../agent/entities/agent-favorite.entity';
 import { UserEntity } from '../user/entities/user.entity';
 import { AgentCategoryEntity } from './entities/agent-category.entity';
 import {
@@ -45,10 +41,10 @@ import {
   SOURCE_DIR_TO_CATEGORY,
 } from './agent-import.constants';
 
-/** execFile 鐨?Promise 鍖栧寘瑁咃紙涓嶇粡杩?shell锛岄伩鍏嶅懡浠ゆ敞鍏ワ級 */
-const execFileAsync = promisify(execFile);
+/** exec 的 Promise 化包装 */
+const execAsync = promisify(exec);
 
-/** 鍥哄畾鐨?5 涓垎绫?*/
+/** 固定的 5 个分类 */
 const FIXED_CATEGORIES = [
   'office',
   'programming',
@@ -57,41 +53,28 @@ const FIXED_CATEGORIES = [
   'other',
 ] as const;
 
-/** 鍒嗙被榛樿鏄剧ず鍚?*/
+/** 分类默认显示名 */
 const DEFAULT_DISPLAY_NAMES: Record<string, string> = {
-  office: '鍔炲叕',
-  programming: '缂栫▼',
-  copywriting: '鏂囨',
-  data_analysis: '鏁版嵁鍒嗘瀽',
-  other: '鍏朵粬',
+  office: '办公',
+  programming: '编程',
+  copywriting: '文案',
+  data_analysis: '数据分析',
+  other: '其他',
 };
 
-/** Agent 鐘舵€佸悎娉曡浆鎹㈣〃 */
-const VALID_TRANSITIONS: Record<string, string[]> = {
-  draft: ['pending_review', 'published'],        // 鑽夌鍙彁浜ゅ鏍告垨鐩存帴鍙戝竷(瀹樻柟)
-  pending_review: ['approved', 'rejected'],       // 寰呭鏍稿彲瀹℃牳閫氳繃鎴栭┏鍥?  approved: ['published'],                        // 瀹℃牳閫氳繃鍙笂鏋?  published: ['offline'],                         // 宸蹭笂鏋跺彲涓嬫灦
-  rejected: ['draft', 'pending_review'],           // 椹冲洖鍚庡彲鏀瑰洖鑽夌鎴栭噸鏂版彁浜?  offline: ['published', 'draft'],                // 涓嬫灦鍚庡彲閲嶆柊涓婃灦鎴栨敼鍥炶崏绋?};
-
 /**
- * 绠＄悊绔?Agent 甯傚満鏈嶅姟
- * 鏁版嵁鍚堝悓鐪熸簮锛歍ask 20 - Agent 甯傚満绠＄悊
+ * 管理端 Agent 市场服务
+ * 数据合同真源：Task 20 - Agent 市场管理
  */
 @Injectable()
 export class AdminAgentService {
   private readonly logger = new Logger(AdminAgentService.name);
 
   constructor(
-    @InjectDataSource() private dataSource: DataSource,
     @InjectRepository(AgentEntity)
     private agentRepo: Repository<AgentEntity>,
     @InjectRepository(AgentReviewEntity)
     private reviewRepo: Repository<AgentReviewEntity>,
-    @InjectRepository(AgentCallLogEntity)
-    private callLogRepo: Repository<AgentCallLogEntity>,
-    @InjectRepository(AgentRatingEntity)
-    private ratingRepo: Repository<AgentRatingEntity>,
-    @InjectRepository(AgentFavoriteEntity)
-    private favoriteRepo: Repository<AgentFavoriteEntity>,
     @InjectRepository(AgentCategoryEntity)
     private categoryRepo: Repository<AgentCategoryEntity>,
     @InjectRepository(UserEntity)
@@ -100,11 +83,9 @@ export class AdminAgentService {
     private agentImportTaskRepo: Repository<AgentImportTaskEntity>,
   ) {}
 
-  // ============================================================
-  // [1] Agent CRUD锛堝垱寤恒€佹煡璇€佹洿鏂般€佸垹闄わ級
-  // ============================================================
+  // ============ Agent CRUD ============
 
-  /** Agent 鍒楄〃 */
+  /** Agent 列表 */
   async listAgents(query: AgentQueryDto) {
     const page = Math.max(1, Number(query.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
@@ -135,18 +116,18 @@ export class AdminAgentService {
     };
   }
 
-  /** Agent 璇︽儏 */
+  /** Agent 详情 */
   async getAgentDetail(id: number) {
     const agent = await this.agentRepo.findOne({ where: { id } });
     if (!agent) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 涓嶅瓨鍦?);
+      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 不存在');
     }
     const items = await this.toAdminAgentItems([agent]);
     return items[0];
   }
 
-  /** 鏂板 Agent */
-  async createAgent(dto: CreateAgentDto, adminId: number) {
+  /** 新增 Agent */
+  async createAgent(dto: CreateAgentDto, adminUserId?: number) {
     const agent = this.agentRepo.create({
       name: dto.name,
       description: dto.description,
@@ -158,23 +139,23 @@ export class AdminAgentService {
         dto.pricingMode === 'perToken'
           ? { input: dto.pricePerTokenInput, output: dto.pricePerTokenOutput }
           : undefined,
-      creatorId: adminId,
+      creatorId: 0,
       creatorType: 'official',
       status: 'draft',
       category: dto.category,
       sourceType: 'official',
       runtimeType: 'openclaw',
-      userId: adminId,
+      userId: 0,
     });
     const saved = await this.agentRepo.save(agent);
     return (await this.toAdminAgentItems([saved as AgentEntity]))[0];
   }
 
-  /** 缂栬緫 Agent */
+  /** 编辑 Agent */
   async updateAgent(id: number, dto: UpdateAgentDto) {
     const agent = await this.agentRepo.findOne({ where: { id } });
     if (!agent) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 涓嶅瓨鍦?);
+      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 不存在');
     }
     if (dto.name !== undefined) agent.name = dto.name;
     if (dto.description !== undefined) agent.description = dto.description;
@@ -198,78 +179,41 @@ export class AdminAgentService {
     await this.agentRepo.save(agent);
   }
 
-  /** 鍒犻櫎 Agent */
+  /** 删除 Agent */
   async deleteAgent(id: number) {
     const agent = await this.agentRepo.findOne({ where: { id } });
     if (!agent) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 涓嶅瓨鍦?);
+      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 不存在');
     }
-    if (agent.status === 'published') {
-      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '宸蹭笂鏋?Agent 涓嶈兘鍒犻櫎锛岃鍏堜笅鏋?);
-    }
-    await this.dataSource.transaction(async (manager) => {
-      await manager.delete(AgentCallLogEntity, { agentId: id });
-      await manager.delete(AgentReviewEntity, { agentId: id });
-      await manager.delete(AgentRatingEntity, { agentId: id });
-      await manager.delete(AgentFavoriteEntity, { agentId: id });
-      await manager.delete(AgentEntity, id);
-    });
+    await this.agentRepo.delete(id);
   }
 
-  /** 鎵归噺鍒犻櫎 Agent */
-  async batchDeleteAgents(ids: number[]): Promise<void> {
-    if (!ids || ids.length === 0) return;
-    // 涓?deleteAgent 淇濇寔涓€鑷达細宸蹭笂鏋?Agent 涓嶅厑璁稿垹闄?    const agents = await this.agentRepo.find({
-      where: { id: In(ids) },
-      select: ['id', 'status'],
-    });
-    const hasPublished = agents.some((a) => a.status === 'published');
-    if (hasPublished) {
-      BusinessException.throw(
-        ErrorCode.VALIDATION_FAILED,
-        '宸蹭笂鏋?Agent 涓嶈兘鍒犻櫎锛岃鍏堜笅鏋?,
-      );
-    }
-    await this.dataSource.transaction(async (manager) => {
-      await manager.delete(AgentCallLogEntity, { agentId: In(ids) });
-      await manager.delete(AgentReviewEntity, { agentId: In(ids) });
-      await manager.delete(AgentRatingEntity, { agentId: In(ids) });
-      await manager.delete(AgentFavoriteEntity, { agentId: In(ids) });
-      await manager.delete(AgentEntity, ids);
-    });
-  }
+  // ============ 上下架 ============
 
-  // ============================================================
-  // [3] Agent 涓婃灦/涓嬫灦
-  // ============================================================
-
-  /** 涓婃灦 Agent */
+  /** 上架 Agent */
   async publishAgent(id: number) {
     const agent = await this.agentRepo.findOne({ where: { id } });
     if (!agent) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 涓嶅瓨鍦?);
+      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 不存在');
     }
-    this.assertTransition(agent.status, 'published', '涓婃灦');
     agent.status = 'published';
     agent.publishedAt = new Date();
     await this.agentRepo.save(agent);
   }
 
-  /** 涓嬫灦 Agent */
+  /** 下架 Agent */
   async unpublishAgent(id: number) {
     const agent = await this.agentRepo.findOne({ where: { id } });
     if (!agent) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 涓嶅瓨鍦?);
+      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 不存在');
     }
-    this.assertTransition(agent.status, 'offline', '涓嬫灦');
     agent.status = 'offline';
     await this.agentRepo.save(agent);
   }
 
-  // ============================================================
-  // [2] Agent 瀹℃牳娴佺▼锛堟彁浜ゃ€佸鏍搁€氳繃/鎷掔粷锛?  // ============================================================
+  // ============ 审核 ============
 
-  /** 瀹℃牳闃熷垪鍒楄〃 */
+  /** 审核队列列表 */
   async listReview(query: AgentReviewQueryDto) {
     const page = Math.max(1, Number(query.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
@@ -281,7 +225,8 @@ export class AdminAgentService {
         qb.andWhere('a.status = :status', { status: entityStatus });
       }
     } else {
-      // 榛樿鍙湅寰呭鏍?      qb.andWhere('a.status = :status', { status: 'pending_review' });
+      // 默认只看待审核
+      qb.andWhere('a.status = :status', { status: 'pending_review' });
     }
     qb.orderBy('a.created_at', 'DESC')
       .skip((page - 1) * pageSize)
@@ -299,18 +244,18 @@ export class AdminAgentService {
     };
   }
 
-  /** 閫氳繃瀹℃牳 */
+  /** 通过审核 */
   async approveAgent(id: number, adminId: number) {
     const agent = await this.agentRepo.findOne({ where: { id } });
     if (!agent) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 涓嶅瓨鍦?);
+      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 不存在');
     }
-    this.assertTransition(agent.status, 'approved', '瀹℃牳閫氳繃');
-    agent.status = 'approved';
+    agent.status = 'published';
+    agent.publishedAt = new Date();
     agent.rejectionReason = undefined;
     await this.agentRepo.save(agent);
 
-    // 鍐欏叆瀹℃牳璁板綍
+    // 写入审核记录
     await this.reviewRepo.save({
       agentId: id,
       reviewerId: adminId,
@@ -318,13 +263,12 @@ export class AdminAgentService {
     });
   }
 
-  /** 椹冲洖瀹℃牳 */
+  /** 驳回审核 */
   async rejectAgent(id: number, dto: RejectAgentDto, adminId: number) {
     const agent = await this.agentRepo.findOne({ where: { id } });
     if (!agent) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 涓嶅瓨鍦?);
+      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 不存在');
     }
-    this.assertTransition(agent.status, 'rejected', '椹冲洖');
     agent.status = 'rejected';
     agent.rejectionReason = dto.reason;
     await this.agentRepo.save(agent);
@@ -337,17 +281,11 @@ export class AdminAgentService {
     });
   }
 
-  /** 寮哄埗涓嬫灦 */
+  /** 强制下架 */
   async forceUnpublishAgent(id: number, dto: RejectAgentDto, adminId: number) {
     const agent = await this.agentRepo.findOne({ where: { id } });
     if (!agent) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 涓嶅瓨鍦?);
-    }
-    // 寮哄埗涓嬫灦锛氬厑璁?published 鎴?approved 鐘舵€佷笅鏋?    if (agent.status !== 'published' && agent.status !== 'approved') {
-      BusinessException.throw(
-        ErrorCode.VALIDATION_FAILED,
-        `褰撳墠鐘舵€?${agent.status} 涓嶅厑璁稿己鍒朵笅鏋禶,
-      );
+      BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 不存在');
     }
     agent.status = 'offline';
     agent.rejectionReason = dto.reason;
@@ -361,18 +299,11 @@ export class AdminAgentService {
     });
   }
 
-  // ============================================================
-  // [6] Agent 涓?OpenClaw 鍚屾
-  // ============================================================
+  // ============ GitHub 导入 ============
 
-  /** GitHub 浠撳簱寮傛瀵煎叆锛堝垱寤轰换鍔★紝绔嬪嵆杩斿洖 taskId锛?*/
+  /** GitHub 仓库异步导入（创建任务，立即返回 taskId） */
   async importGithub(dto: ImportGithubDto): Promise<{ taskId: string }> {
-    const GITHUB_URL_REGEX = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/;
-    if (!GITHUB_URL_REGEX.test(dto.repoUrl)) {
-      BusinessException.throw(ErrorCode.VALIDATION_FAILED, 'Invalid GitHub repository URL');
-    }
-
-    const taskId = `imp_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const taskId = `imp_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
     const defaults = {
       targetStatus: dto.targetStatus || 'published',
@@ -401,7 +332,8 @@ export class AdminAgentService {
     });
 
     void this.processImportTask(taskId, dto, defaults).catch((e: unknown) => {
-      // 寮傛浠诲姟寮傚父鐢?processImportTask 鍐呴儴 try-catch 鍏滃簳锛屾澶勪粎浣滄瀬绔厹搴曟棩蹇?      this.logger?.error?.(
+      // 异步任务异常由 processImportTask 内部 try-catch 兜底，此处仅作极端兜底日志
+      this.logger?.error?.(
         `importGithub async dispatch failed: ${(e as Error).message}`,
       );
     });
@@ -409,7 +341,7 @@ export class AdminAgentService {
     return { taskId };
   }
 
-  /** 寮傛澶勭悊瀵煎叆浠诲姟锛氬厠闅?鈫?瑙ｆ瀽 鈫?鍘婚噸 鈫?鍏ュ簱 */
+  /** 异步处理导入任务：克隆 → 解析 → 去重 → 入库 */
   private async processImportTask(
     taskId: string,
     dto: ImportGithubDto,
@@ -434,89 +366,19 @@ export class AdminAgentService {
     let commitSha: string | undefined;
 
     try {
-      // a. git clone 鎴?GitHub API tarball 涓嬭浇
-      const cloneUrl = await this.resolveCloneUrl(dto.repoUrl);
+      // a. git clone（浅克隆）
+      await execAsync(
+        `git clone --depth 1 ${this.escapeShell(dto.repoUrl)} ${this.escapeShell(tmpDir)}`,
+        { timeout: CLONE_TIMEOUT_MS, maxBuffer: 10 * 1024 * 1024 },
+      );
 
-      if (cloneUrl.startsWith('api-tarball:')) {
-        // GitHub API tarball 鍒嗘敮锛氫笉闇€瑕?git 鍛戒护
-        const repoUrl = cloneUrl.replace('api-tarball:', '');
-        const ownerRepo = repoUrl.replace('https://github.com/', '').replace(/\/$/, '').replace(/\.git$/, '');
-        const [owner, repo] = ownerRepo.split('/');
+      // b. 获取 commitSha
+      const { stdout: shaStdout } = await execAsync(
+        `git -C ${this.escapeShell(tmpDir)} rev-parse HEAD`,
+      );
+      commitSha = shaStdout.trim();
 
-        const https = await import('https');
-
-        // GitHub API 闀滃儚鍒楄〃锛堝浗鍐呮湇鍔″櫒 api.github.com 鍙兘鏃犳硶鐩磋繛锛?        const GITHUB_API_BASES = [
-          'https://api.github.com',
-          'https://ghproxy.com/https://api.github.com',
-          'https://gh-proxy.com/https://api.github.com',
-        ];
-
-        // 鍏堢敤 GitHub API 鑾峰彇浠撳簱榛樿鍒嗘敮鍚嶏紙閬嶅巻闀滃儚锛?        let defaultBranch = 'main';
-        let repoInfoSuccess = false;
-        for (const base of GITHUB_API_BASES) {
-          try {
-            const repoInfoUrl = `${base}/repos/${owner}/${repo}`;
-            this.logger.log(`灏濊瘯鑾峰彇浠撳簱淇℃伅: ${repoInfoUrl}`);
-            const repoInfo = await this.httpsGetJson(https, repoInfoUrl);
-            defaultBranch = repoInfo.default_branch || 'main';
-            this.logger.log(`浠撳簱榛樿鍒嗘敮: ${defaultBranch} (via ${base})`);
-            repoInfoSuccess = true;
-            break;
-          } catch (e) {
-            this.logger.warn(`闀滃儚 ${base} 鑾峰彇浠撳簱淇℃伅澶辫触: ${(e as Error).message}`);
-          }
-        }
-        if (!repoInfoSuccess) {
-          this.logger.warn(`鎵€鏈夐暅鍍忚幏鍙栦粨搴撲俊鎭け璐ワ紝灏嗗皾璇?main 鍜?master 鍒嗘敮鐩存帴涓嬭浇`);
-        }
-
-        // 涓嬭浇 tarball锛堥亶鍘嗛暅鍍?脳 鍒嗘敮锛?        const tarballPath = path.join(os.tmpdir(), `agent-import-tarball-${taskId}.tar.gz`);
-        let tarballSuccess = false;
-        const branchesToTry = defaultBranch === 'main' ? ['main', 'master'] : [defaultBranch, defaultBranch === 'master' ? 'main' : 'master'];
-        for (const base of GITHUB_API_BASES) {
-          for (const branch of branchesToTry) {
-            const tarballUrl = `${base}/repos/${owner}/${repo}/tarball/${branch}`;
-            this.logger.log(`灏濊瘯涓嬭浇 tarball: ${tarballUrl}`);
-            const downloadResult = await this.downloadTarball(https, tarballUrl, tarballPath);
-            if (downloadResult.success) {
-              tarballSuccess = true;
-              break;
-            }
-            this.logger.warn(`tarball 涓嬭浇澶辫触: HTTP ${downloadResult.statusCode}`);
-          }
-          if (tarballSuccess) break;
-        }
-        if (!tarballSuccess) {
-          throw new Error(`GitHub API tarball 涓嬭浇澶辫触: 鎵€鏈夐暅鍍忓拰鍒嗘敮鍧囨棤娉曚笅杞姐€傝妫€鏌ヤ粨搴撳湴鍧€鏄惁姝ｇ‘锛屾垨鏈嶅姟鍣ㄧ綉缁滄槸鍚﹁兘璁块棶 GitHub銆俙);
-        }
-
-        // 瑙ｅ帇 tarball 鍒?tmpDir
-        await fs.mkdir(tmpDir, { recursive: true });
-        await execFileAsync('tar', ['-xzf', tarballPath, '-C', tmpDir, '--strip-components=1'], {
-          timeout: 60_000,
-        });
-
-        // 娓呯悊 tarball
-        try { await fs.unlink(tarballPath); } catch {}
-
-        // tarball 鏃?commitSha锛岀敤鏃堕棿鎴充唬鏇?        commitSha = `tarball-${Date.now()}`;
-      } else {
-        // git clone 鍒嗘敮
-        await execFileAsync(
-          'git',
-          ['clone', '--depth', '1', cloneUrl, tmpDir],
-          { timeout: CLONE_TIMEOUT_MS, maxBuffer: 10 * 1024 * 1024 },
-        );
-
-        // b. 鑾峰彇 commitSha
-        const { stdout: shaStdout } = await execFileAsync(
-          'git',
-          ['-C', tmpDir, 'rev-parse', 'HEAD'],
-        );
-        commitSha = shaStdout.trim();
-      }
-
-      // c. 閬嶅巻鐩爣婧愮洰褰曚笅鐨?markdown 鏂囦欢
+      // c. 遍历目标源目录下的 markdown 文件
       const files: string[] = await fg(
         [
           ...SOURCE_DIRS_TO_SCAN.map((d) => `${d}/**/*.md`),
@@ -526,7 +388,7 @@ export class AdminAgentService {
       );
       stats.total = files.length;
 
-      // d-g. 璇诲彇骞惰В鏋愭瘡涓枃浠讹紝鍗曟枃浠堕敊璇笉涓柇
+      // d-g. 读取并解析每个文件，单文件错误不中断
       const parsed: Array<{
         relPath: string;
         data: ParsedAgentMarkdown;
@@ -555,7 +417,7 @@ export class AdminAgentService {
         }
       }
 
-      // h. 鎸?sourceRepoUrl + sourceFilePath 鍘婚噸
+      // h. 按 sourceRepoUrl + sourceFilePath 去重
       const existingMap = new Map<string, { id: number }>();
       if (parsed.length > 0) {
         const existing = await this.agentRepo.find({
@@ -572,7 +434,7 @@ export class AdminAgentService {
         }
       }
 
-      // 鏋勯€犳柊澧?/ 鏇存柊闆嗗悎
+      // 构造新增 / 更新集合
       const newEntities: AgentEntity[] = [];
       const updatePayloads: Array<{
         id: number;
@@ -626,12 +488,13 @@ export class AdminAgentService {
         }
       }
 
-      // i/j. dryRun 璺宠繃鍐欏叆锛涘惁鍒欏垎鎵瑰叆搴?      if (defaults.dryRun) {
+      // i/j. dryRun 跳过写入；否则分批入库
+      if (defaults.dryRun) {
         stats.inserted = 0;
         stats.skipped = existingMap.size;
       } else {
         let processedCount = 0;
-        // 鍒嗘壒 save 鏂板
+        // 分批 save 新增
         for (let i = 0; i < newEntities.length; i += BATCH_SIZE) {
           const batch = newEntities.slice(i, i + BATCH_SIZE);
           await this.agentRepo.save(batch);
@@ -644,11 +507,11 @@ export class AdminAgentService {
         }
         stats.inserted = newEntities.length;
 
-        // 鍒嗘壒 update 瑕嗙洊
+        // 分批 update 覆盖
         for (let i = 0; i < updatePayloads.length; i += BATCH_SIZE) {
           const batch = updatePayloads.slice(i, i + BATCH_SIZE);
           for (const payload of batch) {
-            await this.agentRepo.update(payload.id, payload.fields as any);
+            await this.agentRepo.update(payload.id, payload.fields);
           }
           processedCount += batch.length;
           const progress =
@@ -659,7 +522,7 @@ export class AdminAgentService {
         }
       }
 
-      // k. 瀹屾垚
+      // k. 完成
       stats.durationMs = Date.now() - startTime;
       stats.total = files.length;
       await this.agentImportTaskRepo.update(
@@ -682,16 +545,16 @@ export class AdminAgentService {
       try {
         await fs.rm(tmpDir, { recursive: true, force: true });
       } catch {
-        // 蹇界暐涓存椂鐩綍娓呯悊閿欒
+        // 忽略临时目录清理错误
       }
     }
   }
 
-  /** 鏌ヨ瀵煎叆浠诲姟鐘舵€?*/
+  /** 查询导入任务状态 */
   async getImportTask(taskId: string) {
     const task = await this.agentImportTaskRepo.findOne({ where: { taskId } });
     if (!task) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, '瀵煎叆浠诲姟涓嶅瓨鍦?);
+      BusinessException.throw(ErrorCode.NOT_FOUND, '导入任务不存在');
     }
     return {
       taskId: task.taskId,
@@ -707,110 +570,17 @@ export class AdminAgentService {
     };
   }
 
-  /** HTTPS GET 杩斿洖 JSON锛圙itHub API 璋冪敤锛?*/
-  private async httpsGetJson(https: typeof import('https'), url: string): Promise<any> {
-    return new Promise((resolve, reject) => {
-      https.get(url, { headers: { 'User-Agent': 'ShentongAI-ImportBot' } }, (res) => {
-        if (res.statusCode === 302 || res.statusCode === 301) {
-          https.get(res.headers.location!, { headers: { 'User-Agent': 'ShentongAI-ImportBot' } }, (res2) => {
-            let data2 = '';
-            res2.on('data', (chunk: string) => { data2 += chunk; });
-            res2.on('end', () => {
-              try { resolve(JSON.parse(data2)); } catch { reject(new Error(`JSON瑙ｆ瀽澶辫触: ${data2.slice(0, 200)}`)); }
-            });
-            res2.on('error', reject);
-          });
-          return;
-        }
-        if (res.statusCode !== 200) {
-          let body = '';
-          res.on('data', (chunk: string) => { body += chunk; });
-          res.on('end', () => {
-            reject(new Error(`GitHub API HTTP ${res.statusCode}: ${body.slice(0, 300)}`));
-          });
-          return;
-        }
-        let data = '';
-        res.on('data', (chunk: string) => { data += chunk; });
-        res.on('end', () => {
-          try { resolve(JSON.parse(data)); } catch { reject(new Error(`JSON瑙ｆ瀽澶辫触: ${data.slice(0, 200)}`)); }
-        });
-        res.on('error', reject);
-      }).on('error', reject);
-    });
-  }
+  // ============ 分类管理 ============
 
-  /** 涓嬭浇 tarball 鏂囦欢锛岃繑鍥炵粨鏋滃寘鍚垚鍔?澶辫触鐘舵€?*/
-  private async downloadTarball(https: typeof import('https'), url: string, destPath: string): Promise<{ success: boolean; statusCode?: number }> {
-    return new Promise((resolve) => {
-      const file = require('fs').createWriteStream(destPath);
-      https.get(url, { headers: { 'User-Agent': 'ShentongAI-ImportBot' } }, (res) => {
-        if (res.statusCode === 302 || res.statusCode === 301) {
-          // GitHub API tarball 杩斿洖302閲嶅畾鍚戝埌 codeload.github.com
-          https.get(res.headers.location!, { headers: { 'User-Agent': 'ShentongAI-ImportBot' } }, (res2) => {
-            if (res2.statusCode === 200) {
-              res2.pipe(file);
-              file.on('finish', () => { file.close(); resolve({ success: true }); });
-              res2.on('error', () => resolve({ success: false }));
-            } else {
-              file.close();
-              resolve({ success: false, statusCode: res2.statusCode });
-            }
-          }).on('error', () => resolve({ success: false }));
-          return;
-        }
-        if (res.statusCode === 200) {
-          res.pipe(file);
-          file.on('finish', () => { file.close(); resolve({ success: true }); });
-          res.on('error', () => resolve({ success: false }));
-        } else {
-          file.close();
-          resolve({ success: false, statusCode: res.statusCode });
-        }
-      }).on('error', () => resolve({ success: false }));
-    });
-  }
-
-  /** 瑙ｆ瀽鍏嬮殕 URL锛氫笁绾?fallback 鈥斺€?鐩磋繛 鈫?闀滃儚 鈫?GitHub API tarball */
-  private async resolveCloneUrl(url: string): Promise<string> {
-    // 绾у埆1锛氱洿杩?GitHub锛?5绉掕秴鏃讹紝鍘?绉掑お鐭級
-    try {
-      await execFileAsync('git', ['ls-remote', url, 'HEAD'], {
-        timeout: 15_000,
-        maxBuffer: 10 * 1024 * 1024,
-      });
-      this.logger.log('鐩磋繛 GitHub 鎴愬姛');
-      return url;
-    } catch {
-      this.logger.warn('鐩磋繛 GitHub 澶辫触锛?5s瓒呮椂锛夛紝灏濊瘯闀滃儚鍔犻€?..');
-    }
-
-    // 绾у埆2锛歡hfast.top 闀滃儚锛堝浗鍐呮洿绋冲畾鐨勫姞閫熺珯锛?    const mirrored = `https://ghfast.top/${url}`;
-    try {
-      await execFileAsync('git', ['ls-remote', mirrored, 'HEAD'], {
-        timeout: 15_000,
-        maxBuffer: 10 * 1024 * 1024,
-      });
-      this.logger.log(`闀滃儚杩炴帴鎴愬姛: ${mirrored}`);
-      return mirrored;
-    } catch {
-      this.logger.warn(`闀滃儚 ${mirrored} 涔熷け璐ワ紝灏濊瘯 GitHub API tarball...`);
-    }
-
-    // 绾у埆3锛氫娇鐢?GitHub API tarball 涓嬭浇锛堜笉闇€瑕?git 鍛戒护锛?    // 鏍囪涓?'api-tarball' 妯″紡锛宲rocessImportTask 涓細璧颁笉鍚屽垎鏀?    return `api-tarball:${url}`;
-  }
-
-  // ============================================================
-  // [4] Agent 鍒嗙被涓庢爣绛剧鐞?  // ============================================================
-
-  /** 鍒嗙被鍒楄〃锛堝惈姣忓垎绫?Agent 鏁伴噺锛?*/
+  /** 分类列表（含每分类 Agent 数量） */
   async listCategories() {
-    // 鏌ヨ鎵€鏈夊垎绫婚厤缃?    const categories = await this.categoryRepo.find({ order: { sort: 'ASC' } });
+    // 查询所有分类配置
+    const categories = await this.categoryRepo.find({ order: { sort: 'ASC' } });
     const categoryMap = new Map<string, AgentCategoryEntity>(
       categories.map((c) => [c.category, c]),
     );
 
-    // 鑱氬悎姣忓垎绫?Agent 鏁伴噺
+    // 聚合每分类 Agent 数量
     const countRows = await this.agentRepo
       .createQueryBuilder('a')
       .select('a.category', 'category')
@@ -832,13 +602,13 @@ export class AdminAgentService {
     });
   }
 
-  /** 鏇存柊鍒嗙被鏄剧ず鍚?*/
+  /** 更新分类显示名 */
   async updateCategoryDisplay(
     category: string,
     dto: UpdateCategoryDisplayDto,
   ) {
     if (!FIXED_CATEGORIES.includes(category as any)) {
-      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '鏃犳晥鐨勫垎绫?);
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '无效的分类');
     }
     let entity = await this.categoryRepo.findOne({ where: { category } });
     if (entity) {
@@ -854,30 +624,12 @@ export class AdminAgentService {
     }
   }
 
-  // ============================================================
-  // [5] Agent 缁熻涓庢姤琛?  // ============================================================
+  // ============ 内部工具 ============
 
-  // ============ 鍐呴儴宸ュ叿 ============
-
-  /** 鏍￠獙鐘舵€佽浆鎹㈠悎娉曟€э紝闈炴硶鍒欐姏 BusinessException */
-  private assertTransition(
-    currentStatus: string,
-    targetStatus: string,
-    actionDesc: string,
-  ): void {
-    const allowed = VALID_TRANSITIONS[currentStatus] || [];
-    if (!allowed.includes(targetStatus)) {
-      BusinessException.throw(
-        ErrorCode.VALIDATION_FAILED,
-        `褰撳墠鐘舵€?${currentStatus} 涓嶅厑璁?{actionDesc}锛堢洰鏍囩姸鎬?${targetStatus}锛塦,
-      );
-    }
-  }
-
-  /** 鍓嶇 status -> 瀹炰綋 status 鏄犲皠 */
+  /** 前端 status -> 实体 status 映射 */
   private toEntityStatus(
     status: string,
-  ): 'draft' | 'pending_review' | 'approved' | 'published' | 'rejected' | 'offline' | null {
+  ): 'draft' | 'pending_review' | 'published' | 'rejected' | 'offline' | null {
     switch (status) {
       case 'published':
         return 'published';
@@ -885,8 +637,6 @@ export class AdminAgentService {
         return 'offline';
       case 'pending_review':
         return 'pending_review';
-      case 'approved':
-        return 'approved';
       case 'rejected':
         return 'rejected';
       case 'draft':
@@ -896,10 +646,10 @@ export class AdminAgentService {
     }
   }
 
-  /** 瀹炰綋 status -> 鍓嶇 status 鏄犲皠 */
+  /** 实体 status -> 前端 status 映射 */
   private toFrontendStatus(
-    status: 'draft' | 'pending_review' | 'approved' | 'published' | 'rejected' | 'offline',
-  ): 'published' | 'unpublished' | 'pending_review' | 'approved' | 'rejected' {
+    status: 'draft' | 'pending_review' | 'published' | 'rejected' | 'offline',
+  ): 'published' | 'unpublished' | 'pending_review' | 'rejected' {
     switch (status) {
       case 'published':
         return 'published';
@@ -907,8 +657,6 @@ export class AdminAgentService {
         return 'unpublished';
       case 'pending_review':
         return 'pending_review';
-      case 'approved':
-        return 'approved';
       case 'rejected':
         return 'rejected';
       default:
@@ -916,11 +664,11 @@ export class AdminAgentService {
     }
   }
 
-  /** 鎵归噺杞崲瀹炰綋涓哄墠绔鍥撅紙鍚?creatorName锛?*/
+  /** 批量转换实体为前端视图（含 creatorName） */
   private async toAdminAgentItems(agents: AgentEntity[]) {
     if (agents.length === 0) return [];
 
-    // 鎵归噺鏌ヨ鍒涗綔鑰呭悕
+    // 批量查询创作者名
     const creatorIds = [...new Set(agents.map((a) => a.creatorId).filter((id) => id > 0))];
     const creators =
       creatorIds.length > 0
@@ -958,5 +706,10 @@ export class AdminAgentService {
         updatedAt: a.updatedAt.toISOString(),
       };
     });
+  }
+
+  /** shell 参数转义：用单引号包裹并转义内部单引号 */
+  private escapeShell(arg: string): string {
+    return "'" + String(arg).replace(/'/g, "'\\''") + "'";
   }
 }

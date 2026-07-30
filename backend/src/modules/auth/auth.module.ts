@@ -1,1 +1,26 @@
-﻿import { Module } from '@nestjs/common';import { ConfigService } from '@nestjs/config';import { JwtModule } from '@nestjs/jwt';import { PassportModule } from '@nestjs/passport';import { TypeOrmModule } from '@nestjs/typeorm';import { AuthController } from './controllers/auth.controller';import { AuthService } from './services/auth.service';import { TokenService } from './services/token.service';import { EmailService } from './services/email.service';import { JwtStrategy } from './strategies/jwt.strategy';import { LocalStrategy } from './strategies/local.strategy';import { UserModule } from '../user/user.module';import { CommonModule } from '../../common/common.module';import { DeviceModule } from '../device/device.module';import { SystemConfigEntity } from '../admin-system/entities/system-config.entity';@Module({  imports: [    PassportModule.register({ defaultStrategy: 'jwt' }),    JwtModule.registerAsync({      useFactory: (configService: ConfigService) => ({        secret: configService.get<string>('JWT_SECRET'),        signOptions: {          expiresIn: configService.get<string>('JWT_EXPIRES_IN', '15m'),        },      }),      inject: [ConfigService],    }),    TypeOrmModule.forFeature([SystemConfigEntity]),    UserModule,    CommonModule,    DeviceModule,  ],  controllers: [AuthController],  providers: [AuthService, TokenService, EmailService, JwtStrategy, LocalStrategy],  exports: [AuthService, TokenService, JwtStrategy],})export class AuthModule {}
+﻿import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { AuthController } from './controllers/auth.controller';
+import { AuthService } from './services/auth.service';
+import { TokenService } from './services/token.service';
+import { EmailService } from './services/email.service';
+import { JwtStrategy } from './strategies/jwt.strategy';
+import { LocalStrategy } from './strategies/local.strategy';
+import { UserModule } from '../user/user.module';
+import { CommonModule } from '../../common/common.module';
+import { DeviceModule } from '../device/device.module';
+
+@Module({
+  imports: [
+    PassportModule.register({ defaultStrategy: 'jwt' }),
+    JwtModule.register({}),
+    UserModule,
+    CommonModule,
+    DeviceModule,
+  ],
+  controllers: [AuthController],
+  providers: [AuthService, TokenService, EmailService, JwtStrategy, LocalStrategy],
+  exports: [AuthService, TokenService, JwtStrategy],
+})
+export class AuthModule {}

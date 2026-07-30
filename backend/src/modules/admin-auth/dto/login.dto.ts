@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, MinLength } from 'class-validator';
+﻿import { IsString, IsNotEmpty, IsOptional, MinLength } from 'class-validator';
 
 /**
  * 管理员登录请求体
@@ -14,8 +14,8 @@ export class AdminLoginDto {
   password: string;
 
   @IsString()
-  @IsNotEmpty()
-  captcha: string;
+  @IsOptional()
+  captcha?: string;
 }
 
 /**

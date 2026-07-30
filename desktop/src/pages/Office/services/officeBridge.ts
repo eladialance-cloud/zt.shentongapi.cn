@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AI 办公室业务事件联动 (Spec upgrade-office-to-isometric-25d Task 6)
  *
  * 将聊天 / Agent / 系统事件映射为办公室员工行为。
@@ -33,6 +33,19 @@
  * | marketer   | service    | 客服AI   | 市场员 (去技能墙调用工具)        |
  * | reviewer   | finance    | 财务AI   | 审核员 (审核撰写员产出, VISITING 撰写员) |
  */
+/**
+ * 获取角色对应的员工 ID。
+ * 优先使用 Office2DPage 设置的动态角色映射（__dynamicRoleMap），
+ * 无动态数据时回退到静态 ROLE_TO_EMPLOYEE。
+ */
+function getEmployeeId(role: BusinessRole): string {
+  const dynamicMap = (window as any).__dynamicRoleMap as Record<string, string> | undefined;
+  if (dynamicMap && dynamicMap[role]) {
+    return dynamicMap[role];
+  }
+  return ROLE_TO_EMPLOYEE[role];
+}
+
 export const ROLE_TO_EMPLOYEE = {
   manager: 'business',    // 主管
   writer: 'content',      // 撰写员
@@ -130,13 +143,13 @@ export function onChatMessageSent(): void {
     const w = getWindowOffice();
     // 主管切深度工作 (面向大屏统筹分析需求)
     w.__officeDispatch?.({
-      employeeId: ROLE_TO_EMPLOYEE.manager,
+      employeeId: getEmployeeId('manager'),
       status: 'WORKING_DEEP',
       reason: '用户发送消息',
     });
     // 主管思考气泡 (2.5s)
     w.__officeAddBubble?.(
-      ROLE_TO_EMPLOYEE.manager,
+      getEmployeeId('manager'),
       'thinking',
       '正在分析需求...',
       '🤔',
@@ -162,9 +175,9 @@ export function onAgentRetrieve(): void {
   safeRun('onAgentRetrieve', () => {
     const w = getWindowOffice();
     // 检索员移动到资料室 (到达后自动切 AT_RESOURCE)
-    w.__officeMoveEmployeeToZone?.(ROLE_TO_EMPLOYEE.retriever, LIBRARY_ZONE);
+    w.__officeMoveEmployeeToZone?.(getEmployeeId('retriever'), LIBRARY_ZONE);
     w.__officeAddBubble?.(
-      ROLE_TO_EMPLOYEE.retriever,
+      getEmployeeId('retriever'),
       'text',
       '去资料室检索相关资料',
       '📚',
@@ -191,9 +204,9 @@ export function onToolCall(toolName?: string): void {
   safeRun('onToolCall', () => {
     const w = getWindowOffice();
     // 市场员移动到技能墙 (到达后自动切 AT_RESOURCE)
-    w.__officeMoveEmployeeToZone?.(ROLE_TO_EMPLOYEE.marketer, BIG_SCREEN_ZONE);
+    w.__officeMoveEmployeeToZone?.(getEmployeeId('marketer'), BIG_SCREEN_ZONE);
     w.__officeAddBubble?.(
-      ROLE_TO_EMPLOYEE.marketer,
+      getEmployeeId('marketer'),
       'icon',
       `调用工具: ${toolName ?? '未知'}`,
       '🔧',
@@ -218,12 +231,12 @@ export function onReplyGenerated(): void {
     const w = getWindowOffice();
     // 撰写员切深度工作 (撰写回复)
     w.__officeDispatch?.({
-      employeeId: ROLE_TO_EMPLOYEE.writer,
+      employeeId: getEmployeeId('writer'),
       status: 'WORKING_DEEP',
       reason: '正在撰写回复',
     });
     w.__officeAddBubble?.(
-      ROLE_TO_EMPLOYEE.writer,
+      getEmployeeId('writer'),
       'thinking',
       '撰写回复中...',
       '✍️',
@@ -250,9 +263,9 @@ export function onReview(): void {
   safeRun('onReview', () => {
     const w = getWindowOffice();
     // 审核员拜访撰写员工位 (内部 A* 寻路 + VISITING 状态机)
-    w.__officeVisitEmployee?.(ROLE_TO_EMPLOYEE.reviewer, ROLE_TO_EMPLOYEE.writer);
+    w.__officeVisitEmployee?.(getEmployeeId('reviewer'), getEmployeeId('writer'));
     w.__officeAddBubble?.(
-      ROLE_TO_EMPLOYEE.reviewer,
+      getEmployeeId('reviewer'),
       'text',
       '我来审核一下',
       '👀',
@@ -290,7 +303,7 @@ export function onTaskComplete(): void {
     }
     // 主管 "任务完成" 情绪气泡 (3s)
     w.__officeAddBubble?.(
-      ROLE_TO_EMPLOYEE.manager,
+      getEmployeeId('manager'),
       'emotion',
       '任务完成',
       '✅',
@@ -324,7 +337,7 @@ export function onCreditsDeducted(amount: number): void {
     }
     // 主管 "积分 -X" 文本气泡 (3.5s)
     w.__officeAddBubble?.(
-      ROLE_TO_EMPLOYEE.manager,
+      getEmployeeId('manager'),
       'text',
       `积分 -${amount}`,
       '💰',
@@ -357,7 +370,7 @@ export function onSystemError(message?: string): void {
     const w = getWindowOffice();
     // 主管 "系统错误" 情绪气泡 (5s)
     w.__officeAddBubble?.(
-      ROLE_TO_EMPLOYEE.manager,
+      getEmployeeId('manager'),
       'emotion',
       `系统错误: ${message ?? '未知'}`,
       '⚠️',

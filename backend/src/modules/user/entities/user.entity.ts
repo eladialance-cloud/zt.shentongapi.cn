@@ -1,4 +1,4 @@
-import { Entity, Column, Index } from 'typeorm';
+﻿import { Entity, Column, Index } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 
 @Entity('users')
@@ -24,10 +24,10 @@ export class UserEntity extends BaseEntity {
   @Index()
   @Column({
     type: 'enum',
-    enum: ['active', 'banned'],
+    enum: ['active', 'banned', 'deleted'],
     default: 'active',
   })
-  status: 'active' | 'banned';
+  status: 'active' | 'banned' | 'deleted';
 
   @Column({ name: 'real_name_verified', default: false })
   realNameVerified: boolean;
