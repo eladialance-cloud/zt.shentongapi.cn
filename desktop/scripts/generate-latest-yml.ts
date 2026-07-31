@@ -1,7 +1,7 @@
 /**
  * 生成 electron-updater 使用的 latest.yml 清单文件。
  *
- * 用途:在 electron-builder 打包完成后执行,扫描 `dist/installer/` 目录下的
+ * 用途:在 electron-builder 打包完成后执行,扫描安装包输出目录下的
  * 安装包文件(.exe / .dmg / .AppImage / .deb / .rpm),计算每个文件的 SHA-512
  * 哈希与大小,生成符合 electron-updater 规范的 `latest.yml` 并写入同目录。
  *
@@ -10,6 +10,10 @@
  *
  * 依赖说明:
  *   仅使用 Node.js 内置模块(fs / path / crypto),不引入新依赖。
+ *
+ * 目录解析:
+ *   从 electron-builder.yml 的 directories.output 配置动态推断输出目录，
+ *   展开 ${version} 占位符。兼容 dist/installer 和 dist/installer-v${version}。
  *
  * latest.yml 格式(electron-updater 规范):
  *   version: <版本号>
@@ -24,7 +28,9 @@
 
 import {
   createReadStream,
+  existsSync,
   readdirSync,
+  readFileSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -35,9 +41,8 @@ import { createHash } from "node:crypto";
 // ---------- 常量 ----------
 
 const PROJECT_ROOT = path.join(__dirname, "..");
-const INSTALLER_DIR = path.join(PROJECT_ROOT, "dist", "installer");
 const PACKAGE_JSON_PATH = path.join(PROJECT_ROOT, "package.json");
-const OUTPUT_PATH = path.join(INSTALLER_DIR, "latest.yml");
+const BUILDER_CONFIG_PATH = path.join(PROJECT_ROOT, "electron-builder.yml");
 const INSTALLER_EXTS = [".exe", ".dmg", ".appimage", ".deb", ".rpm"];
 
 // ---------- 类型定义 ----------
@@ -53,6 +58,61 @@ interface PackageJson {
 }
 
 // ---------- 工具函数 ----------
+
+/**
+ * 从 electron-builder.yml 解析 directories.output 配置，
+ * 展开 ${version} 占位符，返回绝对路径。
+ * 如果解析失败或目录不存在，按优先级回退到候选目录。
+ */
+function resolveInstallerDir(): string {
+  // 读取版本号
+  const pkgRaw = readFileSync(PACKAGE_JSON_PATH, "utf-8");
+  const pkg = JSON.parse(pkgRaw) as PackageJson;
+  const version = pkg.version;
+
+  const candidates: string[] = [];
+
+  // 1. 尝试解析 electron-builder.yml 中的 directories.output
+  try {
+    const ymlContent = readFileSync(BUILDER_CONFIG_PATH, "utf-8");
+    const lines = ymlContent.split("\n");
+    let inDirectoriesBlock = false;
+    for (const line of lines) {
+      // 检测进入 directories 块
+      if (/^directories:\s*$/m.test(line)) {
+        inDirectoriesBlock = true;
+        continue;
+      }
+      if (inDirectoriesBlock) {
+        const outputMatch = line.match(/^\s+output:\s*(\S+)/);
+        if (outputMatch) {
+          let dir = outputMatch[1].trim().replace(/^["']|["']$/g, "");
+          dir = dir.replace(/\$\{version\}/g, version);
+          candidates.push(path.join(PROJECT_ROOT, dir));
+          break;
+        }
+        // 遇到下一个顶层 key 退出 directories 块
+        if (/^\S/.test(line) && line.trim()) {
+          inDirectoriesBlock = false;
+        }
+      }
+    }
+  } catch {
+    // 忽略解析失败
+  }
+
+  // 2. 硬编码 fallback 候选目录
+  candidates.push(path.join(PROJECT_ROOT, "dist", "installer"));
+  candidates.push(path.join(PROJECT_ROOT, "dist", `installer-v${version}`));
+
+  // 3. 返回第一个实际存在的目录，否则返回第一个候选（用于报错提示）
+  for (const dir of candidates) {
+    if (existsSync(dir)) {
+      return dir;
+    }
+  }
+  return candidates[0];
+}
 
 /** 流式计算文件 SHA-512(支持大文件,避免内存爆炸)。 */
 function computeSha512(filePath: string): Promise<string> {
@@ -93,7 +153,11 @@ async function main(): Promise<void> {
   const version = pkg.version;
   log(`版本号: ${version}`);
 
-  // 2. 扫描安装包目录。
+  // 2. 解析安装包输出目录（从 electron-builder.yml 动态推断）
+  const INSTALLER_DIR = resolveInstallerDir();
+  log(`安装包目录: ${INSTALLER_DIR}`);
+
+  // 3. 扫描安装包目录。
   let entries: string[];
   try {
     entries = readdirSync(INSTALLER_DIR);
@@ -112,12 +176,17 @@ async function main(): Promise<void> {
   if (installers.length === 0) {
     err(`未在 ${INSTALLER_DIR} 找到安装包文件`);
     err(`支持的扩展名: ${INSTALLER_EXTS.join(", ")}`);
+    err("");
+    err("目录内容预览:");
+    for (const entry of entries.slice(0, 20)) {
+      err(`  - ${entry}`);
+    }
     process.exit(1);
   }
 
   log(`找到 ${installers.length} 个安装包:`);
 
-  // 3. 计算每个文件的 SHA-512 + 大小。
+  // 4. 计算每个文件的 SHA-512 + 大小。
   const installerInfos: InstallerFile[] = [];
   for (const filename of installers) {
     const filePath = path.join(INSTALLER_DIR, filename);
@@ -128,7 +197,7 @@ async function main(): Promise<void> {
     log(`  ✅ ${sha512.substring(0, 16)}...`);
   }
 
-  // 4. 生成 latest.yml 内容。
+  // 5. 生成 latest.yml 内容。
   const releaseDate = new Date().toISOString();
   const primary = installerInfos[0];
 
@@ -143,7 +212,8 @@ async function main(): Promise<void> {
   yml += `sha512: ${primary.sha512}\n`;
   yml += `releaseDate: '${releaseDate}'\n`;
 
-  // 5. 写入文件。
+  // 6. 写入文件到安装包输出目录。
+  const OUTPUT_PATH = path.join(INSTALLER_DIR, "latest.yml");
   writeFileSync(OUTPUT_PATH, yml, "utf-8");
 
   console.log("");
