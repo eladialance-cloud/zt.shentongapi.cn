@@ -110,8 +110,11 @@ jobs:
           cache-dependency-path: desktop/package-lock.json
 
       # ===== 3. Install Dependencies =====
+      # 使用 --legacy-peer-deps 解决 vite@8 与 electron-vite@5 的 peer dependency 冲突
+      # electron-vite 5 只支持 vite 5/6/7，但 @vitejs/plugin-react 6 要求 vite 8
+      # 本地开发已通过测试，此标志允许安装继续
       - name: 📚 Install Dependencies
-        run: npm ci
+        run: npm install --legacy-peer-deps
         env:
           # 镜像加速 Electron 二进制下载
           ELECTRON_MIRROR: ${{ env.ELECTRON_MIRROR }}
