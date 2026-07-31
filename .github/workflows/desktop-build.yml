@@ -322,39 +322,47 @@ jobs:
       - name: 🚀 Deploy to Server
         if: ${{ github.event.inputs.deploy == 'true' }}
         shell: bash
+        timeout-minutes: 5
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
         run: |
+          set -e
           # 写入 SSH 私钥
           mkdir -p ~/.ssh
           echo "$SERVER_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          # 添加 host 到 known_hosts
-          ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # SSH 连接选项：30秒超时，禁用严格主机检查
+          SSH_OPTS="-i ~/.ssh/deploy_key -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
-          # 确保远程目录存在
-          ssh -i ~/.ssh/deploy_key "$SERVER_USER@$SERVER_HOST" \
+          echo "📡 Testing SSH connection to $SERVER_HOST..."
+          ssh $SSH_OPTS "$SERVER_USER@$SERVER_HOST" "echo 'SSH connection OK'" || {
+            echo "❌ SSH connection failed! Check SERVER_HOST/USER/KEY secrets"
+            exit 1
+          }
+
+          echo "📁 Ensuring remote directory exists..."
+          ssh $SSH_OPTS "$SERVER_USER@$SERVER_HOST" \
             "mkdir -p /opt/shentong/updates"
 
-          # 备份旧版本
-          ssh -i ~/.ssh/deploy_key "$SERVER_USER@$SERVER_HOST" \
+          echo "💾 Backing up old version..."
+          ssh $SSH_OPTS "$SERVER_USER@$SERVER_HOST" \
             "cd /opt/shentong/updates && [ -f latest.yml ] && cp latest.yml latest.yml.bak.$(date +%Y%m%d%H%M%S) || true"
 
-          # 上传安装包
-          scp -i ~/.ssh/deploy_key \
+          echo "📤 Uploading installer files..."
+          scp $SSH_OPTS \
             dist/installer/*.exe \
             dist/installer/*.exe.zip \
             dist/installer/latest.yml \
             "$SERVER_USER@$SERVER_HOST:/opt/shentong/updates/"
 
-          # 列出已部署文件
-          ssh -i ~/.ssh/deploy_key "$SERVER_USER@$SERVER_HOST" \
-            "cd /opt/shentong/updates && echo '✅ Deployed files:' && ls -lh"
+          echo "📋 Deployed files:"
+          ssh $SSH_OPTS "$SERVER_USER@$SERVER_HOST" \
+            "cd /opt/shentong/updates && ls -lh"
 
-          # 清理私钥
+          echo "🧹 Cleaning up..."
           rm -f ~/.ssh/deploy_key
 
   # ---------------------------------------------------------------------------
