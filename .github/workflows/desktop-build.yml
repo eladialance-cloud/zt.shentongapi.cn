@@ -42,6 +42,14 @@ on:
         required: false
         type: string
         default: 'https://zt.shentongapi.cn/api'
+      deploy:
+        description: '是否自动部署到服务器 (需配置 Secrets)'
+        required: false
+        type: choice
+        default: 'false'
+        options:
+          - 'false'
+          - 'true'
 
 env:
   NODE_VERSION: '20'
@@ -207,8 +215,11 @@ jobs:
           retention-days: 30
 
       # ===== 17. Deploy to Server (optional) =====
+      # ===== 17. Deploy to Server (optional) =====
+      # 如需自动部署，请在 GitHub Settings > Secrets 配置：
+      #   SERVER_HOST, SERVER_USER, SERVER_SSH_KEY
       - name: 🚀 Deploy to Server
-        if: ${{ secrets.SERVER_SSH_KEY != '' }}
+        if: ${{ github.event.inputs.deploy == 'true' }}
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SERVER_HOST }}
