@@ -123,6 +123,10 @@ jobs:
           # 安装其他依赖（禁用 postinstall，避免 tsx 未就绪时执行）
           npm install --legacy-peer-deps --ignore-scripts
           
+          # 修复 rolldown 原生绑定缺失问题 (npm optional deps bug)
+          # https://github.com/npm/cli/issues/4828
+          npm install @rolldown/binding-win32-x64-msvc --legacy-peer-deps --ignore-scripts || true
+          
           # 创建 sqlcipher 类型声明目录并复制
           mkdir -p node_modules/@journeyapps/sqlcipher/lib
           cp types/sqlcipher.d.ts node_modules/@journeyapps/sqlcipher/lib/sqlite3.d.ts
