@@ -1,26 +1,30 @@
-﻿import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'node:path'
 import { loadEnv } from 'vite'
 
 const env = loadEnv(process.env.NODE_ENV === 'production' ? 'production' : 'development', process.cwd(), '')
 
-// H-11 淇锛氱姝?dev 妯″紡闅愬紡鍥為€€鍒扮敓浜?URL
+// H-11 fix: prevent dev mode from silently falling back to production URL
 if (!env.VITE_API_BASE_URL) {
-  throw new Error(`VITE_API_BASE_URL 鏈缃紝mode=${process.env.NODE_ENV || 'development'}銆傝妫€鏌?.env.development 鏂囦欢銆俙)
+  throw new Error(`VITE_API_BASE_URL not set, mode=${process.env.NODE_ENV || 'development'}. Check .env.development file.`)
 }
 
-// H-08 鍗囩骇 Electron 31鈫?1 / vite 5鈫? / electron-vite 2鈫? 鍚庝慨澶嶏細
-// vite@8 鐨?rolldown 涓ユ牸瑙ｆ瀽鎵€鏈?import锛屽寘鎷?native 妯″潡鐨勪紶閫掍緷璧栥€?// H-08b 鍗囩骇 @journeyapps/sqlcipher 5.3.1鈫?.0.0 鍚庯細
-//   - 6.0.0 绉婚櫎浜?@mapbox/node-pre-gyp锛堝強鍏?mock-aws-s3/aws-sdk/nock/npmlog/rimraf
-//     绛夊彲閫変緷璧栭摼锛岃閾鹃€氳繃 tar@6.2.1 寮曞叆 6 涓矾寰勭┛瓒?CVE锛?//   - 6.0.0 鏀圭敤 bindings + node-addon-api锛坣ode-gyp 婧愮爜缂栬瘧鏂瑰紡锛?// 杩欓噷鎶?native 妯″潡鍙婂叾浼犻€掍緷璧栧０鏄庝负 external锛屼笌 vite@5 鏃ц涓轰繚鎸佷竴鑷淬€?const nativeModuleOptionalDeps = [
+// H-08 upgrade Electron 31->41 / vite 5->8 / electron-vite 2->5 fix:
+// vite@8's rolldown strictly resolves all imports, including native module transitive deps.
+// H-08b upgrade @journeyapps/sqlcipher 5.3.1->6.0.0:
+//   - 6.0.0 removed @mapbox/node-pre-gyp (and its mock-aws-s3/aws-sdk/nock/npmlog/rimraf
+//     optional dep chain, which introduced 6 path traversal CVEs via tar@6.2.1)
+//   - 6.0.0 uses bindings + node-addon-api (node-gyp source compile)
+// Declare native modules and their transitive deps as external, consistent with vite@5 behavior.
+const nativeModuleOptionalDeps = [
   'bindings',
   'node-addon-api',
   '@journeyapps/sqlcipher'
 ]
 
-// electron 鍦?devDependencies 涓紝externalizeDepsPlugin 涓嶄細鑷姩 externalize
-// 浣嗕富杩涚▼浠ｇ爜锛堝 electron-log锛変細 require('electron')锛屾墦鍖呮椂蹇呴』鎺掗櫎
+// electron is in devDependencies, externalizeDepsPlugin won't auto-externalize it
+// but main process code (e.g. electron-log) will require('electron'), so must exclude during build
 const electronExternalDeps = [
   'electron',
   'electron-updater',
@@ -61,14 +65,20 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, 'src'),
-    // K14 fix: Electron file:// 鍗忚涓嬬粷瀵硅矾寰?'/' 鎸囧悜纾佺洏鏍圭洰褰曪紝蹇呴』鐢ㄧ浉瀵硅矾寰?    base: './',
+    // K14 fix: Electron file:// protocol requires relative paths, not absolute '/' pointing to disk root
+    base: './',
     plugins: [
       react(),
       {
-        // dev 妯″紡鏀惧 CSP锛歏ite 鍦?dev 妯″紡浼氬悜 index.html 娉ㄥ叆 React HMR 鐨?inline preamble script锛?        // 鑰?index.html 涓?CSP 鐨?script-src 'self' 浼氭嫤鎴 inline script锛?        // 瀵艰嚧 @vitejs/plugin-react 鎶涘嚭 "can't detect preamble" 閿欒骞朵娇鏁翠釜 React 搴旂敤宕╂簝銆?        // 姝ゆ彃浠朵粎鍦?dev 妯″紡锛坅pply: 'serve'锛夊皢 script-src 'self' 鏀惧涓?'self' 'unsafe-inline'锛?        // 涓嶅奖鍝?production build锛坧roduction CSP 淇濇寔 'self' 涓ユ牸绛栫暐锛夈€?        name: 'dev-csp-unsafe-inline',
+        // dev mode CSP relaxation: Vite injects React HMR inline preamble script in dev mode,
+        // but index.html's CSP script-src 'self' blocks this inline script,
+        // causing @vitejs/plugin-react to throw "can't detect preamble" and crash the React app.
+        // This plugin only in dev mode (apply: 'serve') relaxes script-src 'self' to 'self' 'unsafe-inline',
+        // does not affect production build (production CSP keeps 'self' strict policy).
+        name: 'dev-csp-unsafe-inline',
         apply: 'serve' as const,
         transformIndexHtml(html: string) {
-          // 浠呮浛鎹㈢涓€娆″嚭鐜扮殑 script-src 'self'; 閬垮厤璇激鍏朵粬 CSP 鎸囦护
+          // only replace first occurrence of script-src 'self'; avoid affecting other CSP directives
           return html.replace(
             "script-src 'self';",
             "script-src 'self' 'unsafe-inline';"
@@ -90,7 +100,8 @@ export default defineConfig({
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/index.html') },
         output: {
-          // H-08 淇锛歷ite@8 鐨?rolldown 瑕佹眰 manualChunks 涓哄嚱鏁帮紙vite@5 鐨?rollup 鍏佽瀵硅薄褰㈠紡锛?          manualChunks: (id: string) => {
+          // H-08 fix: vite@8's rolldown requires manualChunks as function (vite@5's rollup allowed object form)
+          manualChunks: (id: string) => {
             if (!id.includes('node_modules')) {
               return undefined
             }
