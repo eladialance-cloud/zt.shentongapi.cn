@@ -316,39 +316,46 @@ jobs:
           retention-days: 30
 
       # ===== 17. Deploy to Server (optional) =====
-      # ===== 17. Deploy to Server (optional) =====
       # 如需自动部署，请在 GitHub Settings > Secrets 配置：
       #   SERVER_HOST, SERVER_USER, SERVER_SSH_KEY
+      # 注意：appleboy/scp-action 不支持 Windows runner，改用原生 scp/ssh
       - name: 🚀 Deploy to Server
         if: ${{ github.event.inputs.deploy == 'true' }}
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          source: "desktop/dist/installer/*"
-          target: "/opt/shentong/updates/"
-          strip_components: 3
-          overwrite: true
+        shell: bash
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          # 写入 SSH 私钥
+          mkdir -p ~/.ssh
+          echo "$SERVER_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
 
-      - name: 🔄 Restart Backend Service
-        if: ${{ github.event.inputs.deploy == 'true' }}
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            cd /opt/shentong/updates
-            # 备份旧版本
-            if [ -f latest.yml ]; then
-              cp latest.yml "latest.yml.bak.$(date +%Y%m%d%H%M%S)"
-            fi
-            # 列出已部署文件
-            echo "✅ Deployed files:"
-            ls -lh
-            # 如需重启后端服务取消下面注释
-            # systemctl restart shentong-backend
+          # 添加 host 到 known_hosts
+          ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          # 确保远程目录存在
+          ssh -i ~/.ssh/deploy_key "$SERVER_USER@$SERVER_HOST" \
+            "mkdir -p /opt/shentong/updates"
+
+          # 备份旧版本
+          ssh -i ~/.ssh/deploy_key "$SERVER_USER@$SERVER_HOST" \
+            "cd /opt/shentong/updates && [ -f latest.yml ] && cp latest.yml latest.yml.bak.$(date +%Y%m%d%H%M%S) || true"
+
+          # 上传安装包
+          scp -i ~/.ssh/deploy_key \
+            dist/installer/*.exe \
+            dist/installer/*.exe.zip \
+            dist/installer/latest.yml \
+            "$SERVER_USER@$SERVER_HOST:/opt/shentong/updates/"
+
+          # 列出已部署文件
+          ssh -i ~/.ssh/deploy_key "$SERVER_USER@$SERVER_HOST" \
+            "cd /opt/shentong/updates && echo '✅ Deployed files:' && ls -lh"
+
+          # 清理私钥
+          rm -f ~/.ssh/deploy_key
 
   # ---------------------------------------------------------------------------
   # Job 2: macOS 打包 (可选，需 Mac runner)
