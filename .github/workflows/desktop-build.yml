@@ -237,16 +237,37 @@ jobs:
           # GitHub Actions Windows: 16GB RAM 足够 NSIS 压缩
           # 本地 6GB 可用会被 SIGKILL，CI 无此问题
 
-      # ===== 12. Rename zip artifacts =====
+      # ===== 12. Normalize installer output directory =====
+      # electron-builder.yml 配置 output: dist/installer-v${version}
+      # 后续脚本和 workflow 步骤统一使用 dist/installer
+      # 这里把 versioned 目录内容复制到 dist/installer
+      - name: 📂 Normalize installer directory
+        run: |
+          $pkg = Get-Content "package.json" -Raw | ConvertFrom-Json
+          $ver = if ('${{ github.event.inputs.version }}') { '${{ github.event.inputs.version }}' } else { $pkg.version }
+          $versionedDir = "dist\installer-v$ver"
+          $linkDir = "dist\installer"
+          if (Test-Path $versionedDir) {
+            New-Item -ItemType Directory -Force -Path $linkDir | Out-Null
+            Copy-Item "$versionedDir\*" $linkDir -Recurse -Force
+            Write-Host "✅ Copied $versionedDir -> $linkDir"
+            Get-ChildItem $linkDir | ForEach-Object { Write-Host "  - $($_.Name)" }
+          } elseif (Test-Path $linkDir) {
+            Write-Host "✅ dist\installer already exists"
+          } else {
+            Write-Host "⚠️ Neither $versionedDir nor $linkDir exists"
+            exit 1
+          }
+        shell: pwsh
+
+      # ===== 12b. Rename zip artifacts =====
       - name: 🏷️ Rename zip artifacts
         run: |
           $pkg = Get-Content "package.json" -Raw | ConvertFrom-Json
           $ver = if ('${{ github.event.inputs.version }}') { '${{ github.event.inputs.version }}' } else { $pkg.version }
-          $installerDir = "dist\installer-v$ver"
-          $linkDir = "dist\installer"
-          $targetDir = if (Test-Path $linkDir) { $linkDir } else { $installerDir }
-          if (Test-Path $targetDir) {
-            Get-ChildItem $targetDir -Filter "*.zip" | Where-Object { $_.Name -notlike "*.exe.zip" } | ForEach-Object {
+          $installerDir = "dist\installer"
+          if (Test-Path $installerDir) {
+            Get-ChildItem $installerDir -Filter "*.zip" | Where-Object { $_.Name -notlike "*.exe.zip" } | ForEach-Object {
               $newName = $_.BaseName + ".exe.zip"
               Rename-Item $_.FullName $newName
               Write-Host "Renamed: $($_.Name) -> $newName"
@@ -269,11 +290,16 @@ jobs:
           $ver = if ('${{ github.event.inputs.version }}') { '${{ github.event.inputs.version }}' } else { $pkg.version }
           $installerDir = "dist\installer"
           if (Test-Path $installerDir) {
-            $exeZip = Get-ChildItem $installerDir -Filter "ShenTongAI-Setup-$ver-x64.exe.zip" | Select-Object -First 1
+            # Auto-bump version 可能 +1，尝试匹配实际文件
+            $exeZip = Get-ChildItem $installerDir -Filter "ShenTongAI-Setup-*-x64.exe.zip" | Select-Object -First 1
             if ($exeZip) {
-              $downloadName = "ShenTongAI-$ver-x64.exe.zip"
+              $actualVer = ($exeZip.BaseName -replace 'ShenTongAI-Setup-','' -replace '-x64','')
+              $downloadName = "ShenTongAI-$actualVer-x64.exe.zip"
               Copy-Item $exeZip.FullName (Join-Path $installerDir $downloadName) -Force
-              Write-Host "✅ Download file: $downloadName"
+              Write-Host "✅ Download file: $downloadName (from $($exeZip.Name))"
+            } else {
+              Write-Host "⚠️ No exe.zip found in $installerDir"
+              Get-ChildItem $installerDir | ForEach-Object { Write-Host "  - $($_.Name)" }
             }
           }
         shell: pwsh

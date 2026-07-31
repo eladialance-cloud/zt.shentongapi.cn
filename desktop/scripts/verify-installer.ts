@@ -1,4 +1,4 @@
-// 校验 desktop/dist/installer/ 下的安装包与 latest.yml 完整性
+// 校验安装包目录下的安装包与 latest.yml 完整性
 //
 // 校验项:
 // 1. 安装包文件存在性
@@ -8,15 +8,75 @@
 //
 // 退出码:0=全部通过,1=存在失败项
 
-import { createReadStream, readFileSync, readdirSync, statSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, extname } from 'node:path'
 import { createHash } from 'node:crypto'
 
-const INSTALLER_DIR = join(process.cwd(), 'dist', 'installer')
-const LATEST_YML_PATH = join(INSTALLER_DIR, 'latest.yml')
+const PACKAGE_JSON_PATH = join(process.cwd(), 'package.json')
+const BUILDER_CONFIG_PATH = join(process.cwd(), 'electron-builder.yml')
 const INSTALLER_EXTS = ['.exe', '.dmg', '.appimage', '.deb', '.rpm', '.zip']
 const MIN_SIZE_BYTES = 50 * 1024 * 1024  // 50MB
 const MAX_SIZE_BYTES = 500 * 1024 * 1024 // 500MB
+
+interface PackageJson {
+  version: string
+}
+
+/**
+ * 从 electron-builder.yml 解析 directories.output 配置，
+ * 展开 ${version} 占位符，返回绝对路径。
+ * 如果解析失败或目录不存在，按优先级回退到候选目录。
+ */
+function resolveInstallerDir(): string {
+  // 读取版本号
+  const pkgRaw = readFileSync(PACKAGE_JSON_PATH, 'utf-8')
+  const pkg = JSON.parse(pkgRaw) as PackageJson
+  const version = pkg.version
+
+  const candidates: string[] = []
+
+  // 1. 尝试解析 electron-builder.yml 中的 directories.output
+  try {
+    const ymlContent = readFileSync(BUILDER_CONFIG_PATH, 'utf-8')
+    const lines = ymlContent.split('\n')
+    let inDirectoriesBlock = false
+    for (const line of lines) {
+      if (/^directories:\s*$/m.test(line)) {
+        inDirectoriesBlock = true
+        continue
+      }
+      if (inDirectoriesBlock) {
+        const outputMatch = line.match(/^\s+output:\s*(\S+)/)
+        if (outputMatch) {
+          let dir = outputMatch[1].trim().replace(/^["']|["']$/g, '')
+          dir = dir.replace(/\$\{version\}/g, version)
+          candidates.push(join(process.cwd(), dir))
+          break
+        }
+        if (/^\S/.test(line) && line.trim()) {
+          inDirectoriesBlock = false
+        }
+      }
+    }
+  } catch {
+    // 忽略解析失败
+  }
+
+  // 2. 硬编码 fallback 候选目录
+  candidates.push(join(process.cwd(), 'dist', 'installer'))
+  candidates.push(join(process.cwd(), 'dist', `installer-v${version}`))
+
+  // 3. 返回第一个实际存在的目录，否则返回第一个候选（用于报错提示）
+  for (const dir of candidates) {
+    if (existsSync(dir)) {
+      return dir
+    }
+  }
+  return candidates[0]
+}
+
+const INSTALLER_DIR = resolveInstallerDir()
+const LATEST_YML_PATH = join(INSTALLER_DIR, 'latest.yml')
 
 // ANSI 颜色码
 const COLORS = {
@@ -120,6 +180,7 @@ async function main(): Promise<void> {
 
   // ===== 校验 1:安装包目录存在性 =====
   console.log('\n📋 校验 1:安装包目录存在性')
+  console.log(`${COLORS.dim}     目录: ${INSTALLER_DIR}${COLORS.reset}`)
   let installerFiles: string[]
   try {
     installerFiles = readdirSync(INSTALLER_DIR).filter((f) =>
@@ -127,7 +188,6 @@ async function main(): Promise<void> {
     )
     if (installerFiles.length === 0) {
       console.log(`${COLORS.red}  ❌ 未找到安装包文件${COLORS.reset}`)
-      console.log(`${COLORS.dim}     目录: ${INSTALLER_DIR}${COLORS.reset}`)
       console.log(`${COLORS.dim}     支持的扩展名: ${INSTALLER_EXTS.join(', ')}${COLORS.reset}`)
       process.exit(1)
     }
