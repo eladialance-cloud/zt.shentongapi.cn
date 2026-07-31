@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AI鍔炲叕瀹?鈥?鍖哄煙/宸ヤ綅鍧愭爣閰嶇疆
  */
 
@@ -64,9 +64,9 @@ export function hermesToAgents(instances: HermesInstance[]): AgentInfo[] {
       status,
       outfit: OUTFIT_KEYS[idx % OUTFIT_KEYS.length],
       accessory: ACCESSORIES[idx % ACCESSORIES.length],
-      currentTask: status === 'working' ? '涓? : null,
+      currentTask: status === 'working' ? '进行中' : null,
       progress: status === 'working' ? Math.min(100, (inst.resourceUsage?.cpuPercent ?? 0)) : 0,
-      skills: inst.skillIds ? inst.skillIds.map((s) => `鎶€鑳?${s}`) : ['閫氱敤'],
+      skills: inst.skillIds ? inst.skillIds.map((s) => `技能${s}`) : ['通用'],
       posX: 50,
       posY: 50,
     };
@@ -104,9 +104,9 @@ export interface KanbanColumn {
 }
 
 export const KANBAN_COLUMNS: KanbanColumn[] = [
-  { key: 'todo',        title: '寰呭姙',     color: 'var(--color-text-tertiary)' },
-  { key: 'working',     title: '涓?,   color: '#00d4ff' },
-  { key: 'done',        title: '宸插畬鎴?,   color: '#00ff88' },
+  { key: 'todo',        title: '待办',     color: 'var(--color-text-tertiary)' },
+  { key: 'working',     title: '进行中',   color: '#00d4ff' },
+  { key: 'done',        title: '已完成',   color: '#00ff88' },
   { key: 'error',       title: '寮傚父',     color: '#ff0080' },
 ];
 
@@ -126,7 +126,8 @@ export function teamMembersToAgents(
   const outfitKeys = Object.keys(OUTFIT_COLORS) as Array<keyof typeof OUTFIT_COLORS>
   const accessoryKeys: AccessoryType[] = ['glasses', 'pen', 'toolbelt', 'folder', 'headphones', 'bulb']
 
-  // 鏋勫缓 Hermes 瀹炰緥鏌ユ壘琛?  const instanceMap = new Map<number, HermesInstance>()
+  // 鏋勫缓 Hermes 瀹炰緥鏌ユ壘琛
+  const instanceMap = new Map<number, HermesInstance>()
   for (const inst of instances) {
     instanceMap.set(inst.id, inst)
   }
@@ -147,9 +148,9 @@ export function teamMembersToAgents(
         status,
         outfit: outfitKeys[hash % outfitKeys.length],
         accessory: accessoryKeys[hash % accessoryKeys.length],
-        currentTask: status === 'working' ? '澶勭悊浠诲姟涓? : null,
+        currentTask: status === 'working' ? '处理任务中' : null,
         progress: status === 'working' ? Math.min(100, inst?.resourceUsage?.cpuPercent ?? 0) : 0,
-        skills: inst?.skillIds ? inst.skillIds.map((s) => `鎶€鑳?${s}`) : ['閫氱敤'],
+        skills: inst?.skillIds ? inst.skillIds.map((s) => `技能${s}`) : ['通用'],
         posX: 0,
         posY: 0,
       })
@@ -164,6 +165,7 @@ function hashCode(str: string): number {
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i)
     hash = ((hash << 5) - hash) + char
-    hash = hash & hash // 杞负32浣嶆暣鏁?  }
+    hash = hash & hash; // 转为32位整数
+  }
   return hash
 }

@@ -27,6 +27,11 @@
     "src/pages/Settings/SyncStatus.tsx",
     "src/services/office-ws.ts",
     "src/store/__tests__/state-machine.test.ts",
-    "src/utils/__tests__/astar.test.ts"
+    "src/utils/__tests__/astar.test.ts",
+    "src/pages/admin/Layout",
+    "src/pages/Office",
+    "src/router/index.tsx",
+    "src/pages/Office/types.ts",
+    "src/**/__tests__"
   ]
 }

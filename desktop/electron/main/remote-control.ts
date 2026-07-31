@@ -1,4 +1,4 @@
-// 远程控制管理器（Task 14）
+﻿// 远程控制管理器（Task 14）
 //
 // 实现说明：
 // - 主进程单例 RemoteControlManager，管理到云端网关的 WebSocket 长连接
@@ -275,7 +275,7 @@ export class RemoteControlManager extends EventEmitter {
       ...this.settings,
       feishu: { ...this.settings.feishu },
       wecom: { ...this.settings.wecom },
-      deviceWhitelist: this.settings.deviceWhitelist.map((d) => ({ ...d }))
+      deviceWhitelist: this.settings.deviceWhitelist.map((d: Record<string, unknown>) => ({ ...d }))
     }
   }
 
@@ -288,7 +288,7 @@ export class RemoteControlManager extends EventEmitter {
       feishu: { ...this.settings.feishu, ...(patch.feishu ?? {}) },
       wecom: { ...this.settings.wecom, ...(patch.wecom ?? {}) },
       deviceWhitelist: patch.deviceWhitelist
-        ? patch.deviceWhitelist.map((d) => ({ ...d }))
+        ? patch.deviceWhitelist.map((d: Record<string, unknown>) => ({ ...d }))
         : this.settings.deviceWhitelist
     }
 
@@ -308,7 +308,7 @@ export class RemoteControlManager extends EventEmitter {
   bind(platform: RemoteControlPlatform, webhookUrl: string): boolean {
     if (!webhookUrl) return false
     const binding = { bound: true, webhookUrl, boundAt: new Date().toISOString() }
-    this.updateSettings({ [platform]: binding } as Pick<RemoteControlSettings, typeof platform>)
+    this.updateSettings({ [platform]: binding } as unknown as Pick<RemoteControlSettings, typeof platform>)
     return true
   }
 
@@ -316,7 +316,7 @@ export class RemoteControlManager extends EventEmitter {
   unbind(platform: RemoteControlPlatform): void {
     this.updateSettings({
       [platform]: { bound: false }
-    } as Pick<RemoteControlSettings, typeof platform>)
+    } as unknown as Pick<RemoteControlSettings, typeof platform>)
   }
 
   // ===== 连接管理 =====

@@ -36,21 +36,21 @@ interface MenuItem {
 }
 
 const MENU_ITEMS: MenuItem[] = [
-  { key: ''dashboard'', label: ''仪表盘'', icon: <DashboardOutlined />, path: ''/admin/dashboard'' },
-  { key: ''users'', label: ''用户管理'', icon: <TeamOutlined />, path: ''/admin/users'' },
-  { key: ''apikey-pool'', label: ''Key 池'', icon: <KeyOutlined />, path: ''/admin/api-key-pool'' },
-  { key: ''agent'', label: ''Agent'', icon: <RobotOutlined />, path: ''/admin/agents'' },
-  { key: ''workflow'', label: ''工作流'', icon: <AppstoreOutlined />, path: ''/admin/workflows'' },
-  { key: ''plugin'', label: ''插件'', icon: <ToolOutlined />, path: ''/admin/plugins'' },
-  { key: ''model'', label: ''模型'', icon: <CloudServerOutlined />, path: ''/admin/models'' },
-  { key: ''finance'', label: ''财务'', icon: <DollarOutlined />, path: ''/admin/finance'' },
-  { key: ''audit'', label: ''审核'', icon: <AuditOutlined />, path: ''/admin/audit'' },
-  { key: ''stats'', label: ''统计'', icon: <BarChartOutlined />, path: ''/admin/stats'' },
-  { key: ''version'', label: ''版本'', icon: <CloudSyncOutlined />, path: ''/admin/versions'' },
-  { key: ''team'', label: ''团队'', icon: <TeamOutlined />, path: ''/admin/teams'' },
-  { key: ''channel'', label: ''渠道'', icon: <ApiOutlined />, path: ''/admin/channels'' },
-  { key: ''publish'', label: ''发布'', icon: <SendOutlined />, path: ''/admin/publish'' },
-  { key: ''system'', label: ''系统'', icon: <SettingOutlined />, path: ''/admin/system'' }
+  { key: 'dashboard', label: '仪表盘', icon: <DashboardOutlined />, path: '/admin/dashboard' },
+  { key: 'users', label: '用户管理', icon: <TeamOutlined />, path: '/admin/users' },
+  { key: 'apikey-pool', label: 'Key 池', icon: <KeyOutlined />, path: '/admin/api-key-pool' },
+  { key: 'agent', label: 'Agent', icon: <RobotOutlined />, path: '/admin/agents' },
+  { key: 'workflow', label: '工作流', icon: <AppstoreOutlined />, path: '/admin/workflows' },
+  { key: 'plugin', label: '插件', icon: <ToolOutlined />, path: '/admin/plugins' },
+  { key: 'model', label: '模型', icon: <CloudServerOutlined />, path: '/admin/models' },
+  { key: 'finance', label: '财务', icon: <DollarOutlined />, path: '/admin/finance' },
+  { key: 'audit', label: '审核', icon: <AuditOutlined />, path: '/admin/audit' },
+  { key: 'stats', label: '统计', icon: <BarChartOutlined />, path: '/admin/stats' },
+  { key: 'version', label: '版本', icon: <CloudSyncOutlined />, path: '/admin/versions' },
+  { key: 'team', label: '团队', icon: <TeamOutlined />, path: '/admin/teams' },
+  { key: 'channel', label: '渠道', icon: <ApiOutlined />, path: '/admin/channels' },
+  { key: 'publish', label: '发布', icon: <SendOutlined />, path: '/admin/publish' },
+  { key: 'system', label: '系统', icon: <SettingOutlined />, path: '/admin/system' }
 ]
 
 export default function AdminLayout() {
@@ -63,10 +63,10 @@ export default function AdminLayout() {
     const matched = MENU_ITEMS.find((item) =>
       location.pathname.startsWith(item.path)
     )
-    return matched?.key || ''dashboard''
+    return matched?.key || 'dashboard'
   }, [location.pathname])
 
-  const menuItems: MenuProps[''items''] = useMemo(
+  const menuItems: MenuProps['items'] = useMemo(
     () =>
       MENU_ITEMS.map((item) => ({
         key: item.key,
@@ -82,14 +82,14 @@ export default function AdminLayout() {
       await adminLogout()
     } catch {}
     clearAdminAuth()
-    navigate(''/admin/login'', { replace: true })
+    navigate('/admin/login', { replace: true })
   }
 
-  const userMenuItems: MenuProps[''items''] = [
+  const userMenuItems: MenuProps['items'] = [
     {
-      key: ''logout'',
+      key: 'logout',
       icon: <LogoutOutlined />,
-      label: ''退出登录'',
+      label: '退出登录',
       onClick: handleLogout,
     },
   ]
@@ -98,14 +98,14 @@ export default function AdminLayout() {
     <div className={styles.layout}>
       <div className={styles.topBar}>
         <div className={styles.logo}>
-          <SafetyCertificateOutlined style={{ fontSize: 18, color: ''#4F6EF7'' }} />
+          <SafetyCertificateOutlined style={{ fontSize: 18, color: '#4F6EF7' }} />
           <span className={styles.logoText}>深瞳AI-智能中台 · 管理后台</span>
         </div>
         <div className={styles.topRight}>
           <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
             <div className={styles.userInfo}>
               <Avatar size="small" icon={<UserOutlined />} />
-              <span className={styles.userName}>{user?.username || ''管理员''}</span>
+              <span className={styles.userName}>{user?.username || '管理员'}</span>
             </div>
           </Dropdown>
         </div>
@@ -116,7 +116,7 @@ export default function AdminLayout() {
             mode="inline"
             selectedKeys={[selectedKey]}
             items={menuItems}
-            style={{ background: ''transparent'', borderRight: ''none'' }}
+            style={{ background: 'transparent', borderRight: 'none' }}
             theme="dark"
           />
         </div>

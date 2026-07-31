@@ -10,6 +10,7 @@ import type {
   SyncQueueRow,
   UpdateStatusPayload,
   ElectronAPI,
+  InstallProgressPayload,
   RuntimeAPI,
   RuntimeDownloadProgress,
 } from "../shared/types";
@@ -45,6 +46,16 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.on("service:error", handler);
       return () => {
         ipcRenderer.removeListener("service:error", handler);
+      };
+    },
+    onInstallProgress: (callback: (payload: InstallProgressPayload) => void) => {
+      const handler = (
+        _event: IpcRendererEvent,
+        payload: InstallProgressPayload,
+      ): void => callback(payload);
+      ipcRenderer.on("service:install-progress", handler);
+      return () => {
+        ipcRenderer.removeListener("service:install-progress", handler);
       };
     },
   },

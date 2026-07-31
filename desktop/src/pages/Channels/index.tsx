@@ -1,4 +1,4 @@
-﻿// 渠道管理页
+// 渠道管理页
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -158,8 +158,6 @@ export default function ChannelList() {
           </Form.Item>
           <Form.Item label="加密密钥 (EncodingAESKey)" name={["credentials", "encodingAesKey"]} tooltip="微信公众号消息加解密密钥（可选，明文模式可不填）">
             <Input.Password placeholder="43位随机字符串" />
-          </Form.Item>
-            <Input.Password placeholder="平台验证 Token" />
           </Form.Item>
         </Form>
       </Modal>

@@ -487,7 +487,7 @@ export class ServiceManager extends EventEmitter {
 
   async checkEnvironment(): Promise<ServiceEnvCheck> {
     const result = await verifyAll();
-    return { openclaw: result.openclaw, n8n: result.n8n, mcp: result.mcp };
+    return { openclaw: result.openclaw, n8n: result.n8n, mcp: result.mcp, hermes: result.hermes };
   }
 
   async install(

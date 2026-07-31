@@ -1,4 +1,4 @@
-// 客户端本地服务管理 - 服务状态面板（Task 16）
+﻿// 客户端本地服务管理 - 服务状态面板（Task 16）
 // SubTask 16.1: 三个服务状态卡片（OpenClaw/N8N/MCP）
 // SubTask 16.3: 监听 service:error 弹窗通知
 // 通过 IPC 实时更新状态 + 轮询 CPU/内存
@@ -44,6 +44,7 @@ const SERVICE_ICONS: Record<ServiceName, React.ReactNode> = {
   openclaw: <CloudServerOutlined style={{ color: "#6366f1" }} />,
   n8n: <ApartmentOutlined style={{ color: "#8b5cf6" }} />,
   mcp: <ApiOutlined style={{ color: "#06b6d4" }} />,
+  hermes: <ApiOutlined style={{ color: "#f59e0b" }} />,
 };
 
 /** 状态展示配置 */

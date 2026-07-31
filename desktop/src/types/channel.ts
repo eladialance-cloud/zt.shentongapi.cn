@@ -20,6 +20,7 @@ export interface Channel {
   direction: ChannelDirection
   status: ChannelStatus
   webhookUrl?: string
+  webhookToken?: string
   teamId?: number
   agentId?: number
   lastMessageAt?: string

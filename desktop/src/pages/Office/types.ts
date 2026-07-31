@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AI 鍔炲叕瀹?2D 鐢诲竷 鈥?绫诲瀷瀹氫箟 (v0.3.1 Task 7)
  */
 
@@ -266,7 +266,8 @@ export function loadOfficeSettings(): OfficeSettings {
       return { ...DEFAULT_OFFICE_SETTINGS, ...(JSON.parse(cached) as Partial<OfficeSettings>) };
     }
   } catch {
-    // localStorage 涓嶅彲鐢ㄦ垨瑙ｆ瀽澶辫触锛氳繑鍥為粯璁ゅ€?  }
+    // localStorage ??????????????
+    }
   return DEFAULT_OFFICE_SETTINGS;
 }
 

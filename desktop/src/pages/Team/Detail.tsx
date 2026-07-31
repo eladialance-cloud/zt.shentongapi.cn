@@ -417,7 +417,7 @@ export default function TeamDetail() {
             <Input.TextArea rows={2} placeholder="可选，描述该职能的职责范围" maxLength={256} showCount />
           </Form.Item>
           <Form.Item label="主题色" name="themeColor">
-            <ColorPicker format="hex" presets={PRESET_COLORS.map((c) => ({ label: c, color: c }))} />
+            <ColorPicker format="hex" presets={PRESET_COLORS.map((c) => ({ label: c, colors: [c] }))} />
           </Form.Item>
           <Form.Item label="排序" name="sortOrder">
             <Input type="number" min={0} max={99} placeholder="工位顺序，数字越小越靠前" />

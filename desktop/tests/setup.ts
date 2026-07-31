@@ -1,7 +1,7 @@
-// 测试工具文件 - Mock 工厂函数 + 测试数据生成器 + 常用 mock 数据
+﻿// 娴嬭瘯宸ュ叿鏂囦欢 - Mock 宸ュ巶鍑芥暟 + 娴嬭瘯鏁版嵁鐢熸垚鍣?+ 甯哥敤 mock 鏁版嵁
 //
-// 该文件在 jest.config.ts 的 setupFilesAfterEnv 中被引用，
-// 同时也作为模块导出供各 e2e 测试文件按需引入。
+// 璇ユ枃浠跺湪 jest.config.ts 鐨?setupFilesAfterEnv 涓寮曠敤锛?
+// 鍚屾椂涔熶綔涓烘ā鍧楀鍑轰緵鍚?e2e 娴嬭瘯鏂囦欢鎸夐渶寮曞叆銆?
 
 import type { User } from '@/store/auth'
 import type { Agent } from '@/types/agent'
@@ -13,11 +13,11 @@ import type { WorkflowExecution } from '@/types/workflow'
 import type { HermesInstance } from '@/types/hermes'
 import type { SyncQueueRow, SyncQueueItem, ElectronAPI } from '@shared/types'
 
-// ===== Mock 工厂函数 =====
+// ===== Mock 宸ュ巶鍑芥暟 =====
 
 /**
- * 创建 HttpClient mock 对象
- * 返回包含 get/post/put/delete/patch 的 mock 函数集合
+ * 鍒涘缓 HttpClient mock 瀵硅薄
+ * 杩斿洖鍖呭惈 get/post/put/delete/patch 鐨?mock 鍑芥暟闆嗗悎
  */
 export function createMockHttpClient() {
   return {
@@ -31,8 +31,8 @@ export function createMockHttpClient() {
 }
 
 /**
- * 创建 Zustand store mock 对象
- * 提供 getState/setState/subscribe 等基础方法
+ * 鍒涘缓 Zustand store mock 瀵硅薄
+ * 鎻愪緵 getState/setState/subscribe 绛夊熀纭€鏂规硶
  */
 export function createMockStore<T>(initial: T) {
   let state = initial
@@ -49,8 +49,8 @@ export function createMockStore<T>(initial: T) {
 }
 
 /**
- * 创建 ElectronAPI mock 对象
- * 覆盖 syncQueue / db / device / window / app / updater / service 等命名空间
+ * 鍒涘缓 ElectronAPI mock 瀵硅薄
+ * 瑕嗙洊 syncQueue / db / device / window / app / updater / service 绛夊懡鍚嶇┖闂?
  */
 export function createMockElectronAPI(): ElectronAPI {
   return {
@@ -65,14 +65,14 @@ export function createMockElectronAPI(): ElectronAPI {
       install: jest.fn(),
       onStatusChanged: jest.fn(() => jest.fn()),
       onError: jest.fn(() => jest.fn()),
-      // M5 修复：补充 onInstallProgress mock
+      // M5 淇锛氳ˉ鍏?onInstallProgress mock
       onInstallProgress: jest.fn(() => jest.fn())
     },
     app: {
       getVersion: jest.fn(),
       checkUpdate: jest.fn(),
       quitAndInstall: jest.fn(),
-      // M5 修复：补充 disableHardwareAcceleration mock
+      // M5 淇锛氳ˉ鍏?disableHardwareAcceleration mock
       disableHardwareAcceleration: jest.fn()
     },
     updater: {
@@ -104,8 +104,8 @@ export function createMockElectronAPI(): ElectronAPI {
 }
 
 /**
- * 将 mock electronAPI 安装到 global.window 上
- * 返回安装后的 mock 对象供测试直接操作
+ * 灏?mock electronAPI 瀹夎鍒?global.window 涓?
+ * 杩斿洖瀹夎鍚庣殑 mock 瀵硅薄渚涙祴璇曠洿鎺ユ搷浣?
  */
 export function installMockElectronAPI(): ElectronAPI {
   const mockAPI = createMockElectronAPI()
@@ -113,10 +113,10 @@ export function installMockElectronAPI(): ElectronAPI {
   return mockAPI
 }
 
-// ===== 测试数据生成器 =====
+// ===== 娴嬭瘯鏁版嵁鐢熸垚鍣?=====
 
 /**
- * 生成用户测试数据
+ * 鐢熸垚鐢ㄦ埛娴嬭瘯鏁版嵁
  */
 export function generateUser(overrides: Partial<User> = {}): User {
   return {
@@ -133,16 +133,16 @@ export function generateUser(overrides: Partial<User> = {}): User {
 }
 
 /**
- * 生成 Agent 测试数据
+ * 鐢熸垚 Agent 娴嬭瘯鏁版嵁
  */
 export function generateAgent(overrides: Partial<Agent> = {}): Agent {
   return {
     id: 1,
     name: 'test-agent',
-    description: '测试 Agent',
+    description: '娴嬭瘯 Agent',
     avatar: undefined,
     category: 'office',
-    tags: ['测试'],
+    tags: ['娴嬭瘯'],
     rating: 4.5,
     ratingCount: 10,
     callCount: 100,
@@ -155,7 +155,7 @@ export function generateAgent(overrides: Partial<Agent> = {}): Agent {
 }
 
 /**
- * 生成积分流水测试数据
+ * 鐢熸垚绉垎娴佹按娴嬭瘯鏁版嵁
  */
 export function generateTransaction(
   overrides: Partial<CreditTransaction> = {}
@@ -168,14 +168,14 @@ export function generateTransaction(
     balanceAfter: 90,
     source: 'chat',
     sourceId: 'session-1',
-    remark: '对话消耗',
+    remark: '对话消息',
     createdAt: new Date('2025-01-01T00:00:00.000Z'),
     ...overrides
   }
 }
 
 /**
- * 生成积分账户测试数据
+ * 鐢熸垚绉垎璐︽埛娴嬭瘯鏁版嵁
  */
 export function generateCreditAccount(
   overrides: Partial<CreditAccount> = {}
@@ -190,7 +190,7 @@ export function generateCreditAccount(
 }
 
 /**
- * 生成 API Key 池条目测试数据
+ * 鐢熸垚 API Key 姹犳潯鐩祴璇曟暟鎹?
  */
 export function generateApiKeyPoolItem(
   overrides: Partial<ApiKeyPoolItem> = {}
@@ -214,12 +214,12 @@ export function generateApiKeyPoolItem(
 }
 
 /**
- * 生成设备测试数据（用户端）
+ * 鐢熸垚璁惧娴嬭瘯鏁版嵁锛堢敤鎴风锛?
  */
 export function generateDevice(overrides: Partial<Device> = {}): Device {
   return {
     id: 1,
-    deviceName: '测试设备',
+    deviceName: '娴嬭瘯璁惧',
     fingerprint: 'abc123def456',
     lastLoginAt: '2025-01-01T00:00:00.000Z',
     createdAt: '2025-01-01T00:00:00.000Z',
@@ -228,7 +228,7 @@ export function generateDevice(overrides: Partial<Device> = {}): Device {
 }
 
 /**
- * 生成设备测试数据（管理端）
+ * 鐢熸垚璁惧娴嬭瘯鏁版嵁锛堢鐞嗙锛?
  */
 export function generateAdminDevice(
   overrides: Partial<AdminDevice> = {}
@@ -237,7 +237,7 @@ export function generateAdminDevice(
     id: 1,
     userId: 1,
     username: 'testuser',
-    deviceName: '测试设备',
+    deviceName: '娴嬭瘯璁惧',
     deviceFingerprint: 'abc123def456',
     lastLoginAt: '2025-01-01T00:00:00.000Z',
     createdAt: '2025-01-01T00:00:00.000Z',
@@ -246,7 +246,7 @@ export function generateAdminDevice(
 }
 
 /**
- * 生成同步队列行测试数据
+ * 鐢熸垚鍚屾闃熷垪琛屾祴璇曟暟鎹?
  */
 export function generateSyncQueueRow(
   id: number,
@@ -263,13 +263,14 @@ export function generateSyncQueueRow(
     retry_count: 0,
     error_message: null,
     created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
     synced_at: null,
     ...overrides
   }
 }
 
 /**
- * 生成同步队列项测试数据
+ * 鐢熸垚鍚屾闃熷垪椤规祴璇曟暟鎹?
  */
 export function generateSyncQueueItem(
   id: number,
@@ -286,7 +287,7 @@ export function generateSyncQueueItem(
 }
 
 /**
- * 生成工作流执行记录测试数据
+ * 鐢熸垚宸ヤ綔娴佹墽琛岃褰曟祴璇曟暟鎹?
  */
 export function generateWorkflowExecution(
   overrides: Partial<WorkflowExecution> = {}
@@ -306,7 +307,7 @@ export function generateWorkflowExecution(
 }
 
 /**
- * 生成 Hermes 实例测试数据
+ * 鐢熸垚 Hermes 瀹炰緥娴嬭瘯鏁版嵁
  */
 export function generateHermesInstance(
   overrides: Partial<HermesInstance> = {}
@@ -323,28 +324,28 @@ export function generateHermesInstance(
   }
 }
 
-// ===== 常用 mock 数据 =====
+// ===== 甯哥敤 mock 鏁版嵁 =====
 
-/** 设备超限错误码 */
+/** 璁惧瓒呴檺閿欒鐮?*/
 export const DEVICE_LIMIT_EXCEEDED_CODE = 1011
 
-/** 默认 HMAC 密钥（测试用） */
+/** 榛樿 HMAC 瀵嗛挜锛堟祴璇曠敤锛?*/
 export const TEST_SECRET_KEY = 'test-secret-key-for-hmac-signing'
 
-/** 默认 accessToken（测试用） */
+/** 榛樿 accessToken锛堟祴璇曠敤锛?*/
 export const TEST_ACCESS_TOKEN = 'test-access-token-shentong-ai'
 
-/** 默认 refreshToken（测试用） */
+/** 榛樿 refreshToken锛堟祴璇曠敤锛?*/
 export const TEST_REFRESH_TOKEN = 'test-refresh-token-shentong-ai'
 
-/** 创作者分成比例（70%） */
+/** 鍒涗綔鑰呭垎鎴愭瘮渚嬶紙70%锛?*/
 export const CREATOR_REVENUE_SHARE_RATE = 0.7
 
-/** SyncService 单批最大条数 */
+/** SyncService 鍗曟壒鏈€澶ф潯鏁?*/
 export const SYNC_BATCH_SIZE = 100
 
-/** SyncService 最大重试次数 */
+/** SyncService 鏈€澶ч噸璇曟鏁?*/
 export const SYNC_MAX_RETRY = 3
 
-/** HMAC 时钟漂移容忍度（秒） */
+/** HMAC 鏃堕挓婕傜Щ瀹瑰繊搴︼紙绉掞級 */
 export const HMAC_MAX_SKEW_SECONDS = 300

@@ -1,4 +1,4 @@
-﻿// 璺敱閰嶇疆
+// 璺敱閰嶇疆
 // 榛樿璺敱锛歰nboarding_completed=false 閲嶅畾鍚戝埌 /onboarding锛屽惁鍒欏埌 /dashboard
 // 绠＄悊绔矾鐢卞墠缂€ /admin/*锛屼娇鐢?AdminRouteGuard + AdminLayout 鍖呰９
 // Task 34: 鐢ㄦ埛绔凡璁よ瘉璺敱浣跨敤 MainLayout 鍖呰９锛堥《鏍?渚ц竟鏍?鍐呭鍖?搴曟爮锛?
@@ -39,7 +39,8 @@ import ServiceManager from "@/pages/ServiceManager";
 import MainLayout from "@/components/MainLayout";
 import { useOnboardingStore, useAuthStore } from "@/store";
 
-// 绠＄悊绔〉闈㈠鍏?import AdminLogin from "@/pages/admin/Login";
+// 绠＄悊绔〉闈㈠鍏
+import AdminLogin from "@/pages/admin/Login";
 import AdminLayout from "@/pages/admin/Layout";
 import { AdminRouteGuard } from "@/pages/admin/components/AdminRouteGuard";
 import AdminDashboard from "@/pages/admin/Dashboard";
@@ -142,7 +143,8 @@ const router = createHashRouter([
       { path: "/hermes/skills", element: <HermesSkillMarket /> },
       { path: "/hermes/:id", element: <HermesDetail /> },
       { path: "/office", element: <Office /> },
-      { path: "/channels", element: <ChannelList /> },`n      { path: "/channels/:id", element: <ChannelDetail /> },
+      { path: "/channels", element: <ChannelList /> },
+      { path: "/channels/:id", element: <ChannelDetail /> },
       { path: "/publish", element: <PublishList /> },
       // ===== Task 14: OPC =====
       // OPC 路径重定向到团队

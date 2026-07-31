@@ -875,7 +875,7 @@ export default function OfficeIsoCanvas({
   // ============================================================
   const handleDisableHardwareAcceleration = useCallback(async () => {
     try {
-      await window.electronAPI?.app?.disableHardwareAcceleration?.();
+      await (window.electronAPI as any)?.app?.disableHardwareAcceleration?.();
     } catch (err) {
       console.error('[OfficeIsoCanvas] disableHardwareAcceleration IPC failed', err);
       // IPC 失败时仍保留原降级提示，不额外阻塞用户

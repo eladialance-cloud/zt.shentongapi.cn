@@ -153,6 +153,7 @@ export interface SyncQueueRow {
   retry_count: number;
   error_message: string | null;
   created_at: string;
+  updated_at: string;
   synced_at: string | null;
 }
 
@@ -192,6 +193,7 @@ export interface ElectronAPI {
     ): () => void;
     /** 监听服务错误事件，返回取消监听函数 */
     onError(callback: (payload: ServiceErrorPayload) => void): () => void;
+    onInstallProgress(callback: (payload: InstallProgressPayload) => void): () => void;
   };
   app: {
     getVersion(): Promise<string>;
@@ -257,4 +259,64 @@ export interface RuntimeAPI {
   onDownloadProgress(
     callback: (progress: RuntimeDownloadProgress) => void,
   ): () => void;
+}
+
+/** 远程控制来源平台 */
+export type RemoteControlPlatform = "feishu" | "wecom";
+
+/** 远程控制命令类型 */
+export type RemoteCommandType =
+  | "run_workflow"
+  | "query_status"
+  | "stop_task"
+  | "delete_file"
+  | "format_disk"
+  | "execute_system_command"
+  | "modify_system_config"
+  | "unknown";
+
+/** 远程控制安全等级 */
+export type RemoteSecurityLevel = "high" | "medium" | "low";
+
+/** 远程命令 */
+export interface RemoteCommand {
+  commandId: string;
+  type: RemoteCommandType;
+  payload: Record<string, unknown>;
+  raw: string;
+  source: RemoteControlPlatform;
+}
+
+/** 远程命令执行结果 */
+export interface RemoteCommandResult {
+  commandId: string;
+  status: "success" | "failed" | "running" | "need_confirmation";
+  progress?: number;
+  message?: string;
+  description?: string;
+  data?: unknown;
+}
+
+/** IM 平台绑定状态 */
+export interface IMPlatformBinding {
+  bound: boolean;
+  chatId?: string;
+  userId?: string;
+}
+
+/** 远程控制设置 */
+export interface RemoteControlSettings {
+  enabled: boolean;
+  securityLevel: RemoteSecurityLevel;
+  feishu: IMPlatformBinding;
+  wecom: IMPlatformBinding;
+  deviceWhitelist: Record<string, unknown>[];
+}
+
+/** 安装进度推送 */
+export interface InstallProgressPayload {
+  name: ServiceName;
+  percent: number;
+  status: "downloading" | "extracting" | "verifying" | "completed" | "error";
+  message?: string;
 }
