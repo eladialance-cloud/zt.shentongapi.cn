@@ -211,6 +211,9 @@ jobs:
       # ===== 9. Build (electron-vite) =====
       - name: 🔨 Build (electron-vite)
         run: npm run build
+        env:
+          # 禁用 PowerShell 的 $ErrorActionPreference='Stop'，避免警告被当作错误
+          NODE_NO_WARNINGS: 1
 
       # ===== 10. Verify getElectronPath NOT in bundle =====
       - name: 🛡️ Verify Bundle Integrity
