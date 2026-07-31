@@ -134,9 +134,11 @@ jobs:
           ELECTRON_MIRROR: ${{ env.ELECTRON_MIRROR }}
           ELECTRON_BUILDER_BINARIES_MIRROR: ${{ env.ELECTRON_BUILDER_BINARIES_MIRROR }}
 
-      # ===== 4. Verify Electron Installation =====
-      - name: ✅ Verify Electron
-        run: npx tsx scripts/verify-electron.ts --check
+      # ===== 4. Verify & Repair Electron Installation =====
+      # Electron 的 postinstall 脚本在中国大陆网络下可能下载二进制失败
+      # --repair 模式会在校验失败时自动从镜像站下载修复
+      - name: ✅ Verify & Repair Electron
+        run: npx tsx scripts/verify-electron.ts --repair
 
       # ===== 5. Fix sqlcipher Native Module =====
       # @journeyapps/sqlcipher@6.0.0 不支持 Windows (os: darwin,linux only)
