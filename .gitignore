@@ -39,3 +39,7 @@ desktop/installer/
 # Temporary files
 desktop-update-temp-*/
 fix-modules.sh
+
+# pnpm store cache
+.pnpm-store/
+
