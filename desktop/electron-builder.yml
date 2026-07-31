@@ -13,6 +13,8 @@ files:
   - "!src/**"
   - "!electron/**"
   - "!*.config.*"
+  # 安全网：防止 npm electron 包被误打包进 asar
+  - "!node_modules/electron{,/**/*}"
 asar: true
 # H-08b workaround: @journeyapps/sqlcipher 6.0.0 移除了 Windows os 支持（os: ["darwin", "linux"]），
 # 没有 prebuilt binary，源码编译需要 Visual Studio Build Tools。
