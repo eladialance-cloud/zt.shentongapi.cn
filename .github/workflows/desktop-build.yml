@@ -246,26 +246,34 @@ jobs:
       #   SERVER_HOST, SERVER_USER, SERVER_SSH_KEY
       - name: 🚀 Deploy to Server
         if: ${{ github.event.inputs.deploy == 'true' }}
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "desktop/dist/installer/*"
+          target: "/opt/shentong/updates/"
+          strip_components: 3
+          overwrite: true
+
+      - name: 🔄 Restart Backend Service
+        if: ${{ github.event.inputs.deploy == 'true' }}
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          source: desktop/dist/installer/*
-          target: /opt/shentong/updates/
-          # 先备份再覆盖
           script: |
             cd /opt/shentong/updates
             # 备份旧版本
             if [ -f latest.yml ]; then
               cp latest.yml "latest.yml.bak.$(date +%Y%m%d%H%M%S)"
             fi
-            # 更新文件
-            mv -f /tmp/github_action/desktop/dist/installer/* .
-            # 重启后端服务（如果需要更新下载链接）
-            # systemctl restart shentong-backend
-            echo "✅ Deployed to /opt/shentong/updates/"
+            # 列出已部署文件
+            echo "✅ Deployed files:"
             ls -lh
+            # 如需重启后端服务取消下面注释
+            # systemctl restart shentong-backend
 
   # ---------------------------------------------------------------------------
   # Job 2: macOS 打包 (可选，需 Mac runner)
