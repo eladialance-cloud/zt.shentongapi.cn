@@ -14,7 +14,7 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        external: ["electron"],
+        external: ["electron", "@journeyapps/sqlcipher"],
         input: { index: resolve(__dirname, "electron/main/index.ts") },
         output: {
           dir: "dist/main",
