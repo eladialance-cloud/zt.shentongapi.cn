@@ -114,32 +114,42 @@ jobs:
       # electron-vite 5 只支持 vite 5/6/7，但 @vitejs/plugin-react 6 要求 vite 8
       # 本地开发已通过测试，此标志允许安装继续
       # ⚠️ @journeyapps/sqlcipher@6.0.0 不支持 Windows (os: darwin,linux)
-      # 方案: 下载完整包后删除二进制，保留类型声明
+      # 方案: 临时从 package.json 移除，安装完成后再恢复
       - name: 📚 Install Dependencies
         run: |
-          # 先完整安装所有依赖（包括 sqlcipher 的类型声明）
-          # 使用 --force 忽略平台检查
-          npm install --legacy-peer-deps --force
+          # 读取 package.json
+          $pkgJson = Get-Content "package.json" -Raw
+          $pkg = $pkgJson | ConvertFrom-Json
           
-          # 删除 sqlcipher 的不兼容二进制文件
-          $nodeFile = "node_modules\@journeyapps\sqlcipher\build\Release\node_sqlite3.node"
-          if (Test-Path $nodeFile) {
-            Remove-Item $nodeFile -Force
-            Write-Host "🗑️ Removed incompatible sqlcipher binary"
+          # 保存 sqlcipher 版本并移除
+          $sqlcipherVersion = $pkg.dependencies.'@journeyapps/sqlcipher'
+          if ($sqlcipherVersion) {
+            $pkg.dependencies.PSObject.Properties.Remove('@journeyapps/sqlcipher')
+            $pkg | ConvertTo-Json -Depth 10 | Set-Content "package.json" -Encoding UTF8
+            Write-Host "Temporarily removed @journeyapps/sqlcipher from package.json"
           }
           
-          # 验证类型声明文件存在
-          $typesFile = "node_modules\@journeyapps\sqlcipher\lib\index.d.ts"
-          if (Test-Path $typesFile) {
-            Write-Host "OK sqlcipher type declarations preserved"
-          } else {
-            Write-Host "WARNING sqlcipher types not found, creating stub..."
-            # 创建类型声明桩文件
-            $stubDir = "node_modules\@journeyapps\sqlcipher\lib"
-            New-Item -ItemType Directory -Force -Path $stubDir | Out-Null
-            $stubContent = 'export class Database { constructor(path: string, options?: { key?: string }); run(sql: string, params?: any[], callback?: (err: Error | null) => void): void; get(sql: string, params?: any[], callback?: (err: Error | null, row?: any) => void): void; all(sql: string, params?: any[], callback?: (err: Error | null, rows?: any[]) => void): void; close(callback?: (err: Error | null) => void): void; } export default Database;'
-            Set-Content "$stubDir\index.d.ts" $stubContent -Encoding UTF8
+          # 安装其他依赖（不安装 sqlcipher）
+          npm install --legacy-peer-deps
+          
+          # 恢复 package.json
+          if ($sqlcipherVersion) {
+            $pkg = Get-Content "package.json" -Raw | ConvertFrom-Json
+            $pkg.dependencies | Add-Member -NotePropertyName '@journeyapps/sqlcipher' -NotePropertyValue $sqlcipherVersion -Force
+            $pkg | ConvertTo-Json -Depth 10 | Set-Content "package.json" -Encoding UTF8
           }
+          
+          # 创建 sqlcipher 类型声明桩（用于 TypeCheck）
+          $sqlcipherDir = "node_modules\@journeyapps\sqlcipher"
+          New-Item -ItemType Directory -Force -Path "$sqlcipherDir\lib" | Out-Null
+          $stubContent = 'export class Database { constructor(path: string, options?: { key?: string }); run(sql: string, params?: any[], callback?: (err: Error | null) => void): void; get(sql: string, params?: any[], callback?: (err: Error | null, row?: any) => void): void; all(sql: string, params?: any[], callback?: (err: Error | null, rows?: any[]) => void): void; close(callback?: (err: Error | null) => void): void; } export default Database;'
+          Set-Content "$sqlcipherDir\lib\index.d.ts" $stubContent -Encoding UTF8
+          
+          # 创建最小 package.json
+          $minimalPkg = @{ name = "@journeyapps/sqlcipher"; version = "6.0.0"; main = "lib/index.js"; types = "lib/index.d.ts" } | ConvertTo-Json
+          Set-Content "$sqlcipherDir\package.json" $minimalPkg -Encoding UTF8
+          
+          Write-Host "Created sqlcipher stub for TypeScript compilation"
         env:
           # 镜像加速 Electron 二进制下载
           ELECTRON_MIRROR: ${{ env.ELECTRON_MIRROR }}
