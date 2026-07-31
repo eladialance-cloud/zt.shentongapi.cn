@@ -20,8 +20,13 @@ name: Desktop Build
 
 on:
   push:
+    branches: [upgrade/electron-41]
+    paths: ['desktop/**', '.github/workflows/desktop-build.yml']
     tags:
       - 'desktop-v*'
+  pull_request:
+    branches: [upgrade/electron-41]
+    paths: ['desktop/**']
   workflow_dispatch:
     inputs:
       version:
