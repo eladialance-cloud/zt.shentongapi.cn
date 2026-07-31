@@ -114,27 +114,40 @@ jobs:
       # electron-vite 5 只支持 vite 5/6/7，但 @vitejs/plugin-react 6 要求 vite 8
       # 本地开发已通过测试，此标志允许安装继续
       # ⚠️ @journeyapps/sqlcipher@6.0.0 不支持 Windows (os: darwin,linux)
-      # 先安装其他依赖，再单独处理 sqlcipher
+      # 方案: 下载完整包后删除二进制，保留类型声明
       - name: 📚 Install Dependencies
         run: |
-          # 临时移除 sqlcipher 从 package.json，避免 npm install 失败
-          $pkg = Get-Content "package.json" -Raw | ConvertFrom-Json
-          $hasSqlcipher = $pkg.dependencies.'@journeyapps/sqlcipher'
-          if ($hasSqlcipher) {
-            $pkg.dependencies.PSObject.Properties.Remove('@journeyapps/sqlcipher')
-            $pkg | ConvertTo-Json -Depth 10 | Set-Content "package.json" -Encoding UTF8
-            Write-Host "📝 Temporarily removed @journeyapps/sqlcipher from package.json"
+          # 先完整安装所有依赖（包括 sqlcipher 的类型声明）
+          # 使用 --force 忽略平台检查
+          npm install --legacy-peer-deps --force
+          
+          # 删除 sqlcipher 的不兼容二进制文件
+          $nodeFile = "node_modules\@journeyapps\sqlcipher\build\Release\node_sqlite3.node"
+          if (Test-Path $nodeFile) {
+            Remove-Item $nodeFile -Force
+            Write-Host "🗑️ Removed incompatible sqlcipher binary"
           }
           
-          # 安装其他依赖
-          npm install --legacy-peer-deps
-          
-          # 恢复 sqlcipher 到 package.json（不安装）
-          if ($hasSqlcipher) {
-            $pkg = Get-Content "package.json" -Raw | ConvertFrom-Json
-            $pkg.dependencies | Add-Member -NotePropertyName '@journeyapps/sqlcipher' -NotePropertyValue $hasSqlcipher -Force
-            $pkg | ConvertTo-Json -Depth 10 | Set-Content "package.json" -Encoding UTF8
-            Write-Host "📝 Restored @journeyapps/sqlcipher in package.json"
+          # 验证类型声明文件存在
+          $typesFile = "node_modules\@journeyapps\sqlcipher\lib\index.d.ts"
+          if (Test-Path $typesFile) {
+            Write-Host "✅ sqlcipher type declarations preserved"
+          } else {
+            Write-Host "⚠️ sqlcipher types not found, creating stub..."
+            # 创建类型声明桩文件
+            $stubDir = "node_modules\@journeyapps\sqlcipher\lib"
+            New-Item -ItemType Directory -Force -Path $stubDir | Out-Null
+            $stubContent = @"
+export class Database {
+  constructor(path: string, options?: { key?: string });
+  run(sql: string, params?: any[], callback?: (err: Error | null) => void): void;
+  get(sql: string, params?: any[], callback?: (err: Error | null, row?: any) => void): void;
+  all(sql: string, params?: any[], callback?: (err: Error | null, rows?: any[]) => void): void;
+  close(callback?: (err: Error | null) => void): void;
+}
+export default Database;
+"@
+            Set-Content "$stubDir\index.d.ts" $stubContent -Encoding UTF8
           }
         env:
           # 镜像加速 Electron 二进制下载
@@ -147,7 +160,7 @@ jobs:
 
       # ===== 5. Fix sqlcipher Native Module =====
       # @journeyapps/sqlcipher@6.0.0 不支持 Windows (os: darwin,linux only)
-      # 方案: 手动创建模块结构 + 下载 Windows prebuilt binary
+      # 安装步骤已保留类型声明，这里下载 Windows prebuilt binary
       - name: 🔧 Fix sqlcipher Native Module
         run: |
           $sqlcipherDir = "node_modules\@journeyapps\sqlcipher"
@@ -160,39 +173,30 @@ jobs:
           # N-API v6 binary 与 Electron 41 (N-API v9) ABI 兼容
           $url = "https://github.com/journeyapps/node-sqlcipher/releases/download/v5.3.1/sqlcipher-v5.3.1-electron-v116-win32-x64.tar.gz"
           $tempFile = "$env:TEMP\sqlcipher-win32.tar.gz"
+          $extractDir = "$env:TEMP\sqlcipher-extract"
           
           Write-Host "📥 Downloading sqlcipher Windows binary..."
           try {
             Invoke-WebRequest -Uri $url -OutFile $tempFile -UseBasicParsing -TimeoutSec 60
-            # 解压 tar.gz (使用 7z 或 tar)
-            tar -xzf $tempFile -C "$env:TEMP\sqlcipher-extract" 2>$null
-            $extractedNode = Get-ChildItem "$env:TEMP\sqlcipher-extract" -Recurse -Filter "node_sqlite3.node" | Select-Object -First 1
+            New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+            tar -xzf $tempFile -C $extractDir 2>$null
+            $extractedNode = Get-ChildItem $extractDir -Recurse -Filter "node_sqlite3.node" | Select-Object -First 1
             if ($extractedNode) {
               Copy-Item $extractedNode.FullName $nodeFile -Force
               Write-Host "✅ sqlcipher binary installed: $(((Get-Item $nodeFile).Length) / 1KB) KB"
             } else {
-              Write-Host "⚠️ Extracted binary not found, trying alternative..."
+              Write-Host "⚠️ Extracted binary not found"
             }
           } catch {
             Write-Host "⚠️ Download failed: $($_.Exception.Message)"
           }
           
-          # 如果下载失败，创建空占位文件（构建时跳过 sqlcipher）
+          # 如果下载失败，创建空占位文件（构建时跳过 sqlcipher 运行时功能）
           if (-not (Test-Path $nodeFile)) {
             Write-Host "⚠️ Using placeholder - sqlcipher features disabled in this build"
-            # 创建一个空的 .node 文件作为占位
             [byte[]]$bytes = @(0x4D, 0x5A)  # MZ header (minimal PE)
             [System.IO.File]::WriteAllBytes($nodeFile, $bytes)
           }
-          
-          # 创建 package.json 让 electron-builder 识别
-          $pkgJson = @{
-            name = "@journeyapps/sqlcipher"
-            version = "6.0.0"
-            main = "build/Release/node_sqlite3.node"
-            os = @("win32", "darwin", "linux")
-          } | ConvertTo-Json
-          Set-Content "$sqlcipherDir\package.json" $pkgJson -Encoding UTF8
         shell: pwsh
 
       # ===== 6. Download Runtime =====
