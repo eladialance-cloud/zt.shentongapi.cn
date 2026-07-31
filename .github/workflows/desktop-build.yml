@@ -131,22 +131,13 @@ jobs:
           # 验证类型声明文件存在
           $typesFile = "node_modules\@journeyapps\sqlcipher\lib\index.d.ts"
           if (Test-Path $typesFile) {
-            Write-Host "✅ sqlcipher type declarations preserved"
+            Write-Host "OK sqlcipher type declarations preserved"
           } else {
-            Write-Host "⚠️ sqlcipher types not found, creating stub..."
+            Write-Host "WARNING sqlcipher types not found, creating stub..."
             # 创建类型声明桩文件
             $stubDir = "node_modules\@journeyapps\sqlcipher\lib"
             New-Item -ItemType Directory -Force -Path $stubDir | Out-Null
-            $stubContent = @"
-export class Database {
-  constructor(path: string, options?: { key?: string });
-  run(sql: string, params?: any[], callback?: (err: Error | null) => void): void;
-  get(sql: string, params?: any[], callback?: (err: Error | null, row?: any) => void): void;
-  all(sql: string, params?: any[], callback?: (err: Error | null, rows?: any[]) => void): void;
-  close(callback?: (err: Error | null) => void): void;
-}
-export default Database;
-"@
+            $stubContent = 'export class Database { constructor(path: string, options?: { key?: string }); run(sql: string, params?: any[], callback?: (err: Error | null) => void): void; get(sql: string, params?: any[], callback?: (err: Error | null, row?: any) => void): void; all(sql: string, params?: any[], callback?: (err: Error | null, rows?: any[]) => void): void; close(callback?: (err: Error | null) => void): void; } export default Database;'
             Set-Content "$stubDir\index.d.ts" $stubContent -Encoding UTF8
           }
         env:
