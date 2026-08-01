@@ -221,25 +221,44 @@ jobs:
           Expand-Archive -Path $tempFile -DestinationPath $pythonDir -Force
           Remove-Item $tempFile -ErrorAction SilentlyContinue
 
-          # Enable pip by modifying python._pth (remove the # before "import site")
+          # Enable site-packages by modifying python._pth BEFORE installing pip
+          # The embeddable Python comments out "import site" by default, so pip module won't load
           $pthFile = Get-ChildItem $pythonDir -Filter "python*.pth" | Select-Object -First 1
           if ($pthFile) {
-            (Get-Content $pthFile.FullName) -replace '#import site', 'import site' | Set-Content $pthFile.FullName
-            Write-Host "✅ Enabled site-packages in $($pthFile.Name)"
+            $content = Get-Content $pthFile.FullName -Raw
+            if ($content -match '#import site') {
+              $content = $content -replace '#import site', 'import site'
+              Set-Content -Path $pthFile.FullName -Value $content -NoNewline
+              Write-Host "✅ Enabled site-packages in $($pthFile.Name)"
+            } else {
+              Write-Host "⚠️ import site already enabled or pattern not found"
+            }
+          } else {
+            Write-Error "❌ python*.pth file not found in $pythonDir"
+            exit 1
           }
+
+          # Verify python works
+          & "$pythonDir\python.exe" --version
 
           # Install pip
           Write-Host "📥 Installing pip..."
           Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile "$env:TEMP\get-pip.py" -UseBasicParsing -TimeoutSec 120
           & "$pythonDir\python.exe" "$env:TEMP\get-pip.py" --no-warn-script-location
+          if ($LASTEXITCODE -ne 0) { Write-Error "get-pip.py failed"; exit 1 }
           Remove-Item "$env:TEMP\get-pip.py" -ErrorAction SilentlyContinue
+
+          # Verify pip is available
+          $pipCheck = & "$pythonDir\python.exe" -m pip --version 2>&1
+          Write-Host "Pip: $pipCheck"
+          if ($LASTEXITCODE -ne 0) { Write-Error "pip not available"; exit 1 }
 
           # Install hermes-agent
           $hermesVersion = "0.19.0"
           Write-Host "📥 Installing hermes-agent==$hermesVersion..."
           & "$pythonDir\python.exe" -m pip install "hermes-agent==$hermesVersion" --no-warn-script-location
+          if ($LASTEXITCODE -ne 0) { Write-Error "hermes-agent install failed"; exit 1 }
 
-          & "$pythonDir\python.exe" --version
           Write-Host "✅ Hermes Python runtime ready at $pythonDir"
         shell: pwsh
         continue-on-error: true
