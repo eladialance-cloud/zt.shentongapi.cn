@@ -8,9 +8,18 @@
 import { app } from 'electron'
 import { join } from 'node:path'
 import { EventEmitter } from 'node:events'
-import * as sqlite3 from '@journeyapps/sqlcipher'
 import { SCHEMA_SQL } from './schema'
 import { validateKey } from './crypto'
+
+// H-08b fix: @journeyapps/sqlcipher@6.0.0 没有 Windows prebuilt binary，且 Electron 41 ABI=145
+// 与 5.3.1 的 binary 不兼容。因此把 sqlcipher 作为 optional dependency 动态加载。
+// 加载失败时自动进入降级模式（所有本地 DB 操作走云端 API），避免应用启动崩溃。
+let sqlite3: typeof import('@journeyapps/sqlcipher') | null = null
+try {
+  sqlite3 = require('@journeyapps/sqlcipher')
+} catch (err) {
+  console.warn('[local-db] @journeyapps/sqlcipher not available, will use degraded mode:', err)
+}
 
 /** 降级模式下抛出的异常，渲染进程据此走云端 API */
 export class DBDegradedException extends Error {
@@ -30,7 +39,7 @@ export interface RunResult {
 class LocalDbService extends EventEmitter {
   private static instance: LocalDbService | null = null
 
-  private db: sqlite3.Database | null = null
+  private db: import('@journeyapps/sqlcipher').Database | null = null
   private degraded = false
   private initialized = false
 
@@ -66,6 +75,13 @@ class LocalDbService extends EventEmitter {
     if (this.initialized && this.db && !this.degraded) {
       return
     }
+
+    // 如果 sqlcipher 模块不可用，直接进入降级模式
+    if (!sqlite3) {
+      this.handleDegradation(new Error('@journeyapps/sqlcipher module not available in this build'))
+      return
+    }
+
     try {
       if (!validateKey(encryptionKey)) {
         throw new Error('Invalid encryption key format (expected 64-char hex)')
@@ -119,7 +135,7 @@ class LocalDbService extends EventEmitter {
    * 准备语句 — 同步返回 Statement
    * 降级模式下抛出 DBDegradedException
    */
-  prepare(sql: string): sqlite3.Statement {
+  prepare(sql: string): import('@journeyapps/sqlcipher').Statement {
     this.ensureReady()
     // node-sqlite3 的 prepare 同步返回 Statement 对象
     return this.db!.prepare(sql)
@@ -201,7 +217,7 @@ class LocalDbService extends EventEmitter {
         reject(new DBDegradedException('Database handle is null'))
         return
       }
-      this.db.run(sql, params, function (this: sqlite3.RunResult, err: Error | null) {
+      this.db.run(sql, params, function (this: import('@journeyapps/sqlcipher').RunResult, err: Error | null) {
         if (err) {
           reject(err)
         } else {

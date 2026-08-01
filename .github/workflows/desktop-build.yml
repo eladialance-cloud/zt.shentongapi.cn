@@ -133,10 +133,14 @@ jobs:
           mkdir -p node_modules/@journeyapps/sqlcipher/lib
           cp types/sqlcipher.d.ts node_modules/@journeyapps/sqlcipher/lib/sqlite3.d.ts
           
-          # 创建最小 package.json
-          node -e "require('fs').writeFileSync('node_modules/@journeyapps/sqlcipher/package.json', JSON.stringify({name:'@journeyapps/sqlcipher',version:'6.0.0',main:'lib/sqlite3',types:'lib/sqlite3.d.ts'},null,2))"
+          # 创建最小 stub 入口文件，使 Electron 打包后 require('@journeyapps/sqlcipher') 不崩溃
+          # 应用代码中使用 try/catch 包裹 require，返回 null 时自动进入降级模式
+          printf '%s\n' '// Stub: @journeyapps/sqlcipher native module is not available in this build.' '// The application will fall back to cloud API when this module returns null.' 'module.exports = null' > node_modules/@journeyapps/sqlcipher/lib/sqlite3.js
           
-          echo "Created sqlcipher type declarations from types/sqlcipher.d.ts"
+          # 创建最小 package.json
+          node -e "require('fs').writeFileSync('node_modules/@journeyapps/sqlcipher/package.json', JSON.stringify({name:'@journeyapps/sqlcipher',version:'6.0.0',main:'lib/sqlite3.js',types:'lib/sqlite3.d.ts'},null,2))"
+          
+          echo "Created sqlcipher stub module"
         env:
           ELECTRON_MIRROR: ${{ env.ELECTRON_MIRROR }}
           ELECTRON_BUILDER_BINARIES_MIRROR: ${{ env.ELECTRON_BUILDER_BINARIES_MIRROR }}
