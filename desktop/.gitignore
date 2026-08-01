@@ -12,5 +12,11 @@ runtime/*/
 !runtime/*/.gitkeep
 !runtime/manifest.json
 
+# Hermes launcher scripts (small, needed for bundled-python support)
+!runtime/hermes/
+!runtime/hermes/hermes.exe.cmd
+!runtime/hermes/setup-python.bat
+!runtime/hermes/node_modules/hermes-agent/lib/python-launcher.js
+
 # Cache
 cache/
