@@ -223,18 +223,19 @@ jobs:
 
           # Enable site-packages by modifying python._pth BEFORE installing pip
           # The embeddable Python comments out "import site" by default, so pip module won't load
-          $pthFile = Get-ChildItem $pythonDir -Filter "python*.pth" | Select-Object -First 1
+          # Note: _pth extension uses a leading dot in filename, so Get-ChildItem -Filter must match *._pth
+          $pthFile = Get-ChildItem $pythonDir | Where-Object { $_.Name -like '*._pth' } | Select-Object -First 1
           if ($pthFile) {
-            $content = Get-Content $pthFile.FullName -Raw
+            $content = [System.IO.File]::ReadAllText($pthFile.FullName)
             if ($content -match '#import site') {
               $content = $content -replace '#import site', 'import site'
-              Set-Content -Path $pthFile.FullName -Value $content -NoNewline
+              [System.IO.File]::WriteAllText($pthFile.FullName, $content)
               Write-Host "✅ Enabled site-packages in $($pthFile.Name)"
             } else {
               Write-Host "⚠️ import site already enabled or pattern not found"
             }
           } else {
-            Write-Error "❌ python*.pth file not found in $pythonDir"
+            Write-Error "❌ python*._pth file not found in $pythonDir"
             exit 1
           }
 
