@@ -49,6 +49,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: '资源区',
     items: [
       { key: 'agent-market', label: '智能体市场', icon: '🤖', path: '/agent-market' },
+      { key: 'mcp-market', label: 'MCP市场', icon: '\u{1F527}', path: '/mcp-market' },
       { key: 'workflows', label: '工作流', icon: '📋', path: '/workflows' },
       { key: 'credits', label: '积分', icon: '💎', path: '/credits' }
     ]

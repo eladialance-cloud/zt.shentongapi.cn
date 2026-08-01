@@ -28,8 +28,8 @@ export const antdTheme: ThemeConfig = {
 
     // Background
     colorBgBase: '#161B22',
-    colorBgContainer: '#1C2333',
-    colorBgElevated: '#21283A',
+    colorBgContainer: '#161B22',
+    colorBgElevated: '#1C2333',
     colorBgLayout: '#0D1117',
     colorBgSpotlight: '#21283A',
 
@@ -84,7 +84,7 @@ export const antdTheme: ThemeConfig = {
     },
     Card: {
       borderRadiusLG: 8,
-      colorBgContainer: '#1C2333',
+      colorBgContainer: '#161B22',
       colorBorderSecondary: '#30363D',
       boxShadowTertiary: '0 2px 8px rgba(0, 0, 0, 0.3)',
     },

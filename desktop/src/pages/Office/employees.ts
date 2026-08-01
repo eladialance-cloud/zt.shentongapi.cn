@@ -1,17 +1,17 @@
 /**
- * 5 AI 员工定义 (v0.3.1 Task 8)
+ * 默认5个AI员工定义 + 动态团队员工创建
  */
 
 import type { AIEmployee } from './types';
 import { COLORS, WORKSTATION_XS, WORKSTATION_Y } from './office-2d-config';
 
-/** 创建初始员工实例 (statusStartTime 调用时填) */
+/** 创建初始员工实例 */
 function makeEmployees(now: number): AIEmployee[] {
   return [
     {
       id: 'business',
       name: '商务AI',
-      emoji: '💼',
+      emoji: '\u{1F454}',
       role: 'business',
       themeColor: COLORS.business,
       themeColorLight: COLORS.businessLight,
@@ -29,7 +29,7 @@ function makeEmployees(now: number): AIEmployee[] {
     {
       id: 'content',
       name: '内容AI',
-      emoji: '📝',
+      emoji: '\u{1F4DD}',
       role: 'content',
       themeColor: COLORS.content,
       themeColorLight: COLORS.contentLight,
@@ -47,7 +47,7 @@ function makeEmployees(now: number): AIEmployee[] {
     {
       id: 'delivery',
       name: '交付AI',
-      emoji: '🚚',
+      emoji: '\u{1F6EE}',
       role: 'delivery',
       themeColor: COLORS.delivery,
       themeColorLight: COLORS.deliveryLight,
@@ -58,102 +58,105 @@ function makeEmployees(now: number): AIEmployee[] {
       statusStartTime: now,
       path: [],
       todayCompleted: 15,
-      todoCount: 2,
+      todoCount: 1,
       moveSpeed: 60,
       charTemplateDir: 'office/iso/characters/ai-employee-03',
     },
     {
       id: 'finance',
       name: '财务AI',
-      emoji: '💰',
+      emoji: '\u{1F4B0}',
       role: 'finance',
       themeColor: COLORS.finance,
       themeColorLight: COLORS.financeLight,
       workstation: { x: WORKSTATION_XS[3], y: WORKSTATION_Y },
       currentPos: { x: WORKSTATION_XS[3], y: WORKSTATION_Y },
       targetPos: { x: WORKSTATION_XS[3], y: WORKSTATION_Y },
-      status: 'IDLE',
+      status: 'IN_MEETING',
       statusStartTime: now,
       path: [],
-      todayCompleted: 6,
-      todoCount: 1,
+      todayCompleted: 5,
+      todoCount: 7,
       moveSpeed: 60,
       charTemplateDir: 'office/iso/characters/ai-employee-04',
     },
     {
       id: 'service',
       name: '客服AI',
-      emoji: '🎧',
+      emoji: '\u{1F4AC}',
       role: 'service',
       themeColor: COLORS.service,
       themeColorLight: COLORS.serviceLight,
       workstation: { x: WORKSTATION_XS[4], y: WORKSTATION_Y },
       currentPos: { x: WORKSTATION_XS[4], y: WORKSTATION_Y },
       targetPos: { x: WORKSTATION_XS[4], y: WORKSTATION_Y },
-      status: 'WORKING',
+      status: 'RESTING',
       statusStartTime: now,
       path: [],
-      todayCompleted: 24,
-      todoCount: 7,
+      todayCompleted: 20,
+      todoCount: 0,
       moveSpeed: 60,
       charTemplateDir: 'office/iso/characters/ai-employee-05',
     },
   ];
 }
 
-/** 工位装饰 (角色相关) — 由 renderer 读取, 此处仅声明 */
-export interface WorkstationDecor {
-  employeeId: string;
-  /** 桌面物件名 */
-  items: string[];
-  /** 显示器内容描述 */
-  screenLabel: string;
-}
+/** 默认AI员工列表 */
+export const AI_EMPLOYEES = makeEmployees(Date.now());
 
-export const WORKSTATION_DECORS: WorkstationDecor[] = [
-  {
-    employeeId: 'business',
-    items: ['名片夹', '电话', '合同夹'],
-    screenLabel: '客户漏斗图',
-  },
-  {
-    employeeId: 'content',
-    items: ['素材板', '迷你相机', '调色板'],
-    screenLabel: '内容编辑预览',
-  },
-  {
-    employeeId: 'delivery',
-    items: ['项目看板', '计时器', '甘特图'],
-    screenLabel: '项目进度',
-  },
-  {
-    employeeId: 'finance',
-    items: ['计算器', '财报架', '图表册'],
-    screenLabel: '收支趋势',
-  },
-  {
-    employeeId: 'service',
-    items: ['工单架', '耳麦', 'FAQ手册'],
-    screenLabel: '工单队列',
-  },
-];
-
-/** 工厂函数: 创建一份初始员工 */
-export function createEmployees(): AIEmployee[] {
-  return makeEmployees(Date.now());
-}
-
-/** 默认员工列表 (兼容静态导入; statusStartTime=0, 由组件创建时覆盖) */
-export const AI_EMPLOYEES: AIEmployee[] = makeEmployees(0);
-
-/** 默认任务流边 (员工之间流转关系) */
-export function createDefaultTaskFlowEdges() {
+/** 创建默认任务流边 */
+export function createDefaultTaskFlowEdges(): Array<{ id: string; fromEmployeeId: string; toEmployeeId: string; active: boolean; particles: Array<{ progress: number }> }> {
   return [
-    { id: 'tf-business-content', fromEmployeeId: 'business', toEmployeeId: 'content', active: true,  particles: [{ progress: 0.0 }] },
-    { id: 'tf-content-delivery', fromEmployeeId: 'content',  toEmployeeId: 'delivery', active: true, particles: [{ progress: 0.3 }] },
-    { id: 'tf-delivery-finance', fromEmployeeId: 'delivery', toEmployeeId: 'finance', active: false, particles: [] },
-    { id: 'tf-business-finance', fromEmployeeId: 'business', toEmployeeId: 'finance', active: true,  particles: [{ progress: 0.6 }] },
-    { id: 'tf-delivery-service', fromEmployeeId: 'delivery', toEmployeeId: 'service', active: true,  particles: [{ progress: 0.1 }] },
-    { id: 'tf-service-business', fromEmployeeId: 'service',  toEmployeeId: 'business', active: false, particles: [] },
+    { id: 'flow-1', fromEmployeeId: 'content', toEmployeeId: 'delivery', active: true, particles: [] },
+    { id: 'flow-2', fromEmployeeId: 'business', toEmployeeId: 'content', active: true, particles: [] },
+    { id: 'flow-3', fromEmployeeId: 'delivery', toEmployeeId: 'finance', active: false, particles: [] },
+    { id: 'flow-4', fromEmployeeId: 'service', toEmployeeId: 'business', active: true, particles: [] },
   ];
+}
+
+/** 创建员工 (刷新时间戳) */
+export function createEmployees(now?: number): AIEmployee[] {
+  return makeEmployees(now ?? Date.now());
+}
+
+/**
+ * 从团队数据创建动态员工
+ * 循环使用5套精灵图模板
+ */
+export function createEmployeesFromTeam(
+  members: Array<{ id: number; name: string; role?: string }>,
+  now?: number
+): AIEmployee[] {
+  const ts = now ?? Date.now();
+  const colorKeys = ['business', 'content', 'delivery', 'finance', 'service'] as const;
+  const templateDirs = [
+    'office/iso/characters/ai-employee-01',
+    'office/iso/characters/ai-employee-02',
+    'office/iso/characters/ai-employee-03',
+    'office/iso/characters/ai-employee-04',
+    'office/iso/characters/ai-employee-05',
+  ];
+
+  return members.map((m, idx) => {
+    const colorKey = colorKeys[idx % colorKeys.length];
+    const xIdx = Math.min(idx, WORKSTATION_XS.length - 1);
+    return {
+      id: `team-${m.id}`,
+      name: m.name,
+      emoji: '\u{1F916}',
+      role: m.role || 'team_member',
+      themeColor: COLORS[colorKey],
+      themeColorLight: (COLORS as Record<string, string>)[`${colorKey}Light`] || COLORS.businessLight,
+      workstation: { x: WORKSTATION_XS[xIdx], y: WORKSTATION_Y },
+      currentPos: { x: WORKSTATION_XS[xIdx], y: WORKSTATION_Y },
+      targetPos: { x: WORKSTATION_XS[xIdx], y: WORKSTATION_Y },
+      status: 'IDLE' as const,
+      statusStartTime: ts,
+      path: [],
+      todayCompleted: 0,
+      todoCount: 0,
+      moveSpeed: 60,
+      charTemplateDir: templateDirs[idx % templateDirs.length],
+    };
+  });
 }

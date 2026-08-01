@@ -1,10 +1,10 @@
 /**
- * AI 办公室 2D 画布 — 8 状态机 (v0.3.1 Task 9)
+ * AI办公室 2D画布 - 状态机 (9种状态)
  *
  * 优先级:
- *   P0: IN_MEETING (0), IDLE (1)  — 用户对话可打断
+ *   P0: IN_MEETING (0), IDLE (1)  - 用户对话可打断
  *   P1: WORKING/WORKING_DEEP (2), MOVING/VISITING/AT_RESOURCE (3)
- *   P2: RESTING (4)              — 永不主动打断
+ *   P2: RESTING (4)               - 永不主动打断
  *   OFFLINE (5)
  */
 
@@ -23,7 +23,7 @@ export const STATE_PRIORITY: Record<AIEmployeeStatus, number> = {
   OFFLINE: 5,
 };
 
-/** 状态中文名 */
+/** 状态中文名称 */
 export const STATE_LABELS: Record<AIEmployeeStatus, string> = {
   IDLE: '空闲',
   WORKING: '工作中',
@@ -79,7 +79,7 @@ export function getStatusHaloColor(status: AIEmployeeStatus): string {
  */
 export function canTransition(current: AIEmployeeStatus, next: AIEmployeeStatus): boolean {
   if (current === next) return true;
-  // OFFLINE 可被切换到 IDLE (恢复), 或被强制切换到任意状态 (用户干预)
+  // OFFLINE 可被切换到 IDLE (恢复), 或被强制切换到任意状态(用户干预)
   if (current === 'OFFLINE') return true;
   if (next === 'OFFLINE') return true;
   const currentPriority = STATE_PRIORITY[current];
@@ -87,7 +87,7 @@ export function canTransition(current: AIEmployeeStatus, next: AIEmployeeStatus)
   return nextPriority <= currentPriority;
 }
 
-/** 状态切换动画时长 (ms) */
+/** 状态切换动画时长(ms) */
 export function transitionDuration(current: AIEmployeeStatus, next: AIEmployeeStatus): number {
   if (next === 'OFFLINE') return 800;     // 离线淡出
   if (current === 'OFFLINE') return 800;  // 上线伸展
@@ -103,7 +103,7 @@ export type EmployeePose =
   | 'sit_deep'        // 深度工作 (红色光晕)
   | 'stand_move'      // 站立移动
   | 'stand_visit'     // 拜访 (气泡)
-  | 'sit_meeting'     // 会议室就坐
+  | 'sit_meeting'     // 会议室就座
   | 'stand_resource'  // 查阅资源
   | 'sit_rest'        // 休息喝咖啡
   | 'lie_offline';    // 趴下离线

@@ -1,4 +1,4 @@
-﻿// 本地服务管理器 - 管理 OpenClaw / N8N / MCP Gateway / Hermes Agent 四个本地服务进程
+// 本地服务管理器 - 管理 OpenClaw / N8N / MCP Gateway / Hermes Agent 四个本地服务进程
 //
 // 实现说明（Task 16）：
 // - 三个服务均通过 child_process.spawn 启动子进程
@@ -278,7 +278,29 @@ export class ServiceManager extends EventEmitter {
       return true;
     }
 
-    const resolved = resolve(name);
+    // Buffer to collect stderr output for error diagnostics
+    let stderrBuf = "";
+    
+    // Hermes requires Python 3.11+ - pre-flight check
+    if (name === "hermes") {
+      const { spawnSync } = await import("node:child_process");
+      const pythonCheck = spawnSync("python", ["-c", "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)"], { timeout: 5000, windowsHide: true });
+      if (pythonCheck.status !== 0) {
+        info.status = "error";
+        info.error = "Hermes Agent 需要 Python 3.11+。请运行 runtime\\hermes\\setup-python.bat 自动安装。";  
+        this.emitStatus(name);
+        return false;
+      }
+      // Check pip package
+      const pipCheck = spawnSync("python", ["-c", "import hermes_cli"], { timeout: 5000, windowsHide: true });
+      if (pipCheck.status !== 0) {
+        info.status = "error";
+        info.error = "Hermes Python 包未安装。请运行 runtime\\hermes\\setup-python.bat 自动安装。";
+        this.emitStatus(name);
+        return false;
+      }
+    }
+const resolved = resolve(name);
     if (!resolved) {
       info.status = "error";
       info.error = "运行时未安装";
@@ -329,7 +351,7 @@ export class ServiceManager extends EventEmitter {
       console.error(`[service-manager] ${name} spawn error:`, err);
       this.processes.delete(name);
       info.status = "error";
-      info.error = err.message;
+      info.error = `启动失败(cmd=${resolved.cmd}): ${err.message}`;
       info.pid = undefined;
       this.emitStatus(name);
     });
@@ -357,7 +379,9 @@ export class ServiceManager extends EventEmitter {
       // 非主动退出：标记 error 并尝试自动重启
       if (wasRunning) {
         info.status = "error";
-        info.error = `进程异常退出 (code=${code} signal=${signal})`;
+        const stderrSnippet = stderrBuf ? stderrBuf.slice(-500).trim() : "";
+        const detail = stderrSnippet ? ` | stderr: ${stderrSnippet}` : "";
+        info.error = `进程异常退出 (code=${code} signal=${signal})${detail}`;
         this.emitStatus(name);
         void this.tryAutoRestart(name);
       }

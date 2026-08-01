@@ -24,6 +24,7 @@ import KnowledgeSearch from "@/pages/Knowledge/Search";
 import AgentCreatorList from "@/pages/AgentCreator";
 import AgentCreatorCreate from "@/pages/AgentCreator/Create";
 import AgentCreatorRevenue from "@/pages/AgentCreator/Revenue";
+import AgentMarket from "@/pages/AgentMarket";
 import HermesList from "@/pages/Hermes";
 import HermesDetail from "@/pages/Hermes/Detail";
 import HermesSkillMarket from "@/pages/Hermes/SkillMarket";
@@ -33,6 +34,7 @@ import Office from "@/pages/Office";
 import ChannelDetail from "@/pages/Channels/Detail";
 import ChannelList from "@/pages/Channels";
 import PublishList from "@/pages/Channels/Publish";
+import McpConfig from "@/pages/McpConfig";
 import TeamBoard from "@/pages/Team/Board";
 import Settings from "@/pages/Settings";
 import ServiceManager from "@/pages/ServiceManager";
@@ -146,6 +148,10 @@ const router = createHashRouter([
       { path: "/channels", element: <ChannelList /> },
       { path: "/channels/:id", element: <ChannelDetail /> },
       { path: "/publish", element: <PublishList /> },
+      // ===== Agent 市场 / MCP 市场 / 自动化 =====
+      { path: "/agent-market", element: <AgentMarket /> },
+      { path: "/mcp-market", element: <McpConfig /> },
+      { path: "/automation", element: <Navigate to="/workflows" replace /> },
       // ===== Task 14: OPC =====
       // OPC 路径重定向到团队
       { path: "/opc", element: <Navigate to="/team" replace /> },
