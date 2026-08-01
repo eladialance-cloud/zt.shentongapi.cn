@@ -4,7 +4,7 @@
 // - 三个服务均通过 child_process.spawn 启动子进程
 // - 启动命令可配置（SERVICE_COMMANDS），按候选命令依次尝试
 // - 每秒采样 CPU/内存（Windows: wmic / Linux: /proc/<pid>/stat）
-// - 异常退出自动重启（最多 3 次，间隔 5 秒），超过后 emit 'service-error'
+// - 异常退出自动重启（最多 5 次，间隔 5 秒），超过后 emit 'service-error'
 // - 状态变更 emit 'status-changed'，由主进程入口转发到渲染进程
 
 import { EventEmitter } from "node:events";
@@ -50,8 +50,9 @@ const MCP_ENV: NodeJS.ProcessEnv = {
 };
 
 /** 自动重启配置 */
-const MAX_RESTART_RETRIES = 3;
+const MAX_RESTART_RETRIES = 5;
 const RESTART_INTERVAL_MS = 5000;
+const MAX_LOG_LINES = 200;
 
 /** 端口连通性检测 */
 function isPortListening(port: number, host = "127.0.0.1"): Promise<boolean> {
@@ -146,6 +147,8 @@ export class ServiceManager extends EventEmitter {
   private intentionalStop: Set<ServiceName> = new Set();
   /** 自动重启已重试次数 */
   private restartCounts: Map<ServiceName, number> = new Map();
+  /** stdout/stderr log buffer per service (capped at  lines) */
+  private logBuffers: Map<ServiceName, string[]> = new Map();
   /** 上一次 CPU 采样（用于差值计算 CPU%） */
   private lastCpuSample: Map<ServiceName, { time: number; cpuMs: number }> =
     new Map();
@@ -281,26 +284,7 @@ export class ServiceManager extends EventEmitter {
     // Buffer to collect stderr output for error diagnostics
     let stderrBuf = "";
     
-    // Hermes requires Python 3.11+ - pre-flight check
-    if (name === "hermes") {
-      const { spawnSync } = await import("node:child_process");
-      const pythonCheck = spawnSync("python", ["-c", "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)"], { timeout: 5000, windowsHide: true });
-      if (pythonCheck.status !== 0) {
-        info.status = "error";
-        info.error = "Hermes Agent 需要 Python 3.11+。请运行 runtime\\hermes\\setup-python.bat 自动安装。";  
-        this.emitStatus(name);
-        return false;
-      }
-      // Check pip package
-      const pipCheck = spawnSync("python", ["-c", "import hermes_cli"], { timeout: 5000, windowsHide: true });
-      if (pipCheck.status !== 0) {
-        info.status = "error";
-        info.error = "Hermes Python 包未安装。请运行 runtime\\hermes\\setup-python.bat 自动安装。";
-        this.emitStatus(name);
-        return false;
-      }
-    }
-const resolved = resolve(name);
+    const resolved = resolve(name);
     if (!resolved) {
       info.status = "error";
       info.error = "运行时未安装";
@@ -308,7 +292,42 @@ const resolved = resolve(name);
       return false;
     }
 
-    // 合并环境变量：N8N_ENV / MCP_ENV 优先于 resolved.env
+    // Hermes requires Python 3.11+ - use bundled Python if available
+    if (name === "hermes") {
+      const { spawnSync } = await import("node:child_process");
+      const fs = await import("node:fs");
+      const pathMod = await import("node:path");
+      
+      // Priority: bundled Python > system PATH
+      let pythonCmd = "python";
+      const hermesDir = resolved?.cmd ? pathMod.dirname(resolved.cmd) : "";
+      const bundledPyPath = pathMod.join(hermesDir, "..", "python", "python.exe");
+      if (fs.existsSync(bundledPyPath)) {
+        pythonCmd = bundledPyPath;
+      }
+      
+      const pythonCheck = spawnSync(pythonCmd, ["-c", "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)"], { timeout: 5000, windowsHide: true });
+      if (pythonCheck.status !== 0) {
+        const py3Check = spawnSync("python3", ["-c", "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)"], { timeout: 5000, windowsHide: true });
+        if (py3Check.status !== 0) {
+          info.status = "error";
+          info.error = "Hermes Agent 需要 Python 3.11+。请运行 runtime\\hermes\\setup-python.bat 自动安装。";
+          this.emitStatus(name);
+          return false;
+        }
+        pythonCmd = "python3";
+      }
+      
+      const pipCheck = spawnSync(pythonCmd, ["-c", "import importlib, sys; pkg = importlib.util.find_spec('hermes_cli') or importlib.util.find_spec('hermes_agent'); sys.exit(0 if pkg else 1)"], { timeout: 8000, windowsHide: true });
+      if (pipCheck.status !== 0) {
+        info.status = "error";
+        info.error = "Hermes Python 包未安装。请运行 runtime\\hermes\\setup-python.bat 自动安装。";
+        this.emitStatus(name);
+        return false;
+      }
+    }
+
+        // 合并环境变量：N8N_ENV / MCP_ENV 优先于 resolved.env
     const env =
       name === "n8n"
         ? { ...resolved.env, ...N8N_ENV }
@@ -336,14 +355,20 @@ const resolved = resolve(name);
     info.error = undefined;
     this.emitStatus(name);
 
-    // 监听子进程输出
-    child.stdout?.on("data", (chunk: Buffer) => {
-      const text = chunk.toString().trim();
-      if (text) console.log(`[${name}] ${text}`);
+    child.stdout?.on("data", (out: Buffer) => {
+      const stdoutLines = this.logBuffers.get(name) ?? [];
+      stdoutLines.push(out.toString());
+      if (stdoutLines.length > MAX_LOG_LINES) stdoutLines.shift();
+      this.logBuffers.set(name, stdoutLines);
     });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      const text = chunk.toString().trim();
-      if (text) console.warn(`[${name}] ${text}`);
+
+    child.stderr?.on("data", (err: Buffer) => {
+      const text = err.toString();
+      stderrBuf += text;
+      const stderrLines = this.logBuffers.get(name) ?? [];
+      stderrLines.push(text);
+      if (stderrLines.length > MAX_LOG_LINES) stderrLines.shift();
+      this.logBuffers.set(name, stderrLines);
     });
 
     // spawn 错误（如命令不存在）
@@ -509,6 +534,11 @@ const resolved = resolve(name);
     return this.start(name);
   }
 
+
+  /** Get captured log lines for a service */
+  getLogs(name: ServiceName): string[] {
+    return this.logBuffers.get(name) ?? [];
+  }
   async checkEnvironment(): Promise<ServiceEnvCheck> {
     const result = await verifyAll();
     return { openclaw: result.openclaw, n8n: result.n8n, mcp: result.mcp, hermes: result.hermes };

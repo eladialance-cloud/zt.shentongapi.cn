@@ -23,8 +23,8 @@ export const antdTheme: ThemeConfig = {
     colorTextBase: '#E6EDF3',
     colorText: '#E6EDF3',
     colorTextSecondary: '#8B949E',
-    colorTextTertiary: '#6E7681',
-    colorTextQuaternary: '#484F58',
+    colorTextTertiary: '#8B949E',
+    colorTextQuaternary: '#6E7681',
 
     // Background
     colorBgBase: '#161B22',

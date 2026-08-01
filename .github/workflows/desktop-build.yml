@@ -198,6 +198,52 @@ jobs:
         continue-on-error: true
         # CDN 可能未就绪，失败不阻断（安装后首次启动会在线下载）
 
+      # ===== 6.5 Download Hermes Python Runtime =====
+      # 将 Python 3.11 嵌入版打包进安装包，避免用户机器没有 Python 时 Hermes 无法启动
+      - name: 🐍 Download Hermes Python Runtime
+        run: |
+          $pythonDir = "runtime\hermes\python"
+          $pythonVersion = "3.11.9"
+          $pythonUrl = "https://www.python.org/ftp/python/$pythonVersion/python-$pythonVersion-embed-amd64.zip"
+          $tempFile = "$env:TEMP\hermes-python.zip"
+
+          if (Test-Path "$pythonDir\python.exe") {
+            Write-Host "✅ Bundled Python already exists at $pythonDir"
+            & "$pythonDir\python.exe" --version
+            exit 0
+          }
+
+          Write-Host "📥 Downloading Python $pythonVersion embeddable..."
+          New-Item -ItemType Directory -Force -Path $pythonDir | Out-Null
+          Invoke-WebRequest -Uri $pythonUrl -OutFile $tempFile -UseBasicParsing -TimeoutSec 120
+
+          Write-Host "📦 Extracting Python..."
+          Expand-Archive -Path $tempFile -DestinationPath $pythonDir -Force
+          Remove-Item $tempFile -ErrorAction SilentlyContinue
+
+          # Enable pip by modifying python._pth (remove the # before "import site")
+          $pthFile = Get-ChildItem $pythonDir -Filter "python*.pth" | Select-Object -First 1
+          if ($pthFile) {
+            (Get-Content $pthFile.FullName) -replace '#import site', 'import site' | Set-Content $pthFile.FullName
+            Write-Host "✅ Enabled site-packages in $($pthFile.Name)"
+          }
+
+          # Install pip
+          Write-Host "📥 Installing pip..."
+          Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile "$env:TEMP\get-pip.py" -UseBasicParsing -TimeoutSec 120
+          & "$pythonDir\python.exe" "$env:TEMP\get-pip.py" --no-warn-script-location
+          Remove-Item "$env:TEMP\get-pip.py" -ErrorAction SilentlyContinue
+
+          # Install hermes-agent
+          $hermesVersion = "0.19.0"
+          Write-Host "📥 Installing hermes-agent==$hermesVersion..."
+          & "$pythonDir\python.exe" -m pip install "hermes-agent==$hermesVersion" --no-warn-script-location
+
+          & "$pythonDir\python.exe" --version
+          Write-Host "✅ Hermes Python runtime ready at $pythonDir"
+        shell: pwsh
+        continue-on-error: true
+
       # ===== 7. Inject API Base URL =====
       - name: ⚙️ Inject API Config
         if: ${{ github.event.inputs.api_base || true }}

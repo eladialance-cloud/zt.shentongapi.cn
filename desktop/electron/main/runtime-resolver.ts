@@ -172,7 +172,7 @@ export function resolve(name: ServiceName): ResolvedRuntime | null {
     if (fs.existsSync(builtinPath)) {
       return {
         cmd: builtinPath,
-        args: [],
+        args: name === "n8n" ? ["start"] : [],
         env: { ...process.env },
         source: "builtin",
       };
@@ -183,7 +183,7 @@ export function resolve(name: ServiceName): ResolvedRuntime | null {
     if (fs.existsSync(userDataPath)) {
       return {
         cmd: userDataPath,
-        args: [],
+        args: name === "n8n" ? ["start"] : [],
         env: { ...process.env },
         source: "userData",
       };

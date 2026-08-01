@@ -9,6 +9,9 @@
   --color-brand-hover: #6B86FF;
   --color-brand-active: #3D5BD9;
   --color-brand-light: rgba(79, 110, 247, 0.12);
+  --color-accent: #22D3EE;
+  --color-accent-light: rgba(34, 211, 238, 0.12);
+  --color-brand-secondary: #A78BFA;
   --color-brand-bg: rgba(79, 110, 247, 0.08);
 
   /* -------- Semantic colors (dark-tuned) -------- */

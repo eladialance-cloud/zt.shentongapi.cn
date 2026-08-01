@@ -24,7 +24,7 @@ export function createMainWindow(
     show: false,
     autoHideMenuBar: true,
     title: "深瞳AI-智能中台",
-    backgroundColor: "#f1f5f9",
+    backgroundColor: "#0D1117",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       contextIsolation: true,
