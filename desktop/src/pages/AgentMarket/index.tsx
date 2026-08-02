@@ -207,7 +207,7 @@ export default function AgentMarket() {
                 agent={agent}
                 onUse={() => handleUse(agent)}
                 onToggleFav={() => handleToggleFav(agent)}
-                onOpenDetail={() => navigate(`/agents/${agent.id}`)}
+                onOpenDetail={() => navigate(`/agent-market/${agent.id}`)}
               />
             ))}
           </div>

@@ -1,7 +1,7 @@
-// 璺敱閰嶇疆
-// 榛樿璺敱锛歰nboarding_completed=false 閲嶅畾鍚戝埌 /onboarding锛屽惁鍒欏埌 /dashboard
-// 绠＄悊绔矾鐢卞墠缂€ /admin/*锛屼娇鐢?AdminRouteGuard + AdminLayout 鍖呰９
-// Task 34: 鐢ㄦ埛绔凡璁よ瘉璺敱浣跨敤 MainLayout 鍖呰９锛堥《鏍?渚ц竟鏍?鍐呭鍖?搴曟爮锛?
+// 路由配置
+// 默认路由：onboarding_completed=false 重定向到 /onboarding，否则到 /dashboard
+// 管理端路由前缀 /admin/*，使用 AdminRouteGuard + AdminLayout 包裹
+// Task 34: 用户端已认证路由使用 MainLayout 包裹（顶栏+侧边栏+内容区+底栏）
 import { createHashRouter, Navigate } from "react-router-dom";
 import type { ReactNode } from "react";
 import Onboarding from "@/pages/Onboarding";
@@ -25,6 +25,7 @@ import AgentCreatorList from "@/pages/AgentCreator";
 import AgentCreatorCreate from "@/pages/AgentCreator/Create";
 import AgentCreatorRevenue from "@/pages/AgentCreator/Revenue";
 import AgentMarket from "@/pages/AgentMarket";
+import AgentDetail from "@/pages/AgentMarket/Detail";
 import HermesList from "@/pages/Hermes";
 import HermesDetail from "@/pages/Hermes/Detail";
 import HermesSkillMarket from "@/pages/Hermes/SkillMarket";
@@ -41,7 +42,7 @@ import ServiceManager from "@/pages/ServiceManager";
 import MainLayout from "@/components/MainLayout";
 import { useOnboardingStore, useAuthStore } from "@/store";
 
-// 绠＄悊绔〉闈㈠鍏
+// 管理端页面导入
 import AdminLogin from "@/pages/admin/Login";
 import AdminLayout from "@/pages/admin/Layout";
 import { AdminRouteGuard } from "@/pages/admin/components/AdminRouteGuard";
@@ -91,8 +92,8 @@ function RootRedirect() {
 }
 
 /**
- * 鐢ㄦ埛绔矾鐢卞畧鍗細鏈櫥褰曡烦杞?/login
- * 妫€鏌?authStore.isAuthenticated锛坅ccessToken 瀛樺湪鍗充负 true锛? */
+ * 用户端路由守卫：未登录跳转 /login
+ * 检查 authStore.isAuthenticated（accessToken 存在即为 true） */
 function RequireAuth({ children }: { children: ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   if (!isAuthenticated) {
@@ -102,17 +103,17 @@ function RequireAuth({ children }: { children: ReactNode }) {
 }
 
 const router = createHashRouter([
-  // 鏍硅矾鐢憋細鏍规嵁寮曞鐘舵€侀噸瀹氬悜
+  // 根路由：根据引导状态重定向
   { path: "/", element: <RootRedirect /> },
 
-  // ===== 鍏紑璺敱锛堜笉浣跨敤 MainLayout锛?====
+  // ===== 公开路由（不使用 MainLayout） =====
   { path: "/onboarding", element: <Onboarding /> },
   { path: "/login", element: <Login /> },
   { path: "/register", element: <Register /> },
   { path: "/forgot-password", element: <ForgotPassword /> },
   { path: "/reset-password", element: <ResetPassword /> },
 
-  // ===== 鐢ㄦ埛绔凡璁よ瘉璺敱锛圡ainLayout 鍖呰９锛?====
+  // ===== 用户端已认证路由（MainLayout 包裹） =====
   {
     element: (
       <RequireAuth>
@@ -123,19 +124,19 @@ const router = createHashRouter([
       { path: "/dashboard", element: <Dashboard /> },
       { path: "/chat", element: <Chat /> },
       { path: "/credits", element: <Credits /> },
-      // ===== Task 9: 宸ヤ綔娴?=====
+      // ===== Task 9: 工作流 =====
       { path: "/workflow", element: <WorkflowList /> },
       { path: "/workflow/editor", element: <WorkflowEditor /> },
       { path: "/workflow/:id", element: <WorkflowDetail /> },
-      // ===== Task 10: 鎻掍欢 =====
+      // ===== Task 10: 插件 =====
       { path: "/plugins", element: <PluginMarket /> },
       { path: "/plugins/installed", element: <InstalledPlugins /> },
       { path: "/plugins/logs", element: <PluginLogs /> },
-      // ===== Task 11: 鐭ヨ瘑搴?=====
+      // ===== Task 11: 知识库 =====
       { path: "/knowledge", element: <KnowledgeList /> },
       { path: "/knowledge/:id/documents", element: <KnowledgeDocuments /> },
       { path: "/knowledge/:id/search", element: <KnowledgeSearch /> },
-      // ===== Task 12: Agent 鍒涘缓 =====
+      // ===== Task 12: Agent 创建 =====
       { path: "/creator", element: <AgentCreatorList /> },
       { path: "/creator/create", element: <AgentCreatorCreate /> },
       { path: "/creator/:id/edit", element: <AgentCreatorCreate /> },
@@ -150,6 +151,7 @@ const router = createHashRouter([
       { path: "/publish", element: <PublishList /> },
       // ===== Agent 市场 / MCP 市场 / 自动化 =====
       { path: "/agent-market", element: <AgentMarket /> },
+      { path: "/agent-market/:id", element: <AgentDetail /> },
       { path: "/mcp-market", element: <McpConfig /> },
       { path: "/automation", element: <Navigate to="/workflows" replace /> },
       // ===== Task 14: OPC =====
@@ -160,14 +162,14 @@ const router = createHashRouter([
       { path: "/team", element: <TeamList /> },
       { path: "/team/:id", element: <TeamDetail /> },
       { path: "/team/:id/board", element: <TeamBoard /> },
-      // ===== Task 15: 涓汉璁剧疆 =====
+      // ===== Task 15: 个人设置 =====
       { path: "/settings", element: <Settings /> },
-      // ===== Task 16: 鏈嶅姟绠＄悊 =====
+      // ===== Task 16: 服务管理 =====
       { path: "/services", element: <ServiceManager /> },
     ],
   },
 
-  // ===== 绠＄悊绔紙Task 17-28锛岀嫭绔嬪竷灞€锛屼笉浣跨敤 MainLayout锛?====
+  // ===== 管理端（Task 17-28，独立布局，不使用 MainLayout） =====
   { path: "/admin/login", element: <AdminLogin /> },
   {
     path: "/admin",
@@ -178,32 +180,35 @@ const router = createHashRouter([
     ),
     children: [
       { index: true, element: <Navigate to="/admin/dashboard" replace /> },
-      // Task 17: 浠〃鐩?+ 瑙掕壊 + 鎿嶄綔鏃ュ織
+      // Task 17: 仪表盘 + 角色 + 操作日志
       { path: "dashboard", element: <AdminDashboard /> },
       { path: "roles", element: <AdminRoles /> },
       { path: "operation-logs", element: <AdminOperationLogs /> },
-      // Task 18: 鐢ㄦ埛绠＄悊
+      // Task 18: 用户管理
       { path: "users", element: <AdminUsers /> },
       { path: "users/levels", element: <AdminUserLevels /> },
       { path: "users/credits", element: <AdminUserCredits /> },
       { path: "users/orders", element: <AdminUserOrders /> },
       { path: "users/devices", element: <AdminUserDevices /> },
-      // Task 19: API Key 姹?      { path: "api-key-pool", element: <AdminApiKeyPool /> },
+      // Task 19: API Key 池
+      { path: "api-key-pool", element: <AdminApiKeyPool /> },
       { path: "api-key-pool/stats", element: <AdminApiKeyPoolStats /> },
-      // Task 20: Agent 甯傚満绠＄悊
+      // Task 20: Agent 市场管理
       { path: "agents", element: <AdminAgents /> },
       { path: "agents/review", element: <AdminAgentsReview /> },
       { path: "agents/pricing", element: <AdminAgentsPricing /> },
       { path: "agents/categories", element: <AdminAgentsCategories /> },
-      // Task 21: 宸ヤ綔娴佹ā鏉跨鐞?      { path: "workflows", element: <AdminWorkflows /> },
+      // Task 21: 工作流模板管理
+      { path: "workflows", element: <AdminWorkflows /> },
       { path: "workflows/review", element: <AdminWorkflowsReview /> },
       { path: "workflows/stats", element: <AdminWorkflowsStats /> },
-      // Task 22: 鎻掍欢绠＄悊
+      // Task 22: 插件管理
       { path: "plugins", element: <AdminPlugins /> },
       { path: "plugins/review", element: <AdminPluginsReview /> },
       { path: "plugins/sync", element: <AdminPluginsSync /> },
-      // Task 23: 澶фā鍨嬮厤缃?      { path: "models", element: <AdminModels /> },
-      // Task 24: 绉垎璐㈠姟绠＄悊
+      // Task 23: 大模型配置
+      { path: "models", element: <AdminModels /> },
+      // Task 24: 积分财务管理
       {
         path: "finance",
         element: <Navigate to="/admin/finance/transactions" replace />,
@@ -215,12 +220,12 @@ const router = createHashRouter([
         path: "finance/reconciliation",
         element: <AdminFinanceReconciliation />,
       },
-      // Task 25: 鍐呭瀹℃牳
+      // Task 25: 内容审核
       { path: "audit", element: <Navigate to="/admin/audit/queue" replace /> },
       { path: "audit/sensitive-words", element: <AuditSensitiveWords /> },
       { path: "audit/ai-config", element: <AuditAIConfig /> },
       { path: "audit/queue", element: <AuditQueue /> },
-      // Task 26: 鏁版嵁缁熻杩愯惀
+      // Task 26: 数据统计运营
       {
         path: "stats",
         element: <Navigate to="/admin/stats/overview" replace />,
@@ -229,11 +234,12 @@ const router = createHashRouter([
       { path: "stats/trends", element: <StatsTrends /> },
       { path: "stats/rankings", element: <StatsRankings /> },
       { path: "stats/retention", element: <StatsRetention /> },
-      // Task 27: 瀹㈡埛绔増鏈鐞?      { path: "versions", element: <AdminVersions /> },
+      // Task 27: 客户端版本管理
+      { path: "versions", element: <AdminVersions /> },
       { path: "teams", element: <AdminTeams /> },
       { path: "channels", element: <AdminChannels /> },
       { path: "publish", element: <AdminPublish /> },
-      // Task 28: 绯荤粺閰嶇疆
+      // Task 28: 系统配置
       {
         path: "system",
         element: <Navigate to="/admin/system/config" replace />,

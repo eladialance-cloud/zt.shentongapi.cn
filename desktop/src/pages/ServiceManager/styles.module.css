@@ -311,3 +311,17 @@
 .emptyWrap {
   padding: 60px 0;
 }
+
+/* ===== 安装进度 ===== */
+.installProgress {
+  margin-top: 12px;
+  padding: 8px 10px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 8px;
+}
+
+.installProgress :global(.ant-progress-text) {
+  color: #a5b4fc;
+  font-size: 12px;
+}

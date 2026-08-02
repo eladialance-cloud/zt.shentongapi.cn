@@ -8,7 +8,7 @@
 // - 状态变更 emit 'status-changed'，由主进程入口转发到渲染进程
 
 import { EventEmitter } from 'node:events'
-import { exec, spawn, type ChildProcess } from 'node:child_process'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { createConnection } from 'node:net'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -135,8 +135,9 @@ function sampleProcess(pid: number): Promise<ProcessMetrics | null> {
     if (process.platform === 'win32') {
       // M3 修复：wmic 在 Windows 11 24H2+ 已被移除，改用 PowerShell Get-Process
       // 获取 UserProcessorTime + TotalProcessorTime + WorkingSet64
-      exec(
-        `powershell -NoProfile -NonInteractive -Command "Get-Process -Id ${pid} | Select-Object UserProcessorTime,TotalProcessorTime,WorkingSet64 | ConvertTo-Json"`,
+      execFile(
+        "powershell",
+        ["-NoProfile", "-NonInteractive", "-Command", `Get-Process -Id ${pid} | Select-Object UserProcessorTime,TotalProcessorTime,WorkingSet64 | ConvertTo-Json`],
         { windowsHide: true, timeout: 3000 },
         (err, stdout) => {
           if (err || !stdout) return resolve(null)
@@ -166,7 +167,7 @@ function sampleProcess(pid: number): Promise<ProcessMetrics | null> {
       )
     } else {
       // Linux: /proc/<pid>/stat
-      exec(`cat /proc/${pid}/stat`, { timeout: 2000 }, (err, stdout) => {
+      execFile('cat', [`/proc/${pid}/stat`], { timeout: 2000 }, (err, stdout) => {
         if (err || !stdout) return resolve(null)
         const fields = stdout.trim().split(' ')
         // utime=14, stime=15, rss=24（从 0 开始计数）

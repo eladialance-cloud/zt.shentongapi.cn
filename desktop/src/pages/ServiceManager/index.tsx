@@ -14,6 +14,7 @@ import {
   Popconfirm,
   notification,
   message,
+  Progress,
 } from "antd";
 import {
   RollbackOutlined,
@@ -23,6 +24,7 @@ import {
   CloudServerOutlined,
   ApartmentOutlined,
   ApiOutlined,
+  DownloadOutlined,
 } from "@ant-design/icons";
 import {
   listServices,
@@ -31,6 +33,8 @@ import {
   restartService,
   onServiceStatusChanged,
   onServiceError,
+  installService,
+  onInstallProgress,
 } from "@/api/service-manager-api";
 import type {
   ServiceName,
@@ -73,6 +77,10 @@ export default function ServiceManager() {
   const [services, setServices] = useState<ServiceInfo[]>([]);
   /** 正在执行操作的服务（防止重复点击） */
   const [busy, setBusy] = useState<Set<ServiceName>>(new Set());
+  /** 正在安装/下载运行时的服务 */
+  const [installing, setInstalling] = useState<Set<ServiceName>>(new Set());
+  /** 安装进度（0-100） */
+  const [progress, setProgress] = useState<Partial<Record<ServiceName, number>>>({});
 
   const loadData = useCallback(async () => {
     try {
@@ -116,6 +124,16 @@ export default function ServiceManager() {
         description: `${payload.message}（已重试 ${payload.retryCount} 次）`,
         duration: 0,
       });
+    });
+    return () => {
+      unsub();
+    };
+  }, []);
+
+  // 监听安装进度事件，实时更新进度条
+  useEffect(() => {
+    const unsub = onInstallProgress((payload) => {
+      setProgress((prev) => ({ ...prev, [payload.name]: payload.percent }));
     });
     return () => {
       unsub();
@@ -180,6 +198,27 @@ export default function ServiceManager() {
       message.error(`重启失败: ${(err as Error).message}`);
     } finally {
       setBusyFor(name, false);
+    }
+  };
+
+  const handleInstall = async (name: ServiceName) => {
+    setInstalling((prev) => new Set(prev).add(name));
+    setProgress((prev) => ({ ...prev, [name]: 0 }));
+    try {
+      const ok = await installService(name);
+      if (ok) message.success(`${name} 安装完成并已启动`);
+      else message.warning(`${name} 安装失败，请检查网络或稍后重试`);
+      void loadData();
+    } catch (err) {
+      console.error("[ServiceManager] install failed:", err);
+      message.error(`安装失败: ${(err as Error).message}`);
+    } finally {
+      setInstalling((prev) => {
+        const next = new Set(prev);
+        next.delete(name);
+        return next;
+      });
+      void loadData();
     }
   };
 
@@ -262,6 +301,13 @@ export default function ServiceManager() {
                     </div>
                   </div>
 
+                  {/* 安装进度 */}
+                  {installing.has(svc.name) && (
+                    <div className={styles.installProgress}>
+                      <Progress percent={progress[svc.name] ?? 0} size="small" />
+                    </div>
+                  )}
+
                   {/* 操作按钮 */}
                   <div className={styles.actions}>
                     <Tooltip title="启动">
@@ -301,6 +347,17 @@ export default function ServiceManager() {
                     >
                       重启
                     </Button>
+                    <Tooltip title={isRunning ? "服务运行中，请先停止" : "下载并安装运行时"}>
+                      <Button
+                        className={styles.primaryBtn}
+                        icon={<DownloadOutlined />}
+                        loading={installing.has(svc.name)}
+                        disabled={isRunning || installing.has(svc.name)}
+                        onClick={() => handleInstall(svc.name)}
+                      >
+                        {installing.has(svc.name) ? "安装中" : "安装/修复"}
+                      </Button>
+                    </Tooltip>
                   </div>
                 </Card>
               );

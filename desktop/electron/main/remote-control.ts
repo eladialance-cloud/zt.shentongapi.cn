@@ -275,7 +275,7 @@ export class RemoteControlManager extends EventEmitter {
       ...this.settings,
       feishu: { ...this.settings.feishu },
       wecom: { ...this.settings.wecom },
-      deviceWhitelist: this.settings.deviceWhitelist.map((d: Record<string, unknown>) => ({ ...d }))
+      deviceWhitelist: this.settings.deviceWhitelist.map((d) => ({ ...d }))
     }
   }
 
@@ -288,7 +288,7 @@ export class RemoteControlManager extends EventEmitter {
       feishu: { ...this.settings.feishu, ...(patch.feishu ?? {}) },
       wecom: { ...this.settings.wecom, ...(patch.wecom ?? {}) },
       deviceWhitelist: patch.deviceWhitelist
-        ? patch.deviceWhitelist.map((d: Record<string, unknown>) => ({ ...d }))
+        ? patch.deviceWhitelist.map((d) => ({ ...d }))
         : this.settings.deviceWhitelist
     }
 
