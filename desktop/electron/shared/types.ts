@@ -199,7 +199,7 @@ export interface ElectronAPI {
     getVersion(): Promise<string>;
     checkUpdate(): Promise<void>;
     quitAndInstall(): Promise<void>;
-    disableHardwareAcceleration(): Promise<void>;
+    disableHardwareAcceleration?(): Promise<void>;
   };
   /** 自动更新（electron-updater 封装） */
   updater: {
