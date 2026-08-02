@@ -1,5 +1,5 @@
-// 状态面板浮层 - Task 34.4
-// 从右侧滑出的 Drawer,显示积分余额/服务状态/今日统计
+// 状态面板浮�?- Task 34.4
+// 从右侧滑出的 Drawer,显示积分余额/服务状�?今日统计
 
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -38,9 +38,9 @@ const STATUS_COLOR: Record<ServiceStatus, string> = {
 }
 
 const STATUS_TEXT: Record<ServiceStatus, string> = {
-  running: '运行中',
-  stopped: '已停止',
-  starting: '启动中',
+  running: '运行�?,
+  stopped: '已停�?,
+  starting: '启动�?,
   error: '错误',
   unknown: '未知'
 }
@@ -72,7 +72,7 @@ export default function StatusPanel({ open, onClose }: StatusPanelProps) {
     consumedCredits: 0
   })
 
-  // 加载服务状态 + 订阅变更
+  // 加载服务状�?+ 订阅变更
   useEffect(() => {
     if (!open) return
     let mounted = true
@@ -84,7 +84,7 @@ export default function StatusPanel({ open, onClose }: StatusPanelProps) {
         for (const svc of list) map[svc.name] = svc.status
         setStatuses((prev) => ({ ...prev, ...map }))
       } catch {
-        // electronAPI 不可用,保持 unknown
+        // electronAPI 不可�?保持 unknown
       }
     })()
 
@@ -172,19 +172,19 @@ export default function StatusPanel({ open, onClose }: StatusPanelProps) {
 
   return (
     <Drawer
-      title="状态面板"
+      title="状态面�?
       placement="right"
       open={open}
       onClose={onClose}
       width={360}
       styles={{
         header: {
-          background: '#0a0e1a',
+          background: 'var(--color-bg-root)',
           borderBottom: '1px solid rgba(99,102,241,0.2)',
           color: '#e2e8f0'
         },
-        body: { background: '#0a0e1a', padding: 16 },
-        content: { background: '#0a0e1a' }
+        body: { background: 'var(--color-bg-root)', padding: 16 },
+        content: { background: 'var(--color-bg-root)' }
       }}
     >
       {/* 积分余额 */}
@@ -202,7 +202,7 @@ export default function StatusPanel({ open, onClose }: StatusPanelProps) {
               onClose()
             }}
           >
-            + 充值
+            + 充�?
           </Button>
         </div>
       </div>
@@ -268,7 +268,7 @@ export default function StatusPanel({ open, onClose }: StatusPanelProps) {
             <div className={styles.statsValue}>{todayStats.chatCount}</div>
           </div>
           <div className={styles.statsItem}>
-            <div className={styles.statsLabel}>消耗积分</div>
+            <div className={styles.statsLabel}>消耗积�?/div>
             <div className={styles.statsValue}>
               {todayStats.consumedCredits}
             </div>

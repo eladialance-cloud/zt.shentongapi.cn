@@ -1,7 +1,7 @@
-// 底栏状态指示器（Task 16.4 + Task 34.3）
-// 32px 高底部状态栏：三个服务状态点 + [📊]状态面板按钮 + 版本号
+// 底栏状态指示器（Task 16.4 + Task 34.3�?
+// 32px 高底部状态栏：三个服务状态点 + [📊]状态面板按�?+ 版本�?
 // 点击状态点跳转到服务管理页；通过 IPC service:status-changed 实时更新
-// [📊] 按钮点击弹出状态面板浮层（Task 34.4）
+// [📊] 按钮点击弹出状态面板浮层（Task 34.4�?
 
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -33,9 +33,9 @@ const STATUS_COLOR: Record<ServiceStatus, string> = {
 }
 
 const STATUS_TEXT: Record<ServiceStatus, string> = {
-  running: '运行中',
-  stopped: '已停止',
-  starting: '启动中',
+  running: '运行�?,
+  stopped: '已停�?,
+  starting: '启动�?,
   error: '错误',
   unknown: '未知'
 }
@@ -51,7 +51,7 @@ export default function StatusBar() {
   const [version, setVersion] = useState<string>('0.1.0')
   const [panelOpen, setPanelOpen] = useState(false)
 
-  // 初始加载 + 订阅状态变更
+  // 初始加载 + 订阅状态变�?
   useEffect(() => {
     let mounted = true
     void (async () => {
@@ -62,7 +62,7 @@ export default function StatusBar() {
         for (const svc of list) map[svc.name] = svc.status
         setStatuses((prev) => ({ ...prev, ...map }))
       } catch {
-        // electronAPI 不可用忽略
+        // electronAPI 不可用忽�?
       }
     })()
 
@@ -76,7 +76,7 @@ export default function StatusBar() {
     }
   }, [])
 
-  // 获取版本号（优先 electronAPI，回退 package.json 默认值 0.1.0）
+  // 获取版本号（优先 electronAPI，回退 package.json 默认�?0.1.0�?
   useEffect(() => {
     let mounted = true
     void (async () => {
@@ -84,7 +84,7 @@ export default function StatusBar() {
         const v = await window.electronAPI?.app?.getVersion?.()
         if (mounted && v) setVersion(v)
       } catch {
-        // 忽略，保持默认 0.1.0
+        // 忽略，保持默�?0.1.0
       }
     })()
     return () => {
@@ -101,9 +101,9 @@ export default function StatusBar() {
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '0 16px',
-        background: '#0a0e1a',
-        borderTop: '1px solid rgba(99, 102, 241, 0.15)',
-        color: '#8b949e',
+        background: 'var(--color-bg-root)',
+        borderTop: '1px solid var(--color-border)',
+        color: 'var(--color-text-secondary)',
         fontSize: 12,
         userSelect: 'none'
       }}
@@ -114,7 +114,7 @@ export default function StatusBar() {
           return (
             <Tooltip
               key={name}
-              title={`${SERVICE_LABELS[name]}：${STATUS_TEXT[status]}（点击查看）`}
+              title={`${SERVICE_LABELS[name]}�?{STATUS_TEXT[status]}（点击查看）`}
             >
               <span
                 onClick={() => navigate('/services')}
@@ -143,13 +143,13 @@ export default function StatusBar() {
             </Tooltip>
           )
         })}
-        <Tooltip title="状态面板">
+        <Tooltip title="状态面�?>
           <Button
             type="text"
             size="small"
             icon={<BarChartOutlined />}
             onClick={() => setPanelOpen(true)}
-            style={{ color: '#8b949e', fontSize: 12 }}
+            style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}
           />
         </Tooltip>
       </div>

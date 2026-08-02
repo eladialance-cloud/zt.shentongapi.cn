@@ -1,12 +1,11 @@
-// ç™»å½•é¡µ - èµ›åšç§‘æŠ€æ·±è‰²é£æ ¼
+// µÇÂ¼Ò³ - Èü²©¿Æ¼¼ÉîÉ«·ç¸ñ
 //
-// ç™»å½•æµç¨‹ï¼š
-// 1. è·å–è®¾å¤‡æŒ‡çº¹ï¼ˆwindow.electronAPI.device.getFingerprintï¼‰
-// 2. è·å–è®¾å¤‡åç§°ï¼ˆnavigator.platform å›é€€ï¼‰
-// 3. è°ƒç”¨ POST /auth/login
-// 4. æˆåŠŸï¼šä¿å­˜ token + secretKey â†’ åˆå§‹åŒ–æœ¬åœ° DB â†’ è·³è½¬ dashboard
-// 5. å¤±è´¥ï¼šantd message é”™è¯¯æç¤ºï¼ˆDEVICE_LIMIT_EXCEEDED ç‰¹æ®Šæç¤ºï¼‰
-// 6. æ¼”ç¤ºæ¨¡å¼ï¼šDEMO_TOKEN ç›´æ¥è¿›å…¥ dashboard
+// µÇÂ¼Á÷³Ì£º
+// 1. »ñÈ¡Éè±¸Ö¸ÎÆ£¨window.electronAPI.device.getFingerprint£©
+// 2. »ñÈ¡Éè±¸Ãû³Æ£¨navigator.platform »ØÍË£©
+// 3. µ÷ÓÃ POST /auth/login
+// 4. ³É¹¦£º±£´æ token + secretKey ¡ú ³õÊ¼»¯±¾µØ DB ¡ú Ìø×ª dashboard
+// 5. Ê§°Ü£ºantd message ´íÎóÌáÊ¾£¬DEVICE_LIMIT_EXCEEDED ÌØÊâÌáÊ¾
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -17,10 +16,7 @@ import { useAuthStore, type User } from "@/store/auth";
 import { BusinessError } from "@/utils/errors";
 import styles from "./styles.module.css";
 
-/** æ¼”ç¤ºæ¨¡å¼ tokenï¼ˆä¸è°ƒç”¨åç«¯ APIï¼Œç›´æ¥è¿›å…¥ dashboardï¼‰ */
-const DEMO_TOKEN = "demo-token-shentong-ai";
-
-/** è®¾å¤‡ç±»å‹é”™è¯¯ç  */
+/** Éè±¸ÀàĞÍ´íÎóÂë */
 const DEVICE_LIMIT_EXCEEDED_CODE = 1011;
 
 interface LoginFormValues {
@@ -28,7 +24,7 @@ interface LoginFormValues {
   password: string;
 }
 
-/** åç«¯ login å“åº” */
+/** ºó¶Ë login ÏìÓ¦ */
 interface LoginResponse {
   accessToken: string;
   refreshToken: string;
@@ -36,7 +32,7 @@ interface LoginResponse {
   user: User;
 }
 
-/** è·å–è®¾å¤‡ç±»å‹ï¼ˆæ˜ å°„ navigator.platform â†’ win32/darwin/linuxï¼‰ */
+/** »ñÈ¡Éè±¸ÀàĞÍ£¨Ó³Éä navigator.platform ¡ú win32/darwin/linux£© */
 function getDeviceType(): string {
   const platform = navigator.platform.toLowerCase();
   if (platform.includes("win")) return "win32";
@@ -45,19 +41,15 @@ function getDeviceType(): string {
   return "unknown";
 }
 
-/** è·å–è®¾å¤‡åç§° */
+/** »ñÈ¡Éè±¸Ãû³Æ */
 function getDeviceName(): string {
-  // ä¼˜å…ˆä½¿ç”¨ electronAPIï¼ˆå¦‚æœæš´éœ²äº† getDeviceNameï¼‰
   const deviceApi = window.electronAPI?.device as
-    | {
-        getDeviceName?: () => Promise<string>;
-        getFingerprint: () => Promise<string>;
-      }
+    | { getDeviceName?: () => Promise<string>; getFingerprint: () => Promise<string> }
     | undefined;
   if (deviceApi?.getDeviceName) {
-    return "Desktop"; // getDeviceName æ˜¯å¼‚æ­¥çš„ï¼Œè¿™é‡Œç”¨åŒæ­¥å›é€€
+    return "Desktop";
   }
-  return navigator.platform || "æœªçŸ¥è®¾å¤‡";
+  return navigator.platform || "Î´ÖªÉè±¸";
 }
 
 export default function Login() {
@@ -65,24 +57,21 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
 
-  /** æ‰§è¡Œç™»å½• API è°ƒç”¨ */
+  /** Ö´ĞĞµÇÂ¼ API µ÷ÓÃ */
   const doLogin = async (
     account: string,
     password: string,
   ): Promise<LoginResponse> => {
-    // 1. è·å–è®¾å¤‡æŒ‡çº¹
     let deviceFingerprint: string | undefined;
     try {
       deviceFingerprint = await window.electronAPI.device.getFingerprint();
     } catch {
-      // è·å–æŒ‡çº¹å¤±è´¥ï¼Œç»§ç»­ç™»å½•ï¼ˆåç«¯è®¾å¤‡æ ¡éªŒå¯é€‰ï¼‰
+      // »ñÈ¡Ö¸ÎÆÊ§°Ü£¬¼ÌĞøµÇÂ¼£¨ºó¶ËÉè±¸Ğ£Ñé¿ÉÑ¡£©
     }
 
-    // 2. è·å–è®¾å¤‡ä¿¡æ¯
     const deviceName = getDeviceName();
     const deviceType = getDeviceType();
 
-    // 3. è°ƒç”¨ç™»å½• API
     return httpClient.post<LoginResponse>("/auth/login", {
       account,
       password,
@@ -92,58 +81,40 @@ export default function Login() {
     });
   };
 
-  /** ç™»å½•æˆåŠŸåçš„å¤„ç†ï¼šä¿å­˜ token â†’ åˆå§‹åŒ– DB â†’ è·³è½¬ */
+  /** µÇÂ¼³É¹¦ºóµÄ´¦Àí£º±£´æ token ¡ú ³õÊ¼»¯ DB ¡ú Ìø×ª */
   const handleLoginSuccess = async (data: LoginResponse) => {
-    // ä¿å­˜è®¤è¯ä¿¡æ¯åˆ° storeï¼ˆaccessToken/refreshToken/secretKey/userï¼‰
     setAuth(data.accessToken, data.refreshToken, data.secretKey, data.user);
 
-    // åˆå§‹åŒ–æœ¬åœ°æ•°æ®åº“ï¼ˆä½¿ç”¨ accessToken ä½œä¸ºæ´¾ç”Ÿå¯†é’¥çš„ç§å­ï¼‰
     try {
       await window.electronAPI.db.initialize(data.accessToken);
     } catch {
-      // DB åˆå§‹åŒ–å¤±è´¥ä¸é˜»å¡ç™»å½•ï¼ˆè¿›å…¥é™çº§æ¨¡å¼ï¼‰
-      message.warning("æœ¬åœ°æ•°æ®åº“åˆå§‹åŒ–å¤±è´¥ï¼Œå·²è¿›å…¥é™çº§æ¨¡å¼");
+      message.warning("±¾µØÊı¾İ¿â³õÊ¼»¯Ê§°Ü£¬ÒÑ½øÈë½µ¼¶Ä£Ê½");
     }
 
-    message.success(`æ¬¢è¿å›æ¥ï¼Œ${data.user.username}`);
+    message.success(`»¶Ó­»ØÀ´£¬${data.user.username}`);
     navigate("/dashboard", { replace: true });
   };
 
-  /** è¡¨å•æäº¤ */
+  /** ±íµ¥Ìá½» */
   const handleFinish = async (values: LoginFormValues) => {
     setLoading(true);
     try {
       const data = await doLogin(values.account, values.password);
       await handleLoginSuccess(data);
     } catch (err) {
-      // è®¾å¤‡è¶…é™ç‰¹æ®Šæç¤º
       if (
         err instanceof BusinessError &&
         err.code === DEVICE_LIMIT_EXCEEDED_CODE
       ) {
-        message.error("å·²ç»‘å®šè®¾å¤‡æ•°è¶…è¿‡é™åˆ¶ï¼Œè¯·å…ˆè§£ç»‘æ—§è®¾å¤‡");
+        message.error("ÒÑ°ó¶¨Éè±¸Êı³¬¹ıÏŞÖÆ£¬ÇëÏÈ½â°ó¾ÉÉè±¸");
       } else if (err instanceof BusinessError) {
-        message.error(err.message || "ç™»å½•å¤±è´¥");
+        message.error(err.message || "µÇÂ¼Ê§°Ü");
       } else {
-        message.error("ç™»å½•å¤±è´¥ï¼Œè¯·æ£€æŸ¥ç½‘ç»œåé‡è¯•");
+        message.error("µÇÂ¼Ê§°Ü£¬Çë¼ì²éÍøÂçºóÖØÊÔ");
       }
     } finally {
       setLoading(false);
     }
-  };
-
-  /** æ¼”ç¤ºæ¨¡å¼ç™»å½• */
-  const handleDemoLogin = () => {
-    const demoUser: User = {
-      id: 0,
-      username: "æ¼”ç¤ºç”¨æˆ·",
-      email: "demo@shentong.ai",
-      level: 0,
-      roles: ["user"],
-    };
-    setAuth(DEMO_TOKEN, DEMO_TOKEN, DEMO_TOKEN, demoUser);
-    message.success("å·²è¿›å…¥æ¼”ç¤ºæ¨¡å¼");
-    navigate("/dashboard", { replace: true });
   };
 
   return (
@@ -151,8 +122,8 @@ export default function Login() {
       <div className={styles.card}>
         <div className={styles.header}>
           <RobotOutlined className={styles.logoIcon} />
-          <h2 className={styles.title}>æ·±ç³ AI</h2>
-          <p className={styles.subtitle}>ç™»å½•ä»¥å¼€å§‹ä½ çš„æ™ºèƒ½å¯¹è¯</p>
+          <h2 className={styles.title}>ÉîÍ« AI</h2>
+          <p className={styles.subtitle}>µÇÂ¼ÒÔ¿ªÊ¼ÄãµÄÖÇÄÜ¶Ô»°</p>
         </div>
 
         <Form<LoginFormValues>
@@ -162,21 +133,21 @@ export default function Login() {
         >
           <Form.Item
             name="account"
-            rules={[{ required: true, message: "è¯·è¾“å…¥ç”¨æˆ·åæˆ–é‚®ç®±" }]}
+            rules={[{ required: true, message: "ÇëÊäÈëÓÃ»§Ãû»òÓÊÏä" }]}
           >
             <Input
               prefix={<UserOutlined className={styles.inputPrefix} />}
-              placeholder="ç”¨æˆ·åæˆ–é‚®ç®±"
+              placeholder="ÓÃ»§Ãû»òÓÊÏä"
               className={styles.input}
             />
           </Form.Item>
           <Form.Item
             name="password"
-            rules={[{ required: true, message: "è¯·è¾“å…¥å¯†ç " }]}
+            rules={[{ required: true, message: "ÇëÊäÈëÃÜÂë" }]}
           >
             <Input.Password
               prefix={<LockOutlined className={styles.inputPrefix} />}
-              placeholder="å¯†ç "
+              placeholder="ÃÜÂë"
               className={styles.input}
             />
           </Form.Item>
@@ -188,7 +159,7 @@ export default function Login() {
               loading={loading}
               className={styles.submitBtn}
             >
-              ç™»å½•
+              µÇÂ¼
             </Button>
           </Form.Item>
         </Form>
@@ -198,18 +169,12 @@ export default function Login() {
             className={styles.link}
             onClick={() => navigate("/forgot-password")}
           >
-            å¿˜è®°å¯†ç ï¼Ÿ
+            Íü¼ÇÃÜÂë£¿
           </span>
           <span className={styles.link} onClick={() => navigate("/register")}>
-            æ²¡æœ‰è´¦å·ï¼Ÿç«‹å³æ³¨å†Œ
+            Ã»ÓĞÕËºÅ£¿Á¢¼´×¢²á
           </span>
         </div>
-
-        <div className={styles.divider}>æˆ–</div>
-
-        <Button block onClick={handleDemoLogin} className={styles.demoBtn}>
-          æ¼”ç¤ºæ¨¡å¼ä½“éªŒ
-        </Button>
       </div>
     </div>
   );

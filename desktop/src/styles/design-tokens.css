@@ -144,3 +144,63 @@
   --color-ai-default: #9CA3AF;
   --color-ai-default-light: rgba(156, 163, 175, 0.15);
 }
+
+/* ==========================================================================
+   Light Theme Override (data-theme="light")
+   ========================================================================== */
+:root[data-theme='light'],
+:root .light-theme {
+  /* -------- Brand colors (same across themes) -------- */
+  --color-brand: #4F6EF7;
+  --color-brand-hover: #3D5BD9;
+  --color-brand-active: #2E45B0;
+  --color-brand-light: rgba(79, 110, 247, 0.08);
+  --color-accent: #0891B2;
+  --color-accent-light: rgba(8, 145, 178, 0.08);
+  --color-brand-secondary: #7C3AED;
+  --color-brand-bg: rgba(79, 110, 247, 0.05);
+
+  /* -------- Semantic colors -------- */
+  --color-success: #16A34A;
+  --color-success-light: rgba(22, 163, 74, 0.08);
+  --color-warning: #D97706;
+  --color-warning-light: rgba(217, 119, 6, 0.08);
+  --color-error: #DC2626;
+  --color-error-light: rgba(220, 38, 38, 0.08);
+  --color-info: #2563EB;
+  --color-info-light: rgba(37, 99, 235, 0.08);
+  --color-purple: #7C3AED;
+  --color-purple-light: rgba(124, 58, 237, 0.08);
+
+  /* -------- Text colors -------- */
+  --color-text-primary: #1A1A2E;
+  --color-text-secondary: #4A5568;
+  --color-text-tertiary: #718096;
+  --color-text-quaternary: #A0AEC0;
+  --color-text-disabled: #CBD5E0;
+
+  /* -------- Background colors -------- */
+  --color-bg-base: #F8FAFC;
+  --color-bg-root: #F8FAFC;
+  --color-bg-layout: #F8FAFC;
+  --color-bg-container: #FFFFFF;
+  --color-bg-elevated: #F1F5F9;
+  --color-bg-spotlight: #E2E8F0;
+  --color-bg-overlay: rgba(248, 250, 252, 0.85);
+  --color-bg-hover: rgba(0, 0, 0, 0.04);
+
+  /* -------- Border colors -------- */
+  --color-border: #E2E8F0;
+  --color-border-secondary: #EDF2F7;
+  --color-split: rgba(0, 0, 0, 0.06);
+
+  /* -------- Scrollbar -------- */
+  --color-scrollbar-thumb: #CBD5E0;
+  --color-scrollbar-track: transparent;
+
+  /* -------- Shadows (lighter for light theme) -------- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.12);
+  --shadow-glow-brand: 0 0 24px rgba(79, 110, 247, 0.12);
+}

@@ -1,14 +1,14 @@
-// 本地服务管理器 - 管理 OpenClaw / N8N / MCP Gateway / Hermes Agent 四个本地服务进程
+// 鏈湴鏈嶅姟绠＄悊鍣?- 绠＄悊 OpenClaw / N8N / MCP Gateway / Hermes Agent 鍥涗釜鏈湴鏈嶅姟杩涚▼
 //
-// 实现说明（Task 16）：
-// - 三个服务均通过 child_process.spawn 启动子进程
-// - 启动命令可配置（SERVICE_COMMANDS），按候选命令依次尝试
-// - 每秒采样 CPU/内存（Windows: wmic / Linux: /proc/<pid>/stat）
-// - 异常退出自动重启（最多 5 次，间隔 5 秒），超过后 emit 'service-error'
-// - 状态变更 emit 'status-changed'，由主进程入口转发到渲染进程
+// 瀹炵幇璇存槑锛圱ask 16锛夛細
+// - 涓変釜鏈嶅姟鍧囬€氳繃 child_process.spawn 鍚姩瀛愯繘绋?
+// - 鍚姩鍛戒护鍙厤缃紙SERVICE_COMMANDS锛夛紝鎸夊€欓€夊懡浠や緷娆″皾璇?
+// - 姣忕閲囨牱 CPU/鍐呭瓨锛圵indows: wmic / Linux: /proc/<pid>/stat锛?
+// - 寮傚父閫€鍑鸿嚜鍔ㄩ噸鍚紙鏈€澶?5 娆★紝闂撮殧 5 绉掞級锛岃秴杩囧悗 emit 'service-error'
+// - 鐘舵€佸彉鏇?emit 'status-changed'锛岀敱涓昏繘绋嬪叆鍙ｈ浆鍙戝埌娓叉煋杩涚▼
 
 import { EventEmitter } from "node:events";
-import { exec, spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createConnection } from "node:net";
 import type {
   ServiceName,
@@ -31,9 +31,14 @@ const SERVICE_DEFS: Record<ServiceName, ServiceDef> = {
   hermes: { displayName: "Hermes Agent", port: 8642 },
 };
 
-/** N8N 子进程环境变量 */
+/** N8N 瀛愯繘绋嬬幆澧冨彉閲?*/
 const N8N_ENV: NodeJS.ProcessEnv = {
-  ...process.env,
+  PATH: process.env.PATH,
+  SYSTEMROOT: process.env.SYSTEMROOT,
+  TEMP: process.env.TEMP,
+  TMP: process.env.TMP,
+  USERPROFILE: process.env.USERPROFILE,
+  HOME: process.env.HOME,
   N8N_HOST: "127.0.0.1",
   N8N_PORT: "5678",
   N8N_PROTOCOL: "http",
@@ -42,19 +47,24 @@ const N8N_ENV: NodeJS.ProcessEnv = {
   GENERIC_TIMEZONE: "Asia/Shanghai",
 };
 
-/** MCP 子进程环境变量 */
+/** MCP 瀛愯繘绋嬬幆澧冨彉閲?*/
 const MCP_ENV: NodeJS.ProcessEnv = {
-  ...process.env,
+  PATH: process.env.PATH,
+  SYSTEMROOT: process.env.SYSTEMROOT,
+  TEMP: process.env.TEMP,
+  TMP: process.env.TMP,
+  USERPROFILE: process.env.USERPROFILE,
+  HOME: process.env.HOME,
   MCP_PORT: "3100",
   MCP_HOST: "127.0.0.1",
 };
 
-/** 自动重启配置 */
+/** 鑷姩閲嶅惎閰嶇疆 */
 const MAX_RESTART_RETRIES = 5;
 const RESTART_INTERVAL_MS = 5000;
 const MAX_LOG_LINES = 200;
 
-/** 端口连通性检测 */
+/** 绔彛杩為€氭€ф娴?*/
 function isPortListening(port: number, host = "127.0.0.1"): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = createConnection({ port, host });
@@ -71,7 +81,7 @@ function isPortListening(port: number, host = "127.0.0.1"): Promise<boolean> {
   });
 }
 
-/** 等待端口就绪（轮询） */
+/** 绛夊緟绔彛灏辩华锛堣疆璇級 */
 async function waitForPort(
   port: number,
   timeoutMs = 30000,
@@ -85,21 +95,20 @@ async function waitForPort(
   return false;
 }
 
-/** 进程指标采样结果 */
+/** 杩涚▼鎸囨爣閲囨牱缁撴灉 */
 interface ProcessMetrics {
-  /** CPU 累计时间（毫秒，user+kernel） */
+  /** CPU 绱鏃堕棿锛堟绉掞紝user+kernel锛?*/
   cpuTimeMs: number;
-  /** 内存占用（字节） */
+  /** 鍐呭瓨鍗犵敤锛堝瓧鑺傦級 */
   memBytes: number;
 }
 
-/** 读取单个进程的累计 CPU 时间与内存（跨平台，best-effort） */
+/** 璇诲彇鍗曚釜杩涚▼鐨勭疮璁?CPU 鏃堕棿涓庡唴瀛橈紙璺ㄥ钩鍙帮紝best-effort锛?*/
 function sampleProcess(pid: number): Promise<ProcessMetrics | null> {
   return new Promise((resolve) => {
     if (process.platform === "win32") {
-      // wmic /format:list 输出 Key=Value 形式，更易解析
-      exec(
-        `wmic process where ProcessId=${pid} get UserModeTime,KernelModeTime,WorkingSetSize /format:list`,
+      // wmic /format:list 杈撳嚭 Key=Value 褰㈠紡锛屾洿鏄撹В鏋?
+      execFile("wmic", ["process", "where", `ProcessId=${pid}`, "get", "UserModeTime,KernelModeTime,WorkingSetSize", "/format:list"],
         { windowsHide: true, timeout: 2000 },
         (err, stdout) => {
           if (err || !stdout) return resolve(null);
@@ -115,7 +124,7 @@ function sampleProcess(pid: number): Promise<ProcessMetrics | null> {
           const user = Number(map.UserModeTime) || 0;
           const kernel = Number(map.KernelModeTime) || 0;
           const ws = Number(map.WorkingSetSize) || 0;
-          // wmic 时间单位为 100ns，转换为毫秒
+          // wmic 鏃堕棿鍗曚綅涓?100ns锛岃浆鎹负姣
           const cpuTimeMs = (user + kernel) / 10000;
           if (!cpuTimeMs && !ws) return resolve(null);
           resolve({ cpuTimeMs, memBytes: ws });
@@ -123,10 +132,10 @@ function sampleProcess(pid: number): Promise<ProcessMetrics | null> {
       );
     } else {
       // Linux: /proc/<pid>/stat
-      exec(`cat /proc/${pid}/stat`, { timeout: 2000 }, (err, stdout) => {
+      execFile("cat", [`/proc/${pid}/stat`], { timeout: 2000 }, (err, stdout) => {
         if (err || !stdout) return resolve(null);
         const fields = stdout.trim().split(" ");
-        // utime=14, stime=15, rss=24（从 0 开始计数）
+        // utime=14, stime=15, rss=24锛堜粠 0 寮€濮嬭鏁帮級
         const utime = parseInt(fields[13], 10) || 0;
         const stime = parseInt(fields[14], 10) || 0;
         const rss = parseInt(fields[23], 10) || 0;
@@ -141,18 +150,18 @@ function sampleProcess(pid: number): Promise<ProcessMetrics | null> {
 
 export class ServiceManager extends EventEmitter {
   private services: Map<ServiceName, ServiceInfo> = new Map();
-  /** 运行中的子进程 */
+  /** 杩愯涓殑瀛愯繘绋?*/
   private processes: Map<ServiceName, ChildProcess> = new Map();
-  /** 主动停止标记（避免触发自动重启） */
+  /** 涓诲姩鍋滄鏍囪锛堥伩鍏嶈Е鍙戣嚜鍔ㄩ噸鍚級 */
   private intentionalStop: Set<ServiceName> = new Set();
-  /** 自动重启已重试次数 */
+  /** 鑷姩閲嶅惎宸查噸璇曟鏁?*/
   private restartCounts: Map<ServiceName, number> = new Map();
   /** stdout/stderr log buffer per service (capped at  lines) */
   private logBuffers: Map<ServiceName, string[]> = new Map();
-  /** 上一次 CPU 采样（用于差值计算 CPU%） */
+  /** 涓婁竴娆?CPU 閲囨牱锛堢敤浜庡樊鍊艰绠?CPU%锛?*/
   private lastCpuSample: Map<ServiceName, { time: number; cpuMs: number }> =
     new Map();
-  /** metrics 采样定时器 */
+  /** metrics 閲囨牱瀹氭椂鍣?*/
   private metricsTimer: NodeJS.Timeout | null = null;
 
   constructor() {
@@ -168,19 +177,19 @@ export class ServiceManager extends EventEmitter {
     this.startMetricsSampler();
   }
 
-  /** 启动每秒 metrics 采样 */
+  /** 鍚姩姣忕 metrics 閲囨牱 */
   private startMetricsSampler(): void {
     if (this.metricsTimer) return;
     this.metricsTimer = setInterval(() => {
       void this.sampleAllMetrics();
     }, 1000);
-    // 不阻止进程退出
+    // 涓嶉樆姝㈣繘绋嬮€€鍑?
     if (typeof this.metricsTimer.unref === "function") {
       this.metricsTimer.unref();
     }
   }
 
-  /** 采样所有运行中服务的 CPU/内存 */
+  /** 閲囨牱鎵€鏈夎繍琛屼腑鏈嶅姟鐨?CPU/鍐呭瓨 */
   private async sampleAllMetrics(): Promise<void> {
     for (const [name, child] of this.processes) {
       const pid = child.pid;
@@ -204,7 +213,7 @@ export class ServiceManager extends EventEmitter {
         info.memoryUsage =
           Math.round((sample.memBytes / 1024 / 1024) * 10) / 10;
       } catch {
-        // 采样失败忽略
+        // 閲囨牱澶辫触蹇界暐
       }
     }
   }
@@ -221,7 +230,7 @@ export class ServiceManager extends EventEmitter {
     return this.services.get(name)?.status ?? "unknown";
   }
 
-  /** 检测服务真实运行状态（端口是否监听） */
+  /** 妫€娴嬫湇鍔＄湡瀹炶繍琛岀姸鎬侊紙绔彛鏄惁鐩戝惉锛?*/
   async getServiceStatus(name: ServiceName): Promise<ServiceStatus> {
     const info = this.services.get(name);
     if (!info) return "unknown";
@@ -248,12 +257,12 @@ export class ServiceManager extends EventEmitter {
     const info = this.services.get(name);
     if (!info) return false;
 
-    // 已在运行：直接返回成功
+    // 宸插湪杩愯锛氱洿鎺ヨ繑鍥炴垚鍔?
     if (info.status === "running" && (await isPortListening(info.port))) {
       return true;
     }
 
-    // 重置重试计数
+    // 閲嶇疆閲嶈瘯璁℃暟
     this.restartCounts.delete(name);
     this.intentionalStop.delete(name);
 
@@ -268,12 +277,12 @@ export class ServiceManager extends EventEmitter {
     }
   }
 
-  /** spawn 子进程并等待端口就绪 */
+  /** spawn 瀛愯繘绋嬪苟绛夊緟绔彛灏辩华 */
   private async spawnService(
     name: ServiceName,
     info: ServiceInfo,
   ): Promise<boolean> {
-    // 如果端口已经在监听（外部已启动），直接置为 running
+    // 濡傛灉绔彛宸茬粡鍦ㄧ洃鍚紙澶栭儴宸插惎鍔級锛岀洿鎺ョ疆涓?running
     if (await isPortListening(info.port)) {
       info.status = "running";
       info.startTime = new Date().toISOString();
@@ -287,7 +296,7 @@ export class ServiceManager extends EventEmitter {
     const resolved = resolve(name);
     if (!resolved) {
       info.status = "error";
-      info.error = "运行时未安装";
+      info.error = "杩愯鏃舵湭瀹夎";
       this.emitStatus(name);
       return false;
     }
@@ -311,7 +320,7 @@ export class ServiceManager extends EventEmitter {
         const py3Check = spawnSync("python3", ["-c", "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)"], { timeout: 5000, windowsHide: true });
         if (py3Check.status !== 0) {
           info.status = "error";
-          info.error = "Hermes Agent 需要 Python 3.11+。请运行 runtime\\hermes\\setup-python.bat 自动安装。";
+          info.error = "Hermes Agent 闇€瑕?Python 3.11+銆傝杩愯 runtime\\hermes\\setup-python.bat 鑷姩瀹夎銆?;
           this.emitStatus(name);
           return false;
         }
@@ -321,13 +330,13 @@ export class ServiceManager extends EventEmitter {
       const pipCheck = spawnSync(pythonCmd, ["-c", "import importlib, sys; pkg = importlib.util.find_spec('hermes_cli') or importlib.util.find_spec('hermes_agent'); sys.exit(0 if pkg else 1)"], { timeout: 8000, windowsHide: true });
       if (pipCheck.status !== 0) {
         info.status = "error";
-        info.error = "Hermes Python 包未安装。请运行 runtime\\hermes\\setup-python.bat 自动安装。";
+        info.error = "Hermes Python 鍖呮湭瀹夎銆傝杩愯 runtime\\hermes\\setup-python.bat 鑷姩瀹夎銆?;
         this.emitStatus(name);
         return false;
       }
     }
 
-        // 合并环境变量：N8N_ENV / MCP_ENV 优先于 resolved.env
+        // 鍚堝苟鐜鍙橀噺锛歂8N_ENV / MCP_ENV 浼樺厛浜?resolved.env
     const env =
       name === "n8n"
         ? { ...resolved.env, ...N8N_ENV }
@@ -345,12 +354,12 @@ export class ServiceManager extends EventEmitter {
       });
     } catch (err) {
       info.status = "error";
-      info.error = `启动 ${info.displayName} 失败: ${err instanceof Error ? err.message : String(err)}`;
+      info.error = `鍚姩 ${info.displayName} 澶辫触: ${err instanceof Error ? err.message : String(err)}`;
       this.emitStatus(name);
       return false;
     }
 
-    // 标记 starting
+    // 鏍囪 starting
     info.status = "starting";
     info.error = undefined;
     this.emitStatus(name);
@@ -371,17 +380,17 @@ export class ServiceManager extends EventEmitter {
       this.logBuffers.set(name, stderrLines);
     });
 
-    // spawn 错误（如命令不存在）
+    // spawn 閿欒锛堝鍛戒护涓嶅瓨鍦級
     child.once("error", (err) => {
       console.error(`[service-manager] ${name} spawn error:`, err);
       this.processes.delete(name);
       info.status = "error";
-      info.error = `启动失败(cmd=${resolved.cmd}): ${err.message}`;
+      info.error = `鍚姩澶辫触(cmd=${resolved.cmd}): ${err.message}`;
       info.pid = undefined;
       this.emitStatus(name);
     });
 
-    // 子进程退出
+    // 瀛愯繘绋嬮€€鍑?
     child.once("exit", (code, signal) => {
       console.warn(
         `[service-manager] ${name} exited: code=${code} signal=${signal}`,
@@ -394,19 +403,19 @@ export class ServiceManager extends EventEmitter {
       info.cpuUsage = undefined;
       info.memoryUsage = undefined;
 
-      // 主动停止：不重启
+      // 涓诲姩鍋滄锛氫笉閲嶅惎
       if (this.intentionalStop.has(name)) {
         info.status = "stopped";
         this.emitStatus(name);
         return;
       }
 
-      // 非主动退出：标记 error 并尝试自动重启
+      // 闈炰富鍔ㄩ€€鍑猴細鏍囪 error 骞跺皾璇曡嚜鍔ㄩ噸鍚?
       if (wasRunning) {
         info.status = "error";
         const stderrSnippet = stderrBuf ? stderrBuf.slice(-500).trim() : "";
         const detail = stderrSnippet ? ` | stderr: ${stderrSnippet}` : "";
-        info.error = `进程异常退出 (code=${code} signal=${signal})${detail}`;
+        info.error = `杩涚▼寮傚父閫€鍑?(code=${code} signal=${signal})${detail}`;
         this.emitStatus(name);
         void this.tryAutoRestart(name);
       }
@@ -415,7 +424,7 @@ export class ServiceManager extends EventEmitter {
     this.processes.set(name, child);
     info.pid = child.pid;
 
-    // 等待端口就绪（最多 30 秒）
+    // 绛夊緟绔彛灏辩华锛堟渶澶?30 绉掞級
     const ready = await waitForPort(info.port, 30000, 1000);
     if (ready && this.processes.has(name)) {
       info.status = "running";
@@ -425,7 +434,7 @@ export class ServiceManager extends EventEmitter {
       return true;
     }
 
-    // 未就绪：保留进程继续启动，标记为 starting（前端可继续轮询）
+    // 鏈氨缁細淇濈暀杩涚▼缁х画鍚姩锛屾爣璁颁负 starting锛堝墠绔彲缁х画杞锛?
     if (this.processes.has(name)) {
       info.status = "starting";
       this.emitStatus(name);
@@ -433,20 +442,20 @@ export class ServiceManager extends EventEmitter {
     return false;
   }
 
-  /** 自动重启（最多 MAX_RESTART_RETRIES 次，间隔 RESTART_INTERVAL_MS） */
+  /** 鑷姩閲嶅惎锛堟渶澶?MAX_RESTART_RETRIES 娆★紝闂撮殧 RESTART_INTERVAL_MS锛?*/
   private async tryAutoRestart(name: ServiceName): Promise<void> {
     if (this.intentionalStop.has(name)) return;
     const count = (this.restartCounts.get(name) ?? 0) + 1;
     this.restartCounts.set(name, count);
 
     if (count > MAX_RESTART_RETRIES) {
-      // 超过重试上限：停止重试，推送 error 事件
+      // 瓒呰繃閲嶈瘯涓婇檺锛氬仠姝㈤噸璇曪紝鎺ㄩ€?error 浜嬩欢
       const info = this.services.get(name);
       const payload: ServiceErrorPayload = {
         name,
         message:
           info?.error ||
-          `${info?.displayName ?? name} 自动重启失败，已超过最大重试次数 (${MAX_RESTART_RETRIES})`,
+          `${info?.displayName ?? name} 鑷姩閲嶅惎澶辫触锛屽凡瓒呰繃鏈€澶ч噸璇曟鏁?(${MAX_RESTART_RETRIES})`,
         retryCount: count - 1,
       };
       console.error(
@@ -482,7 +491,7 @@ export class ServiceManager extends EventEmitter {
     const info = this.services.get(name);
     if (!info) return false;
 
-    // 标记主动停止，避免触发自动重启
+    // 鏍囪涓诲姩鍋滄锛岄伩鍏嶈Е鍙戣嚜鍔ㄩ噸鍚?
     this.intentionalStop.add(name);
     this.restartCounts.delete(name);
 
@@ -522,14 +531,15 @@ export class ServiceManager extends EventEmitter {
     info.cpuUsage = undefined;
     info.memoryUsage = undefined;
     info.startTime = undefined;
+    this.logBuffers.delete(name);
     this.emitStatus(name);
     return true;
   }
 
   async restart(name: ServiceName): Promise<boolean> {
     await this.stop(name);
-    // 短暂等待端口释放
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    // 鐭殏绛夊緟绔彛閲婃斁
+    await waitForPort(info.port, 5000, 200);
     this.intentionalStop.delete(name);
     return this.start(name);
   }
@@ -557,11 +567,11 @@ export class ServiceManager extends EventEmitter {
       });
       if (!ok) {
         info.status = "error";
-        info.error = "运行时下载失败";
+        info.error = "杩愯鏃朵笅杞藉け璐?;
         this.emitStatus(name);
         return false;
       }
-      // 下载成功后自动启动
+      // 涓嬭浇鎴愬姛鍚庤嚜鍔ㄥ惎鍔?
       return await this.start(name);
     } catch (err) {
       info.status = "error";
@@ -576,6 +586,7 @@ export class ServiceManager extends EventEmitter {
       this.start("openclaw"),
       this.start("n8n"),
       this.start("mcp"),
+      this.start("hermes"),
     ]);
   }
 
@@ -584,10 +595,11 @@ export class ServiceManager extends EventEmitter {
       this.stop("openclaw"),
       this.stop("n8n"),
       this.stop("mcp"),
+      this.stop("hermes"),
     ]);
   }
 
-  /** 统一发送 status-changed 事件 */
+  /** 缁熶竴鍙戦€?status-changed 浜嬩欢 */
   private emitStatus(name: ServiceName): void {
     const info = this.services.get(name);
     if (!info) return;

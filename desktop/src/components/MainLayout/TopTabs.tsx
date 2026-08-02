@@ -1,6 +1,6 @@
-ï»¿// é¡¶éƒ¨ Tab å¯¼èˆª - æ–¹æ¡ˆB
-// 44px é«˜åº¦, 7 ä¸ªæ ¸å¿ƒ Tab + "æ›´å¤š"ä¸‹æ‹‰
-// ä½¿ç”¨ antd Menu horizontal æ¨¡å¼
+// ¶¥²¿ Tab µ¼º½ - ·½°¸B
+// 44px ¸ß¶È, 7 ¸öºËĞÄ Tab + "¸ü¶à"ÏÂÀ­
+// Ê¹ÓÃ antd Menu horizontal Ä£Ê½
 
 import { useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -31,29 +31,29 @@ interface TabItem {
 }
 
 const CORE_TABS: TabItem[] = [
-  { key: 'dashboard', label: 'é¦–é¡µ', icon: <HomeOutlined />, path: '/dashboard' },
-  { key: 'chat', label: 'å¯¹è¯', icon: <MessageOutlined />, path: '/chat' },
-  { key: 'team', label: 'å›¢é˜Ÿ', icon: <TeamOutlined />, path: '/team' },
-  { key: 'office', label: 'AIåŠå…¬å®¤', icon: <DesktopOutlined />, path: '/office' },
+  { key: 'dashboard', label: 'Ê×Ò³', icon: <HomeOutlined />, path: '/dashboard' },
+  { key: 'chat', label: '¶Ô»°', icon: <MessageOutlined />, path: '/chat' },
+  { key: 'team', label: 'ÍÅ¶Ó', icon: <TeamOutlined />, path: '/team' },
+  { key: 'office', label: 'AI°ì¹«ÊÒ', icon: <DesktopOutlined />, path: '/office' },
   { key: 'creator', label: 'Agent', icon: <RobotOutlined />, path: '/creator' },
-  { key: 'workflow', label: 'å·¥ä½œæµ', icon: <ApartmentOutlined />, path: '/workflow' },
-  { key: 'channels', label: 'æ¸ é“', icon: <SendOutlined />, path: '/channels' },
+  { key: 'workflows', label: '¹¤×÷Á÷', icon: <ApartmentOutlined />, path: '/workflows' },
+  { key: 'channels', label: 'ÇşµÀ', icon: <SendOutlined />, path: '/channels' },
 ]
 
 const MORE_TABS: TabItem[] = [
-  { key: 'plugins', label: 'æ’ä»¶', icon: <ApiOutlined />, path: '/plugins' },
-  { key: 'knowledge', label: 'çŸ¥è¯†åº“', icon: <BookOutlined />, path: '/knowledge' },
-  { key: 'agents', label: 'Agentå¸‚åœº', icon: <AppstoreOutlined />, path: '/agents' },
-  { key: 'mcp-config', label: 'MCPé…ç½®', icon: <ToolOutlined />, path: '/mcp-config' },
-  { key: 'publish', label: 'å‘å¸ƒ', icon: <SendOutlined />, path: '/publish' },
-  { key: 'settings', label: 'è®¾ç½®', icon: <SettingOutlined />, path: '/settings' },
+  { key: 'plugins', label: '²å¼ş', icon: <ApiOutlined />, path: '/plugins' },
+  { key: 'knowledge', label: 'ÖªÊ¶¿â', icon: <BookOutlined />, path: '/knowledge' },
+  { key: 'agent-market', label: 'AgentÊĞ³¡', icon: <AppstoreOutlined />, path: '/agent-market' },
+  { key: 'mcp-market', label: 'MCPÊĞ³¡', icon: <ToolOutlined />, path: '/mcp-market' },
+  { key: 'channels-publish', label: '·¢²¼', icon: <SendOutlined />, path: '/channels/publish' },
+  { key: 'settings', label: 'ÉèÖÃ', icon: <SettingOutlined />, path: '/settings' },
 ]
 
 export default function TopTabs() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  // æ ¹æ®å½“å‰è·¯ç”±åŒ¹é… Tab
+  // ¸ù¾İµ±Ç°Â·ÓÉÆ¥Åä Tab
   const selectedKey = useMemo(() => {
     const allTabs = [...CORE_TABS, ...MORE_TABS]
     const exact = allTabs.find((item) => location.pathname === item.path)

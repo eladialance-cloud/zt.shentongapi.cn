@@ -65,6 +65,7 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, 'src'),
+    publicDir: resolve(__dirname, 'public'),
     // K14 fix: Electron file:// protocol requires relative paths, not absolute '/' pointing to disk root
     base: './',
     plugins: [
