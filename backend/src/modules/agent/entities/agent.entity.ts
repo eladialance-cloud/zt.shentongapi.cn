@@ -82,6 +82,9 @@ export class AgentEntity extends BaseEntity {
   @Column({ name: 'call_count', type: 'int', default: 0 })
   callCount: number;
 
+  @Column({ name: 'download_count', type: 'int', default: 0 })
+  downloadCount: number;
+
   @Column({ type: 'int', default: 0 })
   revenue: number;
 

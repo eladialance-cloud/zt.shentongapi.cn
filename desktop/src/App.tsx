@@ -1,4 +1,4 @@
-// 应用根组�?- 全局配置与路由挂�?
+// 应用根组件 - 全局配置与路由挂载
 
 import { useEffect } from 'react'
 import { ConfigProvider, theme as antdTheme } from 'antd'
@@ -12,7 +12,7 @@ export default function App() {
   const themeMode = useSettingsStore((s) => s.theme)
   const initialize = useAuthStore((s) => s.initialize)
 
-  // 应用启动时：如果有持久化�?refreshToken，自动刷�?accessToken
+  // 应用启动时：如果有持久化的 refreshToken，自动刷新 accessToken
   useEffect(() => {
     void initialize()
   }, [initialize])

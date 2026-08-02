@@ -201,7 +201,7 @@ class SyncService {
     return items.filter((item: SyncQueueRow) => {
       if (item.retry_count <= 0) return true;
       const delay = Math.min(Math.pow(2, item.retry_count) * BASE_BACKOFF_MS, MAX_BACKOFF_MS);
-      const nextRetryAt = new Date(item.updated_at).getTime() + delay;
+      const nextRetryAt = new Date(item.created_at).getTime() + delay;
       return now >= nextRetryAt;
     });
   }

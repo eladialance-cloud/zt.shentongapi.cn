@@ -94,6 +94,30 @@ export async function getUsageLogs(
   })
 }
 
+/**
+ * 下载/安装 Agent
+ * POST /agents/market/:id/install  body: { version?: string }
+ */
+export async function installAgent(id: number, version?: string): Promise<{ installDir: string }> {
+  return httpClient.post<{ installDir: string }>(`/agents/market/${id}/install`, { version })
+}
+
+/**
+ * 查询本地已安装 Agent 列表
+ * GET /agents/installed
+ */
+export async function listInstalledAgents(): Promise<Agent[]> {
+  return httpClient.get<Agent[]>('/agents/installed')
+}
+
+/**
+ * 卸载本地 Agent
+ * DELETE /agents/installed/:id
+ */
+export async function uninstallAgent(id: number): Promise<void> {
+  await httpClient.delete<void>(`/agents/installed/${id}`)
+}
+
 export default {
   listMarketAgents,
   getMarketDetail,
@@ -102,5 +126,8 @@ export default {
   favoriteAgent,
   unfavoriteAgent,
   listMyFavorites,
+  installAgent,
+  listInstalledAgents,
+  uninstallAgent,
   getUsageLogs
 }

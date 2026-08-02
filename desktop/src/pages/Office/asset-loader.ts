@@ -21,7 +21,7 @@ import { Assets, Texture } from 'pixi.js'
 import { ASSET_PATHS, charSpriteUrl, type CharAction, type CharDir } from './asset-config'
 
 /** 素材公共基础路径（相对站点根目录） */
-const OFFICE_ASSET_BASE = '/assets'
+const OFFICE_ASSET_BASE = '/assets/office/iso'
 
 /**
  * 根据运行环境解析素材 URL。

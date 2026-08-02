@@ -1,4 +1,4 @@
-﻿appId: com.shentong.ai
+appId: com.shentong.ai
 productName: 深瞳AI-智能中台
 copyright: Copyright © 2026 Shentong
 directories:
@@ -33,7 +33,7 @@ extraResources:
     to: resources/
   - from: runtime/
     to: runtime/
-    filter: ["**/*", "!**/.gitkeep"]
+    filter: ["manifest.json"]
 win:
   target:
     - target: nsis
@@ -85,6 +85,6 @@ dmg:
       path: /Applications
 publish:
   provider: generic
-  url: https://zt.shentongapi.cn/desktop/
+  url: https://update.shentong.ai/desktop/
   channel: latest
 

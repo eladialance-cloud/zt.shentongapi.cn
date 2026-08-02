@@ -24,6 +24,7 @@ import {
   ThunderboltOutlined,
   HeartOutlined,
   HeartFilled,
+  DownloadOutlined,
   FireOutlined,
   RobotOutlined,
   UserOutlined,
@@ -33,6 +34,7 @@ import {
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   getMarketDetail,
+  installAgent,
   getMarketReviews,
   createReview,
   favoriteAgent,
@@ -50,6 +52,8 @@ export default function AgentDetail() {
   const [agent, setAgent] = useState<Agent | null>(null)
   const [reviews, setReviews] = useState<AgentReview[]>([])
   const [reviewsLoading, setReviewsLoading] = useState(true)
+  const [installing, setInstalling] = useState(false)
+  const [installed, setInstalled] = useState(false)
   const [reviewModalOpen, setReviewModalOpen] = useState(false)
 
   const loadDetail = useCallback(async () => {
@@ -98,6 +102,21 @@ export default function AgentDetail() {
       setAgent({ ...agent, isFavorited: wasFav })
       console.error('[AgentDetail] toggle fav failed:', err)
       message.error('操作失败')
+    }
+  }
+
+  const handleInstall = async () => {
+    if (!agent) return
+    setInstalling(true)
+    try {
+      await installAgent(agent.id)
+      setInstalled(true)
+      message.success('Agent 已安装到本地')
+    } catch (err) {
+      console.error('[AgentDetail] install failed:', err)
+      message.error('安装失败，请检查网络后重试')
+    } finally {
+      setInstalling(false)
     }
   }
 
@@ -226,6 +245,16 @@ export default function AgentDetail() {
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <Button
+              type={installed ? 'default' : 'primary'}
+              icon={<DownloadOutlined />}
+              loading={installing}
+              disabled={installed}
+              onClick={handleInstall}
+              style={{ marginBottom: 0 }}
+            >
+              {installed ? '已安装' : '安装到本地'}
+            </Button>
             <Button
               icon={
                 agent.isFavorited ? <HeartFilled /> : <HeartOutlined />

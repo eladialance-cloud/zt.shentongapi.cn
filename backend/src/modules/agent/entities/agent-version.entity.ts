@@ -30,6 +30,21 @@ export class AgentVersionEntity {
   @Column({ type: 'text', nullable: true })
   changelog?: string;
 
+
+  @Column({ name: 'package_url', length: 1024, nullable: true })
+  packageUrl?: string;
+
+  @Column({ name: 'package_size', type: 'bigint', nullable: true })
+  packageSize?: number;
+
+  @Column({ name: 'package_hash', length: 128, nullable: true })
+  packageHash?: string;
+
+  @Column({ name: 'min_runtime_version', length: 32, nullable: true })
+  minRuntimeVersion?: string;
+
+  @Column({ name: 'required_services', type: 'json', nullable: true })
+  requiredServices?: string[];
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

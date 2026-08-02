@@ -1,168 +1,62 @@
-import { Component, ErrorInfo, ReactNode } from "react";
-import { Button, Result, Collapse, Typography } from "antd";
-import { ReloadOutlined } from "@ant-design/icons";
-
-const { Text, Paragraph } = Typography;
+import { Component, ErrorInfo, ReactNode } from 'react'
+import { Button, Result } from 'antd'
 
 interface Props {
-  children: ReactNode;
+  children: ReactNode
 }
 
 interface State {
-  hasError: boolean;
-  error: Error | null;
-  errorInfo: ErrorInfo | null;
+  hasError: boolean
+  error: Error | null
 }
 
 class GlobalErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
-    super(props);
-    this.state = { hasError: false, error: null, errorInfo: null };
+    super(props)
+    this.state = { hasError: false, error: null }
   }
 
-  static getDerivedStateFromError(error: Error): Partial<State> {
-    return { hasError: true, error };
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error }
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    console.error("[GlobalErrorBoundary] caught error:", error, errorInfo);
-    this.setState({ errorInfo });
+    console.error('[GlobalErrorBoundary] caught error:', error, errorInfo)
   }
 
-  handleRetry = (): void => {
-    this.setState({ hasError: false, error: null, errorInfo: null });
-  };
-
   handleReload = (): void => {
-    window.location.reload();
-  };
+    this.setState({ hasError: false, error: null })
+    window.location.reload()
+  }
+
+  handleGoHome = (): void => {
+    this.setState({ hasError: false, error: null })
+    window.location.hash = '#/'
+  }
 
   render(): ReactNode {
     if (this.state.hasError) {
-      const errorStack = this.state.error?.stack || "";
-      const componentStack = this.state.errorInfo?.componentStack || "";
-      const isDev =
-        typeof import.meta !== "undefined" &&
-        (import.meta as Record<string, unknown>).env != null &&
-        (import.meta as Record<string, Record<string, unknown>>).env.DEV ===
-          true;
-
       return (
-        <div
-          style={{
-            minHeight: "100vh",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "var(--color-bg-container)",
-            padding: 24,
-          }}
-        >
-          <div style={{ maxWidth: 640, width: "100%" }}>
-            <Result
-              status="error"
-              title="Ò³Ãæ·¢Éú´íÎó"
-              subTitle={this.state.error?.message || "Î´Öª´íÎó"}
-              style={{ background: "transparent" }}
-              extra={[
-                <Button
-                  key="retry"
-                  type="primary"
-                  icon={<ReloadOutlined />}
-                  onClick={this.handleRetry}
-                >
-                  ÖØÊÔ
-                </Button>,
-                <Button key="reload" onClick={this.handleReload}>
-                  Ë¢ÐÂÒ³Ãæ
-                </Button>,
-              ]}
-            />
-
-            {isDev && (errorStack || componentStack) && (
-              <Collapse
-                ghost
-                items={[
-                  {
-                    key: "details",
-                    label: "´íÎóÏêÇé£¨µã»÷Õ¹¿ª£©",
-                    children: (
-                      <div
-                        style={{ fontSize: 12, fontFamily: "monospace" }}
-                      >
-                        {errorStack && (
-                          <div style={{ marginBottom: 12 }}>
-                            <Text
-                              strong
-                              style={{
-                                color: "var(--color-text-tertiary)",
-                              }}
-                            >
-                              Error Stack:
-                            </Text>
-                            <Paragraph
-                              code
-                              style={{
-                                whiteSpace: "pre-wrap",
-                                wordBreak: "break-all",
-                                maxHeight: 200,
-                                overflow: "auto",
-                                marginTop: 4,
-                              }}
-                            >
-                              {errorStack}
-                            </Paragraph>
-                          </div>
-                        )}
-                        {componentStack && (
-                          <div>
-                            <Text
-                              strong
-                              style={{
-                                color: "var(--color-text-tertiary)",
-                              }}
-                            >
-                              Component Stack:
-                            </Text>
-                            <Paragraph
-                              code
-                              style={{
-                                whiteSpace: "pre-wrap",
-                                wordBreak: "break-all",
-                                maxHeight: 200,
-                                overflow: "auto",
-                                marginTop: 4,
-                              }}
-                            >
-                              {componentStack}
-                            </Paragraph>
-                          </div>
-                        )}
-                      </div>
-                    ),
-                  },
-                ]}
-              />
-            )}
-
-            {!isDev && (errorStack || componentStack) && (
-              <Text
-                type="secondary"
-                style={{
-                  display: "block",
-                  textAlign: "center",
-                  marginTop: 16,
-                }}
-              >
-                ÈçÎÊÌâ³ÖÐø³öÏÖ£¬ÇëÁªÏµ¼¼ÊõÖ§³Ö
-              </Text>
-            )}
-          </div>
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg-container)' }}>
+          <Result
+            status="error"
+            title="å‡ºé”™äº†"
+            subTitle={this.state.error?.message || ''}
+            style={{ background: 'transparent' }}
+            extra={[
+              <Button key="reload" type="primary" onClick={this.handleReload}>
+                åˆ·æ–°
+              </Button>,
+              <Button key="home" onClick={this.handleGoHome}>
+                è¿”å›žé¦–é¡µ
+              </Button>
+            ]}
+          />
         </div>
-      );
+      )
     }
-    return this.props.children;
+    return this.props.children
   }
 }
 
-export default GlobalErrorBoundary;
+export default GlobalErrorBoundary
