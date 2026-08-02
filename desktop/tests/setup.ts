@@ -263,6 +263,7 @@ export function generateSyncQueueRow(
     retry_count: 0,
     error_message: null,
     created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
     synced_at: null,
     ...overrides
   }
