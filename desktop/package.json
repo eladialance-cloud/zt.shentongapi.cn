@@ -1,6 +1,6 @@
 {
     "name":  "shentong-ai-desktop",
-    "version": "0.5.9",
+    "version":  "0.5.10",
     "description":  "shentong AI desktop app",
     "license":  "MIT",
     "main":  "dist/main/index.js",
@@ -15,7 +15,7 @@
                     "typecheck":  "tsc --noEmit -p tsconfig.node.json \u0026\u0026 tsc --noEmit -p tsconfig.web.json",
                     "test":  "jest",
                     "test:e2e":  "jest --config jest.config.ts --testPathPattern=tests/e2e",
-                                            "fetch-runtime":  "tsx scripts/fetch-runtime.ts",
+                    "fetch-runtime":  "tsx scripts/fetch-runtime.ts",
                     "pack:win":  "powershell -ExecutionPolicy Bypass -File scripts/build-installer.ps1 -Target win",
                     "pack:mac":  "bash scripts/build-installer.sh --target mac",
                     "pack:all":  "bash scripts/build-installer.sh --target all",

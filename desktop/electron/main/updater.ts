@@ -2,13 +2,13 @@
 // 生产环境启用，开发环境跳过（autoUpdater 在未打包时会抛错）
 // 支持：强制更新拦截 / 灰度命中判断 / 下载进度推送 / 自动安装重启
 
-import { app, BrowserWindow, dialog } from 'electron'
+import { app, BrowserWindow, dialog, session } from 'electron'
 import { autoUpdater, type UpdateInfo } from 'electron-updater'
 import * as path from 'node:path'
 import * as fs from 'node:fs'
 import type { UpdateStatusPayload } from '../shared/types'
 
-const UPDATE_SERVER_URL = process.env.UPDATE_SERVER_URL || 'https://update.shentong.ai/desktop/'
+const UPDATE_SERVER_URL = process.env.UPDATE_SERVER_URL || 'https://zt.shentongapi.cn/desktop/'
 
 /** UpdateInfo 扩展字段（服务端通过 latest.yml 下发） */
 interface UpdateInfoExtension extends UpdateInfo {
@@ -47,6 +47,13 @@ export class AppUpdater {
         message: '开发环境不检查更新'
       })
       return
+    }
+
+    // 绕过系统代理直连更新服务器，避免代理 SSL MITM 导致更新失败
+    try {
+      session.defaultSession.setProxy({ proxyRules: 'direct://' })
+    } catch (err) {
+      console.warn('[updater] setProxy failed:', err)
     }
 
     try {
