@@ -229,18 +229,16 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
     if (!agentInstallsTable) {
       await queryRunner.query(`
         CREATE TABLE IF NOT EXISTS agent_installs (
-          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-          user_id BIGINT UNSIGNED NOT NULL,
-          agent_id BIGINT UNSIGNED NOT NULL,
+          id BIGINT NOT NULL AUTO_INCREMENT,
+          user_id BIGINT NOT NULL,
+          agent_id BIGINT NOT NULL,
           version VARCHAR(32) DEFAULT NULL,
           install_dir VARCHAR(512) DEFAULT NULL,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (id),
           UNIQUE KEY uniq_agent_installs_user_agent (user_id, agent_id),
           KEY idx_agent_installs_user_id (user_id),
-          KEY idx_agent_installs_agent_id (agent_id),
-          CONSTRAINT fk_agent_installs_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-          CONSTRAINT fk_agent_installs_agent_id FOREIGN KEY (agent_id) REFERENCES agents (id) ON DELETE CASCADE
+          KEY idx_agent_installs_agent_id (agent_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 安装记录表'
       `);
       logger.log('Created table: agent_installs');
@@ -265,8 +263,8 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
     if (!apiKeysTable) {
       await queryRunner.query(`
         CREATE TABLE IF NOT EXISTS user_api_keys (
-          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-          user_id BIGINT UNSIGNED NOT NULL,
+          id BIGINT NOT NULL AUTO_INCREMENT,
+          user_id BIGINT NOT NULL,
           alias VARCHAR(128) NOT NULL,
           key_hash VARCHAR(64) NOT NULL,
           key_prefix VARCHAR(16) NOT NULL,
@@ -275,8 +273,7 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           PRIMARY KEY (id),
           UNIQUE KEY uniq_user_api_keys_key_hash (key_hash),
-          KEY idx_user_api_keys_user_id (user_id),
-          CONSTRAINT fk_user_api_keys_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+          KEY idx_user_api_keys_user_id (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户 API Key 表'
       `);
       logger.log('Created table: user_api_keys');
