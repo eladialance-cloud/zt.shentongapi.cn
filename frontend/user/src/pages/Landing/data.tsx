@@ -17,6 +17,16 @@ import {
   ThunderboltOutlined,
   TrophyOutlined,
   UserOutlined,
+  BankOutlined,
+  BookOutlined,
+  CameraOutlined,
+  CoffeeOutlined,
+  GlobalOutlined,
+  HeartOutlined,
+  HighlightOutlined,
+  RiseOutlined,
+  ShoppingCartOutlined,
+  VideoCameraOutlined
 } from '@ant-design/icons';
 /* ===== Navbar ===== */
 interface NavItem {
@@ -25,11 +35,9 @@ interface NavItem {
 }
 
 export const navItems: NavItem[] = [
-  { id: 'organization', label: '8大AI员工' },
+  { id: 'team', label: '8大AI员工' },
   { id: 'foundation', label: '基座' },
-  { id: 'organization', label: '组织架构' },
   { id: 'flywheel', label: '业务飞轮' },
-  { id: 'flywheel', label: 'SOP' },
   { id: 'collaboration', label: '协作' },
   { id: 'tech', label: '技术' },
   { id: 'industries', label: '案例' },
@@ -192,24 +200,24 @@ export const techStack = ['OpenClaw', 'Hermes', 'n8n', '飞书表格', 'MCP协�
 
 /* ===== Industries ===== */
 interface IndustryCard {
-  emoji: string;
+  icon: ReactNode;
   name: string;
   en: string;
 }
 
 export const industryCards: IndustryCard[] = [
-  { emoji: '🎓', name: '知识付费/在线教育', en: 'Knowledge & Education' },
-  { emoji: '🛒', name: '电商/私域带货', en: 'E-commerce' },
-  { emoji: '❤️', name: '健康/养生/医美', en: 'Health & Beauty' },
-  { emoji: '🎨', name: '设计/创意工作室', en: 'Design & Studio' },
-  { emoji: '💻', name: '软件开发/SaaS', en: 'Software & SaaS' },
-  { emoji: '🧠', name: '心理咨询/情感服务', en: 'Psychology Service' },
-  { emoji: '🏠', name: '房产/保险/金融', en: 'Real Estate & Finance' },
-  { emoji: '📱', name: '自媒体/个人IP', en: 'Self Media' },
-  { emoji: '📊', name: '营销咨询/代运营', en: 'Marketing Consulting' },
-  { emoji: '📷', name: '摄影/婚庆/活动策划', en: 'Photography & Events' },
-  { emoji: '🍽️', name: '餐饮/本地生活', en: 'F&B Local Life' },
-  { emoji: '✈️', name: '旅游/留学/移民', en: 'Travel & Education' },
+  { icon: <BookOutlined />, name: '知识付费/在线教育', en: 'Knowledge & Education' },
+  { icon: <ShoppingCartOutlined />, name: '电商/私域带货', en: 'E-commerce' },
+  { icon: <HeartOutlined />, name: '健康/养生/医美', en: 'Health & Beauty' },
+  { icon: <HighlightOutlined />, name: '设计/创意工作室', en: 'Design & Studio' },
+  { icon: <CodeOutlined />, name: '软件开发/SaaS', en: 'Software & SaaS' },
+  { icon: <SmileOutlined />, name: '心理咨询/情感服务', en: 'Psychology Service' },
+  { icon: <BankOutlined />, name: '房产/保险/金融', en: 'Real Estate & Finance' },
+  { icon: <VideoCameraOutlined />, name: '自媒体/个人IP', en: 'Self Media' },
+  { icon: <RiseOutlined />, name: '营销咨询/代运营', en: 'Marketing Consulting' },
+  { icon: <CameraOutlined />, name: '摄影/婚庆/活动策划', en: 'Photography & Events' },
+  { icon: <CoffeeOutlined />, name: '餐饮/本地生活', en: 'F&B Local Life' },
+  { icon: <GlobalOutlined />, name: '旅游/留学/移民', en: 'Travel & Education' },
 ];
 /* ===== Flywheel 执行动作（按步骤） ===== */
 export const flywheelDetails: string[][] = [

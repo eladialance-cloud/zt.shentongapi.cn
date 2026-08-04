@@ -437,7 +437,7 @@ export default function Landing() {
           <div className={styles.industryTags}>
             {industryCards.map((card) => (
               <span key={card.name} className={styles.industryTag}>
-                <span className={styles.industryTagEmoji}>{card.emoji}</span>
+                <span className={styles.industryTagIcon}>{card.icon}</span>
                 <span className={styles.industryTagName}>{card.name}</span>
               </span>
             ))}
