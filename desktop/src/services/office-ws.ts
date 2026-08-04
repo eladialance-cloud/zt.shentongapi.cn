@@ -9,7 +9,7 @@
  */
 
 import { io, Socket } from "socket.io-client";
-import type { AIEmployeeStatus } from "@/pages/Office/types";
+import type { AIEmployeeStatus } from "@/components/AIEmployeeCard";
 
 /** WebSocket 推送的状态更新 */
 export interface OfficeStatusUpdate {

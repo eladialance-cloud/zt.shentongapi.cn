@@ -19,10 +19,10 @@
  *   version: <版本号>
  *   files:
  *     - url: <文件名>
- *       sha512: <SHA-512 哈希(hex)>
+ *       sha512: <SHA-512 哈希(base64, electron-updater 规范)>
  *       size: <字节数>
  *   path: <主安装包文件名>
- *   sha512: <主安装包 SHA-512 哈希>
+ *   sha512: <主安装包 SHA-512 哈希(base64)>
  *   releaseDate: '<ISO 8601 时间>'
  */
 
@@ -120,7 +120,7 @@ function computeSha512(filePath: string): Promise<string> {
     const hash = createHash("sha512");
     const stream = createReadStream(filePath);
     stream.on("data", (chunk: Buffer | string) => hash.update(chunk as Buffer));
-    stream.on("end", () => resolve(hash.digest("hex")));
+    stream.on("end", () => resolve(hash.digest("base64")));
     stream.on("error", reject);
   });
 }

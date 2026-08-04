@@ -1,5 +1,7 @@
 # v0.3.1 全链路数据流文档（Task 27）
 
+> **已下线声明（2026-08-04）**：桌面端 `skill-api.ts` / `n8n-api.ts` / `notification-api.ts` / `task-api.ts` 为无页面引用的死代码，已删除。本文档第 2/4/5 节中涉及 `/skills*`、`/n8n/instances*`、`/notifications*`、`/tasks*` 的描述仅为历史设计参考，不再有对应代码。技能相关能力以 `hermes-api.ts`（/hermes/skills/*）与后端 `/skill-store/*` 为准。
+
 > 本文档记录 v0.3.1 规范定义的 15 条全链路数据流，覆盖四大基座
 > （OpenClaw / N8N / MCP / Hermes）、SKILL 系统、知识库与本地同步。
 >
@@ -49,7 +51,7 @@
 | 涉及组件 | MCP Gateway、SKILL 路由器、N8N/Hermes/MCP 基座 |
 | API 调用顺序 | 1. `GET /skills?type=&category=`（查询可用 SKILL）<br>2. 按 `SkillType` 路由：<br>　- flow → `POST /n8n/instances/:id/workflows/:wfId/trigger`<br>　- reasoning → `POST /hermes/instances/:id/execute`<br>　- tool → `POST /mcp/call`<br>3. 结果回传给 AI 员工 |
 | 步骤间数据 | SKILL 元数据（type/config）→ 基座执行入参 → 执行结果（CallLog/executionId/tool output） |
-| 错误处理点 | 基座执行失败由 MCP Gateway 捕获并回传错误；flow 触发失败可回退到 `/workflow/:id/execute` |
+| 错误处理点 | 基座执行失败由 MCP Gateway 捕获并回传错误；flow 触发失败可回退到 `/workflows/:id/execute` |
 | 验证状态 | 已验证（skill-api.ts + n8n-api/hermes-api/mcp-api 路由逻辑） |
 
 ## 3. OpenClaw 派发流
@@ -88,7 +90,7 @@
 | 涉及组件 | N8N 实例、工作流引擎、Webhook 回调端点 |
 | API 调用顺序 | 1. `GET /n8n/instances`（选择实例）<br>2. `GET /n8n/instances/:id/workflows`（选择工作流）<br>3. `POST /n8n/instances/:id/workflows/:wfId/trigger`<br>4. `GET /n8n/instances/:id/executions/:executionId`（轮询状态）<br>5. `POST /n8n/webhook/:instanceId/:workflowId`（公共回调） |
 | 步骤间数据 | inputData → executionId → 节点执行进度 → 最终输出 |
-| 错误处理点 | 触发失败回退到 `/workflow/:id/execute`；执行失败记录 lastExecutionStatus |
+| 错误处理点 | 触发失败回退到 `/workflows/:id/execute`；执行失败记录 lastExecutionStatus |
 | 验证状态 | 已验证（workflow-api.ts `executeWorkflow` 含 N8N 桥接 + 回退） |
 
 ## 6. Hermes 推理流

@@ -106,7 +106,7 @@ function computeSha512(filePath: string): Promise<string> {
     const hash = createHash('sha512')
     const stream = createReadStream(filePath)
     stream.on('data', (chunk) => hash.update(chunk))
-    stream.on('end', () => resolve(hash.digest('hex')))
+    stream.on('end', () => resolve(hash.digest('base64')))
     stream.on('error', reject)
   })
 }

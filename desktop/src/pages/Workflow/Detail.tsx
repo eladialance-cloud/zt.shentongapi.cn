@@ -1,6 +1,6 @@
 // 工作流详情页
 // 展示：模板信息（名称/描述/预览图/输入输出 Schema）+ 执行历史 + 执行按钮
-// 调用 GET /workflow/templates/:id、GET /workflow/executions?workflowId=、POST /workflow/:id/execute
+// 调用 GET /workflows/templates/:id、GET /workflows/executions?workflowId=、POST /workflows/:id/execute
 
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";

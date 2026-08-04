@@ -305,7 +305,7 @@ describe('SubTask 36.4 - 三阶段计费测试', () => {
       expect(state.account.balance).toBe(85) // 100 - 15 + 0 = 85
       expect(state.account.totalConsumed).toBe(15)
       expect(execution.creditsCost).toBe(15)
-      expect(mockHttpPost).toHaveBeenCalledWith('/workflow/1/execute', { input: 'test' })
+      expect(mockHttpPost).toHaveBeenCalledWith('/workflows/1/execute', { input: 'test' })
     })
 
     it('工作流执行失败时应退款', () => {

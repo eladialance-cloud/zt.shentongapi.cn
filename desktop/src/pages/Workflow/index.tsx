@@ -1,6 +1,6 @@
 // 工作流模板列表页
 // 布局：顶部标题 + 筛选/搜索 + 模板卡片网格
-// 调用 GET /workflow/templates?category=&keyword=
+// 调用 GET /workflows/templates?category=&keyword=
 
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -19,6 +19,8 @@ import type {
   WorkflowCategory,
   WorkflowTemplateQuery,
 } from "@/types/workflow";
+import { useSystemStore } from "@/store/system";
+import { NetworkError } from "@/utils/errors";
 import styles from "./styles.module.css";
 
 /** 分类选项 */
@@ -60,6 +62,7 @@ function categoryLabel(category: string): string {
 
 export default function WorkflowList() {
   const navigate = useNavigate();
+  const backendAvailable = useSystemStore((s) => s.backendAvailable);
 
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
   const [loading, setLoading] = useState(false);
@@ -75,13 +78,15 @@ export default function WorkflowList() {
         setTemplates(result.list || []);
       } catch (err) {
         console.error("[Workflow] load templates failed:", err);
-        message.error("加载工作流模板失败");
+        if (!(err instanceof NetworkError) || backendAvailable) {
+          message.error("加载工作流模板失败");
+        }
         setTemplates([]);
       } finally {
         setLoading(false);
       }
     },
-    [],
+    [backendAvailable],
   );
 
   // 初始加载
