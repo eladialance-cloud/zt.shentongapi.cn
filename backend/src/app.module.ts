@@ -1,4 +1,4 @@
-﻿import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -23,25 +23,18 @@ import { CreditsModule } from './modules/credits/credits.module';
 import { PluginModule } from './modules/plugin/plugin.module';
 import { WorkflowModule } from './modules/workflow/workflow.module';
 import { FileModule } from './modules/file/file.module';
-import { LandingModule } from './modules/landing/landing.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { RagModule } from './modules/rag/rag.module';
 import { McpModule } from './modules/mcp/mcp.module';
 import { N8nModule } from './modules/n8n/n8n.module';
+import { SkillStoreModule } from './modules/skill-store/skill-store.module';
+import { OpcModule } from './modules/opc/opc.module';
+import { LandingModule } from './modules/landing/landing.module';
 import { ChannelModule } from './modules/channel/channel.module';
 import { TeamModule } from './modules/team/team.module';
 import { HermesModule } from './modules/hermes/hermes.module';
-import { SkillStoreModule } from './modules/skill-store/skill-store.module';
-import { StatisticsModule } from './modules/statistics/statistics.module';
-import { SystemModule } from './modules/system/system.module';
-import { TenantModule } from './modules/tenant/tenant.module';
-import { DeviceModule } from './modules/device/device.module';
-import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
 import { RuntimeModule } from './modules/runtime/runtime.module';
-import { SyncModule } from './modules/sync/sync.module';
 import { TaskModule } from './modules/task/task.module';
-import { ApiKeyPoolModule } from './modules/api-key-pool/api-key-pool.module';
-import { VersionModule } from './modules/version/version.module';
 import { CodexModule } from './modules/codex/codex.module';
 import { CommunityModule } from './modules/community/community.module';
 import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
@@ -59,6 +52,15 @@ import { AdminOssModule } from './modules/admin-oss/admin-oss.module';
 import { AdminSkillStoreModule } from './modules/admin-skill-store/admin-skill-store.module';
 import { AdminSystemModule } from './modules/admin-system/admin-system.module';
 import { OperationLogInterceptor } from './modules/admin-log/operation-log.interceptor';
+import { StatisticsModule } from './modules/statistics/statistics.module';
+import { SystemModule } from './modules/system/system.module';
+import { TenantModule } from './modules/tenant/tenant.module';
+import { DeviceModule } from './modules/device/device.module';
+import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
+import { SyncModule } from './modules/sync/sync.module';
+import { ApiKeyPoolModule } from './modules/api-key-pool/api-key-pool.module';
+import { VersionModule } from './modules/version/version.module';
+import { SearchModule } from './modules/search/search.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 
@@ -101,23 +103,15 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     RagModule,
     McpModule,
     N8nModule,
+    SkillStoreModule,
+    LandingModule,
     ChannelModule,
     TeamModule,
     HermesModule,
-    StatisticsModule,
-    SystemModule,
-    TenantModule,
-    DeviceModule,
-    ReconciliationModule,
-    SyncModule,
-    ApiKeyPoolModule,
-    VersionModule,
-    CommunityModule,
-    CodexModule,
-    LandingModule,
     RuntimeModule,
-    SkillStoreModule,
     TaskModule,
+    CodexModule,
+    CommunityModule,
     AdminAuthModule,
     AdminRoleModule,
     AdminLogModule,
@@ -132,17 +126,27 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     AdminOssModule,
     AdminSkillStoreModule,
     AdminSystemModule,
+    OpcModule,
+    StatisticsModule,
+    SystemModule,
+    TenantModule,
+    DeviceModule,
+    ReconciliationModule,
+    SyncModule,
+    ApiKeyPoolModule,
+    VersionModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: JwtAuthGuard,
     },
     {
       provide: APP_GUARD,
-      useClass: JwtAuthGuard,
+      useClass: ThrottlerGuard,
     },
     {
       provide: APP_INTERCEPTOR,
@@ -152,8 +156,8 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 })
 export class AppModule implements NestModule {
   /**
-   * 鍏ㄥ眬娉ㄥ唽 HMAC 楠岀涓棿浠讹紙鍦?JwtAuthGuard 涔嬪墠鎵ц锛?
-   * 鏁版嵁鍚堝悓鐪熸簮锛歍ask 32 - 鏁版嵁瀹夊叏璁捐
+   * 全局注册 HMAC 验签中间件（在 JwtAuthGuard 之前执行）
+   * 数据合同真源：Task 32 - 数据安全设计
    */
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(HmacVerifyMiddleware).forRoutes('*');
