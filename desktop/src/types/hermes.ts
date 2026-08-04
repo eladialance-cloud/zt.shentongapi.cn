@@ -25,6 +25,15 @@ export interface HermesInstance {
   skillCount: number
   /** 已挂载技能包 ID 列表 */
   skillIds?: number[]
+
+  /** 执行目标类型：team=OPC团队, workflow=N8N工作流 */
+  executionType?: 'team' | 'workflow'
+  /** 关联 OPC 团队 ID（executionType=team 时存在） */
+  teamId?: number
+  /** 关联 N8N 工作流 ID（executionType=workflow 时存在） */
+  workflowId?: string
+  /** 关联知识库 ID */
+  knowledgeBaseId?: number
   /** 错误信息（status='error' 时存在） */
   errorMessage?: string
   createdAt: string
@@ -36,6 +45,15 @@ export interface CreateInstanceDto {
   name: string
   /** 初始挂载的技能包 ID 列表 */
   skillIds?: number[]
+
+  /** 执行目标类型：team=OPC团队, workflow=N8N工作流 */
+  executionType?: 'team' | 'workflow'
+  /** OPC 团队 ID（executionType=team 时必填） */
+  teamId?: number
+  /** N8N 工作流 ID（executionType=workflow 时必填） */
+  workflowId?: string
+  /** 关联知识库 ID（可选） */
+  knowledgeBaseId?: number
 }
 
 /** 技能包（市场） */

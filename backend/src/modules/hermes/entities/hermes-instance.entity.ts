@@ -30,6 +30,19 @@ export class HermesInstanceEntity extends BaseEntity {
   @Column({ name: 'skill_ids', type: 'json', nullable: true })
   skillIds?: number[];
 
+  @Column({ name: 'execution_type', type: 'varchar', length: 16, nullable: true })
+  executionType?: 'team' | 'workflow';
+
+  @Column({ name: 'team_id', type: 'bigint', nullable: true, transformer: bigintTransformer })
+  teamId?: number;
+
+  @Column({ name: 'workflow_id', type: 'varchar', length: 64, nullable: true })
+  workflowId?: string;
+
+  @Column({ name: 'knowledge_base_id', type: 'bigint', nullable: true, transformer: bigintTransformer })
+  knowledgeBaseId?: number;
+
+
   @Column({ name: 'error_message', length: 512, nullable: true })
   errorMessage?: string;
 

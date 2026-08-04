@@ -397,6 +397,34 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
     for (const [colName, colDef] of teamTaskCols) {
       await ensureColumn('team_tasks', colName, colDef);
     }
+    // Hermes 实例：确保表存在 + 补齐执行目标字段（团队 / N8N 工作流 / 知识库）
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS hermes_instances (
+      id BIGINT NOT NULL AUTO_INCREMENT,
+      user_id BIGINT NOT NULL,
+      name VARCHAR(64) NOT NULL,
+      status ENUM('running','stopped','error') NOT NULL DEFAULT 'stopped',
+      pid INT DEFAULT NULL,
+      skill_count INT NOT NULL DEFAULT 0,
+      skill_ids JSON DEFAULT NULL,
+      error_message VARCHAR(512) DEFAULT NULL,
+      cpu_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
+      memory_used_mb INT NOT NULL DEFAULT 0,
+      memory_total_mb INT NOT NULL DEFAULT 0,
+      started_at DATETIME DEFAULT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Hermes 实例表'`);
+    const hermesInstanceCols: Array<[string, string]> = [
+      ['execution_type', "VARCHAR(16) DEFAULT NULL COMMENT '执行目标类型：team=OPC团队, workflow=N8N工作流'"],
+      ['team_id', "BIGINT DEFAULT NULL COMMENT '关联 OPC 团队 ID'"],
+      ['workflow_id', "VARCHAR(64) DEFAULT NULL COMMENT '关联 N8N 工作流 ID'"],
+      ['knowledge_base_id', "BIGINT DEFAULT NULL COMMENT '关联知识库 ID'"],
+    ];
+    for (const [colName, colDef] of hermesInstanceCols) {
+      await ensureColumn('hermes_instances', colName, colDef);
+    }
+
     logger.log('Startup migrations completed');
   } catch (err) {
     logger.error(`Startup migration failed: ${(err as Error).message}`);

@@ -12,6 +12,7 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Radio,
   Select,
   Spin,
   Tag,
@@ -28,6 +29,12 @@ import {
   ThunderboltOutlined
 } from '@ant-design/icons'
 import * as hermesApi from '@/api/hermes-api'
+import { listTeams } from '@/api/team-api'
+import { listN8nWorkflows } from '@/api/task-api'
+import { listKnowledgeBases } from '@/api/knowledge-api'
+import type { Team } from '@/types/team'
+import type { N8nWorkflowItem } from '@/api/task-api'
+import type { KnowledgeBase } from '@/types/knowledge'
 import type {
   HermesInstance,
   HermesStatus,
@@ -74,6 +81,23 @@ function formatTime(value: unknown): string {
   return d.toLocaleString('zh-CN', { hour12: false })
 }
 
+/** 实例执行目标中文描述 */
+function executionTargetLabel(
+  inst: HermesInstance,
+  teams: Team[],
+  n8nWorkflows: N8nWorkflowItem[]
+): string {
+  if (inst.executionType === 'team') {
+    const t = teams.find((x) => x.id === inst.teamId)
+    return t ? `团队「${t.name}」` : `团队 #${inst.teamId ?? '-'}`
+  }
+  if (inst.executionType === 'workflow') {
+    const w = n8nWorkflows.find((x) => x.workflowId === inst.workflowId)
+    return w ? `N8N「${w.name}」` : `N8N #${inst.workflowId ?? '-'}`
+  }
+  return '未指定'
+}
+
 export default function HermesList() {
   const navigate = useNavigate()
   const backendAvailable = useSystemStore((s) => s.backendAvailable)
@@ -83,7 +107,11 @@ export default function HermesList() {
   const [createForm] = Form.useForm<CreateInstanceDto>()
   const [creating, setCreating] = useState(false)
   const [skills, setSkills] = useState<HermesSkill[]>([])
+  const [teams, setTeams] = useState<Team[]>([])
+  const [n8nWorkflows, setN8nWorkflows] = useState<N8nWorkflowItem[]>([])
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
   const [actionLoading, setActionLoading] = useState<Record<number, boolean>>({})
+  const executionType = Form.useWatch('executionType', createForm)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -110,13 +138,32 @@ export default function HermesList() {
     }
   }, [])
 
+  /** 加载创建实例时可选的执行目标（团队 / N8N 工作流 / 知识库） */
+  const loadOptions = useCallback(async () => {
+    try {
+      const [teamList, wfList, kbList] = await Promise.all([
+        listTeams(),
+        listN8nWorkflows({ pageSize: 200 }).then((r) => r.list || []),
+        listKnowledgeBases(),
+      ])
+      setTeams(teamList || [])
+      setN8nWorkflows(wfList || [])
+      setKnowledgeBases(kbList || [])
+    } catch (err) {
+      console.error('[HermesList] load options failed:', err)
+    }
+  }, [])
+
   useEffect(() => {
     void loadData()
-  }, [loadData])
+    void loadOptions()
+  }, [loadData, loadOptions])
+
 
   /** 打开创建弹窗时加载技能包 */
   const handleOpenCreate = () => {
     void loadSkills()
+    void loadOptions()
     createForm.resetFields()
     setCreateOpen(true)
   }
@@ -128,7 +175,11 @@ export default function HermesList() {
       setCreating(true)
       const dto: CreateInstanceDto = {
         name: values.name,
-        skillIds: values.skillIds || []
+        skillIds: values.skillIds || [],
+        executionType: values.executionType,
+        teamId: values.executionType === 'team' ? values.teamId : undefined,
+        workflowId: values.executionType === 'workflow' ? values.workflowId : undefined,
+        knowledgeBaseId: values.knowledgeBaseId
       }
       const inst = await hermesApi.createInstance(dto)
       message.success(`实例 "${inst.name}" 创建成功`)
@@ -257,6 +308,9 @@ export default function HermesList() {
                     </span>
                   </div>
                   <div className={styles.cardMetaItem}>
+                    <span>执行目标：{executionTargetLabel(inst, teams, n8nWorkflows)}</span>
+                  </div>
+                  <div className={styles.cardMetaItem}>
                     <span>技能包数量：{inst.skillCount}</span>
                   </div>
                   <div className={styles.cardMetaItem}>
@@ -345,6 +399,59 @@ export default function HermesList() {
             ]}
           >
             <Input placeholder="如 my-hermes-01" />
+          </Form.Item>
+          <Form.Item
+            label="执行目标"
+            name="executionType"
+            extra="实例启动后，收到的任务会派给所选团队或 N8N 工作流执行（可不选，稍后在任务里指定）"
+          >
+            <Radio.Group>
+              <Radio value="team">OPC 团队</Radio>
+              <Radio value="workflow">N8N 工作流</Radio>
+            </Radio.Group>
+          </Form.Item>
+          {executionType === 'team' && (
+            <Form.Item
+              label="选择团队"
+              name="teamId"
+              rules={[{ required: true, message: '请选择要调度的团队' }]}
+            >
+              <Select
+                placeholder="选择要调度的 OPC 团队"
+                options={teams.map((t) => ({ label: t.name, value: t.id }))}
+                allowClear
+                style={{ width: '100%' }}
+                notFoundContent={teams.length === 0 ? '暂无团队，请先在「团队」页创建' : undefined}
+              />
+            </Form.Item>
+          )}
+          {executionType === 'workflow' && (
+            <Form.Item
+              label="选择 N8N 工作流"
+              name="workflowId"
+              rules={[{ required: true, message: '请选择 N8N 工作流' }]}
+            >
+              <Select
+                placeholder="选择要调度的 N8N 工作流"
+                options={n8nWorkflows.map((w) => ({ label: w.name, value: w.workflowId }))}
+                allowClear
+                style={{ width: '100%' }}
+                notFoundContent={n8nWorkflows.length === 0 ? '暂无 N8N 工作流' : undefined}
+              />
+            </Form.Item>
+          )}
+          <Form.Item
+            label="知识库（可选）"
+            name="knowledgeBaseId"
+            extra="任务执行时可参考该知识库"
+          >
+            <Select
+              placeholder="选择知识库（可选）"
+              options={knowledgeBases.map((k) => ({ label: k.name, value: k.id }))}
+              allowClear
+              style={{ width: '100%' }}
+              notFoundContent={knowledgeBases.length === 0 ? '暂无知识库，可在「知识库」页创建' : undefined}
+            />
           </Form.Item>
           <Form.Item
             label="初始技能包"

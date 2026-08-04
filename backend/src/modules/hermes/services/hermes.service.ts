@@ -86,6 +86,10 @@ export class HermesService {
       status: 'stopped',
       skillCount: dto.skillIds?.length || 0,
       skillIds: dto.skillIds || [],
+      executionType: dto.executionType,
+      teamId: dto.teamId,
+      workflowId: dto.workflowId,
+      knowledgeBaseId: dto.knowledgeBaseId,
     });
     return this.instanceRepo.save(instance);
   }

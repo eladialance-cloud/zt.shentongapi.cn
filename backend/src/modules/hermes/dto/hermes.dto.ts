@@ -10,6 +10,27 @@ export class CreateInstanceDto {
   @IsOptional()
   @IsArray()
   skillIds?: number[];
+
+  @ApiPropertyOptional({ description: '执行目标类型：team=OPC团队, workflow=N8N工作流' })
+  @IsOptional()
+  @IsEnum(['team', 'workflow'])
+  executionType?: 'team' | 'workflow';
+
+  @ApiPropertyOptional({ description: 'OPC 团队 ID（executionType=team 时必填）' })
+  @IsOptional()
+  @IsNumber()
+  teamId?: number;
+
+  @ApiPropertyOptional({ description: 'N8N 工作流 ID（executionType=workflow 时必填）' })
+  @IsOptional()
+  @IsString()
+  workflowId?: string;
+
+  @ApiPropertyOptional({ description: '关联知识库 ID（可选）' })
+  @IsOptional()
+  @IsNumber()
+  knowledgeBaseId?: number;
+
 }
 
 export class PaginationDto {
