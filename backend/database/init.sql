@@ -47,6 +47,7 @@ CREATE TABLE `users` (
   `needs_tenant_setup` BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否需要重新创建租户资源',
   must_change_password BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否需要修改密码',
   `llm_proxy_key` VARCHAR(64) DEFAULT NULL COMMENT 'LLM代理密钥',
+  `notification_settings` JSON DEFAULT NULL COMMENT '通知设置（JSON）',
   UNIQUE KEY `uniq_users_llm_proxy_key` (`llm_proxy_key`),
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -167,6 +168,10 @@ CREATE TABLE `agents` (
   `sync_status` VARCHAR(16) NOT NULL DEFAULT 'pending' COMMENT 'OpenClaw 同步状态 (pending/synced/failed)',
   `sync_error` VARCHAR(512) DEFAULT NULL COMMENT '同步失败原因',
   `user_id` BIGINT UNSIGNED NOT NULL COMMENT '归属用户 ID',
+  `knowledge_base_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '当前挂载知识库 ID',
+  `pinned` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否置顶',
+  `status` VARCHAR(16) NOT NULL DEFAULT 'active' COMMENT '会话状态',
+  `last_message_at` DATETIME DEFAULT NULL COMMENT '最后消息时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
@@ -580,21 +585,25 @@ CREATE TABLE `opc_team_members` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OPC 团队成员表';
 
 -- -----------------------------------------------------------------------------
--- 24. OPC Agent 仓库表 (opc_agent_repo)
+-- 24. OPC Agent 仓库表 (opc_agent_repos)
 -- -----------------------------------------------------------------------------
-CREATE TABLE `opc_agent_repo` (
+CREATE TABLE `opc_agent_repos` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'OPC Agent 仓库项 ID',
   `team_id` BIGINT UNSIGNED NOT NULL COMMENT '团队 ID',
   `agent_id` BIGINT UNSIGNED NOT NULL COMMENT 'Agent ID',
+  `agent_name` VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Agent 名称快照',
+  `agent_avatar` VARCHAR(512) DEFAULT NULL COMMENT 'Agent 头像快照',
+  `description` VARCHAR(512) DEFAULT NULL COMMENT 'Agent 描述快照',
+  `version` VARCHAR(32) NOT NULL DEFAULT '1' COMMENT 'Agent 版本快照',
   `added_by` BIGINT UNSIGNED NOT NULL COMMENT '添加人 ID',
   `added_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '添加时间',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uniq_opc_agent_repo` (`team_id`, `agent_id`),
-  KEY `idx_opc_agent_repo_team_id` (`team_id`),
-  KEY `idx_opc_agent_repo_agent_id` (`agent_id`),
-  CONSTRAINT `fk_opc_agent_repo_team_id` FOREIGN KEY (`team_id`) REFERENCES `opc_teams` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_opc_agent_repo_agent_id` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_opc_agent_repo_added_by` FOREIGN KEY (`added_by`) REFERENCES `users` (`id`) ON DELETE CASCADE
+  UNIQUE KEY `uniq_opc_agent_repos` (`team_id`, `agent_id`),
+  KEY `idx_opc_agent_repos_team_id` (`team_id`),
+  KEY `idx_opc_agent_repos_agent_id` (`agent_id`),
+  CONSTRAINT `fk_opc_agent_repos_team_id` FOREIGN KEY (`team_id`) REFERENCES `opc_teams` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_opc_agent_repos_agent_id` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_opc_agent_repos_added_by` FOREIGN KEY (`added_by`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OPC Agent 仓库表';
 
 -- =============================================================================
@@ -719,3 +728,113 @@ CREATE TABLE `operation_logs` (
 -- =============================================================================
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- ==================== skill-store 三表（v0.6.0 补齐，与 backend/src/common/utils/db-migration.ts 一致）====================
+CREATE TABLE IF NOT EXISTS `skill_packages` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(64) NOT NULL,
+  `display_name` VARCHAR(512) NOT NULL,
+  `description` VARCHAR(512) NOT NULL,
+  `skill_type` VARCHAR(32) NOT NULL DEFAULT 'skill',
+  `runtime_type` VARCHAR(32) NOT NULL,
+  `category` VARCHAR(32) DEFAULT NULL,
+  `source_url` VARCHAR(512) NOT NULL,
+  `install_path` VARCHAR(512) DEFAULT NULL,
+  `skill_md_path` VARCHAR(512) DEFAULT NULL,
+  `entry_point` VARCHAR(256) DEFAULT NULL,
+  `input_schema` JSON DEFAULT NULL,
+  `output_schema` JSON DEFAULT NULL,
+  `dependencies` JSON DEFAULT NULL,
+  `trigger_keywords` JSON DEFAULT NULL,
+  `examples` JSON DEFAULT NULL,
+  `ui_config` JSON DEFAULT NULL,
+  `opc_agent_config` JSON DEFAULT NULL,
+  `status` ENUM('draft','reviewing','approved','published','unpublished','failed') NOT NULL DEFAULT 'draft',
+  `review_status` ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+  `review_note` VARCHAR(512) DEFAULT NULL,
+  `is_official` TINYINT(1) NOT NULL DEFAULT 0,
+  `call_count` INT NOT NULL DEFAULT 0,
+  `avg_rating` DECIMAL(3,2) NOT NULL DEFAULT 0.00,
+  `version` VARCHAR(32) NOT NULL DEFAULT '1.0.0',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_skill_packages_name` (`name`),
+  KEY `idx_skill_packages_status` (`status`),
+  KEY `idx_skill_packages_skill_type` (`skill_type`),
+  KEY `idx_skill_packages_is_official` (`is_official`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技能商店-技能包';
+
+CREATE TABLE IF NOT EXISTS `skill_sources` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `source_url` VARCHAR(512) NOT NULL,
+  `source_type` VARCHAR(32) NOT NULL DEFAULT 'github',
+  `skill_name` VARCHAR(64) NOT NULL,
+  `skill_desc` VARCHAR(512) NOT NULL,
+  `skill_type` VARCHAR(32) NOT NULL DEFAULT 'skill',
+  `auto_detected_type` VARCHAR(32) DEFAULT NULL,
+  `status` ENUM('pending','analyzing','analyzed','failed') NOT NULL DEFAULT 'pending',
+  `analyze_result` JSON DEFAULT NULL,
+  `error_message` VARCHAR(1024) DEFAULT NULL,
+  `package_id` BIGINT UNSIGNED DEFAULT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_skill_sources_source_url` (`source_url`),
+  KEY `idx_skill_sources_package_id` (`package_id`),
+  KEY `idx_skill_sources_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技能商店-技能来源';
+
+CREATE TABLE IF NOT EXISTS `skill_install_logs` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `package_id` BIGINT UNSIGNED NOT NULL,
+  `user_id` BIGINT UNSIGNED DEFAULT NULL,
+  `action` VARCHAR(32) NOT NULL,
+  `result` VARCHAR(32) NOT NULL DEFAULT 'success',
+  `error_message` VARCHAR(1024) DEFAULT NULL,
+  `duration_ms` INT NOT NULL DEFAULT 0,
+  `detail` JSON DEFAULT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_skill_install_logs_package_id` (`package_id`),
+  KEY `idx_skill_install_logs_user_id` (`user_id`),
+  KEY `idx_skill_install_logs_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技能商店-安装/执行日志';
+
+-- -----------------------------------------------------------------------------
+-- 36. Agent 安装记录表 (agent_installs) - 桌面端安装/卸载闭环
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `agent_installs` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '安装记录 ID',
+  `user_id` BIGINT UNSIGNED NOT NULL COMMENT '用户 ID',
+  `agent_id` BIGINT UNSIGNED NOT NULL COMMENT 'Agent ID',
+  `version` VARCHAR(32) DEFAULT NULL COMMENT '安装版本',
+  `install_dir` VARCHAR(512) DEFAULT NULL COMMENT '安装目录',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_agent_installs_user_agent` (`user_id`, `agent_id`),
+  KEY `idx_agent_installs_user_id` (`user_id`),
+  KEY `idx_agent_installs_agent_id` (`agent_id`),
+  CONSTRAINT `fk_agent_installs_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_agent_installs_agent_id` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 安装记录表';
+
+-- -----------------------------------------------------------------------------
+-- 37. 用户 API Key 表 (user_api_keys) - 设置页 API Key CRUD
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `user_api_keys` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'API Key ID',
+  `user_id` BIGINT UNSIGNED NOT NULL COMMENT '用户 ID',
+  `alias` VARCHAR(128) NOT NULL COMMENT '别名',
+  `key_hash` VARCHAR(64) NOT NULL COMMENT '完整 key 的 SHA-256 哈希',
+  `key_prefix` VARCHAR(16) NOT NULL COMMENT '明文 key 前 8 位（脱敏展示）',
+  `last_used_at` DATETIME DEFAULT NULL COMMENT '最后使用时间',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_user_api_keys_key_hash` (`key_hash`),
+  KEY `idx_user_api_keys_user_id` (`user_id`),
+  CONSTRAINT `fk_user_api_keys_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户 API Key 表';
+

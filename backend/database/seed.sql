@@ -19,7 +19,7 @@ DELETE FROM `revenue_records`;
 DELETE FROM `membership_plans`;
 DELETE FROM `agent_ratings`;
 DELETE FROM `agent_favorites`;
-DELETE FROM `opc_agent_repo`;
+DELETE FROM `opc_agent_repos`;
 DELETE FROM `opc_team_members`;
 DELETE FROM `opc_tasks`;
 DELETE FROM `opc_teams`;
