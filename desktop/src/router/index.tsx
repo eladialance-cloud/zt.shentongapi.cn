@@ -29,7 +29,6 @@ import AgentDetail from "@/pages/AgentMarket/Detail";
 import SkillMarket from "@/pages/SkillMarket";
 import HermesList from "@/pages/Hermes";
 import HermesDetail from "@/pages/Hermes/Detail";
-import HermesSkillMarket from "@/pages/Hermes/SkillMarket";
 import TeamList from "@/pages/Team";
 import TeamDetail from "@/pages/Team/Detail";
 import Office from "@/pages/Office";
@@ -144,7 +143,6 @@ const router = createHashRouter([
       { path: "/creator/revenue", element: <AgentCreatorRevenue /> },
       // ===== Task 13: Hermes =====
       { path: "/hermes", element: <HermesList /> },
-      { path: "/hermes/skills", element: <HermesSkillMarket /> },
       { path: "/hermes/:id", element: <HermesDetail /> },
       { path: "/office", element: <Office /> },
       { path: "/channels", element: <ChannelList /> },

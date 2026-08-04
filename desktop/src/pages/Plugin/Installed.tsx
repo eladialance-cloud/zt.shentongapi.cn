@@ -13,58 +13,25 @@ import {
   Spin,
   Switch,
   Table,
-  Tag,
-  message
+  message,
 } from 'antd'
 import type { TableColumnsType } from 'antd'
 import {
   AppstoreOutlined,
   ArrowLeftOutlined,
   DeleteOutlined,
-  SettingOutlined
+  SettingOutlined,
 } from '@ant-design/icons'
 import * as pluginApi from '@/api/plugin-api'
-import type { Plugin, PluginType } from '@/types/plugin'
+import type { InstalledPluginRow } from '@/types/plugin'
 import styles from './styles.module.css'
-
-/** 类型标签 className 映射 */
-function typeTagClass(type: PluginType): string {
-  switch (type) {
-    case 'tool':
-      return styles.typeTagTool
-    case 'connector':
-      return styles.typeTagConnector
-    case 'knowledge_base':
-      return styles.typeTagKb
-    case 'workflow':
-      return styles.typeTagWorkflow
-    default:
-      return ''
-  }
-}
-
-/** 类型中文显示 */
-function typeLabel(type: PluginType): string {
-  switch (type) {
-    case 'tool':
-      return '工具'
-    case 'connector':
-      return '连接器'
-    case 'knowledge_base':
-      return '知识库'
-    case 'workflow':
-      return '工作流'
-    default:
-      return type
-  }
-}
 
 export default function InstalledPlugins({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate()
-  const [plugins, setPlugins] = useState<Plugin[]>([])
+  const [plugins, setPlugins] = useState<InstalledPluginRow[]>([])
   const [loading, setLoading] = useState(false)
   const [configOpen, setConfigOpen] = useState(false)
-  const [configuring, setConfiguring] = useState<Plugin | null>(null)
+  const [configuring, setConfiguring] = useState<InstalledPluginRow | null>(null)
   const [configForm] = Form.useForm()
   const [savingConfig, setSavingConfig] = useState(false)
 
@@ -72,8 +39,8 @@ export default function InstalledPlugins({ embedded = false }: { embedded?: bool
   const loadPlugins = useCallback(async () => {
     setLoading(true)
     try {
-      const list = await pluginApi.listInstalledPlugins()
-      setPlugins(list || [])
+      const res = await pluginApi.listInstalledPlugins()
+      setPlugins(res?.list || [])
     } catch (err) {
       console.error('[InstalledPlugins] load failed:', err)
       message.error('加载已安装插件失败')
@@ -88,18 +55,18 @@ export default function InstalledPlugins({ embedded = false }: { embedded?: bool
   }, [loadPlugins])
 
   /** 启用/禁用切换 */
-  const handleToggleEnabled = async (plugin: Plugin, enabled: boolean) => {
+  const handleToggleEnabled = async (plugin: InstalledPluginRow, enabled: boolean) => {
     try {
       if (enabled) {
-        await pluginApi.enablePlugin(plugin.id)
-        message.success(`插件 ${plugin.name} 已启用`)
+        await pluginApi.enablePlugin(plugin.pluginId)
+        message.success(`插件 ${plugin.plugin.name} 已启用`)
       } else {
-        await pluginApi.disablePlugin(plugin.id)
-        message.success(`插件 ${plugin.name} 已禁用`)
+        await pluginApi.disablePlugin(plugin.pluginId)
+        message.success(`插件 ${plugin.plugin.name} 已禁用`)
       }
       // 本地同步状态
       setPlugins((prev) =>
-        prev.map((p) => (p.id === plugin.id ? { ...p, isEnabled: enabled } : p))
+        prev.map((p) => (p.id === plugin.id ? { ...p, enabled } : p)),
       )
     } catch (err) {
       console.error('[InstalledPlugins] toggle failed:', err)
@@ -108,10 +75,10 @@ export default function InstalledPlugins({ embedded = false }: { embedded?: bool
   }
 
   /** 卸载插件 */
-  const handleUninstall = async (plugin: Plugin) => {
+  const handleUninstall = async (plugin: InstalledPluginRow) => {
     try {
-      await pluginApi.uninstallPlugin(plugin.id)
-      message.success(`插件 ${plugin.name} 已卸载`)
+      await pluginApi.uninstallPlugin(plugin.pluginId)
+      message.success(`插件 ${plugin.plugin.name} 已卸载`)
       setPlugins((prev) => prev.filter((p) => p.id !== plugin.id))
     } catch (err) {
       console.error('[InstalledPlugins] uninstall failed:', err)
@@ -120,10 +87,10 @@ export default function InstalledPlugins({ embedded = false }: { embedded?: bool
   }
 
   /** 打开配置弹窗 */
-  const handleOpenConfig = (plugin: Plugin) => {
+  const handleOpenConfig = (plugin: InstalledPluginRow) => {
     setConfiguring(plugin)
     configForm.resetFields()
-    // 用当前配置值初始化表单（若 configSchema 中字段为字符串则填字符串）
+    // 用当前配置值初始化表单
     if (plugin.config && typeof plugin.config === 'object') {
       configForm.setFieldsValue(plugin.config)
     }
@@ -136,8 +103,8 @@ export default function InstalledPlugins({ embedded = false }: { embedded?: bool
     try {
       const values = await configForm.validateFields()
       setSavingConfig(true)
-      await pluginApi.updatePluginConfig(configuring.id, values as Record<string, unknown>)
-      message.success(`插件 ${configuring.name} 配置已保存`)
+      await pluginApi.updatePluginConfig(configuring.pluginId, values as Record<string, unknown>)
+      message.success(`插件 ${configuring.plugin.name} 配置已保存`)
       setConfigOpen(false)
       setConfiguring(null)
       // 刷新列表
@@ -151,66 +118,55 @@ export default function InstalledPlugins({ embedded = false }: { embedded?: bool
   }
 
   /** 表格列 */
-  const columns: TableColumnsType<Plugin> = [
+  const columns: TableColumnsType<InstalledPluginRow> = [
     {
       title: '插件名称',
-      dataIndex: 'name',
+      dataIndex: ['plugin', 'name'],
       key: 'name',
-      render: (name: string, record: Plugin) => (
+      render: (name: string, record: InstalledPluginRow) => (
         <span style={{ color: '#e6edf3', fontWeight: 500 }}>
           {name}
-          {record.isOfficial && (
+          {record.plugin.isOfficial && (
             <span className={styles.officialBadge} style={{ marginLeft: 8 }}>
               官方
             </span>
           )}
         </span>
-      )
+      ),
     },
     {
       title: '描述',
-      dataIndex: 'description',
+      dataIndex: ['plugin', 'description'],
       key: 'description',
       ellipsis: true,
       render: (v: string) => (
         <span style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }}>{v}</span>
-      )
-    },
-    {
-      title: '类型',
-      dataIndex: 'type',
-      key: 'type',
-      width: 100,
-      render: (t: PluginType) => (
-        <Tag className={`${styles.typeTag} ${typeTagClass(t)}`}>
-          {typeLabel(t)}
-        </Tag>
-      )
+      ),
     },
     {
       title: '版本',
-      dataIndex: 'version',
+      dataIndex: ['plugin', 'version'],
       key: 'version',
       width: 80,
       render: (v: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>v{v}</span>
     },
     {
       title: '启用',
-      dataIndex: 'isEnabled',
-      key: 'isEnabled',
+      dataIndex: 'enabled',
+      key: 'enabled',
       width: 80,
-      render: (enabled: boolean, record: Plugin) => (
+      render: (enabled: boolean, record: InstalledPluginRow) => (
         <Switch
           checked={!!enabled}
           onChange={(checked) => handleToggleEnabled(record, checked)}
         />
-      )
+      ),
     },
     {
       title: '操作',
       key: 'actions',
       width: 160,
-      render: (_: unknown, record: Plugin) => (
+      render: (_: unknown, record: InstalledPluginRow) => (
         <div style={{ display: 'flex', gap: 8 }}>
           <Button
             size="small"
@@ -228,53 +184,14 @@ export default function InstalledPlugins({ embedded = false }: { embedded?: bool
             cancelText="取消"
             okButtonProps={{ danger: true }}
           >
-            <Button
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-            >
+            <Button size="small" danger icon={<DeleteOutlined />}>
               卸载
             </Button>
           </Popconfirm>
         </div>
-      )
-    }
+      ),
+    },
   ]
-
-  /** 渲染配置表单字段（基于 configSchema，未提供时仅显示一个 JSON 文本框） */
-  const renderConfigFields = () => {
-    if (!configuring) return null
-    const schema = configuring.configSchema as
-      | { properties?: Record<string, { type?: string; title?: string; description?: string }> }
-      | undefined
-
-    if (!schema?.properties || Object.keys(schema.properties).length === 0) {
-      return (
-        <Form.Item
-          label="配置 JSON"
-          name="__config_json"
-          tooltip="直接输入 JSON 格式的配置"
-        >
-          <Input.TextArea
-            rows={6}
-            placeholder='{"apiKey":"xxx"}'
-            className={styles.jsonCell}
-          />
-        </Form.Item>
-      )
-    }
-
-    return Object.entries(schema.properties).map(([key, prop]) => (
-      <Form.Item
-        key={key}
-        label={prop.title || key}
-        name={key}
-        tooltip={prop.description}
-      >
-        <Input.Password placeholder={`请输入 ${prop.title || key}`} />
-      </Form.Item>
-    ))
-  }
 
   return (
     <div className={styles.pageContainer}>
@@ -310,7 +227,7 @@ export default function InstalledPlugins({ embedded = false }: { embedded?: bool
 
       <Spin spinning={loading}>
         <div className={styles.installedTableWrapper}>
-          <Table<Plugin>
+          <Table<InstalledPluginRow>
             columns={columns}
             dataSource={plugins}
             rowKey="id"
@@ -324,7 +241,7 @@ export default function InstalledPlugins({ embedded = false }: { embedded?: bool
 
       {/* 配置弹窗 */}
       <Modal
-        title={configuring ? `配置 - ${configuring.name}` : '配置'}
+        title={configuring ? `配置 - ${configuring.plugin.name}` : '配置'}
         open={configOpen}
         onOk={handleSaveConfig}
         onCancel={() => {
@@ -338,7 +255,17 @@ export default function InstalledPlugins({ embedded = false }: { embedded?: bool
         className={styles.configModal}
       >
         <Form form={configForm} layout="vertical" className={styles.configForm}>
-          {renderConfigFields()}
+          <Form.Item
+            label="配置 JSON"
+            name="__config_json"
+            tooltip="直接输入 JSON 格式的配置"
+          >
+            <Input.TextArea
+              rows={6}
+              placeholder='{"apiKey":"xxx"}'
+              className={styles.jsonCell}
+            />
+          </Form.Item>
         </Form>
       </Modal>
     </div>

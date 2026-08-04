@@ -254,13 +254,6 @@ export default function HermesList() {
         <div className={styles.headerActions}>
           <Button
             className={styles.backBtn}
-            icon={<ThunderboltOutlined />}
-            onClick={() => navigate('/hermes/skills')}
-          >
-            技能包市场
-          </Button>
-          <Button
-            className={styles.backBtn}
             icon={<ArrowLeftOutlined />}
             onClick={() => navigate('/dashboard')}
           >

@@ -81,3 +81,23 @@ export interface PaginatedResult<T> {
   pageSize: number
   totalPages: number
 }
+/** 已安装插件行（后端 /plugins/installed 返回的嵌套结构） */
+export interface InstalledPluginRow {
+  /** 用户-插件记录 id（表格 key） */
+  id: number
+  /** 插件本体 id（调用启用/禁用/卸载/配置接口用） */
+  pluginId: number
+  /** 是否启用 */
+  enabled: boolean
+  isInstalled: boolean
+  config?: Record<string, unknown> | null
+  installedAt?: string
+  /** 关联的插件本体 */
+  plugin: {
+    id: number
+    name: string
+    description?: string
+    version: string
+    isOfficial: boolean
+  }
+}

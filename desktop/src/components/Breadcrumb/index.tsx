@@ -58,7 +58,6 @@ const ROUTE_LABEL_MAP: Record<string, string> = {
   '/creator/revenue': '收益',
   // ===== Hermes =====
   '/hermes': 'Hermes',
-  '/hermes/skills': '技能',
   '/hermes/:id': '详情',
   // ===== 市场 =====
   '/agent-market': 'Agent 市场',

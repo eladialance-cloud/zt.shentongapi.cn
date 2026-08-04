@@ -14,6 +14,7 @@ import { httpClient } from './http-client'
 import type {
   Plugin,
   PluginCallLog,
+  InstalledPluginRow,
   PluginMarketQuery,
   PluginLogQuery,
   PaginatedResult
@@ -48,11 +49,15 @@ export async function uninstallPlugin(id: number): Promise<void> {
 }
 
 /**
- * 已安装插件列表
- * GET /plugins/installed
+ * 已安装插件列表（分页）
+ * GET /plugins/installed?page=&pageSize=
  */
-export async function listInstalledPlugins(): Promise<Plugin[]> {
-  return httpClient.get<Plugin[]>('/plugins/installed')
+export async function listInstalledPlugins(
+  query: PluginMarketQuery = {}
+): Promise<PaginatedResult<InstalledPluginRow>> {
+  return httpClient.get<PaginatedResult<InstalledPluginRow>>('/plugins/installed', {
+    params: query,
+  })
 }
 
 /**

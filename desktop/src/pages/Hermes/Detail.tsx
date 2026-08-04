@@ -460,13 +460,6 @@ export default function HermesDetail() {
               <AppstoreOutlined />
               已挂载技能包（{skills.length}）
             </span>
-            <Button
-              className={styles.backBtn}
-              size="small"
-              onClick={() => navigate("/hermes/skills")}
-            >
-              进入技能包市场
-            </Button>
           </div>
           {skills.length === 0 ? (
             <Empty description="暂无挂载的技能包" />
