@@ -1,6 +1,6 @@
 /**
  * Sidebar — v0.3.1 左侧导航栏 (Task 5)
- * 4 个分组 17 项导航，200px 展开 / 64px 折叠
+ * 4 个分组 11 项导航，200px 展开 / 64px 折叠
  * 干净浅色主题（移除赛博矩阵装饰），激活态使用 primary-light 背景
  */
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -25,7 +25,7 @@ interface NavGroup {
   items: NavItem[]
 }
 
-/** 4 个分组 × 12 项导航（去重精简：合并 agents→agent-market、opc→team、skill-market→hermes 子Tab、mcp-config→services） */
+/** 4 个分组 × 11 项导航（去重精简：合并 agents→agent-market、opc→team、插件/工作流/智能体市场→skill-market、mcp-config→services） */
 const NAV_GROUPS: NavGroup[] = [
   {
     title: 'AI 办公区',
@@ -40,7 +40,6 @@ const NAV_GROUPS: NavGroup[] = [
     title: '工作区',
     items: [
       { key: 'hermes', label: 'Hermes', icon: '🧩', path: '/hermes' },
-      { key: 'plugins', label: '插件', icon: '🔌', path: '/plugins' },
       { key: 'knowledge', label: '知识库', icon: '📚', path: '/knowledge' },
       { key: 'team', label: '团队', icon: '👥', path: '/team' }
     ]
@@ -48,8 +47,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: '资源区',
     items: [
-      { key: 'agent-market', label: '智能体市场', icon: '🤖', path: '/agent-market' },
-      { key: 'workflows', label: '工作流', icon: '📋', path: '/workflows' },
+      { key: 'skill-market', label: '技能市场', icon: '🛒', path: '/skill-market' },
       { key: 'credits', label: '积分', icon: '💎', path: '/credits' }
     ]
   },

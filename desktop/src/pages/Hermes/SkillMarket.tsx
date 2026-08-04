@@ -25,7 +25,7 @@ import * as hermesApi from "@/api/hermes-api";
 import type { HermesSkill, InstalledSkill } from "@/types/hermes";
 import styles from "./styles.module.css";
 
-export default function HermesSkillMarket() {
+export default function HermesSkillMarket({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [skills, setSkills] = useState<HermesSkill[]>([]);
@@ -96,21 +96,25 @@ export default function HermesSkillMarket() {
 
   return (
     <div className={styles.pageContainer}>
-      <div className={styles.pageHeader}>
-        <div className={styles.pageTitle}>
-          <ShopOutlined />
-          <span>技能包市场</span>
-        </div>
-        <div className={styles.headerActions}>
-          <Button
-            className={styles.backBtn}
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate("/hermes")}
-          >
-            返回实例列表
-          </Button>
-        </div>
-      </div>
+      {!embedded && (
+        <>
+          <div className={styles.pageHeader}>
+            <div className={styles.pageTitle}>
+              <ShopOutlined />
+              <span>技能包市场</span>
+            </div>
+            <div className={styles.headerActions}>
+              <Button
+                className={styles.backBtn}
+                icon={<ArrowLeftOutlined />}
+                onClick={() => navigate("/hermes")}
+              >
+                返回实例列表
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
 
       <Spin spinning={loading}>
         {skills.length === 0 && !loading ? (

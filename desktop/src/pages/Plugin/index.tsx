@@ -62,7 +62,7 @@ function typeLabel(type: PluginType): string {
   }
 }
 
-export default function PluginMarket() {
+export default function PluginMarket({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const backendAvailable = useSystemStore((s) => s.backendAvailable);
 
@@ -147,41 +147,45 @@ export default function PluginMarket() {
 
   return (
     <div className={styles.pageContainer}>
-      <div className={styles.pageHeader}>
-        <div className={styles.pageTitle}>
-          <AppstoreOutlined />
-          <span>插件市场</span>
-        </div>
-        <Button
-          className={styles.backBtn}
-          icon={<ArrowLeftOutlined />}
-          onClick={handleBack}
-        >
-          返回
-        </Button>
-      </div>
+      {!embedded && (
+        <>
+          <div className={styles.pageHeader}>
+            <div className={styles.pageTitle}>
+              <AppstoreOutlined />
+              <span>插件市场</span>
+            </div>
+            <Button
+              className={styles.backBtn}
+              icon={<ArrowLeftOutlined />}
+              onClick={handleBack}
+            >
+              返回
+            </Button>
+          </div>
 
-      {/* Tab 导航 */}
-      <div className={styles.tabNav}>
-        <div
-          className={`${styles.tabItem} ${styles.tabItemActive}`}
-          onClick={() => navigate("/plugins")}
-        >
-          插件市场
-        </div>
-        <div
-          className={styles.tabItem}
-          onClick={() => navigate("/plugins/installed")}
-        >
-          已安装
-        </div>
-        <div
-          className={styles.tabItem}
-          onClick={() => navigate("/plugins/logs")}
-        >
-          调用记录
-        </div>
-      </div>
+          {/* Tab 导航 */}
+          <div className={styles.tabNav}>
+            <div
+              className={`${styles.tabItem} ${styles.tabItemActive}`}
+              onClick={() => navigate("/plugins")}
+            >
+              插件市场
+            </div>
+            <div
+              className={styles.tabItem}
+              onClick={() => navigate("/plugins/installed")}
+            >
+              已安装
+            </div>
+            <div
+              className={styles.tabItem}
+              onClick={() => navigate("/plugins/logs")}
+            >
+              调用记录
+            </div>
+          </div>
+        </>
+      )}
 
       {/* 筛选 + 搜索 */}
       <div className={styles.filterBar}>

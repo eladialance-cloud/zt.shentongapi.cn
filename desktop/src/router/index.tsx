@@ -26,6 +26,7 @@ import AgentCreatorCreate from "@/pages/AgentCreator/Create";
 import AgentCreatorRevenue from "@/pages/AgentCreator/Revenue";
 import AgentMarket from "@/pages/AgentMarket";
 import AgentDetail from "@/pages/AgentMarket/Detail";
+import SkillMarket from "@/pages/SkillMarket";
 import HermesList from "@/pages/Hermes";
 import HermesDetail from "@/pages/Hermes/Detail";
 import HermesSkillMarket from "@/pages/Hermes/SkillMarket";
@@ -153,7 +154,10 @@ const router = createHashRouter([
       { path: "/agent-market", element: <AgentMarket /> },
       { path: "/agent-market/:id", element: <AgentDetail /> },
       { path: "/mcp-market", element: <McpConfig /> },
-      { path: "/automation", element: <Navigate to="/workflows" replace /> },
+      { path: "/skill-market", element: <SkillMarket /> },
+      { path: "/automation", element: <Navigate to="/workflow" replace /> },
+      // 兼容旧链接：复数 /workflows 别名指向单数路由
+      { path: "/workflows", element: <Navigate to="/workflow" replace /> },
       // ===== Task 14: OPC =====
       // OPC 路径重定向到团队
       { path: "/opc", element: <Navigate to="/team" replace /> },

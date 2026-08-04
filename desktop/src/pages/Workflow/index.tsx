@@ -60,7 +60,7 @@ function categoryLabel(category: string): string {
   }
 }
 
-export default function WorkflowList() {
+export default function WorkflowList({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const backendAvailable = useSystemStore((s) => s.backendAvailable);
 
@@ -129,29 +129,33 @@ export default function WorkflowList() {
 
   return (
     <div className={styles.pageContainer}>
-      <div className={styles.pageHeader}>
-        <div className={styles.pageTitle}>
-          <ThunderboltOutlined />
-          <span>工作流模板</span>
-        </div>
-        <div className={styles.headerActions}>
-          <Button
-            className={styles.backBtn}
-            icon={<ArrowLeftOutlined />}
-            onClick={handleBack}
-          >
-            返回
-          </Button>
-          <Button
-            type="primary"
-            className={styles.newBtn}
-            icon={<PlusOutlined />}
-            onClick={handleNewWorkflow}
-          >
-            新建工作流
-          </Button>
-        </div>
-      </div>
+      {!embedded && (
+        <>
+          <div className={styles.pageHeader}>
+            <div className={styles.pageTitle}>
+              <ThunderboltOutlined />
+              <span>工作流模板</span>
+            </div>
+            <div className={styles.headerActions}>
+              <Button
+                className={styles.backBtn}
+                icon={<ArrowLeftOutlined />}
+                onClick={handleBack}
+              >
+                返回
+              </Button>
+              <Button
+                type="primary"
+                className={styles.newBtn}
+                icon={<PlusOutlined />}
+                onClick={handleNewWorkflow}
+              >
+                新建工作流
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* 筛选 + 搜索 */}
       <div className={styles.filterBar}>

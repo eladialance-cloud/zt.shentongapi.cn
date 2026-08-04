@@ -64,7 +64,7 @@ const TAB_ITEMS: Array<{
 
 const PAGE_SIZE = 12;
 
-export default function AgentMarket() {
+export default function AgentMarket({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const backendAvailable = useSystemStore((s) => s.backendAvailable);
   const [loading, setLoading] = useState(true);
@@ -144,23 +144,27 @@ export default function AgentMarket() {
 
   return (
     <div className={styles.page}>
-      {/* 顶部标题 */}
-      <div className={styles.header}>
-        <div className={styles.titleArea}>
-          <RobotOutlined className={styles.titleIcon} />
-          <div>
-            <h1 className={styles.title}>Agent 市场</h1>
-            <div className={styles.subtitle}>发现并使用智能 Agent</div>
+      {!embedded && (
+        <>
+          {/* 顶部标题 */}
+          <div className={styles.header}>
+            <div className={styles.titleArea}>
+              <RobotOutlined className={styles.titleIcon} />
+              <div>
+                <h1 className={styles.title}>Agent 市场</h1>
+                <div className={styles.subtitle}>发现并使用智能 Agent</div>
+              </div>
+            </div>
+            <Button
+              icon={<RollbackOutlined />}
+              onClick={() => navigate("/dashboard")}
+              className={styles.backBtn}
+            >
+              返回主页
+            </Button>
           </div>
-        </div>
-        <Button
-          icon={<RollbackOutlined />}
-          onClick={() => navigate("/dashboard")}
-          className={styles.backBtn}
-        >
-          返回主页
-        </Button>
-      </div>
+        </>
+      )}
 
       {/* 工具栏 */}
       <div className={styles.toolbar}>

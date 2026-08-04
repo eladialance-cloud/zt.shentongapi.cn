@@ -59,7 +59,7 @@ function typeLabel(type: PluginType): string {
   }
 }
 
-export default function InstalledPlugins() {
+export default function InstalledPlugins({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate()
   const [plugins, setPlugins] = useState<Plugin[]>([])
   const [loading, setLoading] = useState(false)
@@ -278,31 +278,35 @@ export default function InstalledPlugins() {
 
   return (
     <div className={styles.pageContainer}>
-      <div className={styles.pageHeader}>
-        <div className={styles.pageTitle}>
-          <AppstoreOutlined />
-          <span>已安装插件</span>
-        </div>
-        <Button className={styles.backBtn} icon={<ArrowLeftOutlined />} onClick={() => navigate('/dashboard')}>
-          返回
-        </Button>
-      </div>
+      {!embedded && (
+        <>
+          <div className={styles.pageHeader}>
+            <div className={styles.pageTitle}>
+              <AppstoreOutlined />
+              <span>已安装插件</span>
+            </div>
+            <Button className={styles.backBtn} icon={<ArrowLeftOutlined />} onClick={() => navigate('/dashboard')}>
+              返回
+            </Button>
+          </div>
 
-      {/* Tab 导航 */}
-      <div className={styles.tabNav}>
-        <div className={styles.tabItem} onClick={() => navigate('/plugins')}>
-          插件市场
-        </div>
-        <div
-          className={`${styles.tabItem} ${styles.tabItemActive}`}
-          onClick={() => navigate('/plugins/installed')}
-        >
-          已安装
-        </div>
-        <div className={styles.tabItem} onClick={() => navigate('/plugins/logs')}>
-          调用记录
-        </div>
-      </div>
+          {/* Tab 导航 */}
+          <div className={styles.tabNav}>
+            <div className={styles.tabItem} onClick={() => navigate('/plugins')}>
+              插件市场
+            </div>
+            <div
+              className={`${styles.tabItem} ${styles.tabItemActive}`}
+              onClick={() => navigate('/plugins/installed')}
+            >
+              已安装
+            </div>
+            <div className={styles.tabItem} onClick={() => navigate('/plugins/logs')}>
+              调用记录
+            </div>
+          </div>
+        </>
+      )}
 
       <Spin spinning={loading}>
         <div className={styles.installedTableWrapper}>
