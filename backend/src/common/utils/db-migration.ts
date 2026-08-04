@@ -290,7 +290,7 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       );
       logger.log('Added column: hermes_call_logs.team_id');
     }
-    // 团队表：确保存在（010_create_team_tables.sql 可能未在所有环境执行，缺失会导致 listTeams 500）
+    // 团队三表：确保存在 + 补齐实体所需列（兼容服务器上历史遗留的旧表结构，如缺 member_count/agent_id 等）
     await queryRunner.query(`CREATE TABLE IF NOT EXISTS teams (
       id BIGINT NOT NULL AUTO_INCREMENT,
       name VARCHAR(128) NOT NULL COMMENT '团队名称',
@@ -304,16 +304,98 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       INDEX idx_teams_creator_id (creator_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='团队表'`);
     logger.log('Ensured table: teams');
-    // 团队表补充知识库关联列（TeamEntity.knowledgeBaseId 需要，缺失会导致 listTeams 报 Unknown column）
-    const [teamsKbCol] = await queryRunner.query(
-      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'teams' AND COLUMN_NAME = 'knowledge_base_id'`
-    );
-    if (!teamsKbCol) {
-      await queryRunner.query(
-        `ALTER TABLE teams ADD COLUMN knowledge_base_id BIGINT DEFAULT NULL COMMENT '关联知识库 ID' AFTER member_count`
+
+    const ensureColumn = async (table: string, name: string, def: string) => {
+      const [row] = await queryRunner.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${table}' AND COLUMN_NAME = '${name}'`
       );
-      logger.log('Added column: teams.knowledge_base_id');
+      if (!row) {
+        await queryRunner.query(`ALTER TABLE ${table} ADD COLUMN \`${name}\` ${def}`);
+        logger.log(`Added column: ${table}.${name}`);
+      }
+    };
+
+    // teams 补齐新团队实体所需列（旧表可能是 owner_id 结构）
+    const teamCols: Array<[string, string]> = [
+      ['name', "VARCHAR(128) NOT NULL DEFAULT '' COMMENT '团队名称'"],
+      ['avatar', "VARCHAR(512) DEFAULT NULL COMMENT '团队头像'"],
+      ['description', "VARCHAR(512) DEFAULT NULL COMMENT '团队描述'"],
+      ['member_count', "INT NOT NULL DEFAULT 0 COMMENT '成员数量'"],
+      ['creator_id', "BIGINT NOT NULL DEFAULT 0 COMMENT '创建者 ID'"],
+      ['knowledge_base_id', "BIGINT DEFAULT NULL COMMENT '关联知识库 ID'"],
+    ];
+    for (const [colName, colDef] of teamCols) {
+      await ensureColumn('teams', colName, colDef);
+    }
+
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS team_members (
+      id BIGINT NOT NULL AUTO_INCREMENT,
+      team_id BIGINT NOT NULL COMMENT '团队 ID',
+      agent_id BIGINT NOT NULL COMMENT '关联的 Agent ID',
+      agent_name VARCHAR(64) NOT NULL COMMENT 'Agent 名称快照',
+      agent_avatar VARCHAR(512) NULL COMMENT 'Agent 头像快照',
+      role_title VARCHAR(64) NOT NULL COMMENT '自定义职能名',
+      role_description VARCHAR(512) NULL COMMENT '职能描述',
+      role_emoji VARCHAR(16) NULL COMMENT '职能图标 emoji',
+      theme_color VARCHAR(16) NULL COMMENT '主题色',
+      sort_order INT NOT NULL DEFAULT 0 COMMENT '成员排序',
+      is_active TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否激活',
+      added_by BIGINT NOT NULL COMMENT '添加者 ID',
+      joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '加入时间',
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+      PRIMARY KEY (id),
+      UNIQUE INDEX uniq_team_member_agent (team_id, agent_id),
+      INDEX idx_team_member_team (team_id),
+      INDEX idx_team_member_agent (agent_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='团队成员表'`);
+    const teamMemberCols: Array<[string, string]> = [
+      ['team_id', 'BIGINT NOT NULL DEFAULT 0'],
+      ['agent_id', 'BIGINT NOT NULL DEFAULT 0'],
+      ['agent_name', "VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Agent 名称快照'"],
+      ['agent_avatar', 'VARCHAR(512) DEFAULT NULL'],
+      ['role_title', "VARCHAR(64) NOT NULL DEFAULT '团队成员' COMMENT '自定义职能名'"],
+      ['role_description', 'VARCHAR(512) DEFAULT NULL'],
+      ['role_emoji', 'VARCHAR(16) DEFAULT NULL'],
+      ['theme_color', 'VARCHAR(16) DEFAULT NULL'],
+      ['sort_order', 'INT NOT NULL DEFAULT 0'],
+      ['is_active', 'TINYINT(1) NOT NULL DEFAULT 1'],
+      ['added_by', 'BIGINT NOT NULL DEFAULT 0'],
+    ];
+    for (const [colName, colDef] of teamMemberCols) {
+      await ensureColumn('team_members', colName, colDef);
+    }
+
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS team_tasks (
+      id BIGINT NOT NULL AUTO_INCREMENT,
+      team_id BIGINT NOT NULL COMMENT '团队 ID',
+      title VARCHAR(128) NOT NULL COMMENT '任务标题',
+      description VARCHAR(512) NULL COMMENT '任务描述',
+      status ENUM('pending', 'in_progress', 'completed', 'failed') NOT NULL DEFAULT 'pending' COMMENT '任务状态',
+      assignee_member_id BIGINT NULL COMMENT '分配给哪个成员',
+      creator_id BIGINT NOT NULL COMMENT '创建者 ID',
+      priority ENUM('low', 'medium', 'high', 'urgent') NOT NULL DEFAULT 'medium' COMMENT '优先级',
+      due_date DATETIME NULL COMMENT '截止日期',
+      result JSON NULL COMMENT '执行结果',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+      completed_at DATETIME NULL COMMENT '完成时间',
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+      PRIMARY KEY (id),
+      INDEX idx_team_task_team (team_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='团队任务表'`);
+    const teamTaskCols: Array<[string, string]> = [
+      ['team_id', 'BIGINT NOT NULL DEFAULT 0'],
+      ['title', "VARCHAR(128) NOT NULL DEFAULT '' COMMENT '任务标题'"],
+      ['description', 'VARCHAR(512) DEFAULT NULL'],
+      ['status', "ENUM('pending','in_progress','completed','failed') NOT NULL DEFAULT 'pending'"],
+      ['assignee_member_id', 'BIGINT DEFAULT NULL'],
+      ['creator_id', 'BIGINT NOT NULL DEFAULT 0'],
+      ['priority', "ENUM('low','medium','high','urgent') NOT NULL DEFAULT 'medium'"],
+      ['due_date', 'DATETIME DEFAULT NULL'],
+      ['result', 'JSON DEFAULT NULL'],
+    ];
+    for (const [colName, colDef] of teamTaskCols) {
+      await ensureColumn('team_tasks', colName, colDef);
     }
     logger.log('Startup migrations completed');
   } catch (err) {
