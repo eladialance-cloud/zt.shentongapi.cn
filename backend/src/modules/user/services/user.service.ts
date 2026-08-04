@@ -1,7 +1,14 @@
+import * as crypto from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, FindOneOptions } from 'typeorm';
-import { UserEntity } from '../entities/user.entity';
+import {
+  UserEntity,
+  EmailNotificationSettings,
+  PushNotificationSettings,
+  NotificationSettings,
+} from '../entities/user.entity';
+import { UserApiKeyEntity } from '../entities/user-api-key.entity';
 import { RoleEntity } from '../entities/role.entity';
 import { UserRoleEntity } from '../entities/user-role.entity';
 import { EncryptionService } from '../../../common/services/encryption.service';
@@ -11,14 +18,35 @@ import { CreateUserDto } from '../dto/create-user.dto';
 import { UpdateUserDto } from '../dto/update-user.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 
+/** 通知设置输入（字段均可选，服务端与默认值逐层合并） */
+type NotificationSettingsInput = {
+  emailNotifications?: Partial<EmailNotificationSettings>;
+  pushNotifications?: Partial<PushNotificationSettings>;
+};
+
 @Injectable()
 export class UserService {
   constructor(
     @InjectRepository(UserEntity) private userRepo: Repository<UserEntity>,
     @InjectRepository(RoleEntity) private roleRepo: Repository<RoleEntity>,
     @InjectRepository(UserRoleEntity) private userRoleRepo: Repository<UserRoleEntity>,
+    @InjectRepository(UserApiKeyEntity) private apiKeyRepo: Repository<UserApiKeyEntity>,
     private encryption: EncryptionService,
   ) {}
+
+  /** 通知设置默认值（全部开启） */
+  private readonly DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+    emailNotifications: {
+      chatCompleted: true,
+      creditsChanged: true,
+      systemAnnouncement: true,
+    },
+    pushNotifications: {
+      chatReply: true,
+      agentReviewResult: true,
+      rechargeArrived: true,
+    },
+  };
 
   async findById(id: number): Promise<UserEntity> {
     const user = await this.userRepo.findOne({ where: { id } });
@@ -97,7 +125,8 @@ export class UserService {
 
   async changePassword(id: number, dto: ChangePasswordDto): Promise<void> {
     const user = await this.findByIdWithPassword(id);
-    const isMatch = await this.encryption.compare(dto.oldPassword, user.password);
+    const oldPassword = (dto.oldPassword ?? dto.currentPassword) as string;
+    const isMatch = await this.encryption.compare(oldPassword, user.password);
     if (!isMatch) {
       BusinessException.throw(ErrorCode.PASSWORD_INCORRECT);
     }
@@ -128,6 +157,98 @@ export class UserService {
     const roleIds = userRoles.map((ur) => ur.roleId);
     const roles = await this.roleRepo.findByIds(roleIds);
     return roles.map((r) => r.name);
+  }
+
+  // ===== API Key 管理 =====
+
+  /** 当前用户的 API Key 列表（仅脱敏信息，不含明文） */
+  async listApiKeys(userId: number) {
+    const keys = await this.apiKeyRepo.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+    });
+    return keys.map((key) => ({
+      id: key.id,
+      alias: key.alias,
+      maskedKey: `${key.keyPrefix}****`,
+      createdAt: key.createdAt,
+      lastUsedAt: key.lastUsedAt ?? null,
+    }));
+  }
+
+  /** 创建 API Key：明文仅本次返回，服务端只存哈希 + 前缀 */
+  async createApiKey(userId: number, alias: string) {
+    const apiKey = this.generateApiKey();
+    const entity = this.apiKeyRepo.create({
+      userId,
+      alias,
+      keyHash: this.hashApiKey(apiKey),
+      keyPrefix: apiKey.slice(0, 8),
+    });
+    const saved = await this.apiKeyRepo.save(entity);
+    return {
+      id: saved.id,
+      alias: saved.alias,
+      apiKey,
+      createdAt: saved.createdAt,
+    };
+  }
+
+  /** 删除 API Key（非本人视为不存在，返回 404 语义） */
+  async deleteApiKey(userId: number, id: number): Promise<void> {
+    const entity = await this.apiKeyRepo.findOne({ where: { id, userId } });
+    if (!entity) {
+      BusinessException.throw(ErrorCode.NOT_FOUND, 'API Key 不存在或无权操作');
+    }
+    await this.apiKeyRepo.delete(id);
+  }
+
+  // ===== 通知设置 =====
+
+  /** 获取当前用户通知设置（未设置时返回默认值） */
+  async getNotificationSettings(userId: number): Promise<NotificationSettings> {
+    const user = await this.findById(userId);
+    return this.mergeNotificationSettings(user.notificationSettings);
+  }
+
+  /** 更新当前用户通知设置（与默认值合并后整体存储） */
+  async updateNotificationSettings(
+    userId: number,
+    dto: NotificationSettingsInput,
+  ): Promise<void> {
+    const user = await this.findById(userId);
+    user.notificationSettings = this.mergeNotificationSettings(dto);
+    await this.userRepo.save(user);
+  }
+
+  // ===== 私有工具 =====
+
+  /** 生成 sk_ 开头的随机 API Key（32 字节随机数，base64url 编码） */
+  private generateApiKey(): string {
+    return `sk_${crypto.randomBytes(32).toString('base64url')}`;
+  }
+
+  /** 计算 API Key 的 SHA-256 哈希（仅存哈希，不存明文） */
+  private hashApiKey(apiKey: string): string {
+    return crypto.createHash('sha256').update(apiKey).digest('hex');
+  }
+
+  /** 将传入设置与默认值逐层合并，保证返回结构完整 */
+  private mergeNotificationSettings(
+    settings?: NotificationSettingsInput | null,
+  ): NotificationSettings {
+    const defaults = this.DEFAULT_NOTIFICATION_SETTINGS;
+    const input = settings ?? {};
+    return {
+      emailNotifications: {
+        ...defaults.emailNotifications,
+        ...(input.emailNotifications ?? {}),
+      },
+      pushNotifications: {
+        ...defaults.pushNotifications,
+        ...(input.pushNotifications ?? {}),
+      },
+    };
   }
 
   async paginate(page: number, pageSize: number, keyword?: string) {

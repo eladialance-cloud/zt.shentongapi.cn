@@ -1,6 +1,7 @@
 ﻿import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserEntity } from './entities/user.entity';
+import { UserApiKeyEntity } from './entities/user-api-key.entity';
 import { RoleEntity } from './entities/role.entity';
 import { UserRoleEntity } from './entities/user-role.entity';
 import { InviteCodeEntity } from './entities/invite-code.entity';
@@ -13,6 +14,7 @@ import { CommonModule } from '../../common/common.module';
   imports: [
     TypeOrmModule.forFeature([
       UserEntity,
+      UserApiKeyEntity,
       RoleEntity,
       UserRoleEntity,
       InviteCodeEntity,

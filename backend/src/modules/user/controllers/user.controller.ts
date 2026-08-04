@@ -1,6 +1,7 @@
 ﻿import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -18,11 +19,15 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
+import { BusinessException } from '../../../common/exceptions/business.exception';
+import { ErrorCode } from '../../../common/constants/error.constant';
 import type { Request } from 'express';
 import { UserService } from '../services/user.service';
 import { InviteCodeService } from '../invite-code.service';
 import { UpdateUserDto } from '../dto/update-user.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
+import { CreateApiKeyDto } from '../dto/create-api-key.dto';
+import { UpdateNotificationSettingsDto } from '../dto/update-notification-settings.dto';
 import { CurrentUser, ICurrentUser } from '../../../common/decorators/current-user.decorator';
 import { generateFileName } from '../../../common/utils/file.util';
 
@@ -104,6 +109,51 @@ export class UserController {
     return this.userService.updateAvatar(user.userId, avatarUrl);
   }
 
+  // ===== API Key 管理（设置页） =====
+
+  @Get('api-keys')
+  @ApiOperation({ summary: '查询我的 API Key 列表' })
+  async listApiKeys(@CurrentUser() user: ICurrentUser) {
+    return this.userService.listApiKeys(user.userId);
+  }
+
+  @Post('api-keys')
+  @ApiOperation({ summary: '创建 API Key（明文仅本次返回）' })
+  async createApiKey(
+    @Body() dto: CreateApiKeyDto,
+    @CurrentUser() user: ICurrentUser,
+  ) {
+    return this.userService.createApiKey(user.userId, dto.alias);
+  }
+
+  @Delete('api-keys/:id')
+  @ApiOperation({ summary: '删除 API Key' })
+  async deleteApiKey(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: ICurrentUser,
+  ) {
+    await this.userService.deleteApiKey(user.userId, id);
+    return null;
+  }
+
+  // ===== 通知设置（设置页） =====
+
+  @Get('notification-settings')
+  @ApiOperation({ summary: '获取通知设置' })
+  async getNotificationSettings(@CurrentUser() user: ICurrentUser) {
+    return this.userService.getNotificationSettings(user.userId);
+  }
+
+  @Patch('notification-settings')
+  @ApiOperation({ summary: '更新通知设置' })
+  async updateNotificationSettings(
+    @Body() dto: UpdateNotificationSettingsDto,
+    @CurrentUser() user: ICurrentUser,
+  ) {
+    await this.userService.updateNotificationSettings(user.userId, dto);
+    return null;
+  }
+
   @Patch(':id')
   @ApiOperation({ summary: '更新用户信息' })
   update(
@@ -111,9 +161,9 @@ export class UserController {
     @Body() dto: UpdateUserDto,
     @CurrentUser() currentUser: ICurrentUser,
   ) {
-    // 简单权限校验:只能修改自己的信息
+    // 安全加固 P2-1: 仅允许修改自己的信息，否则返回403
     if (currentUser.userId !== id) {
-      return this.userService.update(currentUser.userId, dto);
+      BusinessException.throw(ErrorCode.FORBIDDEN, '仅可修改自己的信息');
     }
     return this.userService.update(id, dto);
   }

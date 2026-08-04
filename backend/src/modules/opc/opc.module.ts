@@ -4,12 +4,14 @@ import { OpcAgentRepoEntity } from './entities/opc-agent-repo.entity';
 import { OpcTaskEntity } from './entities/opc-task.entity';
 import { OpcTeamMemberEntity } from './entities/opc-team-member.entity';
 import { OpcTeamEntity } from './entities/opc-team.entity';
+import { AgentEntity } from '../agent/entities/agent.entity';
 import { OpcController } from './controllers/opc.controller';
 import { OpcService } from './services/opc.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
+      AgentEntity,
       OpcAgentRepoEntity,
       OpcTaskEntity,
       OpcTeamMemberEntity,

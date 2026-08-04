@@ -8,6 +8,8 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CreditsService, CreditTxnQuery } from '../services/credits.service';
+import { RechargeService } from '../services/recharge.service';
+import { CreateRechargeDto } from '../dto/create-recharge.dto';
 import { Public } from '../../../common/decorators/public.decorator';
 import { CurrentUser, ICurrentUser } from '../../../common/decorators/current-user.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
@@ -29,7 +31,10 @@ class AdminAdjustDto {
 @Controller('credits')
 @UseGuards(JwtAuthGuard)
 export class CreditsController {
-  constructor(private readonly creditsService: CreditsService) {}
+  constructor(
+    private readonly creditsService: CreditsService,
+    private readonly rechargeService: RechargeService,
+  ) {}
 
   @Get('health')
   @Public()
@@ -42,6 +47,27 @@ export class CreditsController {
   @ApiOperation({ summary: '查询当前用户积分账户' })
   async getAccount(@CurrentUser() user: ICurrentUser) {
     return this.creditsService.getAccount(user.userId);
+  }
+
+  @Get('balance')
+  @ApiOperation({ summary: '查询当前用户积分账户（桌面端别名，与 account 同构）' })
+  async getBalance(@CurrentUser() user: ICurrentUser) {
+    return this.creditsService.getAccount(user.userId);
+  }
+
+  @Get('recharge-plans')
+  @ApiOperation({ summary: '获取充值套餐列表' })
+  getRechargePlans() {
+    return this.rechargeService.getRechargePlans();
+  }
+
+  @Post('recharge')
+  @ApiOperation({ summary: '创建充值订单（返回支付信息）' })
+  async createRecharge(
+    @Body() dto: CreateRechargeDto,
+    @CurrentUser() user: ICurrentUser,
+  ) {
+    return this.rechargeService.createRecharge(user.userId, dto);
   }
 
   @Get('transactions')

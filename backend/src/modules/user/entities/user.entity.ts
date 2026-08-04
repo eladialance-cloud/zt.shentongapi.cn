@@ -1,6 +1,32 @@
 ﻿import { Entity, Column, Index } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 
+/** 邮件通知开关 */
+export interface EmailNotificationSettings {
+  /** 对话完成 */
+  chatCompleted: boolean;
+  /** 积分变动 */
+  creditsChanged: boolean;
+  /** 系统公告 */
+  systemAnnouncement: boolean;
+}
+
+/** 客户端推送开关 */
+export interface PushNotificationSettings {
+  /** 对话回复 */
+  chatReply: boolean;
+  /** Agent 审核结果 */
+  agentReviewResult: boolean;
+  /** 充值到账 */
+  rechargeArrived: boolean;
+}
+
+/** 通知设置（JSON 列存储） */
+export interface NotificationSettings {
+  emailNotifications: EmailNotificationSettings;
+  pushNotifications: PushNotificationSettings;
+}
+
 @Entity('users')
 export class UserEntity extends BaseEntity {
   @Index({ unique: true })
@@ -79,4 +105,7 @@ export class UserEntity extends BaseEntity {
   @Index({ unique: true })
   @Column({ name: 'llm_proxy_key', length: 64, nullable: true })
   llmProxyKey?: string;
+
+  @Column({ name: 'notification_settings', type: 'json', nullable: true })
+  notificationSettings?: NotificationSettings | null;
 }
