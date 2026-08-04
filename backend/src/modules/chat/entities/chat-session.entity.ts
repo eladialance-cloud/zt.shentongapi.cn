@@ -30,4 +30,16 @@ export class ChatSessionEntity extends BaseEntity {
   @Index()
   @Column({ name: 'user_id', type: 'bigint' })
   userId: number;
+
+  @Column({ name: 'knowledge_base_id', type: 'bigint', nullable: true })
+  knowledgeBaseId?: number;
+
+  @Column({ type: 'tinyint', width: 1, default: false })
+  pinned: boolean;
+
+  @Column({ length: 16, default: 'active' })
+  status: string;
+
+  @Column({ name: 'last_message_at', type: 'datetime', nullable: true })
+  lastMessageAt?: Date;
 }

@@ -32,6 +32,7 @@ class CreateSessionDto {
   title?: string;
   modelId: string;
   agentId?: string;
+  knowledgeBaseId?: number;
   groupId?: number;
   attachedKnowledgeBaseIds?: number[];
   enabledPluginIds?: number[];
@@ -41,6 +42,9 @@ class CreateSessionDto {
 /** 更新会话 DTO */
 class UpdateSessionDto {
   title?: string;
+  modelId?: string;
+  pinned?: boolean;
+  knowledgeBaseId?: number;
   groupId?: number;
   attachedKnowledgeBaseIds?: number[];
   enabledPluginIds?: number[];

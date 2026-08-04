@@ -5,14 +5,23 @@ import {
   CreateDateColumn,
   Index,
 } from 'typeorm';
+import { bigintTransformer } from '../../../common/entities/base.entity';
+
+// PrimaryGeneratedColumnNumericOptions 类型不含 transformer 字段,
+// 但 TypeORM 运行时会透传该属性(Object.assign),故以变量形式传入绕过多余属性检查。
+const idColumnOptions = {
+  type: 'bigint' as const,
+  name: 'id',
+  transformer: bigintTransformer,
+};
 
 @Entity('chat_messages')
 export class ChatMessageEntity {
-  @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })
+  @PrimaryGeneratedColumn(idColumnOptions)
   id: number;
 
   @Index('idx_chat_messages_session_id')
-  @Column({ name: 'session_id', type: 'bigint' })
+  @Column({ name: 'session_id', type: 'bigint', transformer: bigintTransformer })
   sessionId: number;
 
   @Column({
