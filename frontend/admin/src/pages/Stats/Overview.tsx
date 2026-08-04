@@ -245,7 +245,7 @@ export default function StatsOverviewPage() {
                       <Progress
                         percent={percent}
                         size="small"
-                        strokeColor={{ '0%': '#38bdf8', '100%': '#6366f1' }}
+                        strokeColor={{ '0%': '#A78BFA', '100%': '#7C3AED' }}
                         format={() => `${m.value.toLocaleString()}`}
                       />
                     </div>

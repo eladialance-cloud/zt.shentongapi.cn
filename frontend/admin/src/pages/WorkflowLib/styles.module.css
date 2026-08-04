@@ -69,9 +69,9 @@
 
 /* 日志状态标签 */
 .statusSuccess {
-  color: #34d399 !important;
-  background: rgba(52, 211, 153, 0.12) !important;
-  border-color: rgba(52, 211, 153, 0.3) !important;
+  color: var(--color-success) !important;
+  background: rgba(16, 185, 129, 0.12) !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
 }
 .statusFailed {
   color: #f87171 !important;

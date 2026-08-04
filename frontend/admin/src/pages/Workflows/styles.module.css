@@ -120,7 +120,7 @@
 .trendBar {
   flex: 1;
   min-width: 8px;
-  background: linear-gradient(180deg, #38bdf8, #6366f1);
+  background: linear-gradient(180deg, var(--color-secondary), var(--color-primary));
   border-radius: 3px 3px 0 0;
   position: relative;
   min-height: 2px;

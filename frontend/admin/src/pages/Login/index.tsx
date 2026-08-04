@@ -107,7 +107,7 @@ export default function AdminLogin() {
       ctx.stroke()
     }
     // 字符
-    const colors = ['#38bdf8', '#818cf8', '#34d399', '#f472b6', '#facc15']
+    const colors = ['#A78BFA', '#818cf8', '#34d399', '#f472b6', '#facc15']
     for (let i = 0; i < code.length; i++) {
       ctx.save()
       ctx.font = 'bold 26px Consolas, monospace'

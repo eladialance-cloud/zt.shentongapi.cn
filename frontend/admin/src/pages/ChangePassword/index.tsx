@@ -75,7 +75,7 @@ export default function AdminChangePassword() {
       >
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <SafetyCertificateOutlined
-            style={{ fontSize: 40, color: '#38bdf8' }}
+            style={{ fontSize: 40, color: '#A78BFA' }}
           />
           <h2
             style={{

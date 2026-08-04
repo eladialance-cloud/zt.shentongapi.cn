@@ -175,7 +175,7 @@ export default function StatsTrendsPage() {
       case 'user_growth':
         return '#34d399'
       case 'call_count':
-        return '#38bdf8'
+        return '#A78BFA'
       case 'revenue':
         return '#fbbf24'
       case 'consumption':

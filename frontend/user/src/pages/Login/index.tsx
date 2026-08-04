@@ -1,4 +1,4 @@
-﻿// 鐧诲綍椤?- 绗竴闂幆鏍稿績
+// 登录页 - 第一闭环核心
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Form, Input, message } from 'antd';
@@ -18,10 +18,10 @@ export default function Login() {
     try {
       const { accessToken, user } = await login(values);
       authLogin(accessToken, user);
-      message.success(`娆㈣繋鍥炴潵锛?{user.username}`);
+      message.success(`欢迎回来，${user.username}`);
       navigate('/', { replace: true });
     } catch {
-      // 閿欒宸茬敱 request 鎷︽埅鍣ㄧ粺涓€鎻愮ず
+      // 错误已由 request 拦截器统一提示
     } finally {
       setLoading(false);
     }
@@ -29,7 +29,7 @@ export default function Login() {
 
   return (
     <div className={styles.container}>
-      {/* 宸︿晶鍝佺墝瑙嗚鍖?*/}
+      {/* 左侧品牌视觉区 */}
       <div className={styles.brandSide}>
         <div className={styles.decoration1} />
         <div className={styles.decoration2} />
@@ -39,32 +39,32 @@ export default function Login() {
             <div className={styles.brandIcon}>
               <RobotOutlined />
             </div>
-            <span className={styles.brandTitle}>娣辩灣 AI</span>
+            <span className={styles.brandTitle}>深瞳 AI</span>
           </div>
           <h1 className={styles.brandHeading}>
-            鏅鸿兘涓彴
+            智能中台
             <br />
-            娲炲療鏈潵
+            洞察未来
           </h1>
           <p className={styles.brandSubtitle}>
-            涓€绔欏紡 AI Agent 涓庣煡璇嗗簱绠＄悊骞冲彴锛岃鏅鸿兘瑙︽墜鍙強
+            一站式 AI Agent 与知识库管理平台，让智能触手可及
           </p>
         </div>
       </div>
 
-      {/* 绉诲姩绔搧鐗屽ご */}
+      {/* 移动端品牌头 */}
       <div className={styles.mobileHeader}>
         <div className={styles.brandIcon}>
           <RobotOutlined />
         </div>
-        <span className={styles.brandTitle}>娣辩灣 AI</span>
+        <span className={styles.brandTitle}>深瞳 AI</span>
       </div>
 
-      {/* 鍙充晶鐧诲綍琛ㄥ崟鍖?*/}
+      {/* 右侧登录表单区 */}
       <div className={styles.formSide}>
         <div className={styles.formContainer}>
-          <h2 className={styles.formTitle}>娆㈣繋鍥炴潵</h2>
-          <p className={styles.formSubtitle}>鐧诲綍浠ュ紑濮嬩綘鐨勬櫤鑳藉璇?/p>
+          <h2 className={styles.formTitle}>欢迎回来</h2>
+          <p className={styles.formSubtitle}>登录以开始你的智能对话</p>
           <Form<LoginParams>
             className={styles.form}
             onFinish={handleFinish}
@@ -73,20 +73,20 @@ export default function Login() {
           >
             <Form.Item
               name="account"
-              rules={[{ required: true, message: '璇疯緭鍏ョ敤鎴峰悕鎴栭偖绠? }]}
+              rules={[{ required: true, message: '请输入用户名或邮箱' }]}
             >
               <Input
                 prefix={<UserOutlined />}
-                placeholder="鐢ㄦ埛鍚嶆垨閭"
+                placeholder="用户名或邮箱"
               />
             </Form.Item>
             <Form.Item
               name="password"
-              rules={[{ required: true, message: '璇疯緭鍏ュ瘑鐮? }]}
+              rules={[{ required: true, message: '请输入密码' }]}
             >
               <Input.Password
                 prefix={<LockOutlined />}
-                placeholder="瀵嗙爜"
+                placeholder="密码"
               />
             </Form.Item>
             <Form.Item>
@@ -97,14 +97,14 @@ export default function Login() {
                 block
                 loading={loading}
               >
-                鐧诲綍
+                登录
               </Button>
             </Form.Item>
           </Form>
           <div className={styles.footer}>
-            杩樻病鏈夎处鍙凤紵
+            还没有账号？
             <a className={styles.link} onClick={() => navigate('/register')}>
-              绔嬪嵆娉ㄥ唽
+              立即注册
             </a>
           </div>
         </div>

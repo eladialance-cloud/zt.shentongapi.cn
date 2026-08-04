@@ -1,23 +1,24 @@
-/* 管理端主布局样式 */
+/* ShenTongAI Admin - 主布局 v2.0 */
 
 .layout {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #0a0e1a;
-  color: #e6edf3;
+  background: var(--bg-base);
+  color: var(--text-primary);
 }
 
-/* 顶栏 */
+/* 顶栏 (玻璃态) */
 .topbar {
   height: 48px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
-  background: rgba(15, 23, 42, 0.9);
-  border-bottom: 1px solid rgba(56, 189, 248, 0.18);
-  backdrop-filter: blur(12px);
+  background: rgba(15, 23, 42, 0.85);
+  border-bottom: 1px solid var(--border-color);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -31,15 +32,15 @@
 
 .topbarLogo {
   font-size: 18px;
-  color: #38bdf8;
-  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.5));
+  color: var(--color-secondary);
+  filter: drop-shadow(0 0 6px rgba(124, 58, 237, 0.3));
 }
 
 .topbarTitle {
   font-size: 15px;
   font-weight: 600;
-  color: #f1f5f9;
-  letter-spacing: 0.5px;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
 }
 
 .topbarRight {
@@ -58,37 +59,65 @@
 .sidebar {
   width: 200px;
   flex-shrink: 0;
-  background: rgba(15, 23, 42, 0.8);
-  border-right: 1px solid rgba(56, 189, 248, 0.15);
-  padding: 12px 8px;
+  background: var(--bg-deep);
+  border-right: 1px solid var(--border-color-subtle);
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
 }
 
-.sidebar::-webkit-scrollbar {
-  width: 6px;
-}
+.sidebar::-webkit-scrollbar { width: 4px; }
 .sidebar::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.25);
-  border-radius: 3px;
+  background: rgba(124, 58, 237, 0.15);
+  border-radius: 2px;
 }
 
-/* 内容区 */
+.sidebarTitle {
+  padding: 12px 20px 4px;
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
 .content {
   flex: 1;
   min-width: 0;
+  background: var(--bg-base);
   overflow-y: auto;
 }
 
-.content::-webkit-scrollbar {
-  width: 8px;
-}
-.content::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.3);
-  border-radius: 4px;
+/* Ant Design Menu 覆盖 */
+.sidebar :global(.ant-menu) {
+  background: transparent !important;
+  border-right: none !important;
 }
 
-/* 管理员头像/用户名 */
-.adminName {
-  color: #c7d2fe;
-  font-size: 13px;
+.sidebar :global(.ant-menu-item),
+.sidebar :global(.ant-menu-submenu-title) {
+  color: var(--text-secondary) !important;
+  border-radius: 8px !important;
+  margin: 2px 8px !important;
+  width: auto !important;
+  transition: all var(--motion-duration-fast) var(--motion-ease) !important;
+}
+
+.sidebar :global(.ant-menu-item:hover),
+.sidebar :global(.ant-menu-submenu-title:hover) {
+  color: var(--text-primary) !important;
+  background: var(--sidebar-bg-hover) !important;
+}
+
+.sidebar :global(.ant-menu-item-selected) {
+  color: var(--color-secondary) !important;
+  background: var(--sidebar-bg-active) !important;
+}
+
+.sidebar :global(.ant-menu-submenu-selected > .ant-menu-submenu-title) {
+  color: var(--color-secondary) !important;
+}
+
+.sidebar :global(.ant-menu-inline .ant-menu-item::after) {
+  border-right-color: var(--color-primary) !important;
 }

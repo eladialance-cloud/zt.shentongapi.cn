@@ -1,8 +1,9 @@
-/* ShenTongAI Admin - Design System v2.0 */
-/* AI Immersive Dark — 与前台统一的 AI紫 + 深黑体系 */
+/* ShenTongAI - Design System v2.0 */
+/* AI Immersive Dark — AI紫 + 深青 + 深黑渐变 */
+/* Plan A: Modern Dark (Cinema) + Glassmorphism */
 
 :root {
-  /* ===== 品牌色 (与用户端统一) ===== */
+  /* ===== 品牌色 ===== */
   --color-primary: #7C3AED;
   --color-primary-hover: #8B5CF6;
   --color-primary-active: #6D28D9;
@@ -18,14 +19,16 @@
   /* ===== 品牌渐变与发光 ===== */
   --gradient-brand: linear-gradient(135deg, #7C3AED 0%, #0891B2 100%);
   --gradient-brand-hover: linear-gradient(135deg, #8B5CF6 0%, #06B6D4 100%);
+  --gradient-card: linear-gradient(180deg, rgba(124, 58, 237, 0.08) 0%, transparent 60%);
   --color-glow: rgba(124, 58, 237, 0.35);
   --color-glow-accent: rgba(8, 145, 178, 0.25);
 
-  /* ===== 背景色 (全暗色) ===== */
+  /* ===== 背景色 (暗色体系) ===== */
   --bg-deep: #0A0A0F;
   --bg-base: #0F172A;
   --bg-elevated: #192134;
   --bg-surface: rgba(255, 255, 255, 0.04);
+  --bg-surface-hover: rgba(255, 255, 255, 0.06);
   --bg-chat: #111827;
   --bg-content: var(--bg-base);
 
@@ -33,6 +36,7 @@
   --text-primary: #F1F5F9;
   --text-secondary: #94A3B8;
   --text-tertiary: #64748B;
+  --text-inverse: #0F172A;
 
   /* ===== 边框 ===== */
   --border-color: rgba(124, 58, 237, 0.12);
@@ -57,7 +61,17 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 20px rgba(124, 58, 237, 0.2), 0 0 40px rgba(124, 58, 237, 0.08);
+  --shadow-glow: 0 0 20px rgba(124, 58, 237, 0.2), 0 0 40px rgba(124, 58, 237, 0.1);
+  --shadow-glow-accent: 0 0 16px rgba(8, 145, 178, 0.15);
+
+  /* ===== 侧边栏 (深色) ===== */
+  --sidebar-bg: #0A0A0F;
+  --sidebar-bg-hover: rgba(124, 58, 237, 0.08);
+  --sidebar-bg-active: rgba(124, 58, 237, 0.14);
+  --sidebar-text: rgba(255, 255, 255, 0.6);
+  --sidebar-text-active: #A78BFA;
+  --sidebar-text-hover: rgba(255, 255, 255, 0.9);
+  --sidebar-border: rgba(124, 58, 237, 0.1);
 
   /* ===== 字体 ===== */
   --font-family: 'Inter', 'HarmonyOS Sans', 'PingFang SC', 'Microsoft YaHei',
@@ -71,10 +85,10 @@
   --font-size-2xl: 24px;
   --font-size-3xl: 32px;
 
-  /* ===== 动效 ===== */
+  /* ===== 动效 (spring-based) ===== */
   --motion-duration-fast: 150ms;
   --motion-duration: 200ms;
   --motion-duration-slow: 300ms;
-  --motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --motion-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --motion-ease: cubic-bezier(0.16, 1, 0.3, 1); /* expo.out */
+  --motion-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* spring-like */
 }

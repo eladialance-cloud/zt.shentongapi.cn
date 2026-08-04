@@ -143,7 +143,7 @@ export default function PlansPage() {
       title: '价格(元)',
       dataIndex: 'price',
       width: 90,
-      render: (price: number) => <span style={{ color: '#6366f1', fontWeight: 600 }}>¥{price}</span>
+      render: (price: number) => <span style={{ color: '#7C3AED', fontWeight: 600 }}>¥{price}</span>
     },
     {
       title: '积分',

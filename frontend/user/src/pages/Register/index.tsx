@@ -1,4 +1,4 @@
-﻿// 娉ㄥ唽椤?- 绗竴闂幆鏍稿績
+// 注册页 - 第一闭环核心
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Form, Input, message } from 'antd';
@@ -9,7 +9,8 @@ import type { RegisterParams } from '@/types/api';
 import request from '@/utils/request';
 import styles from './styles.module.css';
 
-// 琛ㄥ崟鍊肩被鍨嬶細鍦ㄦ敞鍐屽弬鏁板熀纭€涓婂鍔犵‘璁ゅ瘑鐮佸瓧娈?interface RegisterFormValues extends RegisterParams {
+// 表单值类型：在注册参数基础上增加确认密码字段
+interface RegisterFormValues extends RegisterParams {
   confirmPassword: string;
 }
 
@@ -19,11 +20,12 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [inviteRequired, setInviteRequired] = useState(false);
 
-  // 椤甸潰鍔犺浇鏃惰幏鍙栨敞鍐岄厤缃?  useEffect(() => {
+  // 页面加载时获取注册配置
+  useEffect(() => {
     request.get('/auth/registration-config').then((data: any) => {
       setInviteRequired(!!data?.inviteCodeRequired);
     }).catch(() => {
-      // 鑾峰彇澶辫触榛樿涓嶈姹傞個璇风爜
+      // 获取失败默认不要求邀请码
       setInviteRequired(false);
     });
   }, []);
@@ -39,10 +41,10 @@ export default function Register() {
         inviteCode,
       });
       authLogin(accessToken, user);
-      message.success(`娉ㄥ唽鎴愬姛锛屾杩庡姞鍏ワ紝${user.username}`);
+      message.success(`注册成功，欢迎加入，${user.username}`);
       navigate('/', { replace: true });
     } catch {
-      // 閿欒宸茬敱 request 鎷︽埅鍣ㄧ粺涓€鎻愮ず
+      // 错误已由 request 拦截器统一提示
     } finally {
       setLoading(false);
     }
@@ -50,7 +52,7 @@ export default function Register() {
 
   return (
     <div className={styles.container}>
-      {/* 宸︿晶鍝佺墝瑙嗚鍖?*/}
+      {/* 左侧品牌视觉区 */}
       <div className={styles.brandSide}>
         <div className={styles.decoration1} />
         <div className={styles.decoration2} />
@@ -60,30 +62,32 @@ export default function Register() {
             <div className={styles.brandIcon}>
               <RobotOutlined />
             </div>
-            <span className={styles.brandTitle}>娣辩灣 AI</span>
+            <span className={styles.brandTitle}>深瞳 AI</span>
           </div>
           <h1 className={styles.brandHeading}>
-            鍔犲叆娣辩灣
+            加入深瞳
             <br />
-            寮€鍚櫤鑳戒箣鏃?          </h1>
+            开启智能之旅
+          </h1>
           <p className={styles.brandSubtitle}>
-            娉ㄥ唽璐﹀彿锛屽嵆鍒讳綋楠?AI Agent 涓庣煡璇嗗簱鐨勫己澶ц兘鍔?          </p>
+            注册账号，即刻体验 AI Agent 与知识库的强大能力
+          </p>
         </div>
       </div>
 
-      {/* 绉诲姩绔搧鐗屽ご */}
+      {/* 移动端品牌头 */}
       <div className={styles.mobileHeader}>
         <div className={styles.brandIcon}>
           <RobotOutlined />
         </div>
-        <span className={styles.brandTitle}>娣辩灣 AI</span>
+        <span className={styles.brandTitle}>深瞳 AI</span>
       </div>
 
-      {/* 鍙充晶娉ㄥ唽琛ㄥ崟鍖?*/}
+      {/* 右侧注册表单区 */}
       <div className={styles.formSide}>
         <div className={styles.formContainer}>
-          <h2 className={styles.formTitle}>鍒涘缓璐﹀彿</h2>
-          <p className={styles.formSubtitle}>濉啓淇℃伅浠ユ敞鍐屼綘鐨勮处鍙?/p>
+          <h2 className={styles.formTitle}>创建账号</h2>
+          <p className={styles.formSubtitle}>填写信息以注册你的账号</p>
           <Form<RegisterFormValues>
             className={styles.form}
             onFinish={handleFinish}
@@ -93,67 +97,67 @@ export default function Register() {
             <Form.Item
               name="username"
               rules={[
-                { required: true, message: '璇疯緭鍏ョ敤鎴峰悕' },
-                { min: 3, message: '鐢ㄦ埛鍚嶈嚦灏?3 涓瓧绗? },
-                { max: 20, message: '鐢ㄦ埛鍚嶆渶澶?20 涓瓧绗? },
+                { required: true, message: '请输入用户名' },
+                { min: 3, message: '用户名至少 3 个字符' },
+                { max: 20, message: '用户名最多 20 个字符' },
               ]}
             >
               <Input
                 prefix={<UserOutlined />}
-                placeholder="鐢ㄦ埛鍚?
+                placeholder="用户名"
               />
             </Form.Item>
             <Form.Item
               name="email"
               rules={[
-                { required: true, message: '璇疯緭鍏ラ偖绠? },
-                { type: 'email', message: '璇疯緭鍏ユ湁鏁堢殑閭鍦板潃' },
+                { required: true, message: '请输入邮箱' },
+                { type: 'email', message: '请输入有效的邮箱地址' },
               ]}
             >
               <Input
                 prefix={<MailOutlined />}
-                placeholder="閭"
+                placeholder="邮箱"
               />
             </Form.Item>
             <Form.Item
               name="inviteCode"
-              rules={inviteRequired ? [{ required: true, message: '璇疯緭鍏ラ個璇风爜' }] : []}
+              rules={inviteRequired ? [{ required: true, message: '请输入邀请码' }] : []}
             >
               <Input
                 prefix={<GiftOutlined />}
-                placeholder={inviteRequired ? '閭€璇风爜' : '閭€璇风爜锛堥€夊～锛?}
+                placeholder={inviteRequired ? '邀请码' : '邀请码（选填）' }
               />
             </Form.Item>
             <Form.Item
               name="password"
               rules={[
-                { required: true, message: '璇疯緭鍏ュ瘑鐮? },
-                { min: 8, message: '瀵嗙爜鑷冲皯 8 涓瓧绗? },
+                { required: true, message: '请输入密码' },
+                { min: 8, message: '密码至少 8 个字符' },
               ]}
             >
               <Input.Password
                 prefix={<LockOutlined />}
-                placeholder="瀵嗙爜锛堣嚦灏?8 浣嶏級"
+                placeholder="密码（至少 8 位）"
               />
             </Form.Item>
             <Form.Item
               name="confirmPassword"
               dependencies={['password']}
               rules={[
-                { required: true, message: '璇峰啀娆¤緭鍏ュ瘑鐮? },
+                { required: true, message: '请再次输入密码' },
                 ({ getFieldValue }) => ({
                   validator(_, value) {
                     if (!value || getFieldValue('password') === value) {
                       return Promise.resolve();
                     }
-                    return Promise.reject(new Error('涓ゆ杈撳叆鐨勫瘑鐮佷笉涓€鑷?));
+                    return Promise.reject(new Error('两次输入的密码不一致'));
                   },
                 }),
               ]}
             >
               <Input.Password
                 prefix={<LockOutlined />}
-                placeholder="纭瀵嗙爜"
+                placeholder="确认密码"
               />
             </Form.Item>
             <Form.Item>
@@ -164,13 +168,14 @@ export default function Register() {
                 block
                 loading={loading}
               >
-                娉ㄥ唽
+                注册
               </Button>
             </Form.Item>
           </Form>
           <div className={styles.footer}>
-            宸叉湁璐﹀彿锛?            <a className={styles.link} onClick={() => navigate('/login')}>
-              绔嬪嵆鐧诲綍
+            已有账号？
+            <a className={styles.link} onClick={() => navigate('/login')}>
+              立即登录
             </a>
           </div>
         </div>

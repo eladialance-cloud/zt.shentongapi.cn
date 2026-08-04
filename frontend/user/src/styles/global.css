@@ -1,0 +1,193 @@
+/* ShenTongAI - 全局样式 v2.0 */
+/* AI Immersive Dark — 电影感暗色体系 */
+@import './variables.css';
+@import './reset.css';
+
+/* ===== 基础 ===== */
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size);
+  color: var(--text-primary);
+  background: var(--bg-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* 全局过渡 */
+button, a, input, select, textarea {
+  transition: all var(--motion-duration-fast) var(--motion-ease);
+}
+
+/* 选中文本 */
+::selection {
+  background: rgba(124, 58, 237, 0.3);
+  color: var(--text-primary);
+}
+
+/* ===== 滚动条 ===== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.2);
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 58, 237, 0.4);
+}
+
+/* ===== 动效 keyframes ===== */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* 环境光 blob 动画 (慢速浮动) */
+@keyframes ambientBlob1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -20px) scale(1.05); }
+  66% { transform: translate(-20px, 10px) scale(0.95); }
+}
+
+@keyframes ambientBlob2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-40px, 30px) scale(1.08); }
+}
+
+@keyframes ambientBlob3 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(20px, -30px) scale(0.92); }
+}
+
+/* 发光脉冲 */
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(124, 58, 237, 0.2); }
+  50% { box-shadow: 0 0 24px rgba(124, 58, 237, 0.4); }
+}
+
+/* 微光呼吸 */
+@keyframes breathe {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* ===== 动效工具类 ===== */
+.fade-in {
+  animation: fadeIn var(--motion-duration) var(--motion-ease);
+}
+
+.fade-in-up {
+  animation: fadeInUp var(--motion-duration-slow) var(--motion-ease);
+}
+
+.fade-in-scale {
+  animation: fadeInScale var(--motion-duration-slow) var(--motion-ease);
+}
+
+main {
+  animation: fadeIn var(--motion-duration) var(--motion-ease);
+}
+
+/* 列表 stagger 入场 */
+.stagger-item {
+  opacity: 0;
+  animation: fadeInUp var(--motion-duration-slow) var(--motion-ease) forwards;
+}
+
+.stagger-item:nth-child(1) { animation-delay: 0ms; }
+.stagger-item:nth-child(2) { animation-delay: 60ms; }
+.stagger-item:nth-child(3) { animation-delay: 120ms; }
+.stagger-item:nth-child(4) { animation-delay: 180ms; }
+.stagger-item:nth-child(5) { animation-delay: 240ms; }
+.stagger-item:nth-child(6) { animation-delay: 300ms; }
+.stagger-item:nth-child(7) { animation-delay: 360ms; }
+.stagger-item:nth-child(8) { animation-delay: 420ms; }
+
+/* ===== 环境光装饰 (玻璃态辅助) ===== */
+.ambient-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ambient-glow--purple {
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.35) 0%, transparent 70%);
+  animation: ambientBlob1 12s ease-in-out infinite;
+}
+
+.ambient-glow--cyan {
+  background: radial-gradient(circle, rgba(8, 145, 178, 0.25) 0%, transparent 70%);
+  animation: ambientBlob2 15s ease-in-out infinite;
+}
+
+/* ===== 玻璃态通用 ===== */
+.glass {
+  background: rgba(25, 33, 52, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(124, 58, 237, 0.12);
+  border-radius: var(--border-radius-lg);
+}
+
+.glass-elevated {
+  background: rgba(25, 33, 52, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(124, 58, 237, 0.15);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+/* ===== 按钮基础增强 ===== */
+.btn-glow {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-glow::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: var(--gradient-brand);
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease);
+  z-index: -1;
+}
+
+.btn-glow:hover::after {
+  opacity: 1;
+}
+
+/* ===== 响应式辅助 ===== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

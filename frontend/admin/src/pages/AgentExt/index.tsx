@@ -288,7 +288,7 @@ interface TagFormValues {
 
 /** 预设颜色 */
 const PRESET_COLORS = [
-  '#38bdf8',
+  '#A78BFA',
   '#34d399',
   '#fbbf24',
   '#f87171',
@@ -535,7 +535,7 @@ function TagTab() {
             </div>
           </Form.Item>
           <Form.Item name="color" label="颜色值(十六进制)">
-            <Input placeholder="#38bdf8" maxLength={7} />
+            <Input placeholder="#A78BFA" maxLength={7} />
           </Form.Item>
           <Form.Item shouldUpdate noStyle>
             {({ getFieldValue }) => {

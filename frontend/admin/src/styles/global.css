@@ -1,15 +1,13 @@
-/* 管理后台全局样式 - 深色赛博风 */
+/* ShenTongAI Admin - 全局样式 v2.0 */
 @import './variables.css';
 
-/* ===== 基础 reset ===== */
 *,
 *::before,
 *::after {
   box-sizing: border-box;
 }
 
-html,
-body {
+html, body {
   margin: 0;
   padding: 0;
   height: 100%;
@@ -19,7 +17,7 @@ body {
   font-family: var(--font-family);
   font-size: var(--font-size);
   color: var(--text-primary);
-  background: var(--bg-secondary);
+  background: var(--bg-base);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -28,34 +26,109 @@ body {
   min-height: 100vh;
 }
 
-/* 全局过渡 */
-button,
-a {
+button, a {
   transition: all var(--motion-duration-fast) var(--motion-ease);
 }
 
-/* 选中文本 */
 ::selection {
-  background: rgba(99, 102, 241, 0.25);
-  color: inherit;
+  background: rgba(124, 58, 237, 0.3);
+  color: var(--text-primary);
 }
 
-/* ===== 滚动条 ===== */
+/* 滚动条 */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
-
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.25);
-  border-radius: 4px;
-  transition: background 0.2s;
+  background: rgba(124, 58, 237, 0.2);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 58, 237, 0.4);
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(56, 189, 248, 0.45);
+/* Ant Design 暗色主题覆盖 */
+.ant-table {
+  background: transparent !important;
+  color: var(--text-primary) !important;
+}
+.ant-table-thead > tr > th {
+  background: rgba(124, 58, 237, 0.06) !important;
+  color: var(--text-secondary) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  font-size: var(--font-size-sm) !important;
+}
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--border-color-subtle) !important;
+  color: var(--text-primary) !important;
+}
+.ant-table-tbody > tr:hover > td {
+  background: var(--bg-surface) !important;
+}
+.ant-pagination-item {
+  background: transparent !important;
+  border-color: var(--border-color) !important;
+}
+.ant-pagination-item a {
+  color: var(--text-secondary) !important;
+}
+.ant-pagination-item-active {
+  background: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+}
+.ant-pagination-item-active a {
+  color: #fff !important;
+}
+.ant-input, .ant-select-selector, .ant-picker {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+.ant-input:hover, .ant-select-selector:hover, .ant-picker:hover {
+  border-color: var(--border-color-strong) !important;
+}
+.ant-input:focus, .ant-select-selector:focus, .ant-picker-focused {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2) !important;
+}
+.ant-modal-content {
+  background: var(--bg-elevated) !important;
+  border: 1px solid var(--border-color) !important;
+}
+.ant-modal-header {
+  background: transparent !important;
+  border-bottom: 1px solid var(--border-color-subtle) !important;
+}
+.ant-modal-title {
+  color: var(--text-primary) !important;
+}
+.ant-drawer-content {
+  background: var(--bg-elevated) !important;
+}
+.ant-tabs-nav::before {
+  border-bottom-color: var(--border-color-subtle) !important;
+}
+.ant-tabs-tab {
+  color: var(--text-secondary) !important;
+}
+.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--color-primary) !important;
+}
+.ant-tabs-ink-bar {
+  background: var(--color-primary) !important;
+}
+.ant-tag {
+  border-radius: var(--border-radius-sm) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

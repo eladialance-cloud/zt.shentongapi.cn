@@ -48,8 +48,8 @@
 }
 
 .welcomeCard {
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(99, 102, 241, 0.12)) !important;
-  border: 1px solid rgba(56, 189, 248, 0.25) !important;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.08), rgba(8, 145, 178, 0.08)) !important;
+  border: 1px solid rgba(124, 58, 237, 0.2) !important;
   border-radius: 14px !important;
   margin-bottom: 20px;
 }
@@ -57,13 +57,13 @@
 .welcomeTitle {
   font-size: 22px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--text-primary);
   margin: 0 0 6px;
 }
 
 .welcomeSub {
   font-size: 13px;
-  color: #94a3b8;
+  color: var(--text-secondary);
 }
 
 .shortcutGrid {
@@ -73,16 +73,16 @@
 }
 
 .shortcutCard {
-  background: rgba(15, 23, 42, 0.6) !important;
-  border: 1px solid rgba(56, 189, 248, 0.18) !important;
+  background: rgba(25, 33, 52, 0.5) !important;
+  border: 1px solid var(--border-color) !important;
   border-radius: 12px !important;
   cursor: pointer;
   transition: all 0.25s ease;
 }
 
 .shortcutCard:hover {
-  border-color: rgba(56, 189, 248, 0.5) !important;
-  box-shadow: 0 0 24px rgba(56, 189, 248, 0.2) !important;
+  border-color: rgba(124, 58, 237, 0.35) !important;
+  box-shadow: 0 0 24px rgba(124, 58, 237, 0.1) !important;
   transform: translateY(-2px);
 }
 
@@ -95,19 +95,19 @@
 .shortcutLabel {
   font-size: 14px;
   font-weight: 500;
-  color: #e2e8f0;
+  color: var(--text-primary);
 }
 
 .shortcutDesc {
   font-size: 11px;
-  color: #8b949e;
+  color: var(--text-tertiary);
   margin-top: 2px;
 }
 
 .sectionCard {
-  background: rgba(15, 23, 42, 0.65) !important;
-  border: 1px solid rgba(56, 189, 248, 0.18) !important;
+  background: rgba(25, 33, 52, 0.6) !important;
+  border: 1px solid var(--border-color) !important;
   border-radius: 12px !important;
   margin-bottom: 20px;
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px);
 }

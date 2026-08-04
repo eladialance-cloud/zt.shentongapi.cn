@@ -1,4 +1,4 @@
-/* ShenTongAI - 登录页 v2.0 */
+/* ShenTongAI - 注册页 v2.0 */
 
 .container {
   min-height: 100vh;
@@ -8,7 +8,6 @@
   overflow: hidden;
 }
 
-/* ===== 左侧品牌区 (全暗色) ===== */
 .brandSide {
   width: 50%;
   position: relative;
@@ -20,7 +19,6 @@
   overflow: hidden;
 }
 
-/* 环境光 blob */
 .brandSide::before {
   content: '';
   position: absolute;
@@ -103,7 +101,6 @@
   margin: 0;
 }
 
-/* ===== 右侧表单区 ===== */
 .formSide {
   width: 50%;
   background: var(--bg-base);
@@ -134,11 +131,8 @@
   margin-top: 0;
 }
 
-.form {
-  width: 100%;
-}
+.form { width: 100%; }
 
-/* 登录按钮 */
 .submitButton {
   background: var(--gradient-brand) !important;
   border: none !important;
@@ -169,8 +163,30 @@
   transition: all var(--motion-duration) var(--motion-ease);
 }
 
-.link:hover {
-  color: var(--color-primary);
+.link:hover { color: var(--color-primary); }
+
+.decoration1 {
+  position: absolute;
+  top: -120px;
+  left: -120px;
+  width: 360px;
+  height: 360px;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.3) 0%, transparent 70%);
+  filter: blur(80px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.decoration2 {
+  position: absolute;
+  bottom: -120px;
+  right: -120px;
+  width: 360px;
+  height: 360px;
+  background: radial-gradient(circle, rgba(8, 145, 178, 0.25) 0%, transparent 70%);
+  filter: blur(80px);
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 .mobileHeader { display: none; }
@@ -188,17 +204,7 @@
     background: var(--bg-deep);
     border-bottom: 1px solid var(--border-color);
   }
-  .mobileHeader .brandIcon {
-    width: 32px;
-    height: 32px;
-  }
-  .mobileHeader .brandTitle {
-    font-size: 20px;
-    color: var(--text-primary);
-  }
-  .formSide {
-    flex: 1;
-    width: 100%;
-    padding: 32px 24px;
-  }
+  .mobileHeader .brandIcon { width: 32px; height: 32px; }
+  .mobileHeader .brandTitle { font-size: 20px; color: var(--text-primary); }
+  .formSide { flex: 1; width: 100%; padding: 32px 24px; }
 }

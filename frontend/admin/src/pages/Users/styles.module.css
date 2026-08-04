@@ -103,7 +103,7 @@
 }
 
 .amountPositive {
-  color: #34d399 !important;
+  color: var(--color-success) !important;
 }
 
 .amountNegative {

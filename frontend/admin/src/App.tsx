@@ -41,7 +41,7 @@ export default function App() {
       theme={{
         algorithm: antdTheme.darkAlgorithm,
         token: {
-          colorPrimary: '#6366f1',
+          colorPrimary: '#7C3AED',
           borderRadius: 8,
           borderRadiusLG: 12,
           colorBgLayout: '#0f172a',

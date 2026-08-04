@@ -1,4 +1,4 @@
-﻿// 璁よ瘉鐩稿叧 API
+// 璁よ瘉鐩稿叧 API
 import request from '@/utils/request';
 import type { LoginParams, RegisterParams, User } from '@/types/api';
 import type { LoginResponse, RefreshTokenResponse } from '@/types/api';

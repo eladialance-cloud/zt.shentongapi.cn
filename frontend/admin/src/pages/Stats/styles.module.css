@@ -104,7 +104,7 @@
 
 .bar {
   width: 60%;
-  background: linear-gradient(180deg, #38bdf8 0%, #6366f1 100%);
+  background: linear-gradient(180deg, var(--color-secondary) 0%, var(--color-primary) 100%);
   border-radius: 4px 4px 0 0;
   min-height: 4px;
   transition: height 0.4s ease;
@@ -134,7 +134,7 @@
 /* SVG 折线图 */
 .lineChartWrap {
   background: rgba(15, 23, 42, 0.5);
-  border: 1px solid rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(124, 58, 237, 0.15);
   border-radius: 10px;
   padding: 16px;
 }
@@ -175,7 +175,7 @@
 
 .cohortTable th,
 .cohortTable td {
-  border: 1px solid rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(124, 58, 237, 0.15);
   padding: 8px 10px;
   text-align: center;
 }

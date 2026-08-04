@@ -292,7 +292,7 @@ export default function AdminSkillStore() {
       category: pkg.category,
       triggerKeywords: pkg.triggerKeywords ?? [],
       icon: pkg.uiConfig?.icon ?? '',
-      color: pkg.uiConfig?.color ?? '#38bdf8'
+      color: pkg.uiConfig?.color ?? '#A78BFA'
     })
     setDrawerOpen(true)
   }

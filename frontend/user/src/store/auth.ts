@@ -1,5 +1,5 @@
-﻿// 璁よ瘉鐘舵€佺鐞?(Zustand)
-// 瀵归綈寮€鍙戞枃妗?鍓嶇寮€鍙戞寚鍗?md 3.2 鐘舵€佺鐞嗭細Zustand
+// 认证状态管理 (Zustand)
+// 对齐开发文档-前端开发指南.md 3.2 状态管理：Zustand
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User } from '@/types/api';
@@ -12,7 +12,7 @@ interface AuthState {
   login: (accessToken: string, user: User) => void;
   logout: () => void;
   setUser: (user: User) => void;
-  /** access token 缁湡鍚庡悓姝ワ紙涓嶆竻鐞?socket锛?*/
+  /** access token 续期后同步（不清理 socket） */
   refreshAccessToken: (accessToken: string) => void;
 }
 
@@ -23,11 +23,14 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       isAuthenticated: false,
 
-      // 鐧诲綍鍓嶆竻鐞嗗彲鑳芥畫鐣欑殑鏃х姸鎬?      // refreshToken 閫氳繃 HttpOnly Cookie 绠＄悊锛屽墠绔笉鍐嶆寔鏈夋槑鏂?      login: (accessToken, user) => {
+      // 登录前清理可能残留的旧状态
+      // refreshToken 通过 HttpOnly Cookie 管理，前端不再持有明文
+      login: (accessToken, user) => {
         set({ accessToken, user, isAuthenticated: true });
       },
 
-      // 鐧诲嚭娓呯悊鐘舵€?      logout: () => {
+      // 登出清理状态
+      logout: () => {
         set({
           accessToken: null,
           user: null,
@@ -37,16 +40,19 @@ export const useAuthStore = create<AuthState>()(
 
       setUser: (user) => set({ user }),
 
-      // refresh 缁湡涓撶敤锛氫粎鏇存柊 accessToken锛屼笉鎵撴柇 socket 杩炴帴
-      // socket 閴存潈鍒锋柊鐢遍噸杩炴垨鏄惧紡 disconnectSocket 澶勭悊
+      // refresh 续期专用：仅更新 accessToken，不打断 socket 连接
+      // socket 鉴权刷新由重连或显式 disconnectSocket 处理
       refreshAccessToken: (accessToken) => set({ accessToken }),
     }),
     {
       name: 'auth-storage',
-      // 鎸佷箙鍖?isAuthenticated 閬垮厤鍒锋柊椤甸潰涓㈠け鐧诲綍鎬?      // 閰嶅悎 ProtectedRoute 鐨?token 杩囨湡棰勬牎楠岋紝杩囨湡浼氳韪㈢櫥褰?      // refreshToken 涓嶅啀鎸佷箙鍖栵紙鐢?HttpOnly Cookie 绠＄悊锛?      partialize: (state) => ({
+      // 持久化 isAuthenticated 避免刷新页面丢失登录态
+      // 配合 ProtectedRoute 的 token 过期预校验，过期会被踢登录
+      // refreshToken 不再持久化（由 HttpOnly Cookie 管理）
+      partialize: (state) => ({
         isAuthenticated: state.isAuthenticated,
         user: state.user,
-        // accessToken 涓嶆寔涔呭寲锛屽埛鏂伴〉闈㈡椂閫氳繃 refreshToken 閲嶆柊鑾峰彇
+        // accessToken 不持久化，刷新页面时通过 refreshToken 重新获取
       }),
     }
   )

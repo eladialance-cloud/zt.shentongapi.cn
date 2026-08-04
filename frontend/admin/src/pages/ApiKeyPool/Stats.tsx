@@ -227,8 +227,8 @@ export default function AdminApiKeyPoolStats() {
                     percent={usedPercent}
                     status={usedPercent >= 90 ? 'exception' : 'active'}
                     strokeColor={{
-                      '0%': '#38bdf8',
-                      '100%': '#6366f1'
+                      '0%': '#A78BFA',
+                      '100%': '#7C3AED'
                     }}
                   />
                   <Progress

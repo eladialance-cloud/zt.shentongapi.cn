@@ -1,4 +1,4 @@
-﻿import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/auth'
 import { useState, useEffect, useCallback } from 'react'
 import ParticleMatrix from '../../components/landing/ParticleMatrix'
@@ -34,7 +34,7 @@ interface LatestReleaseInfo {
   releaseDate: string
 }
 
-/** 鏋佺畝瑙ｆ瀽 latest.yml */
+/** 极简解析 latest.yml */
 function parseLatestYml(text: string): { version: string; path: string; releaseDate: string } | null {
   const get = (key: string): string | null => {
     const re = new RegExp(`^${key}:\\s*'?([^'\\n]+?)'?\\s*$`, 'm')
@@ -116,7 +116,7 @@ export default function Landing() {
       .then((text) => {
         const parsed = parseLatestYml(text)
         if (!parsed) {
-          console.warn('[Landing] latest.yml 瑙ｆ瀽澶辫触锛屽洖閫€鍒扮幆澧冨彉閲忓厹搴曞€?)
+          console.warn('[Landing] latest.yml 解析失败，回退到环境变量兜底')
           return
         }
         setLatestInfo({
@@ -126,7 +126,7 @@ export default function Landing() {
         })
       })
       .catch((err) => {
-        console.warn('[Landing] latest.yml 鎷夊彇澶辫触锛屽洖閫€鍒扮幆澧冨彉閲忓厹搴曞€?', err)
+        console.warn('[Landing] latest.yml 拉取失败，回退到环境变量兜底', err)
       })
     return () => controller.abort()
   }, [])
@@ -157,11 +157,11 @@ export default function Landing() {
       {/* 1. Navbar */}
       <header className={styles.navbar}>
         <div className={styles.navbarInner}>
-          <button className={styles.navbarBrand} aria-label="娣辩灣AI棣栭〉" onClick={() => handleScrollTo('hero')}>
+          <button className={styles.navbarBrand} aria-label="深瞳AI首页" onClick={() => handleScrollTo('hero')}>
             <span className={styles.navbarLogo}>
               <ThunderboltOutlined />
             </span>
-            <span className={styles.navbarBrandName}>娣辩灣AI</span>
+            <span className={styles.navbarBrandName}>深瞳AI</span>
           </button>
           <nav className={styles.navbarNav}>
             {navItems.map((item) => (
@@ -179,9 +179,9 @@ export default function Landing() {
               className={styles.navbarBtnOutline}
               onClick={() => isAuthenticated ? handleScrollTo('download') : navigate('/register')}
             >
-              瀹㈡埛绔笅杞?            </button>
+              客户端下载            </button>
             <button className={styles.navbarBtnPrimary} onClick={() => navigate('/login')}>
-              鐧诲綍
+              登录
             </button>
           </div>
         </div>
@@ -200,14 +200,14 @@ export default function Landing() {
       <section className={`${styles.hero} ${visibleSections.has('hero') ? styles.visible : ''}`} id="hero">
         <div className={styles.heroInner}>
           <span className={styles.heroTag}>
-            OpenClaw + Hermes 鍩哄骇 路 8澶I鍛樺伐 路 鐪熷疄椤圭洰闂幆杩愯惀
+            OpenClaw + Hermes 基座 · 8大AI员工 · 真实项目闭环运营
           </span>
           <h1 className={styles.heroTitle}>
-            <span className={styles.heroTitleLine1}>鎵撻€燗I鑷姩鍖栧叕鍙?/span>
-            <span className={styles.heroTitleLine2}>8澶I鍛樺伐 24h 鑷富宸ヤ綔</span>
+            <span className={styles.heroTitleLine1}>打造AI自动化公司</span>
+            <span className={styles.heroTitleLine2}>8大AI员工 24h 自主工作</span>
           </h1>
           <p className={styles.heroDesc}>
-            鍩轰簬OpenClaw杩愯鏃朵笌Hermes缂栨帓涓灑锛屾瀯寤?澶I鍛樺伐鍗忓悓浣撶郴锛岃鐩栬幏瀹€佽浆鍖栥€佷氦浠樸€佸璐叏閾捐矾锛?浜哄嵆鍙繍钀ヤ竴瀹禔I鑷姩鍖栧叕鍙搞€?          </p>
+            基于OpenClaw运行时与Hermes编排中枢，构建8大AI员工协同体系，覆盖获客、转化、交付、复购全链路，1人即可运营一家AI自动化公司。          </p>
           <div className={styles.heroStats}>
             {heroStats.map((stat) => (
               <div key={stat.label} className={styles.heroStat}>
@@ -218,13 +218,13 @@ export default function Landing() {
           </div>
           <div className={styles.heroCtas}>
             <button className={styles.heroCtaPrimary} onClick={() => handleScrollTo('download')}>
-              绔嬪嵆涓嬭浇
+              立即下载
             </button>
             <button className={styles.heroCtaSecondary} onClick={() => navigate('/register')}>
-              鍏嶈垂娉ㄥ唽
+              免费注册
             </button>
           </div>
-          <div className={styles.scrollHint}>鈫?鍚戜笅婊氬姩鎺㈢储</div>
+          <div className={styles.scrollHint}>↓向下滚动探索</div>
         </div>
       </section>
 
@@ -232,7 +232,7 @@ export default function Landing() {
       <section className={`${styles.section} ${visibleSections.has('foundation') ? styles.visible : ''}`} id="foundation">
         <div className={styles.container}>
           <p className={styles.sectionLabel}>AI RUNTIME & ORCHESTRATION</p>
-          <h2 className={styles.sectionTitle}>OpenClaw + Hermes 路 AI鍥㈤槦鍩哄骇</h2>
+          <h2 className={styles.sectionTitle}>OpenClaw + Hermes · AI团队基座</h2>
           <div className={styles.foundationGrid}>
             {foundationCards.map((card) => (
               <article key={card.name} className={styles.featureCard}>
@@ -267,7 +267,7 @@ export default function Landing() {
       {/* 4. Organization */}
       <section className={`${styles.section} ${visibleSections.has('team') ? styles.visible : ''}`} id="team">
         <div className={styles.container}>
-          <h2 className={styles.sectionTitle}>缁勭粐鏋舵瀯 路 8澶ф牳蹇冨憳宸ラ┍鍔ㄩ棴鐜?/h2>
+          <h2 className={styles.sectionTitle}>组织架构 · 8大核心员工驱动闭环</h2>
           <div className={styles.orgCeoWrap}>
             <article className={`${styles.orgCard} ${styles.orgCeoCard}`}>
               <div className={styles.orgIcon}>{ceoCard.icon}</div>
@@ -283,7 +283,7 @@ export default function Landing() {
           <div className={styles.orgCoreGrid}>
             {coreCards.map((card) => (
               <article key={card.name} className={`${styles.orgCard} ${styles.orgCoreCard}`}>
-                <span className={styles.orgBadge}>鏍稿績</span>
+                <span className={styles.orgBadge}>核心</span>
                 <div className={styles.orgIcon}>{card.icon}</div>
                 <div className={styles.orgName}>{card.name}</div>
                 <div className={styles.orgRole}>{card.role}</div>
@@ -312,15 +312,15 @@ export default function Landing() {
           <div className={styles.orgLegend}>
             <span className={styles.legendItem}>
               <span className={`${styles.legendDot} ${styles.legendDotCeo}`} />
-              <span>鍐崇瓥灞?/span>
+              <span>决策层</span>
             </span>
             <span className={styles.legendItem}>
               <span className={`${styles.legendDot} ${styles.legendDotCore}`} />
-              <span>鏍稿績灞?/span>
+              <span>核心层</span>
             </span>
             <span className={styles.legendItem}>
               <span className={`${styles.legendDot} ${styles.legendDotExec}`} />
-              <span>鎵ц灞?/span>
+              <span>执行层</span>
             </span>
           </div>
         </div>
@@ -329,7 +329,7 @@ export default function Landing() {
       {/* 5. Flywheel */}
       <section className={`${styles.section} ${visibleSections.has('flywheel') ? styles.visible : ''}`} id="flywheel">
         <div className={styles.container}>
-          <h2 className={styles.sectionTitle}>涓氬姟椋炶疆 路 浜旀闂幆鍙樼幇</h2>
+          <h2 className={styles.sectionTitle}>业务飞轮 · 五步闭环变现</h2>
           <div className={styles.flywheelGrid}>
             {flywheelSteps.map((step, idx) => (
               <article
@@ -337,7 +337,7 @@ export default function Landing() {
                 className={`${styles.stepCard} ${activeStep === idx ? styles.stepCardActive : ''}`}
                 role="button"
                 tabIndex={0}
-                aria-label={`姝ラ${step.num}锛?{step.title}锛岀偣鍑绘煡鐪嬭鎯卄}
+                aria-label={`步骤${step.num}：${step.title}，点击查看详情`}
                 onClick={() => setActiveStep(idx)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
@@ -351,20 +351,20 @@ export default function Landing() {
                 <div className={styles.stepEn}>{step.en}</div>
                 <div className={styles.stepRoles}>{step.roles}</div>
                 <div className={styles.stepHint}>
-                  {activeStep === idx ? '鈼?褰撳墠灞曠ず' : '鐐瑰嚮鏌ョ湅 鈫?}
+                  {activeStep === idx ? '● 当前展示' : '点击查看 →'}
                 </div>
               </article>
             ))}
           </div>
           <div className={styles.detailPanel} key={activeStep}>
             <div className={styles.detailPanelHead}>
-              <span className={styles.detailPanelTitle}>{flywheelSteps[activeStep].title} 路 鎵ц鍔ㄤ綔</span>
+              <span className={styles.detailPanelTitle}>{flywheelSteps[activeStep].title} · 执行动作</span>
               <span className={styles.detailPanelTag}>{flywheelSteps[activeStep].en}</span>
             </div>
             <ul className={styles.detailList}>
               {flywheelDetails[activeStep].map((action) => (
                 <li key={action} className={styles.detailAction}>
-                  <span className={styles.detailArrow}>鈻?/span>
+                  <span className={styles.detailArrow}>▸</span>
                   <span>{action}</span>
                 </li>
               ))}
@@ -376,7 +376,7 @@ export default function Landing() {
       {/* 6. Collaboration */}
       <section className={`${styles.section} ${visibleSections.has('collaboration') ? styles.visible : ''}`} id="collaboration">
         <div className={styles.container}>
-          <h2 className={styles.sectionTitle}>鍗忎綔鍏崇郴缃戠粶 路 12鏉℃暟鎹祦</h2>
+          <h2 className={styles.sectionTitle}>协作关系网络 · 12条数据流</h2>
           <div className={styles.dataflowGrid}>
             {dataflowCards.map((flow, idx) => (
               <article key={idx} className={styles.dataflowCard}>
@@ -404,7 +404,7 @@ export default function Landing() {
       {/* 7. Tech */}
       <section className={`${styles.section} ${visibleSections.has('tech') ? styles.visible : ''}`} id="tech">
         <div className={styles.container}>
-          <h2 className={styles.sectionTitle}>鎶€鏈簳搴?路 涓夊ぇ鍩虹璁炬柦</h2>
+          <h2 className={styles.sectionTitle}>技术底座 · 三大基础设施</h2>
           <div className={styles.techGrid}>
             {techCards.map((card) => (
               <article key={card.num} className={styles.techCard}>
@@ -433,7 +433,7 @@ export default function Landing() {
       {/* 8. Industries */}
       <section className={`${styles.section} ${visibleSections.has('industries') ? styles.visible : ''}`} id="industries">
         <div className={styles.container}>
-          <h2 className={styles.sectionTitle}>閫傜敤鍦烘櫙 路 鍏ㄨ涓氳鐩?/h2>
+          <h2 className={styles.sectionTitle}>适用场景 · 全行业覆盖</h2>
           <div className={styles.industryTags}>
             {industryCards.map((card) => (
               <span key={card.name} className={styles.industryTag}>
@@ -442,7 +442,7 @@ export default function Landing() {
               </span>
             ))}
           </div>
-          <div className={styles.industriesHint}>涓嶆杩?2涓涓?路 浠讳綍閲嶅鎬т笟鍔℃祦绋嬮兘鑳紸I鑷姩鍖?/div>
+          <div className={styles.industriesHint}>不只是这12个行业 · 任何重复性业务流程都能AI自动化</div>
         </div>
       </section>
 
@@ -450,9 +450,9 @@ export default function Landing() {
       <section className={`${styles.section} ${visibleSections.has('download') ? styles.visible : ''}`} id="download">
         <div className={styles.container}>
           <p className={styles.sectionLabel}>DESKTOP CLIENT</p>
-          <h2 className={styles.sectionTitle}>瀹㈡埛绔笅杞?路 绔嬪嵆鑾峰彇</h2>
+          <h2 className={styles.sectionTitle}>客户端下载 · 立即获取</h2>
           <p className={styles.downloadSubtitle}>
-            涓嬭浇娣辩灣AI妗岄潰瀹㈡埛绔?1浜哄惎鍔?澶I鍛樺伐24h鑷富宸ヤ綔
+            下载深瞳AI桌面客户端,1人启动8大AI员工24h自主工作
           </p>
           <div className={styles.downloadGrid}>
             <article className={styles.downloadCard}>
@@ -462,13 +462,13 @@ export default function Landing() {
                 </svg>
               </div>
               <div className={styles.downloadOsName}>Windows</div>
-              <div className={styles.downloadVersion}>鐗堟湰 {appVersion}</div>
+              <div className={styles.downloadVersion}>版本 {appVersion}</div>
               <button
                 className={isAuthenticated ? styles.downloadBtn : styles.downloadBtnDisabled}
-                aria-label={`涓嬭浇 Windows 瀹㈡埛绔紝鐗堟湰 ${appVersion}`}
+                aria-label={`下载 Windows 客户端，版本 ${appVersion}`}
                 onClick={() => handleDownload(downloadWinUrl)}
               >
-                {isAuthenticated ? '绔嬪嵆涓嬭浇' : '娉ㄥ唽鍚庝笅杞?}
+                {isAuthenticated ? '立即下载' : '注册后下载'}
               </button>
             </article>
 
@@ -479,40 +479,40 @@ export default function Landing() {
                 </svg>
               </div>
               <div className={styles.downloadOsName}>macOS</div>
-              <div className={styles.downloadVersion}>鐗堟湰 {appVersion}</div>
+              <div className={styles.downloadVersion}>版本 {appVersion}</div>
               <button
                 className={isAuthenticated ? styles.downloadBtn : styles.downloadBtnDisabled}
-                aria-label={`涓嬭浇 macOS 瀹㈡埛绔紝鐗堟湰 ${appVersion}`}
+                aria-label={`下载 macOS 客户端，版本 ${appVersion}`}
                 onClick={() => handleDownload(downloadMacUrl)}
               >
-                {isAuthenticated ? '绔嬪嵆涓嬭浇' : '娉ㄥ唽鍚庝笅杞?}
+                {isAuthenticated ? '立即下载' : '注册后下载'}
               </button>
             </article>
           </div>
 
           <div className={styles.changelogWrap}>
-            <h3 className={styles.changelogTitle}>鏇存柊鏃ュ織</h3>
+            <h3 className={styles.changelogTitle}>更新日志</h3>
             <ul className={styles.changelogList}>
               <li className={styles.changelogItem}>
                 <span className={styles.changelogVersion}>v{appVersion}</span>
                 <span className={styles.changelogDate}>{latestInfo?.releaseDate ? formatYamlDate(latestInfo.releaseDate) : '2026-07-16'}</span>
-                <p className={styles.changelogDesc}>鏂板 zip 鍘嬬缉鍖呬笅杞姐€佷紭鍖栬嚜鍔ㄦ洿鏂般€佷慨澶嶆闈㈢鏂囦欢閿佸畾闂</p>
+                <p className={styles.changelogDesc}>新增 zip 压缩包下载、优化自动更新、修复桌面端文件锁定问题</p>
               </li>
               <li className={styles.changelogItem}>
                 <span className={styles.changelogVersion}>v0.0.9</span>
                 <span className={styles.changelogDate}>2026-06-20</span>
-                <p className={styles.changelogDesc}>鍐呮祴鐗堟湰,浼樺寲璁惧缁戝畾涓庣绾块槦鍒?/p>
+                <p className={styles.changelogDesc}>内测版本,优化设备绑定与离线队列</p>
               </li>
               <li className={styles.changelogItem}>
                 <span className={styles.changelogVersion}>v0.0.8</span>
                 <span className={styles.changelogDate}>2026-05-15</span>
-                <p className={styles.changelogDesc}>Alpha 鐗堟湰,鏂板鐭ヨ瘑搴?RAG 妫€绱?/p>
+                <p className={styles.changelogDesc}>Alpha 版本,新增知识库 RAG 检索</p>
               </li>
             </ul>
           </div>
 
           <div className={styles.downloadHint}>
-            鏀寔 Windows 10+ / macOS 11+ 路 闇€瑕佺綉缁滆繛鎺?          </div>
+            支持 Windows 10+ / macOS 11+ · 需要网络连接          </div>
         </div>
       </section>
 
@@ -520,15 +520,15 @@ export default function Landing() {
       <section className={`${styles.section} ${visibleSections.has('cta') ? styles.visible : ''}`} id="cta">
         <div className={styles.container}>
           <div className={styles.ctaInner}>
-            <h2 className={styles.ctaTitle}>寮€濮嬫瀯寤轰綘鐨凙I鍥㈤槦</h2>
+            <h2 className={styles.ctaTitle}>开始构建你的AI团队</h2>
             <p className={styles.ctaDesc}>
-              1浜哄惎鍔紝8澶I鍛樺伐24h鑷富宸ヤ綔锛岀珛鍗冲紑鍚疉I鑷姩鍖栬繍钀ャ€?            </p>
+              1人启动，8大AI员工24h自主工作，立即开启AI自动化运营。            </p>
             <div className={styles.ctaActions}>
               <button className={styles.ctaBtnPrimary} onClick={() => navigate('/register')}>
-                绔嬪嵆娉ㄥ唽
+                立即注册
               </button>
               <button className={styles.ctaBtnOutline} onClick={() => navigate('/login')}>
-                鐧诲綍
+                登录
               </button>
             </div>
           </div>
@@ -539,30 +539,30 @@ export default function Landing() {
       <footer className={styles.footer}>
         <div className={styles.footerInner}>
           <div>
-            <div className={styles.footerBrandName}>娣辩灣AI</div>
+            <div className={styles.footerBrandName}>深瞳AI</div>
             <p className={styles.footerBrandDesc}>
-              鍩轰簬OpenClaw + Hermes鐨凙I鑷姩鍖栧叕鍙歌繍钀ュ钩鍙帮紝8澶I鍛樺伐椹卞姩涓氬姟闂幆銆?            </p>
+              基于OpenClaw + Hermes的AI自动化公司运营平台，8大AI员工驱动业务闭环。            </p>
           </div>
           <div className={styles.footerLinks}>
-            <strong className={styles.footerLinksTitle}>蹇嵎閾炬帴</strong>
-            <button className={styles.footerLink} onClick={() => handleScrollTo('foundation')}>鎶€鏈熀搴?/button>
-            <button className={styles.footerLink} onClick={() => handleScrollTo('flywheel')}>涓氬姟椋炶疆</button>
-            <button className={styles.footerLink} onClick={() => handleScrollTo('industries')}>閫傜敤鍦烘櫙</button>
-            <button className={styles.footerLink} onClick={() => handleScrollTo('download')}>瀹㈡埛绔笅杞?/button>
+            <strong className={styles.footerLinksTitle}>快捷链接</strong>
+            <button className={styles.footerLink} onClick={() => handleScrollTo('foundation')}>技术基础</button>
+            <button className={styles.footerLink} onClick={() => handleScrollTo('flywheel')}>业务飞轮</button>
+            <button className={styles.footerLink} onClick={() => handleScrollTo('industries')}>适用场景</button>
+            <button className={styles.footerLink} onClick={() => handleScrollTo('download')}>客户端下载</button>
           </div>
           <div className={styles.footerLinks}>
-            <strong className={styles.footerLinksTitle}>鑱旂郴鏂瑰紡</strong>
-            <span className={styles.footerLink}>閭锛歝ontact@shentongapi.cn</span>
-            <span className={styles.footerLink}>鐢佃瘽锛?00-888-0000</span>
-            <span className={styles.footerLink}>鍦板潃锛氬寳浜競娴锋穩鍖轰腑鍏虫潙</span>
+            <strong className={styles.footerLinksTitle}>联系方式</strong>
+            <span className={styles.footerLink}>邮箱：contact@shentongapi.cn</span>
+            <span className={styles.footerLink}>电话：400-888-0000</span>
+            <span className={styles.footerLink}>地址：北京市海淀区中关村</span>
           </div>
         </div>
-        <div className={styles.footerBottom}>漏 2026 娣辩灣AI. All rights reserved.</div>
+        <div className={styles.footerBottom}>© 2026 深瞳AI. All rights reserved.</div>
       </footer>
 
       <button
         className={`${styles.backToTop} ${showTopBtn ? styles.backToTopVisible : ''}`}
-        aria-label="鍥炲埌椤堕儴"
+        aria-label="回到顶部"
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
       >
         <VerticalAlignTopOutlined />
