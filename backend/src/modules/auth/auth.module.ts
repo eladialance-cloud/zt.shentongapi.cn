@@ -1,5 +1,4 @@
 ﻿import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './controllers/auth.controller';
 import { AuthService } from './services/auth.service';
@@ -14,7 +13,6 @@ import { DeviceModule } from '../device/device.module';
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.register({}),
     UserModule,
     CommonModule,
     DeviceModule,

@@ -86,6 +86,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
       ],
     }),
     JwtModule.registerAsync({
+      global: true,
       inject: [ConfigService],
       useFactory: jwtConfig,
     }),
