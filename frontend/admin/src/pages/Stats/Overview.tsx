@@ -94,17 +94,17 @@ export default function StatsOverviewPage() {
 
   // 计算 7 天调用量趋势柱状图最大值
   const maxCall = overview
-    ? Math.max(1, ...overview.callTrend7d.map((p) => p.value))
+    ? Math.max(1, ...(overview.callTrend7d ?? []).map((p) => p.value))
     : 1
   const maxRevenue = overview
-    ? Math.max(1, ...overview.revenueTrend7d.map((p) => p.value))
+    ? Math.max(1, ...(overview.revenueTrend7d ?? []).map((p) => p.value))
     : 1
 
   // 模型消耗/模块调用占比最大值
-  const maxModelConsumption = overview && overview.modelConsumption.length > 0
+  const maxModelConsumption = overview && (overview.modelConsumption ?? []).length > 0
     ? Math.max(1, ...overview.modelConsumption.map((p) => p.value))
     : 1
-  const maxModuleCalls = overview && overview.moduleCalls.length > 0
+  const maxModuleCalls = overview && (overview.moduleCalls ?? []).length > 0
     ? Math.max(1, ...overview.moduleCalls.map((p) => p.value))
     : 1
 
@@ -190,7 +190,7 @@ export default function StatsOverviewPage() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
           <Card className={styles.card} bordered={false}>
             <div style={{ color: '#7dd3fc', marginBottom: 8 }}>调用量趋势</div>
-            {overview && overview.callTrend7d.length > 0 ? (
+            {overview && (overview.callTrend7d ?? []).length > 0 ? (
               <div className={styles.barChart}>
                 {overview.callTrend7d.map((p) => {
                   const heightPercent = (p.value / maxCall) * 100
@@ -209,7 +209,7 @@ export default function StatsOverviewPage() {
           </Card>
           <Card className={styles.card} bordered={false}>
             <div style={{ color: '#7dd3fc', marginBottom: 8 }}>收入趋势(元)</div>
-            {overview && overview.revenueTrend7d.length > 0 ? (
+            {overview && (overview.revenueTrend7d ?? []).length > 0 ? (
               <div className={styles.barChart}>
                 {overview.revenueTrend7d.map((p) => {
                   const heightPercent = (p.value / maxRevenue) * 100
@@ -235,8 +235,8 @@ export default function StatsOverviewPage() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <Card className={styles.card} bordered={false}>
             <div style={{ color: '#7dd3fc', marginBottom: 12 }}>模型消耗占比</div>
-            {overview && overview.modelConsumption.length > 0 ? (
-              overview.modelConsumption.map((m) => {
+            {overview && (overview.modelConsumption ?? []).length > 0 ? (
+              (overview.modelConsumption ?? []).map((m) => {
                 const percent = Math.round((m.value / maxModelConsumption) * 100)
                 return (
                   <div className={styles.ratioRow} key={m.name}>
@@ -258,8 +258,8 @@ export default function StatsOverviewPage() {
           </Card>
           <Card className={styles.card} bordered={false}>
             <div style={{ color: '#7dd3fc', marginBottom: 12 }}>模块调用占比</div>
-            {overview && overview.moduleCalls.length > 0 ? (
-              overview.moduleCalls.map((m) => {
+            {overview && (overview.moduleCalls ?? []).length > 0 ? (
+              (overview.moduleCalls ?? []).map((m) => {
                 const percent = Math.round((m.value / maxModuleCalls) * 100)
                 return (
                   <div className={styles.ratioRow} key={m.name}>

@@ -57,6 +57,11 @@ const LandingBlocks = lazy(() => import('@/pages/Content/LandingBlocks'))
 const CommunityPostReview = lazy(() => import('@/pages/Community/PostReview'))
 const CommunityChannels = lazy(() => import('@/pages/Community/Channels'))
 const CommunityTags = lazy(() => import('@/pages/Community/Tags'))
+const AdminReview = lazy(() => import('@/pages/Review'))
+const AdminMcp = lazy(() => import('@/pages/Mcp'))
+const AdminInfraHub = lazy(() => import('@/pages/InfraHub'))
+const AdminPlans = lazy(() => import('@/pages/Plans'))
+const AdminApiKeyPool = lazy(() => import('@/pages/ApiKeyPool'))
 
 /** Suspense fallback：Ant Design Spin 居中加载 */
 const SuspenseFallback = (
@@ -105,6 +110,8 @@ const router = createBrowserRouter(
         { path: 'users/credits', element: withSuspense(<AdminUserCredits />) },
         { path: 'users/orders', element: withSuspense(<AdminUserOrders />) },
         { path: 'users/devices', element: withSuspense(<AdminUserDevices />) },
+        // Key 池
+        { path: 'api-key-pool', element: withSuspense(<AdminApiKeyPool />) },
         // Agent 市场管理
         { path: 'agents', element: withSuspense(<AdminAgents />) },
         // 工作流模板管理
@@ -146,7 +153,12 @@ const router = createBrowserRouter(
         { path: 'system', element: <Navigate to="/system/config" replace /> },
         { path: 'system/config', element: withSuspense(<SystemConfig />) },
         { path: 'system/tenant', element: withSuspense(<SystemTenant />) },
-        { path: 'system/announcements', element: withSuspense(<SystemAnnouncements />) }
+        { path: 'system/announcements', element: withSuspense(<SystemAnnouncements />) },
+        // 审核中心 / MCP / 基础设施 / 套餐
+        { path: 'review', element: withSuspense(<AdminReview />) },
+        { path: 'mcp', element: withSuspense(<AdminMcp />) },
+        { path: 'infra', element: withSuspense(<AdminInfraHub />) },
+        { path: 'plans', element: withSuspense(<AdminPlans />) }
       ]
     },
 
