@@ -9,7 +9,6 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { N8nWorkflowEntity } from '../entities/n8n-workflow.entity';
-import { Public } from '../../../common/decorators/public.decorator';
 import { BusinessException } from '../../../common/exceptions/business.exception';
 import { ErrorCode } from '../../../common/constants/error.constant';
 
@@ -22,7 +21,6 @@ export class WorkflowTemplateController {
   ) {}
 
   @Get('templates')
-  @Public()
   @ApiOperation({ summary: '获取工作流模板列表' })
   async listTemplates(
     @Query('page') page?: string,
@@ -69,7 +67,6 @@ export class WorkflowTemplateController {
   }
 
   @Get('templates/:id')
-  @Public()
   @ApiOperation({ summary: '获取工作流模板详情' })
   async getTemplateDetail(@Param('id', ParseIntPipe) id: number) {
     const workflow = await this.workflowRepo.findOne({ where: { id } });

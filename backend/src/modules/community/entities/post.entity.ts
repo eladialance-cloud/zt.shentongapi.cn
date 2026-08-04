@@ -1,4 +1,4 @@
-import { Entity, Column, Index } from 'typeorm';
+﻿import { Entity, Column, Index } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { bigintTransformer } from '../../../common/entities/base.entity';
 
@@ -83,4 +83,7 @@ export class PostEntity extends BaseEntity {
 
   @Column({ name: 'is_essence', type: 'boolean', default: false })
   isEssence: boolean;
+
+  @Column({ name: 'review_reason', type: 'varchar', length: 500, nullable: true })
+  reviewReason: string | null;
 }

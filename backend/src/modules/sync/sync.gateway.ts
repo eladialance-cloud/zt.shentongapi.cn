@@ -5,6 +5,7 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
+import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 
 /**
@@ -22,19 +23,33 @@ import { Server, Socket } from 'socket.io';
 export class SyncGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(SyncGateway.name);
 
+  constructor(private jwtService: JwtService) {}
+
   @WebSocketServer()
   server: Server;
 
   handleConnection(client: Socket) {
-    const userId =
-      (client.handshake.auth as any)?.userId ||
-      (client.handshake.query as any)?.userId;
-    if (userId) {
-      const room = `user:${userId}`;
+    try {
+      const token =
+        (client.handshake.auth as any)?.token ||
+        (client.handshake.query as any)?.token;
+      if (!token) {
+        this.logger.warn(`客户端未携带 token，连接拒绝: ${client.id}`);
+        client.disconnect(true);
+        return;
+      }
+      const payload = this.jwtService.verify(token) as { sub: number };
+      if (!payload?.sub) {
+        this.logger.warn(`无效的 token，连接拒绝: ${client.id}`);
+        client.disconnect(true);
+        return;
+      }
+      const room = `user:${payload.sub}`;
       client.join(room);
-      this.logger.log(`客户端连接并加入房间 ${room}: ${client.id}`);
-    } else {
-      this.logger.warn(`客户端未携带 userId，连接拒绝: ${client.id}`);
+      (client as any).userId = payload.sub;
+      this.logger.log(`客户端认证成功并加入房间 ${room}: ${client.id}`);
+    } catch (err) {
+      this.logger.warn(`Token 验证失败，连接拒绝: ${client.id} - ${(err as Error).message}`);
       client.disconnect(true);
     }
   }

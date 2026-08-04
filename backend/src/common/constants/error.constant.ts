@@ -21,6 +21,7 @@ export enum ErrorCode {
   FILE_UPLOAD_FAILED = 1104,
   FILE_DELETE_FAILED = 1105,
   THIRD_PARTY_ERROR = 1106,
+  ACCOUNT_DISABLED = 1016,
   INTERNAL_ERROR = 1099,
 }
 
@@ -47,5 +48,6 @@ export const ErrorMessage: Record<ErrorCode, string> = {
   [ErrorCode.FILE_UPLOAD_FAILED]: '文件上传失败',
   [ErrorCode.FILE_DELETE_FAILED]: '文件删除失败',
   [ErrorCode.THIRD_PARTY_ERROR]: '第三方服务异常',
+  [ErrorCode.ACCOUNT_DISABLED]: '账号已被禁用',
   [ErrorCode.INTERNAL_ERROR]: '服务器内部错误',
 };

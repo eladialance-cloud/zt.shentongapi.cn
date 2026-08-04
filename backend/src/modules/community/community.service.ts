@@ -89,8 +89,9 @@ export class CommunityService {
     if (!post) {
       throw new NotFoundException('帖子不存在');
     }
-    post.viewCount += 1;
-    await this.postRepo.save(post);
+    // 安全加固 P3-3: 使用 increment 避免并发竞态条件
+    await this.postRepo.increment({ id: post.id }, "viewCount", 1);
+    post.viewCount += 1; // 内存中同步更新以返回正确值
     return post;
   }
 

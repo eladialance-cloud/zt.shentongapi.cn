@@ -43,3 +43,36 @@ fix-modules.sh
 # pnpm store cache
 .pnpm-store/
 
+# Debug / temporary tooling (do not commit)
+desktop/cdp-*.js
+desktop/check_*.js
+desktop/fix_*.js
+desktop/find_garbled*.js
+desktop/scan_garbled.js
+desktop/copy-scene.cjs
+desktop/check_asar.js
+desktop/*.py
+desktop/*.new
+desktop/scripts/*.bak
+desktop/update_version_db.sh
+desktop/finish_deploy*.sh
+desktop/pack_runtime.ps1
+desktop/electron.vite.config.ts.new
+desktop/check_build*.js
+desktop/check_updater.js
+desktop/runtime/
+check_db*.sh
+check_files.js
+fix_frontend_0.5*.py
+update_db_0.5.9*.sh
+*.fixed
+*.fixed6
+*.tsbuildinfo
+frontend/user/dist/
+run-*logs/
+_temp_*/
+# Desktop build artifacts (installers, auto-update yml)
+desktop-artifact/
+
+# AI design reference (local only)
+desktop/design-system/

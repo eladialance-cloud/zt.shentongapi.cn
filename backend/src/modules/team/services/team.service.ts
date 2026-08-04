@@ -107,6 +107,10 @@ export class TeamService {
     if (!team) {
       BusinessException.throw(ErrorCode.NOT_FOUND, "团队不存在");
     }
+    // 安全加固 P1-1: 仅创建者可修改团队
+    if (team.creatorId !== userId) {
+      BusinessException.throw(ErrorCode.FORBIDDEN, "仅团队创建者可修改团队信息");
+    }
     if (data.name !== undefined) team.name = data.name;
     if (data.description !== undefined) team.description = data.description;
     if (data.avatar !== undefined) team.avatar = data.avatar;
@@ -117,6 +121,10 @@ export class TeamService {
     const team = await this.teamRepo.findOne({ where: { id: teamId } });
     if (!team) {
       BusinessException.throw(ErrorCode.NOT_FOUND, "团队不存在");
+    }
+    // 安全加固 P1-1: 仅创建者可删除团队
+    if (team.creatorId !== userId) {
+      BusinessException.throw(ErrorCode.FORBIDDEN, "仅团队创建者可删除团队");
     }
     await this.dataSource.transaction(async (manager) => {
       await manager.delete(TeamMemberEntity, { teamId });
@@ -151,6 +159,13 @@ export class TeamService {
       sortOrder?: number;
     },
   ): Promise<TeamMemberEntity> {
+    // 安全加固 P1-1: 验证操作者是创建者或已有成员
+    const team = await this.teamRepo.findOne({ where: { id: teamId } });
+    if (!team) BusinessException.throw(ErrorCode.NOT_FOUND, "团队不存在");
+    if (team.creatorId !== userId) {
+      const isMember = await this.memberRepo.findOne({ where: { teamId, agentId: userId } });
+      if (!isMember) BusinessException.throw(ErrorCode.FORBIDDEN, "无权添加成员");
+    }
     const existing = await this.memberRepo.findOne({
       where: { teamId, agentId: data.agentId },
     });

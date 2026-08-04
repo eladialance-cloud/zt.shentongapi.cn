@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsEnum, IsArray, IsNumber, IsInt, Min, MaxLength, Length } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsArray, IsNumber, IsInt, Min, MaxLength, Length, Matches } from 'class-validator';
 import { PostType } from '../entities/post.entity';
 
 /**
@@ -48,5 +48,6 @@ export class CreatePostDto {
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @Matches(/^https?:\/\//, { message: 'demoUrl 仅允许 http/https 协议' })
   demoUrl?: string;
 }

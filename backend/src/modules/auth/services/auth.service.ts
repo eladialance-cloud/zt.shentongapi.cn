@@ -11,7 +11,7 @@ import { ErrorCode } from '../../../common/constants/error.constant';
 import { RedisService } from '../../../common/services/redis.service';
 import { RegisterDto } from '../dto/register.dto';
 import { LoginDto } from '../dto/login.dto';
-import { isEmail, generateRandomString } from '../../../common/utils/string.util';
+import { isEmail, generateSecureToken } from '../../../common/utils/string.util';
 
 /** Redis key 前缀：HMAC 密钥（key: hmac:secret:<userId>） */
 const HMAC_SECRET_PREFIX = 'hmac:secret:';
@@ -20,7 +20,8 @@ const PWD_RESET_PREFIX = 'pwd:reset:';
 /** 密码重置令牌有效期（秒）：30 分钟 */
 const PWD_RESET_TTL = 30 * 60;
 /** 密码重置链接模板 */
-const RESET_LINK_TEMPLATE = 'https://app.shentong.ai/reset-password?token=';
+// 安全加固 P1-3: 使用 fragment 避免 Token 出现在服务器日志和 Referer 中
+const RESET_LINK_TEMPLATE = 'https://app.shentong.ai/reset-password#token=';
 
 @Injectable()
 export class AuthService {
@@ -103,6 +104,10 @@ export class AuthService {
       BusinessException.throw(ErrorCode.INVALID_CREDENTIALS);
     }
 
+    if (user.status !== 'active') {
+      BusinessException.throw(ErrorCode.ACCOUNT_DISABLED, '账号已被禁用，请联系管理员');
+    }
+
     // user.password 是 select: false,需要手动带 password 查询
     const userWithPwd = await this.userService.findByIdWithPassword(user.id);
     const isMatch = await this.encryption.compare(dto.password, userWithPwd.password);
@@ -168,6 +173,10 @@ export class AuthService {
     if (!user) {
       BusinessException.throw(ErrorCode.USER_NOT_FOUND);
     }
+    if (user.status !== 'active') {
+      await this.tokenService.revokeRefreshToken(refreshToken);
+      BusinessException.throw(ErrorCode.ACCOUNT_DISABLED, '账号已被禁用，请重新登录');
+    }
     const roles = await this.userService.findUserRoles(user.id);
 
     // 撤销旧 refresh token,签发新的
@@ -204,7 +213,7 @@ export class AuthService {
       return;
     }
 
-    const token = generateRandomString(64);
+    const token = generateSecureToken(32); // 32 bytes = 64 hex, crypto.randomBytes
     await this.redis.set(
       `${PWD_RESET_PREFIX}${token}`,
       String(user.id),
@@ -271,7 +280,7 @@ export class AuthService {
    * TTL 与 refresh token 相同（7 天）
    */
   private async generateAndStoreSecretKey(userId: number): Promise<string> {
-    const secretKey = generateRandomString(64); // 64 字符 hex = 32 字节
+    const secretKey = generateSecureToken(32); // 32 bytes = 64 hex, crypto.randomBytes
     const ttl = this.parseRefreshTtl();
     await this.redis.set(`${HMAC_SECRET_PREFIX}${userId}`, secretKey, ttl);
     return secretKey;

@@ -4,13 +4,13 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
-import { exec as execCb } from 'node:child_process';
+import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as vm from 'node:vm';
 import { HermesSkillEntity, SkillExecConfig } from '../entities/hermes-skill.entity';
 import { N8nService } from '../../n8n/services/n8n.service';
 
-const exec = promisify(execCb);
+const execFile = promisify(execFileCb);
 
 /**
  * 技能包执行引擎
@@ -84,7 +84,9 @@ export class SkillRunnerService {
     this.logger.debug(`runShell: ${cmd}`);
 
     try {
-      const { stdout, stderr } = await exec(cmd, {
+      // 安全加固（P0-命令注入）：使用 execFile 避免经 shell 执行
+      const [command, ...args] = cmd.trim().split(/\s+/);
+      const { stdout, stderr } = await execFile(command, args, {
         cwd,
         env,
         timeout: timeoutMs,
@@ -118,6 +120,8 @@ export class SkillRunnerService {
       throw new BadRequestException('api 类型技能包缺少 url 配置');
     }
 
+    // SSRF 防护：禁止内网地址和危险协议（安全加固 P1-3）
+    this.validateUrl(config.url);
     const method = config.method || 'POST';
     const headers = config.headers || { 'Content-Type': 'application/json' };
 
@@ -294,6 +298,32 @@ export class SkillRunnerService {
   /**
    * 从对象中按点路径取值
    */
+  /** SSRF 防护：校验 URL 协议和地址（安全加固 P1-3） */
+  private validateUrl(url: string): void {
+    try {
+      const parsed = new URL(url);
+      // 仅允许 http/https 协议
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        throw new BadRequestException(`不允许的协议: ${parsed.protocol}`);
+      }
+      // 禁止内网地址
+      const blockedPrefixes = [
+        '127.', '10.', '172.16.', '172.17.', '172.18.', '172.19.',
+        '172.20.', '172.21.', '172.22.', '172.23.', '172.24.',
+        '172.25.', '172.26.', '172.27.', '172.28.', '172.29.',
+        '172.30.', '172.31.', '192.168.', '169.254.', '0.', '::1', '[::1]'
+      ];
+      for (const prefix of blockedPrefixes) {
+        if (parsed.hostname.startsWith(prefix)) {
+          throw new BadRequestException('不允许访问内网地址');
+        }
+      }
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      throw new BadRequestException('无效的URL格式');
+    }
+  }
+
   private getByPath(obj: Record<string, unknown>, path: string): unknown {
     return path.split('.').reduce<unknown>((acc, key) => {
       if (acc && typeof acc === 'object') {

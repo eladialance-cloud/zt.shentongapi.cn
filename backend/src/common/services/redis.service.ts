@@ -1,10 +1,10 @@
-﻿import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
 /**
- * Redis 鏈嶅姟锛氬皝瑁?ioredis 甯哥敤鎿嶄綔
- * 鏁版嵁鍚堝悓鐪熸簮锛歴pec.md - 閰嶇疆绠＄悊 (REDIS_URL)
+ * Redis 服务：封装 ioredis 常用操作
+ * 数据合同真源：spec.md - 配置管理 (REDIS_URL)
  */
 @Injectable()
 export class RedisService implements OnModuleInit {
@@ -63,15 +63,19 @@ export class RedisService implements OnModuleInit {
   }
 
   /**
-   * 鍒嗗竷寮忛攣锛歋ET key value EX ttl NX
-   * 杩斿洖 true 琛ㄧず鍔犻攣鎴愬姛锛宖alse 琛ㄧず閿佸凡琚崰鐢?   * 鏁版嵁鍚堝悓鐪熸簮锛歍ask 29 - 绉垎鏁版嵁娴侊紙鍒嗗竷寮忛攣锛?   */
+   * 分布式锁：SET key value EX ttl NX
+   * 返回 true 表示加锁成功，false 表示锁已被占用
+   * 数据合同真源：Task 29 - 积分数据流（分布式锁）
+   */
   async setNx(key: string, value: string, ttlSeconds: number): Promise<boolean> {
     const result = await this.client.set(key, value, 'EX', ttlSeconds, 'NX');
     return result === 'OK';
   }
 
-  /** SADD + 鍒ゆ柇鎴愬憳鏄惁宸插瓨鍦紙鐢ㄤ簬 nonce 闃查噸鏀撅級
-   *  浣跨敤 Lua 鑴氭湰淇濊瘉 SADD 涓?EXPIRE 鐨勫師瀛愭€?   *  鏀硅繘锛欵XPIRE 鍙?max(褰撳墠TTL, 鏂癟TL)锛屽疄鐜版粦鍔ㄧ獥鍙ｇ画鏈?   *  闃叉闆嗗悎 TTL 鍦ㄤ腑闂磋繃鏈熷鑷村悗缁?nonce 涓㈠け
+  /** SADD + 判断成员是否已存在（用于 nonce 防重放）
+   *  使用 Lua 脚本保证 SADD 与 EXPIRE 的原子性
+   *  改进：EXPIRE 取 max(当前TTL, 新TTL)，实现滑动窗口续期
+   *  防止集合 TTL 在中间过期导致后续 nonce 丢失
    */
   async saddIfAbsent(key: string, member: string, ttlSeconds: number): Promise<boolean> {
     const luaScript = `
@@ -79,7 +83,7 @@ export class RedisService implements OnModuleInit {
       if added == 1 then
         local currentTtl = redis.call('TTL', KEYS[1])
         local newTtl = tonumber(ARGV[2])
-        -- 濡傛灉 TTL < 0锛坘ey涓嶅瓨鍦?-1鏃燭TL/-2锛夛紝璁剧疆涓烘柊TTL锛涘惁鍒欏彇 max
+        -- 如果 TTL < 0（key不存在-1无TTL/-2），设置为新TTL；否则取 max
         if currentTtl < 0 then
           redis.call('EXPIRE', KEYS[1], newTtl)
         else
@@ -99,8 +103,10 @@ export class RedisService implements OnModuleInit {
   }
 
   /**
-   * 鍒嗗竷寮忛攣锛氬師瀛愰噴鏀撅紙Lua 鑴氭湰 GET+DEL锛?   * 浠呭綋 key 鐨勫€肩瓑浜庝紶鍏ョ殑 value 鏃舵墠鍒犻櫎锛岄伩鍏嶈鍒犱粬浜洪攣
-   * 杩斿洖 true 琛ㄧず閲婃斁鎴愬姛锛宖alse 琛ㄧず閿佸凡琚粬浜烘寔鏈夋垨宸茶繃鏈?   */
+   * 分布式锁：原子释放（Lua 脚本 GET+DEL）
+   * 仅当 key 的值等于传入的 value 时才删除，避免误删他人锁
+   * 返回 true 表示释放成功，false 表示锁已被他人持有或已过期
+   */
   async releaseLock(key: string, value: string): Promise<boolean> {
     const luaScript = `
       if redis.call('get', KEYS[1]) == ARGV[1] then
