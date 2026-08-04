@@ -1,7 +1,7 @@
-﻿// 绠＄悊绔富甯冨眬 - SubTask 17.7
+﻿// 管理端主布局 - SubTask 17.7
 //
-// 缁撴瀯锛氶《鏍?48px,logo + 绠＄悊鍛樺ご鍍忚彍鍗? + 渚ц竟鏍?200px,鍒嗙粍鑿滃崟) + 鍐呭鍖?Outlet)
-// 渚ц竟鏍忚彍鍗?Task 2 绮剧畝鍚?6 缁?:浠〃鐩?鐢ㄦ埛绠＄悊/鍐呭绠＄悊/妯″瀷涓庨厤缃?璐㈠姟绠＄悊/绯荤粺绠＄悊
+// 结构：顶栏(48px, logo + 管理员头像菜单) + 侧边栏(200px, 分组菜单) + 内容区(Outlet)
+// 侧边栏菜单(Task 2 精简版 6 项): 仪表盘/用户管理/内容管理/模型与配置/财务管理/系统管理
 
 import { useEffect, useMemo, useState } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
@@ -31,63 +31,63 @@ interface MenuEntry {
 }
 
 const MENU_ENTRIES: MenuEntry[] = [
-  { key: 'dashboard', label: '浠〃鐩?, icon: <DashboardOutlined />, path: '/dashboard' },
+  { key: 'dashboard', label: '仪表盘', icon: <DashboardOutlined />, path: '/dashboard' },
   {
     key: 'group-users',
-    label: '鐢ㄦ埛绠＄悊',
+    label: '用户管理',
     icon: <TeamOutlined />,
     children: [
-      { key: 'users', label: '鐢ㄦ埛鍒楄〃', path: '/users' },
-      { key: 'users-levels', label: '鐢ㄦ埛绛夌骇', path: '/users/levels' },
-      { key: 'users-orders', label: '鐢ㄦ埛璁㈠崟', path: '/users/orders' },
-      { key: 'users-devices', label: '璁惧绠＄悊', path: '/users/devices' }
+      { key: 'users', label: '用户列表', path: '/users' },
+      { key: 'users-levels', label: '用户等级', path: '/users/levels' },
+      { key: 'users-orders', label: '用户订单', path: '/users/orders' },
+      { key: 'users-devices', label: '设备管理', path: '/users/devices' }
     ]
   },
   {
     key: 'group-content',
-    label: '鍐呭绠＄悊',
+    label: '内容管理',
     icon: <AppstoreOutlined />,
     children: [
-      { key: 'agents', label: '鏅鸿兘浣?, path: '/agents' },
-      { key: 'workflows', label: '宸ヤ綔娴?, path: '/workflows' },
-      { key: 'plugins', label: '鎻掍欢涓庢妧鑳?, path: '/plugins' },
-      { key: 'review', label: '瀹℃牳涓績', path: '/review' }
+      { key: 'agents', label: '智能体', path: '/agents' },
+      { key: 'workflows', label: '工作流', path: '/workflows' },
+      { key: 'plugins', label: '插件与技能', path: '/plugins' },
+      { key: 'review', label: '审核中心', path: '/review' }
     ]
   },
   {
     key: 'group-config',
-    label: '妯″瀷涓庨厤缃?,
+    label: '模型与配置',
     icon: <CloudServerOutlined />,
     children: [
-      { key: 'models', label: '妯″瀷绠＄悊', path: '/models' },
-      { key: 'mcp', label: 'MCP 鏈嶅姟', path: '/mcp' },
-      { key: 'infra', label: '鍩虹璁炬柦', path: '/infra' }
+      { key: 'models', label: '模型管理', path: '/models' },
+      { key: 'mcp', label: 'MCP 服务', path: '/mcp' },
+      { key: 'infra', label: '基础设施', path: '/infra' }
     ]
   },
   {
     key: 'group-finance',
-    label: '璐㈠姟绠＄悊',
+    label: '财务管理',
     icon: <DollarOutlined />,
     children: [
-      { key: 'finance-transactions', label: '鍏呭€艰鍗?, path: '/finance/transactions' },
-      { key: 'finance-orders', label: '璁㈠崟绠＄悊', path: '/finance/orders' },
-      { key: 'finance-invoices', label: '鍙戠エ绠＄悊', path: '/finance/invoices' },
-      { key: 'finance-reconciliation', label: '瀵硅处绠＄悊', path: '/finance/reconciliation' },
-      { key: 'plans', label: '濂楅绠＄悊', path: '/plans' }
+      { key: 'finance-transactions', label: '充值订单', path: '/finance/transactions' },
+      { key: 'finance-orders', label: '订单管理', path: '/finance/orders' },
+      { key: 'finance-invoices', label: '发票管理', path: '/finance/invoices' },
+      { key: 'finance-reconciliation', label: '对账管理', path: '/finance/reconciliation' },
+      { key: 'plans', label: '套餐管理', path: '/plans' }
     ]
   },
   {
     key: 'group-system',
-    label: '绯荤粺绠＄悊',
+    label: '系统管理',
     icon: <SettingOutlined />,
     children: [
-      { key: 'system-config', label: '绯荤粺鍙傛暟', path: '/system/config' },
-      { key: 'system-announcements', label: '鍏憡绠＄悊', path: '/system/announcements' },
-      { key: 'versions', label: '鐗堟湰鍙戝竷', path: '/versions' },
-      { key: 'stats', label: '鏁版嵁缁熻', path: '/stats' },
-      { key: 'audit-queue', label: '瀹℃牳闃熷垪', path: '/audit/queue' },
-      { key: 'audit-sensitive-words', label: '鏁忔劅璇嶅簱', path: '/audit/sensitive-words' },
-      { key: 'audit-ai-config', label: 'AI 瀹℃牳閰嶇疆', path: '/audit/ai-config' }
+      { key: 'system-config', label: '系统参数', path: '/system/config' },
+      { key: 'system-announcements', label: '公告管理', path: '/system/announcements' },
+      { key: 'versions', label: '版本发布', path: '/versions' },
+      { key: 'stats', label: '数据统计', path: '/stats' },
+      { key: 'audit-queue', label: '审核队列', path: '/audit/queue' },
+      { key: 'audit-sensitive-words', label: '敏感词库', path: '/audit/sensitive-words' },
+      { key: 'audit-ai-config', label: 'AI 审核配置', path: '/audit/ai-config' }
     ]
   }
 ]
@@ -98,7 +98,8 @@ interface LeafInfo {
   parentKey?: string
 }
 
-// 灞曞紑鎵€鏈夊彾瀛愯妭鐐癸紝渚夸簬鏍规嵁 pathname 鍙嶆煡閫変腑椤逛笌鎵€灞炲垎缁?const ALL_LEAVES: LeafInfo[] = (() => {
+// 展开所有叶子节点，便于根据 pathname 反查选中项与所属分组。
+const ALL_LEAVES: LeafInfo[] = (() => {
   const leaves: LeafInfo[] = []
   for (const entry of MENU_ENTRIES) {
     if (entry.children && entry.children.length > 0) {
@@ -114,7 +115,8 @@ interface LeafInfo {
   return leaves
 })()
 
-// 鎸夎矾寰勯暱搴﹂檷搴忥紝淇濊瘉鏇村叿浣撶殑璺緞浼樺厛鍖归厤锛堝 /users/levels 浼樺厛浜?/users锛?const SORTED_LEAVES: LeafInfo[] = [...ALL_LEAVES].sort(
+// 按路径长度降序，保证更具体的路径优先匹配（如 /users/levels 优先于 /users）。
+const SORTED_LEAVES: LeafInfo[] = [...ALL_LEAVES].sort(
   (a, b) => b.path.length - a.path.length
 )
 
@@ -141,7 +143,7 @@ export default function AdminLayout() {
     return matched?.parentKey ? [matched.parentKey] : []
   })
 
-  // 褰撻€変腑椤规墍鍦ㄥ垎缁勬湭灞曞紑鏃惰嚜鍔ㄥ睍寮€锛堝閫氳繃 URL 鐩存帴璁块棶瀛愰〉闈級
+  // 当选中项所在分组未展开时自动展开（如通过 URL 直接访问子页面）
   useEffect(() => {
     if (parentKey && !openKeys.includes(parentKey)) {
       setOpenKeys((prev) => [...prev, parentKey])
@@ -181,7 +183,8 @@ export default function AdminLayout() {
     try {
       await adminLogout()
     } catch {
-      // 鍚庣鐧诲嚭澶辫触涓嶉樆濉?    }
+      // 后端登出失败不阻止。
+    }
     clearAdminAuth()
     navigate('/login', { replace: true })
   }
@@ -190,31 +193,31 @@ export default function AdminLayout() {
     {
       key: 'roles',
       icon: <SafetyCertificateOutlined />,
-      label: '瑙掕壊鏉冮檺',
+      label: '角色权限',
       onClick: () => navigate('/roles')
     },
     {
       key: 'logs',
       icon: <AuditOutlined />,
-      label: '鎿嶄綔鏃ュ織',
+      label: '操作日志',
       onClick: () => navigate('/operation-logs')
     },
     { type: 'divider' },
     {
       key: 'logout',
       icon: <LogoutOutlined />,
-      label: '閫€鍑虹櫥褰?,
+      label: '退出登录',
       onClick: handleLogout
     }
   ]
 
   return (
     <div className={styles.layout}>
-      {/* 椤舵爮 */}
+      {/* 顶栏 */}
       <div className={styles.topbar}>
         <div className={styles.topbarLeft}>
           <SafetyCertificateOutlined className={styles.topbarLogo} />
-          <span className={styles.topbarTitle}>娣辩灣AI 绠＄悊鍚庡彴</span>
+          <span className={styles.topbarTitle}>深瞳AI 管理后台</span>
         </div>
         <div className={styles.topbarRight}>
           <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
@@ -225,14 +228,14 @@ export default function AdminLayout() {
                 src={user?.avatar}
                 style={{ background: 'rgba(56, 189, 248, 0.25)' }}
               />
-              <span className={styles.adminName}>{user?.username || '绠＄悊鍛?}</span>
+              <span className={styles.adminName}>{user?.username || '管理员'}</span>
             </div>
           </Dropdown>
         </div>
       </div>
 
       <div className={styles.body}>
-        {/* 渚ц竟鏍?*/}
+        {/* 侧边栏 */}
         <div className={styles.sidebar}>
           <Menu
             mode="inline"
@@ -248,7 +251,7 @@ export default function AdminLayout() {
           />
         </div>
 
-        {/* 鍐呭鍖?*/}
+        {/* 内容区 */}
         <div className={styles.content}>
           <Outlet />
         </div>

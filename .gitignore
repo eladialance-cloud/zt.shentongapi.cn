@@ -73,6 +73,7 @@ run-*logs/
 _temp_*/
 # Desktop build artifacts (installers, auto-update yml)
 desktop-artifact/
+updates/
 
 # AI design reference (local only)
 desktop/design-system/

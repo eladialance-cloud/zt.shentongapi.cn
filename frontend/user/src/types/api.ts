@@ -1,7 +1,7 @@
-// API 鍝嶅簲绫诲瀷瀹氫箟
-// 瀵归綈鍚庣缁熶竴鍝嶅簲鏍煎紡 (寮€鍙戞枃妗?鍚庣楠ㄦ灦鎼缓.md 9. API 璁捐瑙勮寖)
+// API 响应类型定义
+// 对齐后端统一响应格式 (开发文档:后端骨架搭建.md 9. API 设计规范)
 
-/** 鐢ㄦ埛淇℃伅 */
+/** 用户信息 */
 export interface User {
   id: string;
   username: string;
@@ -9,13 +9,13 @@ export interface User {
   avatar?: string;
 }
 
-/** 鐧诲綍鍙傛暟 */
+/** 登录参数 */
 export interface LoginParams {
   account: string;
   password: string;
 }
 
-/** 娉ㄥ唽鍙傛暟 */
+/** 注册参数 */
 export interface RegisterParams {
   username: string;
   email: string;
@@ -23,14 +23,14 @@ export interface RegisterParams {
   inviteCode?: string;
 }
 
-/** 缁熶竴鍝嶅簲缁撴瀯 */
+/** 统一响应结构 */
 export interface ApiResponse<T = unknown> {
   code: number;
   message: string;
   data: T;
 }
 
-/** 鍒嗛〉鍝嶅簲缁撴瀯 */
+/** 分页响应结构 */
 export interface PaginatedData<T> {
   list: T[];
   total: number;
@@ -38,25 +38,25 @@ export interface PaginatedData<T> {
   pageSize: number;
 }
 
-/** 鍒嗛〉鏌ヨ鍙傛暟 */
+/** 分页查询参数 */
 export interface PaginationParams {
   page: number;
   pageSize: number;
 }
 
-/** 鎺掑簭鍙傛暟 */
+/** 排序参数 */
 export interface SortParams {
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
 }
 
-/** 鐧诲綍鍝嶅簲 */
+/** 登录响应 */
 export interface LoginResponse {
   accessToken: string;
   user: User;
 }
 
-/** Token 鍒锋柊鍝嶅簲 */
+/** Token 刷新响应 */
 export interface RefreshTokenResponse {
   accessToken: string;
 }
@@ -93,7 +93,7 @@ export interface Agent {
   tags?: string[];
   modelId: string;
   pricePerCall: number;
-  /** 瀹氫环绛栫暐锛歮odel=妯″瀷琛ㄤ环鏍? agent=Agent鑷韩浠锋牸, hybrid=妯″瀷+Agent鍔犱环 */
+  /** 定价策略：model=模型表价格, agent=Agent自身价格, hybrid=模型+Agent加价 */
   pricingStrategy?: 'model' | 'agent' | 'hybrid';
   rating: number;
   ratingCount: number;

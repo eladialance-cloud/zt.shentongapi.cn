@@ -65,7 +65,7 @@ export default function ParticleMatrix({ className, particleCount: particleCount
 
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (prefersReducedMotion) {
-      // 鍙敾涓€甯ч潤鎬佺矑瀛愶紝涓嶅惎鍔?RAF
+      // 只画一帧静态粒子，不启动 RAF
       const w = canvas.clientWidth || window.innerWidth;
       const h = canvas.clientHeight || window.innerHeight;
       ctx.clearRect(0, 0, w, h);
@@ -77,7 +77,7 @@ export default function ParticleMatrix({ className, particleCount: particleCount
         ctx.fill();
       }
       ctx.globalAlpha = 1;
-      // 涓嶆坊鍔犱簨浠剁洃鍚紝鐩存帴杩斿洖
+      // 不添加事件监听，直接返回
       return;
     }
 

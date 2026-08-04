@@ -107,6 +107,7 @@ services:
       - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./updates:/usr/share/nginx/html/desktop:ro
       - ./frontend/admin/dist:/usr/share/nginx/html/admin:ro
+      - ./frontend/user/dist:/usr/share/nginx/html/landing:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
     networks:
       - shentong-net
