@@ -62,7 +62,7 @@ export default function ResetPassword() {
           justifyContent: 'center',
           alignItems: 'center',
           padding: 24,
-          background: '#0a0e1a',
+          background: 'var(--color-bg-root)',
           backgroundImage:
             'radial-gradient(circle at 20% 30%, rgba(99,102,241,0.15) 0%, transparent 50%), linear-gradient(135deg, #0a0e1a 0%, #111827 100%)',
         }}
@@ -71,7 +71,7 @@ export default function ResetPassword() {
           style={{
             width: 420,
             maxWidth: '100%',
-            background: 'rgba(17,24,39,0.85)',
+            background: 'rgba(255, 255, 255,0.85)',
             backdropFilter: 'blur(20px)',
             border: '1px solid rgba(99,102,241,0.2)',
             borderRadius: 16,
@@ -81,7 +81,7 @@ export default function ResetPassword() {
         >
           <RobotOutlined style={{ fontSize: 48, color: '#ef4444', marginBottom: 16 }} />
           <h2 style={{ color: '#f1f5f9', fontSize: 20, marginBottom: 8 }}>链接无效</h2>
-          <p style={{ color: '#94a3b8', fontSize: 14, marginBottom: 24 }}>
+          <p style={{ color: 'var(--color-text-tertiary)', fontSize: 14, marginBottom: 24 }}>
             重置链接缺少必要的令牌参数，请重新通过邮箱获取重置链接。
           </p>
           <Button
@@ -110,7 +110,7 @@ export default function ResetPassword() {
         justifyContent: 'center',
         alignItems: 'center',
         padding: 24,
-        background: '#0a0e1a',
+        background: 'var(--color-bg-root)',
         backgroundImage:
           'radial-gradient(circle at 20% 30%, rgba(99,102,241,0.15) 0%, transparent 50%), radial-gradient(circle at 80% 70%, rgba(139,92,246,0.12) 0%, transparent 50%), linear-gradient(135deg, #0a0e1a 0%, #111827 100%)',
       }}
@@ -119,7 +119,7 @@ export default function ResetPassword() {
         style={{
           width: 420,
           maxWidth: '100%',
-          background: 'rgba(17,24,39,0.85)',
+          background: 'rgba(255, 255, 255,0.85)',
           backdropFilter: 'blur(20px)',
           border: '1px solid rgba(99,102,241,0.2)',
           borderRadius: 16,
@@ -130,7 +130,7 @@ export default function ResetPassword() {
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <RobotOutlined style={{ fontSize: 48, color: '#6366f1', filter: 'drop-shadow(0 0 12px rgba(99,102,241,0.6))', marginBottom: 12 }} />
           <h2 style={{ color: '#f1f5f9', fontSize: 24, fontWeight: 600, margin: '0 0 8px' }}>重置密码</h2>
-          <p style={{ color: '#94a3b8', fontSize: 13, margin: 0 }}>
+          <p style={{ color: 'var(--color-text-tertiary)', fontSize: 13, margin: 0 }}>
             {success ? '密码已重置成功' : '请输入您的新密码'}
           </p>
         </div>
@@ -146,12 +146,12 @@ export default function ResetPassword() {
               ]}
             >
               <Input.Password
-                prefix={<LockOutlined style={{ color: '#64748b' }} />}
+                prefix={<LockOutlined style={{ color: 'var(--color-text-tertiary)' }} />}
                 placeholder="至少 6 字符"
                 style={{
-                  background: 'rgba(15,23,42,0.6)',
+                  background: 'rgba(248, 250, 252,0.6)',
                   borderColor: 'rgba(99,102,241,0.2)',
-                  color: '#e2e8f0',
+                  color: 'var(--color-text-primary)',
                   height: 44,
                   borderRadius: 8,
                 }}
@@ -174,12 +174,12 @@ export default function ResetPassword() {
               ]}
             >
               <Input.Password
-                prefix={<LockOutlined style={{ color: '#64748b' }} />}
+                prefix={<LockOutlined style={{ color: 'var(--color-text-tertiary)' }} />}
                 placeholder="再次输入新密码"
                 style={{
-                  background: 'rgba(15,23,42,0.6)',
+                  background: 'rgba(248, 250, 252,0.6)',
                   borderColor: 'rgba(99,102,241,0.2)',
-                  color: '#e2e8f0',
+                  color: 'var(--color-text-primary)',
                   height: 44,
                   borderRadius: 8,
                 }}
@@ -207,7 +207,7 @@ export default function ResetPassword() {
           </Form>
         ) : (
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <p style={{ color: '#94a3b8', fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
+            <p style={{ color: 'var(--color-text-tertiary)', fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
               密码重置成功！<br />
               请使用新密码登录您的账号。
             </p>
@@ -229,7 +229,7 @@ export default function ResetPassword() {
 
         <div style={{ marginTop: 20, textAlign: 'center' }}>
           <span
-            style={{ color: '#818cf8', fontSize: 13, cursor: 'pointer' }}
+            style={{ color: 'var(--color-brand)', fontSize: 13, cursor: 'pointer' }}
             onClick={() => navigate('/login')}
           >
             <ArrowLeftOutlined /> 返回登录

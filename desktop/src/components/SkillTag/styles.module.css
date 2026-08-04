@@ -5,7 +5,7 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-full);
-  padding: 0 var(--spacing-sm);
+  padding: 0 var(--space-sm);
   font-weight: 500;
   border: 1px solid transparent;
   white-space: nowrap;
@@ -23,7 +23,7 @@
 }
 
 .flow {
-  background: var(--color-primary-light);
+  background: var(--color-brand-light);
   color: var(--color-primary);
   border-color: var(--color-primary);
 }

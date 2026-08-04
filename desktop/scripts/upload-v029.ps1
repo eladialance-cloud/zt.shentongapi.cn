@@ -1,4 +1,5 @@
 # upload-v029.ps1 - 上传深瞳AI桌面端 v0.2.9 到服务器
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 # 用法: .\upload-v029.ps1
 # 会提示输入 SSH 密码
 

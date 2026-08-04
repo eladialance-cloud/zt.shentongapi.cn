@@ -7,6 +7,7 @@ import { RouterProvider } from 'react-router-dom'
 import router from '@/router'
 import { useSettingsStore } from '@/store/settings'
 import { useAuthStore } from '@/store/auth'
+import { antdTheme as appTheme } from '@/theme/antd-theme'
 
 export default function App() {
   const themeMode = useSettingsStore((s) => s.theme)
@@ -23,13 +24,7 @@ export default function App() {
       theme={{
         algorithm:
           themeMode === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
-        token: {
-          colorPrimary: '#4F6EF7',
-          borderRadius: 8,
-          borderRadiusLG: 12,
-          colorBgLayout: '#f1f5f9',
-          fontSize: 14
-        }
+        ...appTheme,
       }}
     >
       <RouterProvider router={router} />

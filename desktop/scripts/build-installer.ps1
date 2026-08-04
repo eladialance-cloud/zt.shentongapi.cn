@@ -1,11 +1,11 @@
 # =============================================================================
-# 娣辩灣AI 妗岄潰瀹㈡埛绔?- Windows 涓€閿墦鍖呰剼鏈?
+# 深瞳AI 桌面客户端 - Windows 一键打包脚本
 #
-# 鐢ㄦ硶:
-#   npm run pack:win                                   # 鎵撳寘 Windows
-#   .\scripts\build-installer.ps1 -Target win          # 鍚屼笂
-#   .\scripts\build-installer.ps1 -Target mac          # 鎵撳寘 Mac(闇€鍦?Mac 涓婃墽琛?
-#   .\scripts\build-installer.ps1 -Target all          # 鎵撳寘鍏ㄥ钩鍙?
+# 用法:
+#   npm run pack:win                                   # 打包 Windows
+#   .\scripts\build-installer.ps1 -Target win          # 同上
+#   .\scripts\build-installer.ps1 -Target mac          # 打包 Mac(需在 Mac 上执行)
+#   .\scripts\build-installer.ps1 -Target all          # 打包全平台
 #   .\scripts\build-installer.ps1 -ApiBase https://api.example.com/api
 #   .\scripts\build-installer.ps1 -Version 1.0.0
 # =============================================================================
@@ -19,24 +19,24 @@ param(
     [string]$ApiBase
 )
 
-# 涓ユ牸閿欒妯″紡
+# 严格错误模式
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# 鍒囨崲鍒?desktop 鐩綍
+# 切换到 desktop 目录
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Split-Path -Parent $scriptDir
 Set-Location $projectRoot
 
-# 璁℃椂鍣?
+# 计时器
 $startTime = Get-Date
 
 function Write-Step {
     param([string]$message)
     Write-Host ""
-    Write-Host "鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣" -ForegroundColor Cyan
+    Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
     Write-Host "  $message" -ForegroundColor Cyan
-    Write-Host "鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣鈹佲攣" -ForegroundColor Cyan
+    Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
 }
 
 function Write-OK {
@@ -54,125 +54,98 @@ function Write-Info {
     Write-Host "  [INFO] $message" -ForegroundColor Gray
 }
 
-# 璇诲彇 package.json
+# 读取 package.json
 $pkg = Get-Content "package.json" -Raw | ConvertFrom-Json
 $actualVersion = if ($Version) { $Version } else { $pkg.version }
 
 Write-Host ""
 Write-Host "========================================================" -ForegroundColor Magenta
-Write-Host "  娣辩灣AI 妗岄潰瀹㈡埛绔竴閿墦鍖? -ForegroundColor Magenta
+Write-Host "  深瞳AI 桌面客户端一键打包" -ForegroundColor Magenta
 Write-Host "========================================================" -ForegroundColor Magenta
-Write-Host "  鐩爣骞冲彴: $Target" -ForegroundColor Magenta
-Write-Host "  鐗堟湰鍙?   $actualVersion" -ForegroundColor Magenta
+Write-Host "  目标平台: $Target" -ForegroundColor Magenta
+Write-Host "  版本号:   $actualVersion" -ForegroundColor Magenta
 if ($ApiBase) {
-    Write-Host "  API 鍦板潃: $ApiBase" -ForegroundColor Magenta
+    Write-Host "  API 地址: $ApiBase" -ForegroundColor Magenta
 }
-Write-Host "  宸ヤ綔鐩綍: $projectRoot" -ForegroundColor Magenta
+Write-Host "  工作目录: $projectRoot" -ForegroundColor Magenta
 Write-Host "========================================================" -ForegroundColor Magenta
 
 try {
-    # ===== 姝ラ 1:绫诲瀷妫€鏌?=====
-    Write-Step "姝ラ 1/7:绫诲瀷妫€鏌?typecheck)"
+    # ===== 步骤 1:类型检查 =====
+    Write-Step "步骤 1/7:类型检查(typecheck)"
     & npm run typecheck
-    if ($LASTEXITCODE -ne 0) { throw "绫诲瀷妫€鏌ュけ璐? }
-    Write-OK "绫诲瀷妫€鏌ラ€氳繃"
+    if ($LASTEXITCODE -ne 0) { throw "类型检查失败" }
+    Write-OK "类型检查通过"
 
-    # ===== 姝ラ 2:涓嬭浇杩愯鏃?=====
-    Write-Step "姝ラ 2/7:涓嬭浇杩愯鏃?fetch-runtime)"
+    # ===== 步骤 2:下载运行时 =====
+    Write-Step "步骤 2/7:下载运行时(fetch-runtime)"
     if ($Target -eq 'all') {
         & npm run fetch-runtime -- --win
-        if ($LASTEXITCODE -ne 0) { throw "涓嬭浇 Windows 杩愯鏃跺け璐? }
+        if ($LASTEXITCODE -ne 0) { throw "下载 Windows 运行时失败" }
         & npm run fetch-runtime -- --mac
-        if ($LASTEXITCODE -ne 0) { throw "涓嬭浇 Mac 杩愯鏃跺け璐? }
+        if ($LASTEXITCODE -ne 0) { throw "下载 Mac 运行时失败" }
     } else {
         & npm run fetch-runtime -- --$Target
-        if ($LASTEXITCODE -ne 0) { throw "涓嬭浇杩愯鏃跺け璐? }
+        if ($LASTEXITCODE -ne 0) { throw "下载运行时失败" }
     }
-    Write-OK "杩愯鏃朵笅杞藉畬鎴?
+    Write-OK "运行时下载完成"
 
-    # ===== 姝ラ 3:娉ㄥ叆 API 鍦板潃 =====
+    # ===== 步骤 3:注入 API 地址 =====
     if ($ApiBase) {
-        Write-Step "姝ラ 3/7:娉ㄥ叆鐢熶骇鐜 API 鍦板潃"
+        Write-Step "步骤 3/7:注入生产环境 API 地址"
         $envFile = ".env.production"
-        $envContent = "# 鐢熶骇鐜閰嶇疆`nVITE_API_BASE_URL=$ApiBase`n"
+        $envContent = "# 生产环境配置`nVITE_API_BASE_URL=$ApiBase`n"
         Set-Content -Path $envFile -Value $envContent -Encoding UTF8 -NoNewline
-        # 纭繚鏈熬鏈夋崲琛?
+        # 确保末尾有换行
         Add-Content -Path $envFile -Value ""
-        Write-OK "宸插啓鍏?$envFile"
+        Write-OK "已写入 $envFile"
         Write-Info "VITE_API_BASE_URL=$ApiBase"
     } else {
-        Write-Step "姝ラ 3/7:璺宠繃 API 鍦板潃娉ㄥ叆(鏈寚瀹?-ApiBase)"
+        Write-Step "步骤 3/7:跳过 API 地址注入(未指定 -ApiBase)"
     }
 
-    # ===== 姝ラ 4:缂栬瘧 =====
-    Write-Step "姝ラ 4/7:缂栬瘧涓昏繘绋?+ preload + 娓叉煋杩涚▼"
+    # ===== 步骤 4:编译 =====
+    Write-Step "步骤 4/7:编译主进程 + preload + 渲染进程"
     & npm run build
-    if ($LASTEXITCODE -ne 0) { throw "缂栬瘧澶辫触" }
-    Write-OK "缂栬瘧瀹屾垚"
+    if ($LASTEXITCODE -ne 0) { throw "编译失败" }
+    Write-OK "编译完成"
 
-    # ===== 姝ラ 5:鎵撳寘瀹夎绋嬪簭 =====
-    Write-Step "姝ラ 5/7:electron-builder 鎵撳寘"
+    # ===== 步骤 5:打包安装程序 =====
+    Write-Step "步骤 5/7:electron-builder 打包"
     if ($Target -eq 'all') {
         & npx electron-builder --win --mac
     } else {
         & npx electron-builder --$Target
     }
-    if ($LASTEXITCODE -ne 0) { throw "electron-builder 鎵撳寘澶辫触" }
-    Write-OK "瀹夎绋嬪簭鎵撳寘瀹屾垚"
+    if ($LASTEXITCODE -ne 0) { throw "electron-builder 打包失败" }
+    Write-OK "安装程序打包完成"
 
-
-    # ===== Step 5.5: Rename zip to .exe.zip =====
-    Write-Step "Step 5.5/8: Rename zip artifacts"
-    $installerVerDir = Join-Path $projectRoot "dist\installer-v$actualVersion"
-    $installerLinkDir = Join-Path $projectRoot "dist\installer"
-    $targetDir = if (Test-Path $installerLinkDir) { $installerLinkDir } else { $installerVerDir }
-    if (Test-Path $targetDir) {
-        Get-ChildItem $targetDir -Filter "*.zip" | Where-Object { $_.Name -notlike "*.exe.zip" } | ForEach-Object {
-            $newName = $_.BaseName + ".exe.zip"
-            $newPath = Join-Path $targetDir $newName
-            Rename-Item $_.FullName $newPath
-            Write-OK "Renamed: $($_.Name) -> $newName"
-        }
-    }
-
-    # ===== Step 6/8: Generate latest.yml =====
-    Write-Step "Step 6/8: Generate latest.yml"
+    # ===== 步骤 6:生成 latest.yml =====
+    Write-Step "步骤 6/7:生成 latest.yml(electron-updater 清单)"
     & npx tsx scripts/generate-latest-yml.ts
-    if ($LASTEXITCODE -ne 0) { throw "Generate latest.yml failed" }
-    Write-OK "latest.yml generated"
+    if ($LASTEXITCODE -ne 0) { throw "生成 latest.yml 失败" }
+    Write-OK "latest.yml 已生成"
 
-    # ===== Step 7/8: Verify installers =====
-    Write-Step "Step 7/8: Verify installer integrity"
+    # ===== 步骤 7:校验产物 =====
+    Write-Step "步骤 7/7:校验产物完整性"
     & npx tsx scripts/verify-installer.ts
-    if ($LASTEXITCODE -ne 0) { throw "Verify failed" }
-    Write-OK "Verification passed"
+    if ($LASTEXITCODE -ne 0) { throw "产物校验失败" }
+    Write-OK "校验通过"
 
-    # ===== Step 8/8: Create user download filename =====
-    Write-Step "Step 8/8: Create user download file (ShenTongAI-{version}-x64.exe.zip)"
-    if (Test-Path $targetDir) {
-        $exeZip = Get-ChildItem $targetDir -Filter "ShenTongAI-Setup-$actualVersion-x64.exe.zip" | Select-Object -First 1
-        if ($exeZip) {
-            $downloadName = "ShenTongAI-$actualVersion-x64.exe.zip"
-            $downloadPath = Join-Path $targetDir $downloadName
-            if (Test-Path $downloadPath) { Clear-Content $downloadPath -Force }
-            Copy-Item $exeZip.FullName $downloadPath -Force
-            Write-OK "User download file: $downloadName"
-        }
-    }
-    # ===== 鎵撳寘鎶ュ憡 =====
+    # ===== 打包报告 =====
     $endTime = Get-Date
     $duration = $endTime - $startTime
-    $durationStr = "{0}鍒唟1}绉? -f [int]$duration.TotalMinutes, $duration.Seconds
+    $durationStr = "{0}分{1}秒" -f [int]$duration.TotalMinutes, $duration.Seconds
 
     Write-Host ""
     Write-Host "========================================================" -ForegroundColor Green
-    Write-Host "  鎵撳寘鎴愬姛!" -ForegroundColor Green
+    Write-Host "  打包成功!" -ForegroundColor Green
     Write-Host "========================================================" -ForegroundColor Green
-    Write-Host "  鑰楁椂: $durationStr" -ForegroundColor Green
-    Write-Host "  鐗堟湰: $actualVersion" -ForegroundColor Green
-    Write-Host "  骞冲彴: $Target" -ForegroundColor Green
+    Write-Host "  耗时: $durationStr" -ForegroundColor Green
+    Write-Host "  版本: $actualVersion" -ForegroundColor Green
+    Write-Host "  平台: $Target" -ForegroundColor Green
     Write-Host ""
-    Write-Host "  浜х墿鐩綍:" -ForegroundColor Green
+    Write-Host "  产物目录:" -ForegroundColor Green
     $installerDir = Join-Path $projectRoot "dist\installer"
     $latestYmlPath = Join-Path $installerDir "latest.yml"
     if (Test-Path $installerDir) {
@@ -181,10 +154,10 @@ try {
             Write-Host "    $($_.Name)  ($sizeMB MB)" -ForegroundColor Gray
         }
     }
-    # 杈撳嚭 SHA-512 鎽樿(浠?latest.yml 涓鍙?
+    # 输出 SHA-512 摘要(从 latest.yml 中读取)
     if (Test-Path $latestYmlPath) {
         Write-Host ""
-        Write-Host "  SHA-512 鎽樿(鏉ヨ嚜 latest.yml):" -ForegroundColor Green
+        Write-Host "  SHA-512 摘要(来自 latest.yml):" -ForegroundColor Green
         $ymlLines = Get-Content $latestYmlPath
         $currentFile = ""
         foreach ($line in $ymlLines) {
@@ -201,15 +174,15 @@ try {
         }
     }
     Write-Host ""
-    Write-Host "  涓嬩竴姝?" -ForegroundColor Yellow
-    Write-Host "    1. 涓婁紶 dist/installer/ 涓嬬殑瀹夎鍖呬笌 latest.yml 鍒版湇鍔″櫒" -ForegroundColor Yellow
-    Write-Host "    2. 鐢ㄦ埛閫氳繃 update.shentong.ai/desktop/ 鑷姩鏇存柊" -ForegroundColor Yellow
+    Write-Host "  下一步:" -ForegroundColor Yellow
+    Write-Host "    1. 上传 dist/installer/ 下的安装包与 latest.yml 到服务器" -ForegroundColor Yellow
+    Write-Host "    2. 用户通过 update.shentong.ai/desktop/ 自动更新" -ForegroundColor Yellow
     Write-Host ""
 
 } catch {
     Write-Host ""
     Write-Host "========================================================" -ForegroundColor Red
-    Write-Host "  鎵撳寘澶辫触!" -ForegroundColor Red
+    Write-Host "  打包失败!" -ForegroundColor Red
     Write-Host "========================================================" -ForegroundColor Red
     Write-Fail $_.Exception.Message
     Write-Host ""

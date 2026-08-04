@@ -2,8 +2,8 @@
 
 .pageContainer {
   min-height: 100vh;
-  background: linear-gradient(180deg, #0a0e1a 0%, #161b22 100%);
-  color: #e6edf3;
+  background: linear-gradient(180deg, var(--color-bg-root) 0%, #F1F5F9 100%);
+  color: var(--color-text-primary);
   padding: 24px 32px 48px;
   overflow-y: auto;
 }
@@ -23,7 +23,7 @@
   justify-content: space-between;
   margin-bottom: 20px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+  border-bottom: 1px solid var(--color-border-secondary);
 }
 
 .pageTitle {
@@ -52,7 +52,7 @@
 }
 
 .instanceCard {
-  background: rgba(17, 24, 39, 0.65) !important;
+  background: rgba(255, 255, 255, 0.65) !important;
   border: 1px solid rgba(99, 102, 241, 0.22) !important;
   border-radius: 14px !important;
   backdrop-filter: blur(16px);
@@ -61,7 +61,7 @@
 
 .instanceCard:hover {
   border-color: rgba(99, 102, 241, 0.55) !important;
-  box-shadow: 0 0 32px rgba(99, 102, 241, 0.25), 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+  box-shadow: 0 0 32px var(--color-border), 0 8px 24px rgba(0, 0, 0, 0.4) !important;
   transform: translateY(-3px);
 }
 
@@ -76,7 +76,7 @@
 .cardName {
   font-size: 15px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--color-text-primary);
 }
 
 .cardMeta {
@@ -84,7 +84,7 @@
   flex-direction: column;
   gap: 6px;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
   margin-bottom: 12px;
 }
 
@@ -104,13 +104,13 @@
 
 /* ===== 状态标签 ===== */
 .statusRunning {
-  color: #34d399 !important;
+  color: var(--color-success) !important;
   border-color: rgba(52, 211, 153, 0.4) !important;
   background: rgba(52, 211, 153, 0.1) !important;
 }
 
 .statusStopped {
-  color: #8b949e !important;
+  color: var(--color-text-tertiary) !important;
   border-color: rgba(139, 148, 158, 0.4) !important;
   background: rgba(139, 148, 158, 0.1) !important;
 }
@@ -122,7 +122,7 @@
 }
 
 .callStatusSuccess {
-  color: #34d399 !important;
+  color: var(--color-success) !important;
   border-color: rgba(52, 211, 153, 0.4) !important;
   background: rgba(52, 211, 153, 0.1) !important;
 }
@@ -159,12 +159,12 @@
 .backBtn {
   background: rgba(99, 102, 241, 0.1) !important;
   border: 1px solid rgba(99, 102, 241, 0.3) !important;
-  color: #a5b4fc !important;
+  color: var(--color-text-secondary) !important;
 }
 
 .backBtn:hover {
-  background: rgba(99, 102, 241, 0.2) !important;
-  color: #c7d2fe !important;
+  background: var(--color-border-secondary) !important;
+  color: var(--color-text-secondary) !important;
 }
 
 /* ===== 详情页 ===== */
@@ -175,8 +175,8 @@
 }
 
 .sectionCard {
-  background: rgba(17, 24, 39, 0.65);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid var(--color-border-secondary);
   border-radius: 12px;
   padding: 20px 24px;
   backdrop-filter: blur(12px);
@@ -185,7 +185,7 @@
 .sectionTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
   margin-bottom: 12px;
   display: flex;
   align-items: center;
@@ -213,14 +213,14 @@
 
 .infoLabel {
   font-size: 11px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .infoValue {
   font-size: 14px;
-  color: #e6edf3;
+  color: var(--color-text-primary);
   font-weight: 500;
 }
 
@@ -242,11 +242,11 @@
   justify-content: space-between;
   align-items: center;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
 }
 
 .resourceValue {
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
   font-weight: 600;
 }
 
@@ -258,7 +258,7 @@
 }
 
 .skillCard {
-  background: rgba(17, 24, 39, 0.65) !important;
+  background: rgba(255, 255, 255, 0.65) !important;
   border: 1px solid rgba(99, 102, 241, 0.22) !important;
   border-radius: 12px !important;
   backdrop-filter: blur(16px);
@@ -286,7 +286,7 @@
 .skillName {
   font-size: 15px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--color-text-primary);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -297,7 +297,7 @@
   height: 36px;
   border-radius: 10px;
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.3));
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -307,7 +307,7 @@
 
 .skillDesc {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
   line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -321,11 +321,11 @@
   justify-content: space-between;
   align-items: center;
   font-size: 11px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
 }
 
 .skillAuthor {
-  color: #a5b4fc;
+  color: var(--color-text-secondary);
 }
 
 .skillPrice {
@@ -342,7 +342,7 @@
 
 .skillPriceFree {
   background: rgba(52, 211, 153, 0.12);
-  color: #34d399;
+  color: var(--color-success);
   border-color: rgba(52, 211, 153, 0.3);
 }
 
@@ -353,7 +353,7 @@
 }
 
 .installedTag {
-  color: #34d399 !important;
+  color: var(--color-success) !important;
   border-color: rgba(52, 211, 153, 0.4) !important;
   background: rgba(52, 211, 153, 0.1) !important;
 }
@@ -379,7 +379,7 @@
   align-items: center;
   justify-content: center;
   padding: 60px 20px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
   gap: 12px;
 }
 
@@ -390,5 +390,5 @@
 
 .emptyStateText {
   font-size: 14px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
 }

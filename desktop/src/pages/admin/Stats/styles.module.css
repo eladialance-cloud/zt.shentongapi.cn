@@ -119,7 +119,7 @@
   position: absolute;
   bottom: -24px;
   font-size: 11px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
   white-space: nowrap;
 }
 
@@ -127,13 +127,13 @@
   position: absolute;
   top: -20px;
   font-size: 11px;
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
   white-space: nowrap;
 }
 
 /* SVG 折线图 */
 .lineChartWrap {
-  background: rgba(15, 23, 42, 0.5);
+  background: rgba(248, 250, 252, 0.5);
   border: 1px solid rgba(56, 189, 248, 0.15);
   border-radius: 10px;
   padding: 16px;
@@ -150,7 +150,7 @@
 .ratioName {
   width: 120px;
   font-size: 13px;
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
   flex-shrink: 0;
 }
 
@@ -162,7 +162,7 @@
   width: 80px;
   text-align: right;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
   flex-shrink: 0;
 }
 
@@ -181,17 +181,17 @@
 }
 
 .cohortTable th {
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(248, 250, 252, 0.6);
   color: #7dd3fc;
   font-weight: 600;
 }
 
 .cohortTable td {
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
 }
 
 .cohortTable td.cohortHeader {
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(248, 250, 252, 0.6);
   text-align: left;
-  color: #f1f5f9;
+  color: var(--color-text-primary);
 }

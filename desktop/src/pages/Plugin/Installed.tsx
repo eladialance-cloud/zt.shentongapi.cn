@@ -173,7 +173,7 @@ export default function InstalledPlugins() {
       key: 'description',
       ellipsis: true,
       render: (v: string) => (
-        <span style={{ color: '#8b949e', fontSize: 12 }}>{v}</span>
+        <span style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }}>{v}</span>
       )
     },
     {
@@ -192,7 +192,7 @@ export default function InstalledPlugins() {
       dataIndex: 'version',
       key: 'version',
       width: 80,
-      render: (v: string) => <span style={{ color: '#8b949e' }}>v{v}</span>
+      render: (v: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>v{v}</span>
     },
     {
       title: '启用',

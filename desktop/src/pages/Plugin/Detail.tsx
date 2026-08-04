@@ -295,7 +295,7 @@ export default function PluginDetail() {
                   {[1, 2, 3].map((i) => (
                     <Col xs={24} sm={8} key={i}>
                       <div className={styles.screenshotPlaceholder}>
-                        <BookOutlined style={{ fontSize: 32, color: 'var(--color-text-quaternary)' }} />
+                        <BookOutlined style={{ fontSize: 32, color: 'var(--color-text-tertiary)' }} />
                         <Text type="secondary" style={{ fontSize: 12 }}>截图 {i}</Text>
                       </div>
                     </Col>

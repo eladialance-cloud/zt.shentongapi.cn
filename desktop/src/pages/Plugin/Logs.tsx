@@ -160,7 +160,7 @@ export default function PluginLogs() {
       key: 'durationMs',
       width: 100,
       render: (v: number) => (
-        <span style={{ color: '#a5b4fc' }}>{formatDuration(v)}</span>
+        <span style={{ color: 'var(--color-text-secondary)' }}>{formatDuration(v)}</span>
       )
     },
     {

@@ -8,6 +8,10 @@ app.commandLine.appendSwitch('ignore-gpu-blocklist')
 app.commandLine.appendSwitch('disable-gpu-sandbox')
 // 允许在缺少 GPU 时使用 SwiftShader 软件渲染，保证 PixiJS 至少能创建 WebGL 上下文
 app.commandLine.appendSwitch('enable-unsafe-swiftshader')
+// 仅开发环境（未打包）启用远程调试端口，生产环境关闭
+if (!app.isPackaged) {
+  app.commandLine.appendSwitch('remote-debugging-port', '9222')
+}
 import { createMainWindow, getMainWindow, setQuitting } from './windows/main-window'
 import { createTray, destroyTray } from './tray'
 import { ServiceManager } from './service-manager'

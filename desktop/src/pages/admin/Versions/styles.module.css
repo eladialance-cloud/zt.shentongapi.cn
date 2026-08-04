@@ -87,6 +87,6 @@
   flex-wrap: wrap;
   gap: 20px;
   font-size: 13px;
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
   line-height: 1.8;
 }

@@ -134,7 +134,7 @@ export default function UsageHistory() {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <RobotOutlined style={{ color: '#818cf8' }} />
+                      <RobotOutlined style={{ color: 'var(--color-brand)' }} />
                       <span style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3' }}>
                         {log.agentName}
                       </span>
@@ -150,7 +150,7 @@ export default function UsageHistory() {
                       flexWrap: 'wrap',
                       gap: 16,
                       fontSize: 12,
-                      color: '#8b949e'
+                      color: 'var(--color-text-tertiary)'
                     }}
                   >
                     <span>
@@ -162,7 +162,7 @@ export default function UsageHistory() {
                     </span>
                     <span>
                       Token 用量：
-                      <span style={{ color: '#c7d2fe' }}>
+                      <span style={{ color: 'var(--color-text-secondary)' }}>
                         输入 {log.tokenUsage?.promptTokens ?? 0} / 输出{' '}
                         {log.tokenUsage?.completionTokens ?? 0} / 共{' '}
                         {log.tokenUsage?.totalTokens ?? 0}

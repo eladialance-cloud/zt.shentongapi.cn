@@ -202,7 +202,7 @@ export default function FinanceTransactions() {
       key: 'user',
       width: 160,
       render: (_: unknown, r: CreditTransaction) => (
-        <span style={{ color: '#94a3b8' }}>
+        <span style={{ color: 'var(--color-text-tertiary)' }}>
           {r.username} #{r.userId}
         </span>
       )
@@ -222,7 +222,7 @@ export default function FinanceTransactions() {
       key: 'source',
       width: 110,
       render: (s: CreditTransactionSource) => (
-        <span style={{ color: '#c7d2fe' }}>{SOURCE_LABEL[s]}</span>
+        <span style={{ color: 'var(--color-text-secondary)' }}>{SOURCE_LABEL[s]}</span>
       )
     },
     {
@@ -242,7 +242,7 @@ export default function FinanceTransactions() {
       dataIndex: 'balanceBefore',
       key: 'balanceBefore',
       width: 120,
-      render: (v: number) => <span style={{ color: '#94a3b8' }}>{v.toLocaleString()}</span>
+      render: (v: number) => <span style={{ color: 'var(--color-text-tertiary)' }}>{v.toLocaleString()}</span>
     },
     {
       title: '操作后余额',
@@ -256,21 +256,21 @@ export default function FinanceTransactions() {
       dataIndex: 'relatedId',
       key: 'relatedId',
       width: 140,
-      render: (v?: string) => <span style={{ color: '#8b949e' }}>{v || '-'}</span>
+      render: (v?: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{v || '-'}</span>
     },
     {
       title: '备注',
       dataIndex: 'remark',
       key: 'remark',
       ellipsis: true,
-      render: (v?: string) => <span style={{ color: '#8b949e' }}>{v || '-'}</span>
+      render: (v?: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{v || '-'}</span>
     },
     {
       title: '时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 170,
-      render: (t: string) => <span style={{ color: '#8b949e' }}>{t}</span>
+      render: (t: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t}</span>
     }
   ]
 

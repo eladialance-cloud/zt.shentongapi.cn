@@ -8,7 +8,7 @@
 // 5. 失败：antd message 错误提示（DEVICE_LIMIT_EXCEEDED 特殊提示）
 // 6. 演示模式：DEMO_TOKEN 直接进入 dashboard
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Form, Input, message } from "antd";
 import { LockOutlined, RobotOutlined, UserOutlined } from "@ant-design/icons";
@@ -64,6 +64,16 @@ export default function Login() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  // 如果已认证（如演示模式 token 恢复后），自动跳转
+  const redirectedRef = useRef(false);
+  useEffect(() => {
+    if (isAuthenticated && !redirectedRef.current) {
+      redirectedRef.current = true;
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   /** 执行登录 API 调用 */
   const doLogin = async (

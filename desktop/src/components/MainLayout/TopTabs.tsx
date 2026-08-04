@@ -100,7 +100,7 @@ export default function TopTabs() {
           flex: 1,
           minWidth: 0
         }}
-        theme="dark"
+        theme="light"
       />
       <Dropdown
         menu={{

@@ -117,7 +117,7 @@ export default function AdminLayout() {
             selectedKeys={[selectedKey]}
             items={menuItems}
             style={{ background: 'transparent', borderRight: 'none' }}
-            theme="dark"
+            theme="light"
           />
         </div>
         <div className={styles.content}>

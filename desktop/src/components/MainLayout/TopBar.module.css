@@ -1,4 +1,4 @@
-/* TopBar v1.0 — 48px 暗色顶栏 */
+/* TopBar — 方案1 Developer Tool Dark, Glass */
 
 .topbar {
   height: var(--topbar-height);
@@ -7,13 +7,13 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--space-md);
-  background: var(--color-bg-elevated);
-  border-bottom: 1px solid var(--color-border);
-  position: relative;
+  background: var(--glass-bg);
+  border-bottom: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   z-index: 100;
 }
 
-/* 左侧搜索按钮 */
 .left {
   display: flex;
   align-items: center;
@@ -24,124 +24,172 @@
   display: flex !important;
   align-items: center;
   gap: var(--space-xs);
-  height: 32px;
-  padding: 0 var(--space-sm) !important;
-  background: var(--color-bg-root) !important;
-  border: 1px solid var(--color-border) !important;
-  border-radius: var(--radius-md) !important;
-  color: var(--color-text-tertiary) !important;
-  cursor: pointer;
-  transition: border-color var(--duration-fast) var(--ease-out);
 }
 
-.searchBtn:hover {
-  border-color: var(--color-brand) !important;
-}
-
-.searchPlaceholder {
-  font-size: var(--font-size-sm);
+.searchPlaceholder { color: var(--color-text-tertiary); }
+.shortcutHint {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0 4px;
+  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
   color: var(--color-text-tertiary);
 }
 
-.shortcutHint {
-  font-family: var(--font-family-mono);
-  font-size: 11px;
-  color: var(--color-text-quaternary);
-  background: var(--color-bg-container);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: 1px 5px;
-  line-height: 16px;
-}
-
-/* 右侧操作区 */
 .right {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--space-xs);
 }
 
 .credits {
-  cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  gap: var(--space-2xs);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent-bg);
+  border: 1px solid var(--color-accent-light);
+  color: var(--color-accent);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
 }
+
+.credits:hover { background: var(--color-accent-light); }
 
 .iconBtn {
   font-size: 18px;
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
   cursor: pointer;
-  padding: var(--space-2xs);
+  padding: 6px;
   border-radius: var(--radius-md);
-  transition: color var(--duration-fast) var(--ease-out),
-              background var(--duration-fast) var(--ease-out);
+  transition: all var(--duration-fast) var(--ease-out);
 }
 
 .iconBtn:hover {
-  color: var(--color-text-primary);
+  color: var(--color-text-secondary);
   background: var(--color-bg-hover);
 }
 
 .avatarWrap {
   display: flex;
   align-items: center;
+  gap: 8px;
   cursor: pointer;
-  padding: 2px;
+  padding: 2px 8px 2px 4px;
+  border-radius: var(--radius-lg);
+  transition: background var(--duration-fast) ease;
+}
+
+.avatarWrap:hover { background: var(--color-bg-hover); }
+
+.avatar { background: linear-gradient(135deg, #6366F1, #22C55E); flex-shrink: 0; }
+
+.username {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Logo */
+.topbarLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+.logo {
+  font-size: 16px;
+  font-weight: var(--font-weight-bold);
+  background: linear-gradient(135deg, #818CF8, #22C55E);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  white-space: nowrap;
+}
+
+.topbarCenter {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--space-md);
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.searchInput { width: 100%; }
+
+.topbarRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.creditsBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  padding: 4px 10px;
   border-radius: var(--radius-full);
-  transition: background var(--duration-fast) var(--ease-out);
+  background: var(--color-accent-bg);
+  border: 1px solid var(--color-accent-light);
+  color: var(--color-accent);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
 }
 
-.avatarWrap:hover {
-  background: var(--color-bg-hover);
-}
+.creditsBadge:hover { background: var(--color-accent-light); }
 
-.avatar {
-  background: var(--color-brand) !important;
-  color: #FFFFFF !important;
-  font-size: 13px;
-  font-weight: var(--font-weight-semibold);
-}
-
-/* 通知下拉 */
+/* Notifications */
 .notificationList {
-  width: 320px;
-  max-height: 360px;
+  width: 300px;
+  max-height: 380px;
   overflow-y: auto;
 }
 
 .notificationItem {
-  padding: var(--space-sm) var(--space-md);
-  cursor: pointer;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--color-border-secondary);
-  transition: background var(--duration-fast) var(--ease-out);
+  cursor: pointer;
+  transition: background var(--duration-fast) ease;
 }
 
-.notificationItem:hover {
-  background: var(--color-bg-hover);
-}
-
-.notificationItem:last-child {
-  border-bottom: none;
-}
+.notificationItem:hover { background: var(--color-bg-hover); }
+.notificationItem:last-child { border-bottom: none; }
 
 .notificationTitle {
   font-size: var(--font-size-base);
   color: var(--color-text-primary);
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
+  gap: 8px;
 }
 
 .notificationDot {
   width: 6px;
   height: 6px;
-  border-radius: var(--radius-full);
-  background: var(--color-brand);
+  border-radius: 50%;
+  background: var(--color-accent);
   flex-shrink: 0;
 }
 
 .notificationTime {
   font-size: var(--font-size-xs);
   color: var(--color-text-tertiary);
-  margin-top: var(--space-2xs);
+  margin-top: 4px;
+}
+
+.notificationEmpty {
+  padding: 32px;
+  text-align: center;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-base);
 }

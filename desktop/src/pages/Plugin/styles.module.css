@@ -2,8 +2,8 @@
 
 .pageContainer {
   min-height: 100vh;
-  background: linear-gradient(180deg, #0a0e1a 0%, #161b22 100%);
-  color: #e6edf3;
+  background: linear-gradient(180deg, var(--color-bg-root) 0%, #F1F5F9 100%);
+  color: var(--color-text-primary);
   padding: 24px;
   overflow-y: auto;
 }
@@ -14,7 +14,7 @@
   justify-content: space-between;
   margin-bottom: 24px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+  border-bottom: 1px solid var(--color-border-secondary);
 }
 
 .pageTitle {
@@ -57,8 +57,8 @@
 }
 
 .pluginCard {
-  background: rgba(22, 27, 34, 0.7);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(248, 250, 252, 0.7);
+  border: 1px solid var(--color-border-secondary);
   border-radius: 12px;
   overflow: hidden;
   display: flex;
@@ -69,7 +69,7 @@
 
 .pluginCard:hover {
   border-color: rgba(99, 102, 241, 0.5);
-  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 8px 24px var(--color-border-secondary);
   transform: translateY(-2px);
 }
 
@@ -91,7 +91,7 @@
 .cardTitle {
   font-size: 15px;
   font-weight: 600;
-  color: #e6edf3;
+  color: var(--color-text-primary);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -112,7 +112,7 @@
 
 .cardDescription {
   font-size: 12px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
   line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -127,7 +127,7 @@
   align-items: center;
   gap: 12px;
   font-size: 11px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
   margin-top: 4px;
 }
 
@@ -143,14 +143,14 @@
   padding: 2px 8px;
   border-radius: 10px;
   font-size: 11px;
-  background: rgba(99, 102, 241, 0.15);
-  color: #a5b4fc;
+  background: var(--color-border-secondary);
+  color: var(--color-text-secondary);
   border: 1px solid rgba(99, 102, 241, 0.3);
 }
 
 .typeTagTool {
   background: rgba(99, 102, 241, 0.12);
-  color: #a5b4fc;
+  color: var(--color-text-secondary);
   border-color: rgba(99, 102, 241, 0.3);
 }
 
@@ -162,7 +162,7 @@
 
 .typeTagKb {
   background: rgba(16, 185, 129, 0.12);
-  color: #34d399;
+  color: var(--color-success);
   border-color: rgba(16, 185, 129, 0.3);
 }
 
@@ -177,7 +177,7 @@
 }
 
 .creditsValue {
-  color: #34d399;
+  color: var(--color-success);
 }
 
 .cardFooter {
@@ -199,43 +199,43 @@
 
 .installBtnInstalled {
   background: rgba(16, 185, 129, 0.15);
-  color: #34d399;
+  color: var(--color-success);
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
 .useBtn {
   background: transparent;
   border: 1px solid rgba(99, 102, 241, 0.3);
-  color: #a5b4fc;
+  color: var(--color-text-secondary);
 }
 
 .useBtn:hover {
   background: rgba(99, 102, 241, 0.1);
   border-color: rgba(99, 102, 241, 0.5);
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
 }
 
 /* ===== 已安装页 ===== */
 .installedTableWrapper {
-  background: rgba(22, 27, 34, 0.7);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(248, 250, 252, 0.7);
+  border: 1px solid var(--color-border-secondary);
   border-radius: 12px;
   padding: 16px 20px;
   backdrop-filter: blur(10px);
 }
 
 .configModal {
-  background: rgba(22, 27, 34, 0.95) !important;
+  background: rgba(248, 250, 252, 0.95) !important;
 }
 
 .configForm .ant-form-item-label > label {
-  color: #a5b4fc !important;
+  color: var(--color-text-secondary) !important;
 }
 
 /* ===== 日志页 ===== */
 .logsTableWrapper {
-  background: rgba(22, 27, 34, 0.7);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(248, 250, 252, 0.7);
+  border: 1px solid var(--color-border-secondary);
   border-radius: 12px;
   padding: 16px 20px;
   backdrop-filter: blur(10px);
@@ -244,7 +244,7 @@
 .jsonCell {
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 11px;
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
   white-space: pre-wrap;
   word-break: break-all;
   max-height: 100px;
@@ -252,7 +252,7 @@
 }
 
 .statusTagSuccess {
-  color: #34d399;
+  color: var(--color-success);
 }
 
 .statusTagFailed {
@@ -270,7 +270,7 @@
   align-items: center;
   justify-content: center;
   padding: 80px 20px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
   gap: 12px;
 }
 
@@ -281,20 +281,20 @@
 
 .emptyStateText {
   font-size: 14px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
 }
 
 /* ===== 返回按钮 ===== */
 .backBtn {
   background: transparent;
   border: 1px solid rgba(99, 102, 241, 0.3);
-  color: #a5b4fc;
+  color: var(--color-text-secondary);
 }
 
 .backBtn:hover {
   background: rgba(99, 102, 241, 0.1);
   border-color: rgba(99, 102, 241, 0.5);
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
 }
 
 .tabNav {
@@ -302,24 +302,24 @@
   gap: 8px;
   margin-bottom: 20px;
   padding: 4px;
-  background: rgba(13, 17, 23, 0.6);
+  background: rgba(248, 250, 252, 0.6);
   border-radius: 10px;
   width: fit-content;
-  border: 1px solid rgba(99, 102, 241, 0.15);
+  border: 1px solid var(--color-border-secondary);
 }
 
 .tabItem {
   padding: 6px 16px;
   border-radius: 8px;
   font-size: 13px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
   cursor: pointer;
   transition: all 0.15s ease;
   user-select: none;
 }
 
 .tabItem:hover {
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
   background: rgba(99, 102, 241, 0.08);
 }
 

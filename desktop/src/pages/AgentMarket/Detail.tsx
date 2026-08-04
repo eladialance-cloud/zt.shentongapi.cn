@@ -318,7 +318,7 @@ export default function AgentDetail() {
             </div>
           </div>
         </div>
-        <div style={{ marginTop: 12, fontSize: 12, color: '#8b949e' }}>
+        <div style={{ marginTop: 12, fontSize: 12, color: 'var(--color-text-tertiary)' }}>
           计费流程：调用时冻结预估积分 → 完成后按实际 Token 用量结算 → 退还多余冻结。
           创作者将获得分成收益。
         </div>

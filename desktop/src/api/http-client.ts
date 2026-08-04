@@ -18,6 +18,7 @@ import axios, {
 import { useAuthStore } from "@/store/auth";
 import { signRequest } from "@/utils/hmac";
 import { BusinessError, NetworkError } from "@/utils/errors";
+import { useSystemStore } from "@/store/system";
 
 /** 标准响应体 */
 interface ApiResponse<T = unknown> {
@@ -161,6 +162,8 @@ class HttpClient {
         // 业务码 0 = 成功，返回解包后的 data
         if (body && typeof body.code === "number") {
           if (body.code === 0) {
+            // 标记后端在线
+            useSystemStore.getState().setBackendOnline();
             return body.data;
           }
           // 业务错误
@@ -221,6 +224,8 @@ class HttpClient {
         if (!error.response) {
           const isTimeout =
             error.code === "ECONNABORTED" || error.message.includes("timeout");
+          // 标记后端离线，供全局 UI 和组件使用
+          useSystemStore.getState().setBackendOffline();
           return Promise.reject(
             new NetworkError(isTimeout ? "请求超时" : "网络连接失败", {
               isTimeout,

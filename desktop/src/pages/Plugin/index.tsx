@@ -17,6 +17,8 @@ import {
 } from "@ant-design/icons";
 import * as pluginApi from "@/api/plugin-api";
 import type { Plugin, PluginType, PluginMarketQuery } from "@/types/plugin";
+import { useSystemStore } from "@/store/system";
+import { NetworkError } from "@/utils/errors";
 import styles from "./styles.module.css";
 
 /** 分类选项 */
@@ -62,6 +64,7 @@ function typeLabel(type: PluginType): string {
 
 export default function PluginMarket() {
   const navigate = useNavigate();
+  const backendAvailable = useSystemStore((s) => s.backendAvailable);
 
   const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [loading, setLoading] = useState(false);
@@ -77,12 +80,14 @@ export default function PluginMarket() {
       setPlugins(result.list || []);
     } catch (err) {
       console.error("[PluginMarket] load failed:", err);
-      message.error("加载插件市场失败");
+      if (!(err instanceof NetworkError) || backendAvailable) {
+        message.error("加载插件市场失败");
+      }
       setPlugins([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [backendAvailable]);
 
   useEffect(() => {
     void loadPlugins({});

@@ -1,20 +1,24 @@
-/* === Sidebar v0.3.1 (200px / 64px) === */
+/* === Sidebar v3.0 — Glassmorphism Enterprise Blue === */
+/* 240px expanded / 64px collapsed, glass background */
 
 .sidebar {
-  width: 200px;
+  width: var(--sidebar-width);
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--color-bg-container);
-  border-right: 1px solid var(--color-border-secondary);
+  background: var(--glass-bg);
+  border-right: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   transition: width var(--duration-base) var(--ease-out);
   flex-shrink: 0;
   overflow: hidden;
   user-select: none;
+  z-index: 50;
 }
 
 .collapsed {
-  width: 64px;
+  width: var(--sidebar-collapsed);
 }
 
 /* 导航列表 */
@@ -22,23 +26,27 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-md);
-  padding: var(--spacing-md) var(--spacing-sm);
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-sm);
   overflow-y: auto;
 }
+
+.navList::-webkit-scrollbar { width: 4px; }
+.navList::-webkit-scrollbar-thumb { background: var(--color-scrollbar-thumb); border-radius: 2px; }
 
 .navGroup {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
+  gap: var(--space-xs);
 }
 
 .groupTitle {
-  font-size: var(--font-size-caption);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-tertiary);
-  padding: var(--spacing-xs) var(--spacing-sm);
+  padding: var(--space-xs) var(--space-sm);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
   white-space: nowrap;
   overflow: hidden;
 }
@@ -47,12 +55,13 @@
 .navItem {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius-md);
   cursor: pointer;
   color: var(--color-text-secondary);
-  font-size: var(--font-size-body);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
   transition: all var(--duration-fast) var(--ease-out);
   white-space: nowrap;
   overflow: hidden;
@@ -60,15 +69,15 @@
 }
 
 .navItem:hover {
-  background: var(--color-primary-light);
-  color: var(--color-primary);
+  background: var(--glass-bg-hover);
+  color: var(--color-brand);
 }
 
 /* 激活态 */
 .navActive {
-  background: var(--color-primary-light);
-  color: var(--color-primary);
-  font-weight: 500;
+  background: var(--glass-bg-active);
+  color: var(--color-brand);
+  font-weight: var(--font-weight-semibold);
 }
 
 .navActive::before {
@@ -79,7 +88,7 @@
   transform: translateY(-50%);
   width: 3px;
   height: 60%;
-  background: var(--color-primary);
+  background: var(--color-brand);
   border-radius: 0 2px 2px 0;
 }
 
@@ -101,24 +110,29 @@
 /* 折叠态: 隐藏 label, 居中图标 */
 .collapsed .navItem {
   justify-content: center;
-  padding: var(--spacing-sm);
+  padding: var(--space-sm);
+}
+
+.collapsed .groupTitle {
+  text-align: center;
+  padding: var(--space-xs) 0;
 }
 
 /* 底部折叠按钮 */
 .collapseBtn {
-  height: 40px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-top: 1px solid var(--color-border-secondary);
+  border-top: 1px solid var(--glass-border);
   cursor: pointer;
-  color: var(--color-text-secondary);
-  font-size: 14px;
+  color: var(--color-text-tertiary);
+  font-size: 16px;
   transition: all var(--duration-fast) var(--ease-out);
   flex-shrink: 0;
 }
 
 .collapseBtn:hover {
-  background: var(--color-primary-light);
-  color: var(--color-primary);
+  background: var(--glass-bg-hover);
+  color: var(--color-brand);
 }

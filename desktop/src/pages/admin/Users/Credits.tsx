@@ -124,7 +124,7 @@ export default function AdminUserCredits() {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 170,
-      render: (t: string) => <span style={{ color: '#8b949e' }}>{t}</span>
+      render: (t: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t}</span>
     },
     {
       title: '类型',
@@ -163,7 +163,7 @@ export default function AdminUserCredits() {
       dataIndex: 'remark',
       key: 'remark',
       ellipsis: true,
-      render: (v: string) => <span style={{ color: '#94a3b8' }}>{v || '-'}</span>
+      render: (v: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{v || '-'}</span>
     }
   ]
 

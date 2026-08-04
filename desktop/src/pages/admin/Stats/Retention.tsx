@@ -116,7 +116,7 @@ export default function StatsRetention() {
                   ))}
                 </tbody>
               </table>
-              <div style={{ marginTop: 16, color: '#8b949e', fontSize: 12 }}>
+              <div style={{ marginTop: 16, color: 'var(--color-text-tertiary)', fontSize: 12 }}>
                 单元格颜色越深表示留存率越高
               </div>
             </div>

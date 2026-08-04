@@ -2,12 +2,12 @@
 
 .page {
   min-height: 100vh;
-  background: #0a0e1a;
+  background: var(--color-bg-root);
   background-image:
     radial-gradient(circle at 15% 20%, rgba(99, 102, 241, 0.12) 0%, transparent 45%),
     radial-gradient(circle at 85% 80%, rgba(139, 92, 246, 0.10) 0%, transparent 45%),
-    linear-gradient(135deg, #0a0e1a 0%, #111827 100%);
-  color: #e6edf3;
+    linear-gradient(135deg, var(--color-bg-root) 0%, var(--color-bg-layout) 100%);
+  color: var(--color-text-primary);
   padding: 24px 32px 48px;
   overflow-y: auto;
 }
@@ -43,26 +43,26 @@
 .title {
   font-size: 22px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--color-text-primary);
   margin: 0;
   letter-spacing: 0.5px;
 }
 
 .subtitle {
   font-size: 12px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
   margin-top: 2px;
 }
 
 .backBtn {
   background: rgba(99, 102, 241, 0.1) !important;
   border: 1px solid rgba(99, 102, 241, 0.3) !important;
-  color: #a5b4fc !important;
+  color: var(--color-text-secondary) !important;
 }
 
 .backBtn:hover {
-  background: rgba(99, 102, 241, 0.2) !important;
-  color: #c7d2fe !important;
+  background: var(--color-border-secondary) !important;
+  color: var(--color-text-secondary) !important;
 }
 
 /* ===== 工具栏（Tab + 搜索 + 分类） ===== */
@@ -73,7 +73,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
-  background: rgba(17, 24, 39, 0.6);
+  background: rgba(255, 255, 255, 0.6);
   border: 1px solid rgba(99, 102, 241, 0.18);
   border-radius: 12px;
   margin-bottom: 20px;
@@ -99,7 +99,7 @@
 }
 
 .agentCard {
-  background: rgba(17, 24, 39, 0.65) !important;
+  background: rgba(255, 255, 255, 0.65) !important;
   border: 1px solid rgba(99, 102, 241, 0.22) !important;
   border-radius: 14px !important;
   backdrop-filter: blur(16px);
@@ -111,7 +111,7 @@
 .agentCard:hover {
   border-color: rgba(99, 102, 241, 0.55) !important;
   box-shadow:
-    0 0 32px rgba(99, 102, 241, 0.25),
+    0 0 32px var(--color-border),
     0 8px 24px rgba(0, 0, 0, 0.4) !important;
   transform: translateY(-3px);
 }
@@ -140,7 +140,7 @@
   font-size: 24px;
   font-weight: 600;
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.3));
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
   border: 1px solid rgba(99, 102, 241, 0.4);
   overflow: hidden;
 }
@@ -163,7 +163,7 @@
 .agentName {
   font-size: 16px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--color-text-primary);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -180,7 +180,7 @@
 
 .agentDesc {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
   line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -194,7 +194,7 @@
   justify-content: space-between;
   align-items: center;
   font-size: 12px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
 }
 
 .agentRating {
@@ -209,7 +209,7 @@
 }
 
 .callCount {
-  color: #6e7681;
+  color: var(--color-text-tertiary);
 }
 
 /* 价格标签：青色背景 */
@@ -228,7 +228,7 @@
 
 .priceTagFree {
   background: rgba(52, 211, 153, 0.12);
-  color: #34d399;
+  color: var(--color-success);
   border-color: rgba(52, 211, 153, 0.3);
 }
 
@@ -243,8 +243,8 @@
   padding: 1px 8px;
   border-radius: 10px;
   background: rgba(99, 102, 241, 0.12);
-  color: #a5b4fc;
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-secondary);
 }
 
 .agentActions {
@@ -267,7 +267,7 @@
 .favBtn {
   background: rgba(99, 102, 241, 0.1) !important;
   border: 1px solid rgba(99, 102, 241, 0.3) !important;
-  color: #a5b4fc !important;
+  color: var(--color-text-secondary) !important;
 }
 
 .favBtnActive {
@@ -278,7 +278,7 @@
 
 /* ===== 详情页 ===== */
 .detailCard {
-  background: rgba(17, 24, 39, 0.65) !important;
+  background: rgba(255, 255, 255, 0.65) !important;
   border: 1px solid rgba(99, 102, 241, 0.22) !important;
   border-radius: 14px !important;
   backdrop-filter: blur(16px);
@@ -302,7 +302,7 @@
   font-size: 36px;
   font-weight: 600;
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.3));
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
   border: 1px solid rgba(99, 102, 241, 0.4);
   overflow: hidden;
   flex-shrink: 0;
@@ -316,7 +316,7 @@
 .detailName {
   font-size: 24px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--color-text-primary);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -325,7 +325,7 @@
 
 .detailDesc {
   font-size: 13px;
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
   line-height: 1.6;
   margin-bottom: 12px;
 }
@@ -344,7 +344,7 @@
 
 .detailStatLabel {
   font-size: 11px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -352,11 +352,11 @@
 .detailStatValue {
   font-size: 16px;
   font-weight: 600;
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
 }
 
 .sectionCard {
-  background: rgba(17, 24, 39, 0.6) !important;
+  background: rgba(255, 255, 255, 0.6) !important;
   border: 1px solid rgba(99, 102, 241, 0.18) !important;
   border-radius: 12px !important;
   margin-bottom: 20px;
@@ -366,7 +366,7 @@
 .sectionTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
   margin-bottom: 12px;
   display: flex;
   align-items: center;
@@ -374,13 +374,13 @@
 }
 
 .usageExample {
-  background: rgba(13, 17, 23, 0.7);
-  border: 1px solid rgba(99, 102, 241, 0.15);
+  background: rgba(248, 250, 252, 0.7);
+  border: 1px solid var(--color-border-secondary);
   border-radius: 8px;
   padding: 14px;
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 12px;
-  color: #a5b4fc;
+  color: var(--color-text-secondary);
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.6;
@@ -394,7 +394,7 @@
 
 .priceItem {
   padding: 12px;
-  background: rgba(13, 17, 23, 0.5);
+  background: rgba(248, 250, 252, 0.5);
   border: 1px solid rgba(34, 211, 238, 0.2);
   border-radius: 8px;
   text-align: center;
@@ -402,7 +402,7 @@
 
 .priceItemLabel {
   font-size: 11px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
   margin-bottom: 4px;
 }
 
@@ -443,24 +443,24 @@
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
 }
 
 .reviewTime {
   font-size: 11px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
 }
 
 .reviewComment {
   font-size: 13px;
-  color: #e6edf3;
+  color: var(--color-text-primary);
   line-height: 1.5;
 }
 
 /* ===== 使用记录 ===== */
 .usageLogItem {
-  background: rgba(17, 24, 39, 0.6) !important;
-  border: 1px solid rgba(99, 102, 241, 0.15) !important;
+  background: rgba(255, 255, 255, 0.6) !important;
+  border: 1px solid var(--color-border-secondary) !important;
   border-radius: 10px !important;
   margin-bottom: 10px !important;
   padding: 12px 16px !important;
@@ -470,7 +470,7 @@
 .emptyState {
   text-align: center;
   padding: 60px 20px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
 }
 
 /* ===== 通用 ===== */

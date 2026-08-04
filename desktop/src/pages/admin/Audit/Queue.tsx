@@ -178,7 +178,7 @@ export default function AuditQueue() {
       key: 'user',
       width: 160,
       render: (_: unknown, r: AuditQueueItem) => (
-        <span style={{ color: '#94a3b8' }}>
+        <span style={{ color: 'var(--color-text-tertiary)' }}>
           {r.username || ''} #{r.userId}
         </span>
       )
@@ -192,7 +192,7 @@ export default function AuditQueue() {
         <span>
           <Tag color={TRIGGER_COLOR[t]}>{TRIGGER_LABEL[t]}</Tag>
           {r.hitWords && r.hitWords.length > 0 && (
-            <span style={{ color: '#8b949e', marginLeft: 4 }}>
+            <span style={{ color: 'var(--color-text-tertiary)', marginLeft: 4 }}>
               ({r.hitWords.length} 词)
             </span>
           )}
@@ -213,7 +213,7 @@ export default function AuditQueue() {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 170,
-      render: (t: string) => <span style={{ color: '#8b949e' }}>{t}</span>
+      render: (t: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t}</span>
     },
     {
       title: '操作',

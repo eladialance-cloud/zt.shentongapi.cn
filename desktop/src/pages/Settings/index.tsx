@@ -69,7 +69,7 @@ export default function Settings() {
               label: item.label
             }))}
             onClick={(e) => setActive(e.key as SettingsTab)}
-            theme="dark"
+            theme="light"
           />
         </Layout>
 

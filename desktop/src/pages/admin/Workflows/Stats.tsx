@@ -155,7 +155,7 @@ export default function AdminWorkflowsStats() {
           {stats && stats.byEngineType.length > 0 ? (
             stats.byEngineType.map((e) => (
               <div className={styles.detailSection} key={e.engineType} style={{ marginBottom: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#c7d2fe' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-text-secondary)' }}>
                   <span>
                     <Tag color={e.engineType === 'n8n' ? 'purple' : 'magenta'}>
                       {ENGINE_LABEL[e.engineType]}

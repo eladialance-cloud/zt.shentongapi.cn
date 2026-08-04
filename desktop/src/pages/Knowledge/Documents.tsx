@@ -171,7 +171,7 @@ export default function KnowledgeDocuments() {
       key: 'fileName',
       render: (v: string) => (
         <span style={{ color: '#e6edf3', fontSize: 13 }}>
-          <FileTextOutlined style={{ marginRight: 6, color: '#a5b4fc' }} />
+          <FileTextOutlined style={{ marginRight: 6, color: 'var(--color-text-secondary)' }} />
           {v}
         </span>
       )
@@ -182,7 +182,7 @@ export default function KnowledgeDocuments() {
       key: 'fileSize',
       width: 100,
       render: (v: number) => (
-        <span style={{ color: '#8b949e' }}>{formatFileSize(v)}</span>
+        <span style={{ color: 'var(--color-text-tertiary)' }}>{formatFileSize(v)}</span>
       )
     },
     {
@@ -201,7 +201,7 @@ export default function KnowledgeDocuments() {
       dataIndex: 'chunkCount',
       key: 'chunkCount',
       width: 80,
-      render: (v: number) => <span style={{ color: '#a5b4fc' }}>{v ?? 0}</span>
+      render: (v: number) => <span style={{ color: 'var(--color-text-secondary)' }}>{v ?? 0}</span>
     },
     {
       title: '上传时间',
@@ -237,7 +237,7 @@ export default function KnowledgeDocuments() {
         <Spin
           fullscreen
           tip="加载中..."
-          style={{ background: 'rgba(10, 14, 26, 0.85)' }}
+          style={{ background: 'rgba(248, 250, 252, 0.85)' }}
         />
       </div>
     )
@@ -272,7 +272,7 @@ export default function KnowledgeDocuments() {
         {/* 知识库信息栏 */}
         {kb && (
           <div className={styles.kbInfoBar}>
-            <BookOutlined style={{ color: '#a5b4fc', fontSize: 18 }} />
+            <BookOutlined style={{ color: 'var(--color-text-secondary)', fontSize: 18 }} />
             <div style={{ flex: 1 }}>
               <div className={styles.kbInfoName}>{kb.name}</div>
               <div className={styles.kbInfoDescription}>
@@ -293,7 +293,7 @@ export default function KnowledgeDocuments() {
           </div>
           <Dragger {...uploadProps} className={styles.uploadDragger}>
             <p className={styles.uploadText}>
-              <InboxOutlined style={{ fontSize: 36, color: '#a5b4fc' }} />
+              <InboxOutlined style={{ fontSize: 36, color: 'var(--color-text-secondary)' }} />
             </p>
             <p className={styles.uploadText}>点击或拖拽文件到此区域上传</p>
             <p className={styles.uploadHint}>
@@ -306,7 +306,7 @@ export default function KnowledgeDocuments() {
             <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {Object.entries(uploadProgress).map(([key, percent]) => (
                 <div key={key}>
-                  <div style={{ color: '#8b949e', fontSize: 12, marginBottom: 2 }}>{key}</div>
+                  <div style={{ color: 'var(--color-text-tertiary)', fontSize: 12, marginBottom: 2 }}>{key}</div>
                   <Progress
                     percent={percent}
                     size="small"

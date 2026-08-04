@@ -34,6 +34,8 @@ import type {
   HermesSkill,
   CreateInstanceDto
 } from '@/types/hermes'
+import { useSystemStore } from '@/store/system'
+import { NetworkError } from '@/utils/errors'
 import styles from './styles.module.css'
 
 /** 状态中文标签 */
@@ -74,6 +76,7 @@ function formatTime(value: unknown): string {
 
 export default function HermesList() {
   const navigate = useNavigate()
+  const backendAvailable = useSystemStore((s) => s.backendAvailable)
   const [loading, setLoading] = useState(true)
   const [instances, setInstances] = useState<HermesInstance[]>([])
   const [createOpen, setCreateOpen] = useState(false)
@@ -89,11 +92,13 @@ export default function HermesList() {
       setInstances(list || [])
     } catch (err) {
       console.error('[HermesList] load failed:', err)
-      message.error('加载实例列表失败')
+      if (!(err instanceof NetworkError) || backendAvailable) {
+        message.error('加载实例列表失败')
+      }
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [backendAvailable])
 
   /** 加载已安装技能包供创建实例时选择 */
   const loadSkills = useCallback(async () => {
@@ -237,7 +242,7 @@ export default function HermesList() {
 
                 <div className={styles.cardMeta}>
                   <div className={styles.cardMetaItem}>
-                    <ThunderboltOutlined style={{ color: '#a5b4fc' }} />
+                    <ThunderboltOutlined style={{ color: 'var(--color-text-secondary)' }} />
                     <span>
                       CPU:{' '}
                       {inst.resourceUsage

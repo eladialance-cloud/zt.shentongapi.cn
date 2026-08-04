@@ -309,7 +309,7 @@ export default function SystemConfigPage() {
                 >
                   保存
                 </Button>
-                <span style={{ color: '#8b949e', fontSize: 12, marginRight: 8 }}>清空缓存:</span>
+                <span style={{ color: 'var(--color-text-tertiary)', fontSize: 12, marginRight: 8 }}>清空缓存:</span>
                 {CACHE_LAYERS.map((c) => (
                   <Popconfirm
                     key={c.layer}

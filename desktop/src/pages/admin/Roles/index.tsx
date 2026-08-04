@@ -153,7 +153,7 @@ export default function AdminRoles() {
       key: 'userCount',
       width: 100,
       render: (count?: number) => (
-        <span style={{ color: '#94a3b8' }}>
+        <span style={{ color: 'var(--color-text-tertiary)' }}>
           <TeamOutlined style={{ marginRight: 4 }} />
           {count ?? 0}
         </span>
@@ -165,7 +165,7 @@ export default function AdminRoles() {
       key: 'createdAt',
       width: 180,
       render: (t: string) => (
-        <span style={{ color: '#8b949e' }}>{t}</span>
+        <span style={{ color: 'var(--color-text-tertiary)' }}>{t}</span>
       )
     },
     {

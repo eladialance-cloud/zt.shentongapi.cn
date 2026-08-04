@@ -78,7 +78,7 @@ function SessionItemBase({
             <PushpinFilled className={styles.pinIcon} />
           </Tooltip>
         )}
-        <RobotOutlined style={{ color: '#a5b4fc', fontSize: 12 }} />
+        <RobotOutlined style={{ color: 'var(--color-text-secondary)', fontSize: 12 }} />
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {session.title || '新对话'}
         </span>

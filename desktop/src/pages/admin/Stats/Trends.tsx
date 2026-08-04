@@ -235,7 +235,7 @@ export default function StatsTrendsPage() {
               <LineChart points={trends.points} color={lineColor} />
             </div>
           ) : (
-            <div style={{ padding: 60, textAlign: 'center', color: '#8b949e' }}>
+            <div style={{ padding: 60, textAlign: 'center', color: 'var(--color-text-tertiary)' }}>
               暂无数据
             </div>
           )}

@@ -201,7 +201,7 @@ export default function FinanceReconciliation() {
       key: 'userId',
       width: 110,
       render: (v: number, r: ReconciliationDiff) => (
-        <span style={{ color: '#94a3b8' }}>
+        <span style={{ color: 'var(--color-text-tertiary)' }}>
           #{v}
           {r.username ? ` ${r.username}` : ''}
         </span>
@@ -224,7 +224,7 @@ export default function FinanceReconciliation() {
       dataIndex: 'detail',
       key: 'detail',
       ellipsis: true,
-      render: (v: string) => <span style={{ color: '#c7d2fe' }}>{v}</span>
+      render: (v: string) => <span style={{ color: 'var(--color-text-secondary)' }}>{v}</span>
     },
     {
       title: '状态',
@@ -240,7 +240,7 @@ export default function FinanceReconciliation() {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 170,
-      render: (t: string) => <span style={{ color: '#8b949e' }}>{t}</span>
+      render: (t: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t}</span>
     },
     {
       title: '操作',
@@ -272,7 +272,7 @@ export default function FinanceReconciliation() {
             </>
           )}
           {record.status !== 'pending' && (
-            <span style={{ color: '#8b949e' }}>
+            <span style={{ color: 'var(--color-text-tertiary)' }}>
               {record.resolveRemark || '-'}
             </span>
           )}

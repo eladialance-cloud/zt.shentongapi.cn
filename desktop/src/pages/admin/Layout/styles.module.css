@@ -4,8 +4,8 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #0a0e1a;
-  color: #e6edf3;
+  background: var(--color-bg-root);
+  color: var(--color-text-primary);
 }
 
 /* 顶栏 */
@@ -15,7 +15,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
-  background: rgba(15, 23, 42, 0.9);
+  background: rgba(248, 250, 252, 0.9);
   border-bottom: 1px solid rgba(56, 189, 248, 0.18);
   backdrop-filter: blur(12px);
   position: sticky;
@@ -38,7 +38,7 @@
 .topbarTitle {
   font-size: 15px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--color-text-primary);
   letter-spacing: 0.5px;
 }
 
@@ -58,7 +58,7 @@
 .sidebar {
   width: 200px;
   flex-shrink: 0;
-  background: rgba(15, 23, 42, 0.8);
+  background: rgba(248, 250, 252, 0.8);
   border-right: 1px solid rgba(56, 189, 248, 0.15);
   padding: 12px 8px;
   overflow-y: auto;
@@ -89,6 +89,6 @@
 
 /* 管理员头像/用户名 */
 .adminName {
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
   font-size: 13px;
 }

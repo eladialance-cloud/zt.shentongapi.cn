@@ -1,57 +1,61 @@
-/* IconDock — 48px 纯图标导航栏 */
+/* IconDock — 方案1 Developer Tool Dark
+   48px, 7 icons, accent green active
+*/
 
 .dock {
   width: var(--dock-width);
   flex-shrink: 0;
-  background: var(--color-bg-root);
-  border-right: 1px solid var(--color-border);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.dockNav {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-2xs);
-  padding: var(--space-sm) 0;
-  flex: 1;
+  gap: 2px;
+  padding: 8px 0;
+  background: var(--color-bg-container);
+  border-right: 1px solid var(--color-border-secondary);
+  z-index: 90;
 }
 
-.dockItem {
-  width: 36px;
-  height: 36px;
+.item {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
   border-radius: var(--radius-md);
-  cursor: pointer;
+  background: transparent;
   color: var(--color-text-tertiary);
-  transition: background var(--duration-fast) var(--ease-out),
-              color var(--duration-fast) var(--ease-out);
+  cursor: pointer;
   position: relative;
+  transition: all var(--duration-fast) var(--ease-out);
 }
 
-.dockItem:hover {
+.item:hover {
   background: var(--color-bg-hover);
   color: var(--color-text-secondary);
 }
 
-.dockItemActive {
-  background: var(--color-brand-light);
-  color: var(--color-brand);
+.item:active {
+  transform: scale(0.94);
 }
 
-/* 左侧 2px 激活指示条 */
-.dockItemActive::before {
+.active {
+  color: var(--color-accent);
+  background: var(--color-accent-bg);
+}
+
+.active::before {
   content: '';
   position: absolute;
-  left: -6px;
-  top: 50%;
-  transform: translateY(-50%);
+  left: 0;
+  top: 8px;
+  bottom: 8px;
   width: 2px;
-  height: 20px;
-  background: var(--color-brand);
-  border-radius: 0 1px 1px 0;
+  border-radius: 0 2px 2px 0;
+  background: var(--color-accent);
+}
+
+.active:hover {
+  color: var(--color-accent);
+  background: var(--color-accent-light);
 }

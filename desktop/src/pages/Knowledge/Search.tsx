@@ -138,7 +138,7 @@ export default function KnowledgeSearch() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onPressEnter={handlePressEnter}
-              prefix={<SearchOutlined style={{ color: '#a5b4fc' }} />}
+              prefix={<SearchOutlined style={{ color: 'var(--color-text-secondary)' }} />}
             />
             <Select
               className={styles.topKSelect}
@@ -208,7 +208,7 @@ export default function KnowledgeSearch() {
                           {formatMetadata(result.metadata).map((item) => (
                             <span key={item.key} className={styles.resultMetaItem}>
                               <span style={{ color: '#6e7681' }}>{item.key}:</span>
-                              <span style={{ color: '#a5b4fc' }}>{item.value}</span>
+                              <span style={{ color: 'var(--color-text-secondary)' }}>{item.value}</span>
                             </span>
                           ))}
                         </div>

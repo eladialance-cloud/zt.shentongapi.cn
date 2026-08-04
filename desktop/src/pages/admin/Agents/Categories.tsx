@@ -164,8 +164,8 @@ export default function AdminAgentCategories() {
                       {c.displayName}
                     </span>
                     <span className={styles.statValue}>{c.agentCount}</span>
-                    <span style={{ fontSize: 12, color: '#8b949e' }}>个 Agent</span>
-                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                    <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>个 Agent</span>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
                       {CATEGORY_DESC[c.category]}
                     </div>
                   </div>

@@ -30,7 +30,7 @@ const DEFAULT_COLUMNS: KanbanColumn[] = [
 ]
 
 const PRIORITY_BORDER: Record<'low' | 'medium' | 'high', string> = {
-  low: 'var(--color-text-quaternary)',
+  low: 'var(--color-text-tertiary)',
   medium: 'var(--color-warning)',
   high: 'var(--color-error)'
 }

@@ -131,7 +131,7 @@ export default function Onboarding() {
 
   // 监听下载进度推送（返回 unsubscribe 在 cleanup 中调用，避免内存泄漏）
   useEffect(() => {
-    const unsubscribe = runtime.onDownloadProgress((progress) => {
+    const unsubscribe = runtime?.onDownloadProgress?.((progress: any) => {
       setDownloads((prev) => ({
         ...prev,
         [progress.name]: {
@@ -141,7 +141,7 @@ export default function Onboarding() {
         }
       }))
     })
-    return unsubscribe
+    return unsubscribe || (() => {})
   }, [runtime])
 
   const anyDownloading = Object.values(downloads).some((d) => d.downloading)

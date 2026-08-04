@@ -39,6 +39,8 @@ import type {
   MarketTab,
   AgentCategory,
 } from "@/types/agent";
+import { useSystemStore } from "@/store/system";
+import { NetworkError } from "@/utils/errors";
 import styles from "./styles.module.css";
 
 const CATEGORY_OPTIONS: Array<{ label: string; value: AgentCategory | "" }> = [
@@ -64,6 +66,7 @@ const PAGE_SIZE = 12;
 
 export default function AgentMarket() {
   const navigate = useNavigate();
+  const backendAvailable = useSystemStore((s) => s.backendAvailable);
   const [loading, setLoading] = useState(true);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [total, setTotal] = useState(0);
@@ -87,11 +90,13 @@ export default function AgentMarket() {
       setTotal(result.total || 0);
     } catch (err) {
       console.error("[AgentMarket] load failed:", err);
-      message.error("加载 Agent 列表失败");
+      if (!(err instanceof NetworkError) || backendAvailable) {
+        message.error("加载 Agent 列表失败");
+      }
     } finally {
       setLoading(false);
     }
-  }, [tab, category, keyword, page]);
+  }, [tab, category, keyword, page, backendAvailable]);
 
   useEffect(() => {
     void loadData();

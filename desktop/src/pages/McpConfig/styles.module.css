@@ -3,10 +3,10 @@
 .page {
   min-height: 100%;
   background: var(--color-bg-layout);
-  padding: var(--spacing-xl) var(--spacing-xxl);
+  padding: var(--space-xl) var(--space-2xl);
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xl);
+  gap: var(--space-xl);
   font-family: var(--font-family);
 }
 
@@ -15,13 +15,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--spacing-lg);
+  gap: var(--space-lg);
 }
 
 .titleArea {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
+  gap: var(--space-md);
 }
 
 .titleIcon {
@@ -37,7 +37,7 @@
 }
 
 .subtitle {
-  font-size: var(--font-size-caption);
+  font-size: var(--font-size-xs);
   color: var(--color-text-tertiary);
   margin-top: 2px;
 }
@@ -45,7 +45,7 @@
 .headerActions {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: var(--space-sm);
 }
 
 .primaryBtn {
@@ -66,7 +66,7 @@
 }
 
 .ghostBtn:hover:not(:disabled) {
-  background: var(--color-primary-bg) !important;
+  background: var(--color-brand-bg) !important;
   border-color: var(--color-primary) !important;
   color: var(--color-primary) !important;
 }
@@ -75,8 +75,8 @@
 .ownerFilter {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  margin-bottom: var(--spacing-lg);
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
 }
 
 .ownerFilter :global(.ant-segmented) {
@@ -95,19 +95,19 @@
 .cardGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: var(--spacing-xl);
+  gap: var(--space-xl);
 }
 
 /* ===== 服务器卡片 ===== */
 .serverCard {
-  padding: var(--spacing-xl) !important;
+  padding: var(--space-xl) !important;
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-md);
+  gap: var(--space-md);
   background: var(--color-bg-container);
   border: 1px solid var(--color-border-secondary);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-md);
   transition: all 200ms var(--ease-out);
 }
 
@@ -121,13 +121,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--spacing-md);
+  gap: var(--space-md);
 }
 
 .cardTitleWrap {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: var(--space-sm);
   min-width: 0;
 }
 
@@ -138,8 +138,8 @@
 }
 
 .cardName {
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-h4);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -147,7 +147,7 @@
 }
 
 .cardDesc {
-  font-size: var(--font-size-caption);
+  font-size: var(--font-size-xs);
   color: var(--color-text-tertiary);
   line-height: 1.5;
   margin: 0;
@@ -160,12 +160,12 @@
 .cardMeta {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: var(--space-sm);
   flex-wrap: wrap;
 }
 
 .metaText {
-  font-size: var(--font-size-caption);
+  font-size: var(--font-size-xs);
   color: var(--color-text-tertiary);
   display: inline-flex;
   align-items: center;
@@ -189,7 +189,7 @@
   align-items: center;
   gap: 4px;
   flex-wrap: wrap;
-  padding-top: var(--spacing-md);
+  padding-top: var(--space-md);
   border-top: 1px solid var(--color-border-secondary);
 }
 
@@ -203,14 +203,14 @@
 
 /* ===== JSON 文本域 ===== */
 .jsonTextarea {
-  font-family: var(--font-family-code);
-  font-size: var(--font-size-caption);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
 }
 
 /* ===== 工具列表容器 ===== */
 .toolListContainer {
   display: flex;
-  gap: var(--spacing-lg);
+  gap: var(--space-lg);
   min-height: 500px;
 }
 
@@ -219,7 +219,7 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-md);
+  gap: var(--space-md);
 }
 
 .toolListRight {
@@ -227,55 +227,55 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-md);
+  gap: var(--space-md);
 }
 
 .toolListHeader {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-h4);
+  gap: var(--space-sm);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-primary);
 }
 
 .toolList {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
+  gap: var(--space-sm);
   max-height: 500px;
   overflow-y: auto;
 }
 
 .toolItem {
-  padding: var(--spacing-md) var(--spacing-md);
+  padding: var(--space-md) var(--space-md);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border-secondary);
   background: var(--color-bg-container);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-md);
   cursor: pointer;
   transition: border-color 150ms ease, background 150ms ease;
 }
 
 .toolItem:hover {
   border-color: var(--color-primary);
-  background: var(--color-primary-bg);
+  background: var(--color-brand-bg);
 }
 
 .toolItemActive {
   border-color: var(--color-primary) !important;
-  background: var(--color-primary-bg) !important;
-  box-shadow: var(--shadow-card);
+  background: var(--color-brand-bg) !important;
+  box-shadow: var(--shadow-md);
 }
 
 .toolItemName {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-h4);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
-  font-family: var(--font-family-code);
+  font-family: var(--font-family-mono);
 }
 
 .toolItemDesc {
@@ -291,41 +291,41 @@
 
 /* ===== 工具详情卡片 ===== */
 .toolDetailCard {
-  padding: var(--spacing-lg) !important;
+  padding: var(--space-lg) !important;
   background: var(--color-bg-container);
   border: 1px solid var(--color-border-secondary);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-md);
   transition: all 200ms var(--ease-out);
 }
 
 .toolDetailName {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  font-size: var(--font-size-h4);
-  font-weight: var(--font-weight-h4);
+  gap: var(--space-sm);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-primary);
-  font-family: var(--font-family-code);
+  font-family: var(--font-family-mono);
 }
 
 .toolDetailDesc {
-  font-size: var(--font-size-body);
+  font-size: var(--font-size-base);
   color: var(--color-text-secondary);
   line-height: 1.5;
-  margin: var(--spacing-sm) 0 0;
+  margin: var(--space-sm) 0 0;
 }
 
 .schemaSection {
-  margin-top: var(--spacing-md);
+  margin-top: var(--space-md);
 }
 
 .schemaTitle {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-h4);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-secondary);
   margin-bottom: 6px;
   text-transform: uppercase;
@@ -336,9 +336,9 @@
   background: var(--color-bg-layout);
   border: 1px solid var(--color-border-secondary);
   border-radius: var(--radius-sm);
-  padding: var(--spacing-md);
-  font-size: var(--font-size-caption);
-  font-family: var(--font-family-code);
+  padding: var(--space-md);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
   color: var(--color-text-secondary);
   overflow-x: auto;
   max-height: 200px;
@@ -348,21 +348,21 @@
 
 /* ===== 调用面板 ===== */
 .callPanelCard {
-  padding: var(--spacing-lg) !important;
+  padding: var(--space-lg) !important;
 }
 
 .callPanelTitle {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-h4);
+  gap: var(--space-sm);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-purple);
-  margin-bottom: var(--spacing-md);
+  margin-bottom: var(--space-md);
 }
 
 .callPanelLabel {
-  font-size: var(--font-size-caption);
+  font-size: var(--font-size-xs);
   color: var(--color-text-tertiary);
   margin-bottom: 6px;
 }
@@ -370,21 +370,21 @@
 .callPanelActions {
   display: flex;
   justify-content: flex-end;
-  margin-top: var(--spacing-md);
+  margin-top: var(--space-md);
 }
 
 .callResultSection {
-  margin-top: var(--spacing-lg);
+  margin-top: var(--space-lg);
   border-top: 1px solid var(--color-border-secondary);
-  padding-top: var(--spacing-md);
+  padding-top: var(--space-md);
 }
 
 .callResultTitle {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-h4);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-success);
   margin-bottom: 6px;
 }
@@ -393,9 +393,9 @@
   background: var(--color-bg-layout);
   border: 1px solid var(--color-border-secondary);
   border-radius: var(--radius-sm);
-  padding: var(--spacing-md);
-  font-size: var(--font-size-caption);
-  font-family: var(--font-family-code);
+  padding: var(--space-md);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
   color: var(--color-success);
   overflow-x: auto;
   max-height: 300px;
@@ -410,15 +410,15 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--spacing-md);
+  gap: var(--space-md);
   color: var(--color-text-tertiary);
-  font-size: var(--font-size-body);
+  font-size: var(--font-size-base);
 }
 
 /* ===== 响应式 ===== */
 @media (max-width: 768px) {
   .page {
-    padding: var(--spacing-lg);
+    padding: var(--space-lg);
   }
 
   .cardGrid {

@@ -1,1 +1,95 @@
-﻿/* ============================================ * 娣辩灣AI 路 鍏ㄥ眬鏍峰紡 (v1.0 鏆楄壊涓婚) * Design tokens 瑙?design-tokens.css * ============================================ */* {  margin: 0;  padding: 0;  box-sizing: border-box;}html,body,#root {  height: 100%;  width: 100%;}body {  font-family: var(--font-family);  -webkit-font-smoothing: antialiased;  -moz-osx-font-smoothing: grayscale;  overflow: hidden;  background: var(--color-bg-base);  color: var(--color-text-primary);}#root {  display: flex;  flex-direction: column;}/* === 鍏ㄥ眬婊氬姩鏉?=== */::-webkit-scrollbar {  width: 6px;  height: 6px;}::-webkit-scrollbar-track {  background: var(--color-scrollbar-track);}::-webkit-scrollbar-thumb {  background: var(--color-scrollbar-thumb);  border-radius: 3px;}::-webkit-scrollbar-thumb:hover {  background: var(--color-text-quaternary);}/* === 鍏ㄥ眬鏂囧瓧閫夊尯 === */::selection {  background: var(--color-brand-light);  color: var(--color-text-primary);}
+@import "./design-tokens.css";
+
+/* ============================================
+ * 深瞳AI - 全局样式 v3.0
+ * 方案C: Glassmorphism Enterprise Blue
+ * 布局: Glass Sidebar + Content
+ * ============================================ */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body, #root { height: 100%; width: 100%; }
+
+body {
+  font-family: var(--font-family);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  background: var(--color-bg-root);
+  color: var(--color-text-primary);
+}
+
+#root { display: flex; flex-direction: column; }
+
+/* === Scrollbar === */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--color-scrollbar-track); }
+::-webkit-scrollbar-thumb { background: var(--color-scrollbar-thumb); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-border-hover); }
+
+/* === Selection === */
+::selection { background: rgba(37, 99, 235, 0.2); color: var(--color-text-primary); }
+
+/* === Focus === */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* === Bento Grid Utility === */
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--bento-gap);
+  padding: var(--space-xl);
+}
+
+.bento-card {
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border-secondary);
+  border-radius: var(--bento-radius);
+  padding: var(--bento-padding);
+  transition: border-color var(--duration-fast) ease,
+              box-shadow var(--duration-fast) ease;
+}
+
+.bento-card:hover {
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-md);
+}
+
+.bento-card-wide {
+  grid-column: span 2;
+}
+
+.bento-card-tall {
+  grid-row: span 2;
+}
+
+/* === Page content layout === */
+.page-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-xl);
+}
+
+/* === Glass effect === */
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+.glass-elevated {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  box-shadow: var(--glass-shadow);
+}
+
+/* === Code === */
+code, pre { font-family: var(--font-family-mono); }

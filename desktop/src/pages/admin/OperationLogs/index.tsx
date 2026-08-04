@@ -141,14 +141,14 @@ export default function AdminOperationLogs() {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 180,
-      render: (t: string) => <span style={{ color: '#8b949e' }}>{t}</span>
+      render: (t: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t}</span>
     },
     {
       title: '操作人',
       key: 'user',
       width: 160,
       render: (_: unknown, r: OperationLog) => (
-        <span style={{ color: '#c7d2fe' }}>
+        <span style={{ color: 'var(--color-text-secondary)' }}>
           {r.username}
           <span style={{ color: '#6e7681', marginLeft: 4 }}>#{r.userId}</span>
         </span>
@@ -168,7 +168,7 @@ export default function AdminOperationLogs() {
       key: 'target',
       width: 200,
       render: (_: unknown, r: OperationLog) => (
-        <span style={{ color: '#94a3b8' }}>
+        <span style={{ color: 'var(--color-text-tertiary)' }}>
           {r.targetResource}
           {r.targetId ? ` #${r.targetId}` : ''}
         </span>
@@ -179,7 +179,7 @@ export default function AdminOperationLogs() {
       dataIndex: 'ip',
       key: 'ip',
       width: 140,
-      render: (ip: string) => <span style={{ color: '#94a3b8' }}>{ip}</span>
+      render: (ip: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{ip}</span>
     },
     {
       title: '详情',
@@ -187,7 +187,7 @@ export default function AdminOperationLogs() {
       key: 'detail',
       ellipsis: true,
       render: (d: string) => (
-        <span style={{ color: '#8b949e' }}>{d}</span>
+        <span style={{ color: 'var(--color-text-tertiary)' }}>{d}</span>
       )
     },
     {

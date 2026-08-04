@@ -190,7 +190,7 @@ export default function Recharge() {
                 支付宝
               </Radio.Button>
               <Radio.Button value="stripe">
-                <ThunderboltOutlined style={{ color: '#a5b4fc', marginRight: 6 }} />
+                <ThunderboltOutlined style={{ color: 'var(--color-text-secondary)', marginRight: 6 }} />
                 Stripe
               </Radio.Button>
             </Radio.Group>
@@ -228,7 +228,7 @@ function PayResultView({
         status="info"
         title={<span style={{ color: '#e6edf3' }}>订单已创建</span>}
         subTitle={
-          <span style={{ color: '#8b949e' }}>
+          <span style={{ color: 'var(--color-text-tertiary)' }}>
             订单号：{result.orderId} · 支付方式：{methodLabel}
           </span>
         }
@@ -264,7 +264,7 @@ function PayResultView({
         )}
       </div>
       <div style={{ marginTop: 16 }}>
-        <Text style={{ color: '#8b949e', fontSize: 12 }}>
+        <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }}>
           支付完成后积分将自动到账，余额变更通过 WebSocket 实时推送。
         </Text>
       </div>

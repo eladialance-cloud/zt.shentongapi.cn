@@ -253,7 +253,7 @@ export default function SystemAnnouncements() {
       key: 'scope',
       width: 150,
       render: (_: unknown, r: Announcement) => (
-        <span style={{ color: '#c7d2fe' }}>
+        <span style={{ color: 'var(--color-text-secondary)' }}>
           {SCOPE_LABEL[r.scope]}
           {r.scope === 'level_specific' && r.targetLevel
             ? ` (Lv${r.targetLevel})`
@@ -275,7 +275,7 @@ export default function SystemAnnouncements() {
       dataIndex: 'publishedAt',
       key: 'publishedAt',
       width: 170,
-      render: (t?: string) => <span style={{ color: '#8b949e' }}>{t || '-'}</span>
+      render: (t?: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t || '-'}</span>
     },
     {
       title: '操作',

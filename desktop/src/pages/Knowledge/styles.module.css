@@ -2,8 +2,8 @@
 
 .pageContainer {
   min-height: 100vh;
-  background: linear-gradient(180deg, #0a0e1a 0%, #161b22 100%);
-  color: #e6edf3;
+  background: linear-gradient(180deg, var(--color-bg-root) 0%, #F1F5F9 100%);
+  color: var(--color-text-primary);
   padding: 24px;
   overflow-y: auto;
 }
@@ -14,7 +14,7 @@
   justify-content: space-between;
   margin-bottom: 24px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+  border-bottom: 1px solid var(--color-border-secondary);
 }
 
 .pageTitle {
@@ -43,8 +43,8 @@
 }
 
 .kbCard {
-  background: rgba(22, 27, 34, 0.7);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(248, 250, 252, 0.7);
+  border: 1px solid var(--color-border-secondary);
   border-radius: 12px;
   overflow: hidden;
   display: flex;
@@ -55,19 +55,19 @@
 
 .kbCard:hover {
   border-color: rgba(99, 102, 241, 0.5);
-  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 8px 24px var(--color-border-secondary);
   transform: translateY(-2px);
 }
 
 .kbCardIcon {
   width: 100%;
   height: 100px;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.15));
+  background: linear-gradient(135deg, var(--color-border-secondary), rgba(139, 92, 246, 0.15));
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 40px;
-  color: #a5b4fc;
+  color: var(--color-text-secondary);
 }
 
 .kbCardBody {
@@ -81,12 +81,12 @@
 .kbCardTitle {
   font-size: 16px;
   font-weight: 600;
-  color: #e6edf3;
+  color: var(--color-text-primary);
 }
 
 .kbCardDescription {
   font-size: 12px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
   line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -100,7 +100,7 @@
   align-items: center;
   gap: 12px;
   font-size: 11px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
   margin-top: auto;
 }
 
@@ -150,15 +150,15 @@
 }
 
 .docsTableWrapper {
-  background: rgba(22, 27, 34, 0.7);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(248, 250, 252, 0.7);
+  border: 1px solid var(--color-border-secondary);
   border-radius: 12px;
   padding: 16px 20px;
   backdrop-filter: blur(10px);
 }
 
 .uploadArea {
-  background: rgba(22, 27, 34, 0.7);
+  background: rgba(248, 250, 252, 0.7);
   border: 1px dashed rgba(99, 102, 241, 0.3);
   border-radius: 12px;
   padding: 20px;
@@ -166,7 +166,7 @@
 }
 
 .uploadDragger {
-  background: rgba(13, 17, 23, 0.4) !important;
+  background: rgba(248, 250, 252, 0.4) !important;
   border: 1px dashed rgba(99, 102, 241, 0.4) !important;
   border-radius: 8px !important;
 }
@@ -176,19 +176,19 @@
 }
 
 .uploadText {
-  color: #a5b4fc;
+  color: var(--color-text-secondary);
   font-size: 14px;
 }
 
 .uploadHint {
-  color: #6e7681;
+  color: var(--color-text-tertiary);
   font-size: 12px;
   margin-top: 4px;
 }
 
 /* ===== 分块状态标签 ===== */
 .chunkStatusPending {
-  color: #8b949e;
+  color: var(--color-text-tertiary);
 }
 
 .chunkStatusProcessing {
@@ -196,7 +196,7 @@
 }
 
 .chunkStatusCompleted {
-  color: #34d399;
+  color: var(--color-success);
 }
 
 .chunkStatusFailed {
@@ -211,8 +211,8 @@
 }
 
 .searchCard {
-  background: rgba(22, 27, 34, 0.7);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(248, 250, 252, 0.7);
+  border: 1px solid var(--color-border-secondary);
   border-radius: 12px;
   padding: 20px 24px;
   backdrop-filter: blur(10px);
@@ -229,9 +229,9 @@
 }
 
 .searchInput input {
-  background: rgba(13, 17, 23, 0.6) !important;
-  border: 1px solid rgba(99, 102, 241, 0.25) !important;
-  color: #e6edf3 !important;
+  background: rgba(248, 250, 252, 0.6) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-primary) !important;
 }
 
 .searchBtn {
@@ -248,9 +248,9 @@
 }
 
 .topKSelect .ant-select-selector {
-  background: rgba(13, 17, 23, 0.6) !important;
-  border: 1px solid rgba(99, 102, 241, 0.25) !important;
-  color: #e6edf3 !important;
+  background: rgba(248, 250, 252, 0.6) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-primary) !important;
 }
 
 .resultsList {
@@ -260,8 +260,8 @@
 }
 
 .resultCard {
-  background: rgba(22, 27, 34, 0.7);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(248, 250, 252, 0.7);
+  border: 1px solid var(--color-border-secondary);
   border-radius: 10px;
   padding: 14px 18px;
   backdrop-filter: blur(10px);
@@ -270,7 +270,7 @@
 
 .resultCard:hover {
   border-color: rgba(99, 102, 241, 0.4);
-  background: rgba(22, 27, 34, 0.85);
+  background: rgba(248, 250, 252, 0.85);
 }
 
 .resultHeader {
@@ -285,7 +285,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #a5b4fc;
+  color: var(--color-text-secondary);
   font-size: 12px;
   font-weight: 500;
 }
@@ -297,17 +297,17 @@
   border-radius: 10px;
   font-size: 11px;
   background: rgba(16, 185, 129, 0.12);
-  color: #34d399;
+  color: var(--color-success);
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
 .resultContent {
   font-size: 13px;
-  color: #e6edf3;
+  color: var(--color-text-primary);
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
-  background: rgba(13, 17, 23, 0.4);
+  background: rgba(248, 250, 252, 0.4);
   padding: 10px 12px;
   border-radius: 6px;
   border-left: 3px solid rgba(99, 102, 241, 0.4);
@@ -316,7 +316,7 @@
 .resultMeta {
   margin-top: 8px;
   font-size: 11px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
@@ -335,7 +335,7 @@
   align-items: center;
   justify-content: center;
   padding: 80px 20px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
   gap: 12px;
 }
 
@@ -346,20 +346,20 @@
 
 .emptyStateText {
   font-size: 14px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
 }
 
 /* ===== 返回按钮 ===== */
 .backBtn {
   background: transparent;
   border: 1px solid rgba(99, 102, 241, 0.3);
-  color: #a5b4fc;
+  color: var(--color-text-secondary);
 }
 
 .backBtn:hover {
   background: rgba(99, 102, 241, 0.1);
   border-color: rgba(99, 102, 241, 0.5);
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
 }
 
 .kbInfoBar {
@@ -367,20 +367,20 @@
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  background: rgba(13, 17, 23, 0.6);
-  border: 1px solid rgba(99, 102, 241, 0.15);
+  background: rgba(248, 250, 252, 0.6);
+  border: 1px solid var(--color-border-secondary);
   border-radius: 10px;
 }
 
 .kbInfoName {
   font-size: 15px;
   font-weight: 600;
-  color: #e6edf3;
+  color: var(--color-text-primary);
 }
 
 .kbInfoDescription {
   font-size: 12px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
   flex: 1;
 }
 
@@ -392,7 +392,7 @@
 .sectionTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #a5b4fc;
+  color: var(--color-text-secondary);
   margin-bottom: 10px;
   display: flex;
   align-items: center;

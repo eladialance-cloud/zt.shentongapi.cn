@@ -168,7 +168,7 @@ function renderStatus(
                 <Tag color="default">未命中</Tag>
               )}
               {status.grayscalePercent !== undefined && status.grayscalePercent > 0 && (
-                <span style={{ marginLeft: 8, color: '#8b949e', fontSize: 12 }}>
+                <span style={{ marginLeft: 8, color: 'var(--color-text-tertiary)', fontSize: 12 }}>
                   （灰度比例 {status.grayscalePercent}%）
                 </span>
               )}
@@ -181,7 +181,7 @@ function renderStatus(
               </div>
               <pre
                 style={{
-                  background: 'rgba(10, 14, 26, 0.6)',
+                  background: 'rgba(248, 250, 252, 0.6)',
                   border: '1px solid rgba(99, 102, 241, 0.15)',
                   borderRadius: 8,
                   padding: 12,
@@ -217,7 +217,7 @@ function renderStatus(
             status="active"
             strokeColor={{ from: '#6366f1', to: '#8b5cf6' }}
           />
-          <div style={{ color: '#8b949e', fontSize: 13 }}>
+          <div style={{ color: 'var(--color-text-tertiary)', fontSize: 13 }}>
             正在下载更新... {status.progress}%
           </div>
         </Space>

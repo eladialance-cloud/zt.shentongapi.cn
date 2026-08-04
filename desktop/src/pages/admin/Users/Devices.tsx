@@ -87,7 +87,7 @@ export default function AdminDevices() {
       key: 'user',
       width: 160,
       render: (_: unknown, r: AdminDevice) => (
-        <span style={{ color: '#94a3b8' }}>
+        <span style={{ color: 'var(--color-text-tertiary)' }}>
           {r.username} #{r.userId}
         </span>
       )
@@ -103,7 +103,7 @@ export default function AdminDevices() {
       dataIndex: 'deviceFingerprint',
       key: 'deviceFingerprint',
       render: (v: string) => (
-        <span style={{ color: '#8b949e', fontFamily: 'Consolas, monospace' }}>
+        <span style={{ color: 'var(--color-text-tertiary)', fontFamily: 'Consolas, monospace' }}>
           {v}
         </span>
       )
@@ -113,14 +113,14 @@ export default function AdminDevices() {
       dataIndex: 'lastLoginAt',
       key: 'lastLoginAt',
       width: 180,
-      render: (t: string) => <span style={{ color: '#8b949e' }}>{t}</span>
+      render: (t: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t}</span>
     },
     {
       title: '创建时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 180,
-      render: (t: string) => <span style={{ color: '#8b949e' }}>{t}</span>
+      render: (t: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t}</span>
     },
     {
       title: '操作',
@@ -222,7 +222,7 @@ export default function AdminDevices() {
           <strong style={{ color: '#fbbf24' }}> {unbindTarget?.deviceName} </strong>
           (属于用户 {unbindTarget?.username})吗?
         </p>
-        <p style={{ color: '#94a3b8', fontSize: 12 }}>
+        <p style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }}>
           解绑后该设备将无法继续使用,用户需重新登录绑定。
         </p>
       </Modal>

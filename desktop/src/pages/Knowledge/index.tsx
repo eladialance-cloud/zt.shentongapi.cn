@@ -15,6 +15,8 @@ import {
 } from "@ant-design/icons";
 import * as kbApi from "@/api/knowledge-api";
 import type { KnowledgeBase, CreateKnowledgeBaseDto } from "@/types/knowledge";
+import { useSystemStore } from "@/store/system";
+import { NetworkError } from "@/utils/errors";
 import styles from "./styles.module.css";
 
 /** 格式化时间 */
@@ -27,6 +29,7 @@ function formatTime(value: unknown): string {
 
 export default function KnowledgeList() {
   const navigate = useNavigate();
+  const backendAvailable = useSystemStore((s) => s.backendAvailable);
   const [bases, setBases] = useState<KnowledgeBase[]>([]);
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -41,12 +44,14 @@ export default function KnowledgeList() {
       setBases(list || []);
     } catch (err) {
       console.error("[KnowledgeList] load failed:", err);
-      message.error("加载知识库列表失败");
+      if (!(err instanceof NetworkError) || backendAvailable) {
+        message.error("加载知识库列表失败");
+      }
       setBases([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [backendAvailable]);
 
   useEffect(() => {
     void loadBases();

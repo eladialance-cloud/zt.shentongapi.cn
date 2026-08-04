@@ -143,14 +143,14 @@ export default function AdminRechargeOrders() {
       dataIndex: 'orderNo',
       key: 'orderNo',
       width: 200,
-      render: (v: string) => <span style={{ color: '#c7d2fe' }}>{v}</span>
+      render: (v: string) => <span style={{ color: 'var(--color-text-secondary)' }}>{v}</span>
     },
     {
       title: '用户',
       key: 'user',
       width: 160,
       render: (_: unknown, r: RechargeOrder) => (
-        <span style={{ color: '#94a3b8' }}>
+        <span style={{ color: 'var(--color-text-tertiary)' }}>
           {r.username} #{r.userId}
         </span>
       )
@@ -191,14 +191,14 @@ export default function AdminRechargeOrders() {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 170,
-      render: (t: string) => <span style={{ color: '#8b949e' }}>{t}</span>
+      render: (t: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t}</span>
     },
     {
       title: '支付时间',
       dataIndex: 'paidAt',
       key: 'paidAt',
       width: 170,
-      render: (t?: string) => <span style={{ color: '#8b949e' }}>{t || '-'}</span>
+      render: (t?: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t || '-'}</span>
     },
     {
       title: '操作',
@@ -323,14 +323,14 @@ export default function AdminRechargeOrders() {
       >
         {detailOrder && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div><strong style={{ color: '#94a3b8' }}>订单号:</strong> {detailOrder.orderNo}</div>
-            <div><strong style={{ color: '#94a3b8' }}>用户:</strong> {detailOrder.username} #{detailOrder.userId}</div>
-            <div><strong style={{ color: '#94a3b8' }}>金额:</strong> ¥{detailOrder.amount.toFixed(2)}</div>
-            <div><strong style={{ color: '#94a3b8' }}>积分:</strong> {detailOrder.credits.toLocaleString()}</div>
-            <div><strong style={{ color: '#94a3b8' }}>支付方式:</strong> {detailOrder.paymentMethod}</div>
-            <div><strong style={{ color: '#94a3b8' }}>状态:</strong> {STATUS_TAG[detailOrder.status].text}</div>
-            <div><strong style={{ color: '#94a3b8' }}>创建时间:</strong> {detailOrder.createdAt}</div>
-            <div><strong style={{ color: '#94a3b8' }}>支付时间:</strong> {detailOrder.paidAt || '-'}</div>
+            <div><strong style={{ color: 'var(--color-text-tertiary)' }}>订单号:</strong> {detailOrder.orderNo}</div>
+            <div><strong style={{ color: 'var(--color-text-tertiary)' }}>用户:</strong> {detailOrder.username} #{detailOrder.userId}</div>
+            <div><strong style={{ color: 'var(--color-text-tertiary)' }}>金额:</strong> ¥{detailOrder.amount.toFixed(2)}</div>
+            <div><strong style={{ color: 'var(--color-text-tertiary)' }}>积分:</strong> {detailOrder.credits.toLocaleString()}</div>
+            <div><strong style={{ color: 'var(--color-text-tertiary)' }}>支付方式:</strong> {detailOrder.paymentMethod}</div>
+            <div><strong style={{ color: 'var(--color-text-tertiary)' }}>状态:</strong> {STATUS_TAG[detailOrder.status].text}</div>
+            <div><strong style={{ color: 'var(--color-text-tertiary)' }}>创建时间:</strong> {detailOrder.createdAt}</div>
+            <div><strong style={{ color: 'var(--color-text-tertiary)' }}>支付时间:</strong> {detailOrder.paidAt || '-'}</div>
           </div>
         )}
       </Modal>

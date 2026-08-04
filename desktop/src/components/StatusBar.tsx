@@ -101,9 +101,9 @@ export default function StatusBar() {
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '0 16px',
-        background: '#0a0e1a',
-        borderTop: '1px solid rgba(99, 102, 241, 0.15)',
-        color: '#8b949e',
+        background: 'var(--glass-bg)',
+        borderTop: '1px solid var(--glass-border)',
+        color: 'var(--color-text-secondary)',
         fontSize: 12,
         userSelect: 'none'
       }}
@@ -149,7 +149,7 @@ export default function StatusBar() {
             size="small"
             icon={<BarChartOutlined />}
             onClick={() => setPanelOpen(true)}
-            style={{ color: '#8b949e', fontSize: 12 }}
+            style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}
           />
         </Tooltip>
       </div>

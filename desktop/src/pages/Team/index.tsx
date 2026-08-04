@@ -13,6 +13,8 @@ import {
 } from "@ant-design/icons";
 import * as teamApi from "@/api/team-api";
 import type { Team, CreateTeamDto, SelectableAgent } from "@/types/team";
+import { useSystemStore } from "@/store/system";
+import { NetworkError } from "@/utils/errors";
 import styles from "./styles.module.css";
 
 function formatTime(value: unknown): string {
@@ -28,6 +30,7 @@ interface CreateFormValues extends CreateTeamDto {
 
 export default function TeamList() {
   const navigate = useNavigate();
+  const backendAvailable = useSystemStore((s) => s.backendAvailable);
   const [loading, setLoading] = useState(true);
   const [teams, setTeams] = useState<Team[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
@@ -42,11 +45,13 @@ export default function TeamList() {
       setTeams(list || []);
     } catch (err) {
       console.error("[TeamList] load failed:", err);
-      message.error("加载团队列表失败");
+      if (!(err instanceof NetworkError) || backendAvailable) {
+        message.error("加载团队列表失败");
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [backendAvailable]);
 
   const loadAgents = useCallback(async () => {
     try {

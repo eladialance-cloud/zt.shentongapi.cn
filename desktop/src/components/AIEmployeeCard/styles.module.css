@@ -6,8 +6,8 @@
   border: 2px solid var(--color-primary);
   border-radius: var(--radius-lg);
   background: var(--color-bg-container);
-  box-shadow: var(--shadow-card);
-  padding: var(--spacing-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-md);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -22,7 +22,7 @@
 
 .avatarWrap {
   position: relative;
-  margin-top: var(--spacing-sm);
+  margin-top: var(--space-sm);
 }
 
 .avatar {
@@ -50,18 +50,18 @@
 }
 
 .namePlate {
-  margin-top: var(--spacing-sm);
+  margin-top: var(--space-sm);
   font-size: 16px;
   font-weight: 600;
   text-align: center;
 }
 
 .stats {
-  margin-top: var(--spacing-sm);
+  margin-top: var(--space-sm);
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
+  gap: var(--space-xs);
 }
 
 .statRow {
@@ -70,7 +70,7 @@
   align-items: center;
   font-size: 13px;
   color: var(--color-text-secondary);
-  padding: 0 var(--spacing-sm);
+  padding: 0 var(--space-sm);
 }
 
 .statValue {

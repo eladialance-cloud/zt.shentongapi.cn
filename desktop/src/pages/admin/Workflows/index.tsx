@@ -277,14 +277,14 @@ export default function AdminWorkflows() {
       dataIndex: 'executionCount',
       key: 'executionCount',
       width: 100,
-      render: (v: number) => <span style={{ color: '#c7d2fe' }}>{v.toLocaleString()}</span>
+      render: (v: number) => <span style={{ color: 'var(--color-text-secondary)' }}>{v.toLocaleString()}</span>
     },
     {
       title: '创建时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 170,
-      render: (t: string) => <span style={{ color: '#8b949e' }}>{t}</span>
+      render: (t: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t}</span>
     },
     {
       title: '操作',

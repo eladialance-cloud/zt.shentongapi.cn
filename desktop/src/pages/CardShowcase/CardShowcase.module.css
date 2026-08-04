@@ -4,12 +4,12 @@
 
 .page {
   min-height: 100vh;
-  background: #0a0e1a;
+  background: var(--color-bg-root);
   background-image:
     radial-gradient(circle at 15% 20%, rgba(99, 102, 241, 0.10) 0%, transparent 45%),
     radial-gradient(circle at 85% 80%, rgba(139, 92, 246, 0.08) 0%, transparent 45%),
-    linear-gradient(135deg, #0a0e1a 0%, #111827 100%);
-  color: #e6edf3;
+    linear-gradient(135deg, var(--color-bg-root) 0%, var(--color-bg-layout) 100%);
+  color: var(--color-text-primary);
   padding: 32px 32px 48px;
   overflow-y: auto;
 }
@@ -22,14 +22,14 @@
 .title {
   font-size: 24px;
   font-weight: 700;
-  color: #f1f5f9;
+  color: var(--color-text-primary);
   margin: 0 0 4px;
   letter-spacing: 0.5px;
 }
 
 .subtitle {
   font-size: 13px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
   margin: 0;
 }
 
@@ -46,9 +46,9 @@
   gap: 6px;
   padding: 8px 18px;
   border-radius: 10px;
-  border: 1px solid rgba(99, 102, 241, 0.25);
-  background: rgba(22, 27, 34, 0.6);
-  color: #8b949e;
+  border: 1px solid var(--color-border);
+  background: rgba(248, 250, 252, 0.6);
+  color: var(--color-text-tertiary);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -58,14 +58,14 @@
 
 .tab:hover {
   background: rgba(99, 102, 241, 0.1);
-  color: #a5b4fc;
+  color: var(--color-text-secondary);
 }
 
 .tabActive {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.15));
+  background: linear-gradient(135deg, var(--color-border-secondary), rgba(139, 92, 246, 0.15));
   border-color: rgba(99, 102, 241, 0.5);
-  color: #c7d2fe;
-  box-shadow: 0 2px 12px rgba(99, 102, 241, 0.2);
+  color: var(--color-text-secondary);
+  box-shadow: 0 2px 12px var(--color-border-secondary);
 }
 
 /* ===== 网格 ===== */

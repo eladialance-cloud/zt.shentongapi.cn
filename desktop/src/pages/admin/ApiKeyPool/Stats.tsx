@@ -156,7 +156,7 @@ export default function AdminApiKeyPoolStats() {
       dataIndex: 'lastCheckedAt',
       key: 'lastCheckedAt',
       width: 180,
-      render: (t?: string) => <span style={{ color: '#8b949e' }}>{t || '-'}</span>
+      render: (t?: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t || '-'}</span>
     }
   ]
 
@@ -214,7 +214,7 @@ export default function AdminApiKeyPoolStats() {
                   <div className={styles.providerHeader}>
                     <span>
                       <Tag color="blue">{PROVIDER_LABEL[p.provider]}</Tag>
-                      <span style={{ color: '#94a3b8', marginLeft: 8 }}>
+                      <span style={{ color: 'var(--color-text-tertiary)', marginLeft: 8 }}>
                         共 {p.total} · 活跃 {p.active}
                       </span>
                     </span>

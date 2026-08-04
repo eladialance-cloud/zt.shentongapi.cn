@@ -16,6 +16,8 @@ import {
 import { UploadOutlined, UserOutlined } from '@ant-design/icons'
 import type { RcFile } from 'antd/es/upload'
 import { useAuthStore } from '@/store/auth'
+import { useSystemStore } from '@/store/system'
+import { NetworkError } from '@/utils/errors'
 import { getProfile, updateProfile, uploadAvatar } from '@/api/settings-api'
 import type { UpdateProfileDto } from '@/types/settings'
 import styles from './styles.module.css'
@@ -30,6 +32,7 @@ const MAX_AVATAR_SIZE = 2 * 1024 * 1024
 export default function Profile() {
   const user = useAuthStore((s) => s.user)
   const updateUser = useAuthStore((s) => s.updateUser)
+  const backendAvailable = useSystemStore((s) => s.backendAvailable)
   const [form] = Form.useForm<FormValues>()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -51,7 +54,9 @@ export default function Profile() {
       })
     } catch (err) {
       console.error('[Profile] load failed:', err)
-      message.error('加载资料失败')
+      if (!(err instanceof NetworkError) || backendAvailable) {
+        message.error('加载资料失败')
+      }
       // 兜底使用 auth store 中的数据
       form.setFieldsValue({
         email: user?.email ?? '',

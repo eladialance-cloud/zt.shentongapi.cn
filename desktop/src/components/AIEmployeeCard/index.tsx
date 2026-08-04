@@ -19,7 +19,7 @@ export interface AIEmployeeCardProps {
   emoji: string
   /** 主题色（边框/标题色），未提供时 fallback 到 var(--color-primary) */
   themeColor?: string
-  /** 主题色浅色（头像背景），未提供时 fallback 到 var(--color-primary-light) */
+  /** 主题色浅色（头像背景），未提供时 fallback 到 var(--color-brand-light) */
   themeColorLight?: string
   status: AIEmployeeStatus
   todayCompleted: number
@@ -38,7 +38,7 @@ const DEFAULT_STATUS_LIGHT_COLOR: Record<AIEmployeeStatus, string> = {
   VISITING: 'var(--color-primary)',
   IN_MEETING: 'var(--color-primary)',
   AT_RESOURCE: 'var(--color-primary)',
-  OFFLINE: 'var(--color-text-quaternary)'
+  OFFLINE: 'var(--color-text-tertiary)'
 }
 
 const STATUS_LABEL: Record<AIEmployeeStatus, string> = {
@@ -54,7 +54,7 @@ const STATUS_LABEL: Record<AIEmployeeStatus, string> = {
 }
 
 const DEFAULT_THEME_COLOR = 'var(--color-primary)'
-const DEFAULT_THEME_COLOR_LIGHT = 'var(--color-primary-light)'
+const DEFAULT_THEME_COLOR_LIGHT = 'var(--color-brand-light)'
 
 export default function AIEmployeeCard({
   name,

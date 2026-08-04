@@ -148,7 +148,7 @@ export default function AgentCreatorRevenue() {
       dataIndex: 'id',
       key: 'id',
       width: 100,
-      render: (v: number) => <span style={{ color: '#a5b4fc' }}>#{v}</span>
+      render: (v: number) => <span style={{ color: 'var(--color-text-secondary)' }}>#{v}</span>
     },
     {
       title: '金额（积分）',
@@ -177,7 +177,7 @@ export default function AgentCreatorRevenue() {
       dataIndex: 'remark',
       key: 'remark',
       render: (v?: string) => (
-        <span style={{ color: '#94a3b8' }}>{v || '-'}</span>
+        <span style={{ color: 'var(--color-text-tertiary)' }}>{v || '-'}</span>
       )
     },
     {

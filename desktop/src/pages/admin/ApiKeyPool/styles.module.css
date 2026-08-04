@@ -102,7 +102,7 @@
 
 /* 进度条分组 */
 .providerRow {
-  background: rgba(15, 23, 42, 0.5);
+  background: rgba(248, 250, 252, 0.5);
   border: 1px solid rgba(56, 189, 248, 0.15);
   border-radius: 10px;
   padding: 14px 16px;
@@ -114,5 +114,5 @@
   justify-content: space-between;
   margin-bottom: 8px;
   font-size: 13px;
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
 }

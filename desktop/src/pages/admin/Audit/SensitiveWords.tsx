@@ -258,14 +258,14 @@ export default function AuditSensitiveWords() {
       dataIndex: 'replacement',
       key: 'replacement',
       width: 140,
-      render: (v?: string) => <span style={{ color: '#8b949e' }}>{v || '-'}</span>
+      render: (v?: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{v || '-'}</span>
     },
     {
       title: '创建时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 170,
-      render: (t: string) => <span style={{ color: '#8b949e' }}>{t}</span>
+      render: (t: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t}</span>
     },
     {
       title: '操作',

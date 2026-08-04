@@ -27,6 +27,8 @@ import {
   updateNotificationSettings
 } from '@/api/settings-api'
 import type { NotificationSettings } from '@/types/settings'
+import { useSystemStore } from '@/store/system'
+import { NetworkError } from '@/utils/errors'
 import styles from './styles.module.css'
 
 const DEFAULT_SETTINGS: NotificationSettings = {
@@ -44,6 +46,7 @@ const DEFAULT_SETTINGS: NotificationSettings = {
 
 export default function Notifications() {
   const [form] = Form.useForm<NotificationSettings>()
+  const backendAvailable = useSystemStore((s) => s.backendAvailable)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -54,7 +57,9 @@ export default function Notifications() {
       form.setFieldsValue(settings)
     } catch (err) {
       console.error('[Notifications] load failed:', err)
-      message.error('加载通知设置失败')
+      if (!(err instanceof NetworkError) || backendAvailable) {
+        message.error('加载通知设置失败')
+      }
       form.setFieldsValue(DEFAULT_SETTINGS)
     } finally {
       setLoading(false)

@@ -274,7 +274,7 @@ export default function AdminPlugins() {
       dataIndex: 'version',
       key: 'version',
       width: 90,
-      render: (v: string) => <span style={{ color: '#c7d2fe' }}>{v}</span>
+      render: (v: string) => <span style={{ color: 'var(--color-text-secondary)' }}>{v}</span>
     },
     {
       title: '状态',
@@ -303,7 +303,7 @@ export default function AdminPlugins() {
       dataIndex: 'callCount',
       key: 'callCount',
       width: 100,
-      render: (v: number) => <span style={{ color: '#c7d2fe' }}>{v.toLocaleString()}</span>
+      render: (v: number) => <span style={{ color: 'var(--color-text-secondary)' }}>{v.toLocaleString()}</span>
     },
     {
       title: '操作',

@@ -163,7 +163,7 @@ export default function OPCTeamList() {
                 onClick={() => navigate(`/opc/${team.id}`)}
               >
                 <div className={styles.teamCardTitle}>
-                  <TeamOutlined style={{ marginRight: 6, color: '#a5b4fc' }} />
+                  <TeamOutlined style={{ marginRight: 6, color: 'var(--color-text-secondary)' }} />
                   {team.name}
                 </div>
                 <div className={styles.teamCardDesc}>

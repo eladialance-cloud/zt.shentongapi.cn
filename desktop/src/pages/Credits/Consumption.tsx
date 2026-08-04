@@ -42,7 +42,7 @@ const TAB_ITEMS: Array<{
   {
     key: 'model_call',
     label: '对话调用',
-    icon: <MessageOutlined style={{ color: '#818cf8' }} />
+    icon: <MessageOutlined style={{ color: 'var(--color-brand)' }} />
   },
   {
     key: 'plugin_call',
@@ -161,7 +161,7 @@ export default function Consumption() {
             renderItem={(item) => (
               <List.Item
                 style={{
-                  background: 'rgba(17, 24, 39, 0.6)',
+                  background: 'rgba(255, 255, 255, 0.6)',
                   border: '1px solid rgba(99, 102, 241, 0.15)',
                   borderRadius: 10,
                   marginBottom: 10,
@@ -185,7 +185,7 @@ export default function Consumption() {
                       <div style={{ fontSize: 13, color: '#e6edf3' }}>
                         {item.remark || item.source}
                       </div>
-                      <div style={{ fontSize: 11, color: '#8b949e' }}>
+                      <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
                         {new Date(item.createdAt).toLocaleString('zh-CN')}
                       </div>
                     </div>

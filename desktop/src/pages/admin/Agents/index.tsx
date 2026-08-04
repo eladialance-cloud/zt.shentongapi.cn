@@ -366,7 +366,7 @@ export default function AdminAgents() {
         <span style={{ color: '#f1f5f9', fontWeight: 500 }}>
           {v}
           {record.displayName ? (
-            <span style={{ color: '#8b949e', marginLeft: 6, fontSize: 12 }}>
+            <span style={{ color: 'var(--color-text-tertiary)', marginLeft: 6, fontSize: 12 }}>
               ({record.displayName})
             </span>
           ) : null}
@@ -407,14 +407,14 @@ export default function AdminAgents() {
       dataIndex: 'callCount',
       key: 'callCount',
       width: 100,
-      render: (v: number) => <span style={{ color: '#c7d2fe' }}>{v.toLocaleString()}</span>
+      render: (v: number) => <span style={{ color: 'var(--color-text-secondary)' }}>{v.toLocaleString()}</span>
     },
     {
       title: '创建时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 170,
-      render: (t: string) => <span style={{ color: '#8b949e' }}>{t}</span>
+      render: (t: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t}</span>
     },
     {
       title: '操作',
@@ -661,10 +661,10 @@ export default function AdminAgents() {
         </Form>
         {importTask ? (
           <div className={styles.importProgress}>
-            <div style={{ marginBottom: 8, color: '#c7d2fe' }}>
+            <div style={{ marginBottom: 8, color: 'var(--color-text-secondary)' }}>
               任务 ID: <code>{importTask.taskId}</code>
             </div>
-            <div style={{ color: '#94a3b8' }}>
+            <div style={{ color: 'var(--color-text-tertiary)' }}>
               状态:
               <Tag
                 color={

@@ -33,6 +33,8 @@ import {
   deleteApiKey
 } from '@/api/settings-api'
 import type { ApiKey, CreateApiKeyResult } from '@/types/settings'
+import { useSystemStore } from '@/store/system'
+import { NetworkError } from '@/utils/errors'
 import styles from './styles.module.css'
 
 const { Text } = Typography
@@ -46,6 +48,7 @@ function formatTime(value: string | null | undefined): string {
 }
 
 export default function ApiKeys() {
+  const backendAvailable = useSystemStore((s) => s.backendAvailable)
   const [loading, setLoading] = useState(true)
   const [keys, setKeys] = useState<ApiKey[]>([])
   /** 显示完整 key 的行 id 集合 */
@@ -63,11 +66,13 @@ export default function ApiKeys() {
       setKeys(list || [])
     } catch (err) {
       console.error('[ApiKeys] load failed:', err)
-      message.error('加载 API Key 列表失败')
+      if (!(err instanceof NetworkError) || backendAvailable) {
+        message.error('加载 API Key 列表失败')
+      }
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [backendAvailable])
 
   useEffect(() => {
     void loadData()

@@ -132,6 +132,6 @@
   left: 50%;
   transform: translateX(-50%);
   font-size: 9px;
-  color: #64748b;
+  color: var(--color-text-tertiary);
   white-space: nowrap;
 }

@@ -323,11 +323,11 @@ export default function AdminVersions() {
       render: (_: unknown, r: VersionItem) => {
         const s = getStats(r.id)
         return s ? (
-          <span style={{ color: '#94a3b8' }}>
+          <span style={{ color: 'var(--color-text-tertiary)' }}>
             {s.installCount.toLocaleString()} / {s.activeCount.toLocaleString()}
           </span>
         ) : (
-          <span style={{ color: '#8b949e' }}>-</span>
+          <span style={{ color: 'var(--color-text-tertiary)' }}>-</span>
         )
       }
     },
@@ -336,7 +336,7 @@ export default function AdminVersions() {
       dataIndex: 'releasedAt',
       key: 'releasedAt',
       width: 170,
-      render: (t?: string) => <span style={{ color: '#8b949e' }}>{t || '-'}</span>
+      render: (t?: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t || '-'}</span>
     },
     {
       title: '操作',
@@ -421,13 +421,13 @@ export default function AdminVersions() {
                     </Tag>
                   )}
                   {latestWin.releasedAt && (
-                    <span style={{ color: '#8b949e', marginLeft: 8 }}>
+                    <span style={{ color: 'var(--color-text-tertiary)', marginLeft: 8 }}>
                       {latestWin.releasedAt}
                     </span>
                   )}
                 </>
               ) : (
-                <span style={{ color: '#8b949e' }}>暂无</span>
+                <span style={{ color: 'var(--color-text-tertiary)' }}>暂无</span>
               )}
             </span>
           </div>
@@ -445,13 +445,13 @@ export default function AdminVersions() {
                     </Tag>
                   )}
                   {latestMac.releasedAt && (
-                    <span style={{ color: '#8b949e', marginLeft: 8 }}>
+                    <span style={{ color: 'var(--color-text-tertiary)', marginLeft: 8 }}>
                       {latestMac.releasedAt}
                     </span>
                   )}
                 </>
               ) : (
-                <span style={{ color: '#8b949e' }}>暂无</span>
+                <span style={{ color: 'var(--color-text-tertiary)' }}>暂无</span>
               )}
             </span>
           </div>
@@ -463,9 +463,9 @@ export default function AdminVersions() {
             <span style={{ marginLeft: 8 }}>
               {RUNTIME_VERSIONS.map((rt, idx) => (
                 <span key={rt.name} style={{ marginRight: 12 }}>
-                  <span style={{ color: '#94a3b8' }}>{rt.name}:</span>{' '}
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>{rt.name}:</span>{' '}
                   <span style={{ color: '#7dd3fc' }}>v{rt.version}</span>
-                  <span style={{ color: '#64748b', marginLeft: 4 }}>
+                  <span style={{ color: 'var(--color-text-tertiary)', marginLeft: 4 }}>
                     :{rt.port}
                   </span>
                   {idx < RUNTIME_VERSIONS.length - 1 && (

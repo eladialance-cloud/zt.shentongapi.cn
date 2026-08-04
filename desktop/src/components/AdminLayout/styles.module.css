@@ -65,7 +65,7 @@
 
 .iconBtn:hover {
   color: var(--color-primary);
-  background: var(--color-primary-light);
+  background: var(--color-brand-light);
 }
 
 .avatarWrap {

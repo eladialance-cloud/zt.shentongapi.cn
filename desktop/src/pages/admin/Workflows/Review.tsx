@@ -160,7 +160,7 @@ export default function AdminWorkflowsReview() {
       dataIndex: 'creatorName',
       key: 'creatorName',
       width: 140,
-      render: (v?: string) => <span style={{ color: '#c7d2fe' }}>{v || '-'}</span>
+      render: (v?: string) => <span style={{ color: 'var(--color-text-secondary)' }}>{v || '-'}</span>
     },
     {
       title: '状态',
@@ -176,14 +176,14 @@ export default function AdminWorkflowsReview() {
       dataIndex: 'executionCount',
       key: 'executionCount',
       width: 100,
-      render: (v: number) => <span style={{ color: '#c7d2fe' }}>{v.toLocaleString()}</span>
+      render: (v: number) => <span style={{ color: 'var(--color-text-secondary)' }}>{v.toLocaleString()}</span>
     },
     {
       title: '创建时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 170,
-      render: (t: string) => <span style={{ color: '#8b949e' }}>{t}</span>
+      render: (t: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t}</span>
     },
     {
       title: '操作',
@@ -297,25 +297,25 @@ export default function AdminWorkflowsReview() {
           <div>
             <div className={styles.detailSection}>
               <div className={styles.sectionTitle}>基本信息</div>
-              <p><span style={{ color: '#8b949e' }}>引擎:</span> {ENGINE_LABEL[detailTarget.engineType]}</p>
-              <p><span style={{ color: '#8b949e' }}>分类:</span> {CATEGORY_LABEL[detailTarget.category]}</p>
-              <p><span style={{ color: '#8b949e' }}>执行次数:</span> {detailTarget.executionCount.toLocaleString()}</p>
-              <p><span style={{ color: '#8b949e' }}>单次价格:</span> {detailTarget.pricePerExecution} 积分</p>
+              <p><span style={{ color: 'var(--color-text-tertiary)' }}>引擎:</span> {ENGINE_LABEL[detailTarget.engineType]}</p>
+              <p><span style={{ color: 'var(--color-text-tertiary)' }}>分类:</span> {CATEGORY_LABEL[detailTarget.category]}</p>
+              <p><span style={{ color: 'var(--color-text-tertiary)' }}>执行次数:</span> {detailTarget.executionCount.toLocaleString()}</p>
+              <p><span style={{ color: 'var(--color-text-tertiary)' }}>单次价格:</span> {detailTarget.pricePerExecution} 积分</p>
               {detailTarget.n8nWorkflowId ? (
-                <p><span style={{ color: '#8b949e' }}>n8n ID:</span> {detailTarget.n8nWorkflowId}</p>
+                <p><span style={{ color: 'var(--color-text-tertiary)' }}>n8n ID:</span> {detailTarget.n8nWorkflowId}</p>
               ) : null}
               {detailTarget.cozeWorkflowId ? (
-                <p><span style={{ color: '#8b949e' }}>Coze ID:</span> {detailTarget.cozeWorkflowId}</p>
+                <p><span style={{ color: 'var(--color-text-tertiary)' }}>Coze ID:</span> {detailTarget.cozeWorkflowId}</p>
               ) : null}
             </div>
             <div className={styles.detailSection}>
               <div className={styles.sectionTitle}>描述</div>
-              <p style={{ color: '#c7d2fe' }}>{detailTarget.description}</p>
+              <p style={{ color: 'var(--color-text-secondary)' }}>{detailTarget.description}</p>
             </div>
             {detailTarget.inputSchema ? (
               <div className={styles.detailSection}>
                 <div className={styles.sectionTitle}>输入 Schema</div>
-                <pre style={{ whiteSpace: 'pre-wrap', color: '#c7d2fe', background: 'rgba(15,23,42,0.6)', padding: 12, borderRadius: 8 }}>
+                <pre style={{ whiteSpace: 'pre-wrap', color: 'var(--color-text-secondary)', background: 'rgba(248, 250, 252,0.6)', padding: 12, borderRadius: 8 }}>
                   {JSON.stringify(detailTarget.inputSchema, null, 2)}
                 </pre>
               </div>
@@ -323,7 +323,7 @@ export default function AdminWorkflowsReview() {
             {detailTarget.outputSchema ? (
               <div className={styles.detailSection}>
                 <div className={styles.sectionTitle}>输出 Schema</div>
-                <pre style={{ whiteSpace: 'pre-wrap', color: '#c7d2fe', background: 'rgba(15,23,42,0.6)', padding: 12, borderRadius: 8 }}>
+                <pre style={{ whiteSpace: 'pre-wrap', color: 'var(--color-text-secondary)', background: 'rgba(248, 250, 252,0.6)', padding: 12, borderRadius: 8 }}>
                   {JSON.stringify(detailTarget.outputSchema, null, 2)}
                 </pre>
               </div>

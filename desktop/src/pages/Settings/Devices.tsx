@@ -19,6 +19,8 @@ import {
 import { DeleteOutlined, DesktopOutlined } from '@ant-design/icons'
 import { listDevices, unbindDevice } from '@/api/settings-api'
 import type { Device } from '@/types/settings'
+import { useSystemStore } from '@/store/system'
+import { NetworkError } from '@/utils/errors'
 import styles from './styles.module.css'
 
 const MAX_DEVICES = 3
@@ -32,6 +34,7 @@ function formatTime(value: string | null | undefined): string {
 }
 
 export default function Devices() {
+  const backendAvailable = useSystemStore((s) => s.backendAvailable)
   const [loading, setLoading] = useState(true)
   const [devices, setDevices] = useState<Device[]>([])
 
@@ -42,11 +45,13 @@ export default function Devices() {
       setDevices(list || [])
     } catch (err) {
       console.error('[Devices] load failed:', err)
-      message.error('加载设备列表失败')
+      if (!(err instanceof NetworkError) || backendAvailable) {
+        message.error('加载设备列表失败')
+      }
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [backendAvailable])
 
   useEffect(() => {
     void loadData()

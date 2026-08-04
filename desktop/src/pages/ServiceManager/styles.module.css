@@ -2,12 +2,12 @@
 
 .page {
   min-height: 100vh;
-  background: #0a0e1a;
+  background: var(--color-bg-root);
   background-image:
     radial-gradient(circle at 15% 20%, rgba(99, 102, 241, 0.12) 0%, transparent 45%),
     radial-gradient(circle at 85% 80%, rgba(139, 92, 246, 0.10) 0%, transparent 45%),
-    linear-gradient(135deg, #0a0e1a 0%, #111827 100%);
-  color: #e6edf3;
+    linear-gradient(135deg, var(--color-bg-root) 0%, var(--color-bg-layout) 100%);
+  color: var(--color-text-primary);
   padding: 24px 32px 48px;
   overflow-y: auto;
 }
@@ -49,24 +49,24 @@
 .title {
   font-size: 22px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--color-text-primary);
   margin: 0;
   letter-spacing: 0.5px;
 }
 
 .subtitle {
   font-size: 12px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
   margin-top: 2px;
 }
 
 .backBtn {
   background: rgba(99, 102, 241, 0.1) !important;
   border: 1px solid rgba(99, 102, 241, 0.3) !important;
-  color: #a5b4fc !important;
+  color: var(--color-text-secondary) !important;
 }
 .backBtn:hover {
-  background: rgba(99, 102, 241, 0.2) !important;
+  background: var(--color-border-secondary) !important;
   border-color: rgba(99, 102, 241, 0.5) !important;
 }
 
@@ -91,8 +91,8 @@
 }
 
 .card {
-  background: rgba(17, 24, 39, 0.6) !important;
-  border: 1px solid rgba(99, 102, 241, 0.15) !important;
+  background: rgba(255, 255, 255, 0.6) !important;
+  border: 1px solid var(--color-border-secondary) !important;
   border-radius: 12px !important;
   transition: border-color 0.2s;
 }
@@ -110,7 +110,7 @@
 .serviceName {
   font-size: 16px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--color-text-primary);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -170,7 +170,7 @@
 
 .statusUnknown {
   background: rgba(148, 163, 184, 0.15);
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
 }
 .statusUnknown .statusDot {
   background: #64748b;
@@ -192,12 +192,12 @@
 
 .metricLabel {
   font-size: 11px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
 }
 
 .metricValue {
   font-size: 14px;
-  color: #e6edf3;
+  color: var(--color-text-primary);
   font-family: 'Courier New', monospace;
 }
 
@@ -254,7 +254,7 @@
 
 .progressMeta {
   font-size: 12px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
   font-family: 'Courier New', monospace;
 }
 
@@ -280,10 +280,10 @@
 .ghostBtn {
   background: rgba(99, 102, 241, 0.1) !important;
   border: 1px solid rgba(99, 102, 241, 0.3) !important;
-  color: #a5b4fc !important;
+  color: var(--color-text-secondary) !important;
 }
 .ghostBtn:hover {
-  background: rgba(99, 102, 241, 0.2) !important;
+  background: var(--color-border-secondary) !important;
 }
 
 .dangerBtn {
@@ -317,11 +317,11 @@
   margin-top: 12px;
   padding: 8px 10px;
   background: rgba(99, 102, 241, 0.08);
-  border: 1px solid rgba(99, 102, 241, 0.25);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 
 .installProgress :global(.ant-progress-text) {
-  color: #a5b4fc;
+  color: var(--color-text-secondary);
   font-size: 12px;
 }

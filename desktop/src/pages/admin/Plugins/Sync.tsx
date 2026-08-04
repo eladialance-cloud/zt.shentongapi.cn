@@ -135,7 +135,7 @@ export default function AdminPluginsSync() {
       dataIndex: 'lastSyncedAt',
       key: 'lastSyncedAt',
       width: 180,
-      render: (t?: string) => <span style={{ color: '#8b949e' }}>{t || '-'}</span>
+      render: (t?: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t || '-'}</span>
     },
     {
       title: '错误信息',
@@ -147,7 +147,7 @@ export default function AdminPluginsSync() {
             {v.length > 50 ? v.slice(0, 50) + '...' : v}
           </span>
         ) : (
-          <span style={{ color: '#8b949e' }}>-</span>
+          <span style={{ color: 'var(--color-text-tertiary)' }}>-</span>
         )
     },
     {

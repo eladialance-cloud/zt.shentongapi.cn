@@ -163,14 +163,14 @@ export default function AdminAgentsPricing() {
       dataIndex: 'pricePerTokenInput',
       key: 'pricePerTokenInput',
       width: 150,
-      render: (v: number) => <span style={{ color: '#c7d2fe' }}>{v}</span>
+      render: (v: number) => <span style={{ color: 'var(--color-text-secondary)' }}>{v}</span>
     },
     {
       title: '输出 Token 单价',
       dataIndex: 'pricePerTokenOutput',
       key: 'pricePerTokenOutput',
       width: 150,
-      render: (v: number) => <span style={{ color: '#c7d2fe' }}>{v}</span>
+      render: (v: number) => <span style={{ color: 'var(--color-text-secondary)' }}>{v}</span>
     },
     {
       title: '操作',

@@ -170,7 +170,7 @@ export default function AdminAgentsReview() {
         <span style={{ color: '#f1f5f9', fontWeight: 500 }}>
           {v}
           {record.displayName ? (
-            <span style={{ color: '#8b949e', marginLeft: 6, fontSize: 12 }}>
+            <span style={{ color: 'var(--color-text-tertiary)', marginLeft: 6, fontSize: 12 }}>
               ({record.displayName})
             </span>
           ) : null}
@@ -186,7 +186,7 @@ export default function AdminAgentsReview() {
           <Tag color={record.creatorType === 'official' ? 'gold' : 'cyan'}>
             {record.creatorType === 'official' ? '官方' : '用户'}
           </Tag>
-          <span style={{ color: '#c7d2fe' }}>{record.creatorName || '-'}</span>
+          <span style={{ color: 'var(--color-text-secondary)' }}>{record.creatorName || '-'}</span>
         </span>
       )
     },
@@ -211,7 +211,7 @@ export default function AdminAgentsReview() {
       dataIndex: 'submittedAt',
       key: 'submittedAt',
       width: 170,
-      render: (t?: string) => <span style={{ color: '#8b949e' }}>{t || '-'}</span>
+      render: (t?: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t || '-'}</span>
     },
     {
       title: '原因',
@@ -219,7 +219,7 @@ export default function AdminAgentsReview() {
       width: 200,
       render: (_: unknown, record: AdminAgentItem) => {
         const reason = record.rejectReason || record.forceUnpublishReason
-        if (!reason) return <span style={{ color: '#8b949e' }}>-</span>
+        if (!reason) return <span style={{ color: 'var(--color-text-tertiary)' }}>-</span>
         return (
           <span style={{ color: '#f87171', fontSize: 12 }} title={reason}>
             {reason.length > 30 ? reason.slice(0, 30) + '...' : reason}
@@ -354,19 +354,19 @@ export default function AdminAgentsReview() {
           <div>
             <div className={styles.detailSection}>
               <div className={styles.sectionTitle}>基本信息</div>
-              <p><span style={{ color: '#8b949e' }}>显示名:</span> {detailTarget.displayName || '-'}</p>
-              <p><span style={{ color: '#8b949e' }}>分类:</span> {CATEGORY_LABEL[detailTarget.category]}</p>
-              <p><span style={{ color: '#8b949e' }}>创作者:</span> {detailTarget.creatorName || '-'}</p>
-              <p><span style={{ color: '#8b949e' }}>调用次数:</span> {detailTarget.callCount.toLocaleString()}</p>
+              <p><span style={{ color: 'var(--color-text-tertiary)' }}>显示名:</span> {detailTarget.displayName || '-'}</p>
+              <p><span style={{ color: 'var(--color-text-tertiary)' }}>分类:</span> {CATEGORY_LABEL[detailTarget.category]}</p>
+              <p><span style={{ color: 'var(--color-text-tertiary)' }}>创作者:</span> {detailTarget.creatorName || '-'}</p>
+              <p><span style={{ color: 'var(--color-text-tertiary)' }}>调用次数:</span> {detailTarget.callCount.toLocaleString()}</p>
             </div>
             <div className={styles.detailSection}>
               <div className={styles.sectionTitle}>描述</div>
-              <p style={{ color: '#c7d2fe' }}>{detailTarget.description}</p>
+              <p style={{ color: 'var(--color-text-secondary)' }}>{detailTarget.description}</p>
             </div>
             {detailTarget.systemPrompt ? (
               <div className={styles.detailSection}>
                 <div className={styles.sectionTitle}>系统提示词</div>
-                <pre style={{ whiteSpace: 'pre-wrap', color: '#c7d2fe', background: 'rgba(15,23,42,0.6)', padding: 12, borderRadius: 8 }}>
+                <pre style={{ whiteSpace: 'pre-wrap', color: 'var(--color-text-secondary)', background: 'rgba(248, 250, 252,0.6)', padding: 12, borderRadius: 8 }}>
                   {detailTarget.systemPrompt}
                 </pre>
               </div>
@@ -376,7 +376,7 @@ export default function AdminAgentsReview() {
                 <div className={styles.sectionTitle}>使用示例</div>
                 <ul>
                   {detailTarget.usageExamples.map((ex, i) => (
-                    <li key={i} style={{ color: '#c7d2fe' }}>{ex}</li>
+                    <li key={i} style={{ color: 'var(--color-text-secondary)' }}>{ex}</li>
                   ))}
                 </ul>
               </div>

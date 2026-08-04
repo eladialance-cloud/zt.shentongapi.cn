@@ -2,12 +2,12 @@
 
 .page {
   min-height: 100vh;
-  background: #0a0e1a;
+  background: var(--color-bg-root);
   background-image:
     radial-gradient(circle at 15% 20%, rgba(99, 102, 241, 0.12) 0%, transparent 45%),
     radial-gradient(circle at 85% 80%, rgba(139, 92, 246, 0.10) 0%, transparent 45%),
-    linear-gradient(135deg, #0a0e1a 0%, #111827 100%);
-  color: #e6edf3;
+    linear-gradient(135deg, var(--color-bg-root) 0%, var(--color-bg-layout) 100%);
+  color: var(--color-text-primary);
   padding: 24px 32px 48px;
   overflow-y: auto;
 }
@@ -43,26 +43,26 @@
 .title {
   font-size: 22px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--color-text-primary);
   margin: 0;
   letter-spacing: 0.5px;
 }
 
 .subtitle {
   font-size: 12px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
   margin-top: 2px;
 }
 
 .backBtn {
   background: rgba(99, 102, 241, 0.1) !important;
   border: 1px solid rgba(99, 102, 241, 0.3) !important;
-  color: #a5b4fc !important;
+  color: var(--color-text-secondary) !important;
 }
 
 .backBtn:hover {
-  background: rgba(99, 102, 241, 0.2) !important;
-  color: #c7d2fe !important;
+  background: var(--color-border-secondary) !important;
+  color: var(--color-text-secondary) !important;
 }
 
 /* ===== 余额卡片（渐变 + 发光） ===== */
@@ -106,7 +106,7 @@
 
 .balanceLabel {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 1px;
 }
@@ -124,7 +124,7 @@
 
 .balanceUnit {
   font-size: 14px;
-  color: #a5b4fc;
+  color: var(--color-text-secondary);
   margin-left: 6px;
 }
 
@@ -153,7 +153,7 @@
 }
 
 .statCard {
-  background: rgba(17, 24, 39, 0.7) !important;
+  background: rgba(255, 255, 255, 0.7) !important;
   border: 1px solid rgba(99, 102, 241, 0.18) !important;
   border-radius: 12px !important;
   backdrop-filter: blur(12px);
@@ -162,7 +162,7 @@
 
 .statCard:hover {
   border-color: rgba(99, 102, 241, 0.4) !important;
-  box-shadow: 0 0 24px rgba(99, 102, 241, 0.15) !important;
+  box-shadow: 0 0 24px var(--color-border-secondary) !important;
 }
 
 /* ===== 快捷入口 ===== */
@@ -174,7 +174,7 @@
 }
 
 .actionCard {
-  background: rgba(17, 24, 39, 0.7) !important;
+  background: rgba(255, 255, 255, 0.7) !important;
   border: 1px solid rgba(99, 102, 241, 0.18) !important;
   border-radius: 12px !important;
   cursor: pointer;
@@ -184,7 +184,7 @@
 
 .actionCard:hover {
   border-color: rgba(99, 102, 241, 0.5) !important;
-  box-shadow: 0 0 28px rgba(99, 102, 241, 0.2) !important;
+  box-shadow: 0 0 28px var(--color-border-secondary) !important;
   transform: translateY(-2px);
 }
 
@@ -197,7 +197,7 @@
 
 .actionIcon {
   font-size: 28px;
-  color: #818cf8;
+  color: var(--color-brand);
 }
 
 .actionText {
@@ -208,12 +208,12 @@
 .actionTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #e6edf3;
+  color: var(--color-text-primary);
 }
 
 .actionDesc {
   font-size: 12px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
   margin-top: 2px;
 }
 
@@ -226,7 +226,7 @@
 }
 
 .planCard {
-  background: rgba(17, 24, 39, 0.65) !important;
+  background: rgba(255, 255, 255, 0.65) !important;
   border: 1px solid rgba(99, 102, 241, 0.22) !important;
   border-radius: 14px !important;
   backdrop-filter: blur(16px);
@@ -238,7 +238,7 @@
 
 .planCard:hover {
   border-color: rgba(99, 102, 241, 0.55) !important;
-  box-shadow: 0 0 32px rgba(99, 102, 241, 0.25) !important;
+  box-shadow: 0 0 32px var(--color-border) !important;
   transform: translateY(-3px);
 }
 
@@ -275,27 +275,27 @@
 .planName {
   font-size: 16px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--color-text-primary);
   margin-bottom: 8px;
 }
 
 .planCredits {
   font-size: 28px;
   font-weight: 700;
-  color: #a5b4fc;
+  color: var(--color-text-secondary);
   filter: drop-shadow(0 0 10px rgba(99, 102, 241, 0.4));
 }
 
 .planCreditsUnit {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
   margin-left: 4px;
 }
 
 .planBonus {
   margin-top: 6px;
   font-size: 12px;
-  color: #34d399;
+  color: var(--color-success);
 }
 
 .planPrice {
@@ -307,7 +307,7 @@
 
 .planPriceCurrency {
   font-size: 13px;
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
   margin-right: 2px;
 }
 
@@ -315,7 +315,7 @@
 .paymentSection {
   margin-top: 28px;
   padding: 20px;
-  background: rgba(17, 24, 39, 0.6);
+  background: rgba(255, 255, 255, 0.6);
   border: 1px solid rgba(99, 102, 241, 0.18);
   border-radius: 12px;
   backdrop-filter: blur(12px);
@@ -324,7 +324,7 @@
 .sectionTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
   margin-bottom: 14px;
   display: flex;
   align-items: center;
@@ -357,8 +357,8 @@
   margin-top: 24px;
   padding: 24px;
   text-align: center;
-  background: rgba(17, 24, 39, 0.7);
-  border: 1px solid rgba(99, 102, 241, 0.25);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
 }
 
@@ -370,7 +370,7 @@
   height: 200px;
   background: rgba(255, 255, 255, 0.92);
   border-radius: 8px;
-  color: #0a0e1a;
+  color: var(--color-bg-root);
   font-size: 12px;
   text-align: center;
   padding: 12px;
@@ -379,7 +379,7 @@
 
 .payUrl {
   font-size: 12px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
   word-break: break-all;
   padding: 0 12px;
 }
@@ -391,7 +391,7 @@
   gap: 12px;
   align-items: center;
   padding: 16px;
-  background: rgba(17, 24, 39, 0.6);
+  background: rgba(255, 255, 255, 0.6);
   border: 1px solid rgba(99, 102, 241, 0.18);
   border-radius: 12px;
   margin-bottom: 20px;
@@ -406,29 +406,29 @@
 
 .filterLabel {
   font-size: 12px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
   white-space: nowrap;
 }
 
 /* ===== 深色表格覆盖 ===== */
 .darkTable {
-  background: rgba(17, 24, 39, 0.6) !important;
+  background: rgba(255, 255, 255, 0.6) !important;
 }
 
 .darkTable .ant-table {
   background: transparent !important;
-  color: #e6edf3;
+  color: var(--color-text-primary);
 }
 
 .darkTable .ant-table-thead > tr > th {
-  background: rgba(13, 17, 23, 0.7) !important;
-  color: #c7d2fe !important;
-  border-bottom: 1px solid rgba(99, 102, 241, 0.25) !important;
+  background: rgba(248, 250, 252, 0.7) !important;
+  color: var(--color-text-secondary) !important;
+  border-bottom: 1px solid var(--color-border) !important;
 }
 
 .darkTable .ant-table-tbody > tr > td {
   background: transparent !important;
-  color: #e6edf3 !important;
+  color: var(--color-text-primary) !important;
   border-bottom: 1px solid rgba(99, 102, 241, 0.1) !important;
 }
 
@@ -438,7 +438,7 @@
 
 /* 金额颜色 */
 .amountPositive {
-  color: #34d399;
+  color: var(--color-success);
   font-weight: 600;
 }
 
@@ -453,9 +453,9 @@
   padding: 1px 8px;
   border-radius: 10px;
   font-size: 11px;
-  background: rgba(99, 102, 241, 0.15);
-  color: #a5b4fc;
-  border: 1px solid rgba(99, 102, 241, 0.25);
+  background: var(--color-border-secondary);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
 }
 
 /* ===== 通用 ===== */
@@ -469,5 +469,5 @@
 .emptyState {
   text-align: center;
   padding: 60px 20px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
 }

@@ -311,7 +311,7 @@ export default function AdminApiKeyPool() {
       dataIndex: 'priority',
       key: 'priority',
       width: 80,
-      render: (v: number) => <span style={{ color: '#c7d2fe' }}>{v}</span>
+      render: (v: number) => <span style={{ color: 'var(--color-text-secondary)' }}>{v}</span>
     },
     {
       title: '状态',
@@ -348,14 +348,14 @@ export default function AdminApiKeyPool() {
       dataIndex: 'lastUsedAt',
       key: 'lastUsedAt',
       width: 170,
-      render: (t?: string) => <span style={{ color: '#8b949e' }}>{t || '-'}</span>
+      render: (t?: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t || '-'}</span>
     },
     {
       title: '最后检查',
       dataIndex: 'lastCheckedAt',
       key: 'lastCheckedAt',
       width: 170,
-      render: (t?: string) => <span style={{ color: '#8b949e' }}>{t || '-'}</span>
+      render: (t?: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t || '-'}</span>
     },
     {
       title: '错误次数',
@@ -368,7 +368,7 @@ export default function AdminApiKeyPool() {
             <WarningOutlined /> {v}
           </span>
         ) : (
-          <span style={{ color: '#94a3b8' }}>{v}</span>
+          <span style={{ color: 'var(--color-text-tertiary)' }}>{v}</span>
         )
     },
     {

@@ -315,7 +315,7 @@ export default function AdminModels() {
       dataIndex: 'displayName',
       key: 'displayName',
       width: 140,
-      render: (v: string) => <span style={{ color: '#c7d2fe' }}>{v}</span>
+      render: (v: string) => <span style={{ color: 'var(--color-text-secondary)' }}>{v}</span>
     },
     {
       title: '输入单价',
@@ -352,7 +352,7 @@ export default function AdminModels() {
             ))}
           </span>
         ) : (
-          <span style={{ color: '#8b949e' }}>-</span>
+          <span style={{ color: 'var(--color-text-tertiary)' }}>-</span>
         )
     },
     {

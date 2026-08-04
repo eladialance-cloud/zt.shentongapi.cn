@@ -2,8 +2,8 @@
 
 .pageContainer {
   min-height: 100vh;
-  background: linear-gradient(180deg, #0a0e1a 0%, #161b22 100%);
-  color: #e6edf3;
+  background: linear-gradient(180deg, var(--color-bg-root) 0%, #F1F5F9 100%);
+  color: var(--color-text-primary);
   padding: 24px 32px 48px;
   overflow-y: auto;
 }
@@ -23,7 +23,7 @@
   justify-content: space-between;
   margin-bottom: 20px;
   padding-bottom: 16px;
-  border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+  border-bottom: 1px solid var(--color-border-secondary);
 }
 
 .pageTitle {
@@ -52,7 +52,7 @@
 }
 
 .teamCard {
-  background: rgba(17, 24, 39, 0.65) !important;
+  background: rgba(255, 255, 255, 0.65) !important;
   border: 1px solid rgba(99, 102, 241, 0.22) !important;
   border-radius: 14px !important;
   backdrop-filter: blur(16px);
@@ -62,20 +62,20 @@
 
 .teamCard:hover {
   border-color: rgba(99, 102, 241, 0.55) !important;
-  box-shadow: 0 0 32px rgba(99, 102, 241, 0.25), 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+  box-shadow: 0 0 32px var(--color-border), 0 8px 24px rgba(0, 0, 0, 0.4) !important;
   transform: translateY(-3px);
 }
 
 .teamCardTitle {
   font-size: 16px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--color-text-primary);
   margin-bottom: 6px;
 }
 
 .teamCardDesc {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
   line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -89,7 +89,7 @@
   display: flex;
   gap: 16px;
   font-size: 11px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
   margin-bottom: 10px;
 }
 
@@ -114,12 +114,12 @@
 .backBtn {
   background: rgba(99, 102, 241, 0.1) !important;
   border: 1px solid rgba(99, 102, 241, 0.3) !important;
-  color: #a5b4fc !important;
+  color: var(--color-text-secondary) !important;
 }
 
 .backBtn:hover {
-  background: rgba(99, 102, 241, 0.2) !important;
-  color: #c7d2fe !important;
+  background: var(--color-border-secondary) !important;
+  color: var(--color-text-secondary) !important;
 }
 
 /* ===== 详情页 ===== */
@@ -130,8 +130,8 @@
 }
 
 .sectionCard {
-  background: rgba(17, 24, 39, 0.65);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid var(--color-border-secondary);
   border-radius: 12px;
   padding: 20px 24px;
   backdrop-filter: blur(12px);
@@ -140,7 +140,7 @@
 .sectionTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
   margin-bottom: 12px;
   display: flex;
   align-items: center;
@@ -168,14 +168,14 @@
 
 .infoLabel {
   font-size: 11px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .infoValue {
   font-size: 14px;
-  color: #e6edf3;
+  color: var(--color-text-primary);
   font-weight: 500;
 }
 
@@ -191,8 +191,8 @@
   align-items: center;
   gap: 10px;
   padding: 12px;
-  background: rgba(13, 17, 23, 0.5);
-  border: 1px solid rgba(99, 102, 241, 0.15);
+  background: rgba(248, 250, 252, 0.5);
+  border: 1px solid var(--color-border-secondary);
   border-radius: 10px;
   transition: all 0.15s ease;
 }
@@ -207,7 +207,7 @@
   height: 40px;
   border-radius: 50%;
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.3));
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -231,7 +231,7 @@
 .memberName {
   font-size: 13px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--color-text-primary);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -239,7 +239,7 @@
 
 .memberMeta {
   font-size: 11px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
   margin-top: 2px;
 }
 
@@ -253,11 +253,11 @@
 
 .workflowNode {
   padding: 8px 14px;
-  background: rgba(13, 17, 23, 0.6);
+  background: rgba(248, 250, 252, 0.6);
   border: 1px solid rgba(99, 102, 241, 0.3);
   border-radius: 8px;
   font-size: 12px;
-  color: #c7d2fe;
+  color: var(--color-text-secondary);
 }
 
 .workflowArrow {
@@ -276,8 +276,8 @@
 .boardColumn {
   display: flex;
   flex-direction: column;
-  background: rgba(13, 17, 23, 0.5);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(248, 250, 252, 0.5);
+  border: 1px solid var(--color-border-secondary);
   border-radius: 12px;
   padding: 12px;
   gap: 10px;
@@ -289,7 +289,7 @@
   align-items: center;
   justify-content: space-between;
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+  border-bottom: 1px solid var(--color-border-secondary);
 }
 
 .columnTitle {
@@ -302,15 +302,15 @@
 
 .columnCount {
   font-size: 11px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
   padding: 2px 8px;
   background: rgba(99, 102, 241, 0.1);
   border-radius: 10px;
 }
 
 .taskCard {
-  background: rgba(17, 24, 39, 0.85);
-  border: 1px solid rgba(99, 102, 241, 0.25);
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 10px 12px;
   transition: all 0.15s ease;
@@ -318,13 +318,13 @@
 
 .taskCard:hover {
   border-color: rgba(99, 102, 241, 0.5);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 4px 12px var(--color-border-secondary);
 }
 
 .taskTitle {
   font-size: 13px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--color-text-primary);
   margin-bottom: 6px;
   line-height: 1.4;
 }
@@ -334,7 +334,7 @@
   align-items: center;
   justify-content: space-between;
   font-size: 11px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
   margin-bottom: 8px;
 }
 
@@ -342,7 +342,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  color: #a5b4fc;
+  color: var(--color-text-secondary);
 }
 
 .taskFooter {
@@ -357,17 +357,17 @@
   height: 22px;
   background: rgba(99, 102, 241, 0.1) !important;
   border: 1px solid rgba(99, 102, 241, 0.3) !important;
-  color: #a5b4fc !important;
+  color: var(--color-text-secondary) !important;
 }
 
 .taskMoveBtn:hover {
-  background: rgba(99, 102, 241, 0.2) !important;
-  color: #c7d2fe !important;
+  background: var(--color-border-secondary) !important;
+  color: var(--color-text-secondary) !important;
 }
 
 /* ===== 状态标签颜色 ===== */
 .priorityLow {
-  color: #8b949e !important;
+  color: var(--color-text-tertiary) !important;
   border-color: rgba(139, 148, 158, 0.4) !important;
   background: rgba(139, 148, 158, 0.1) !important;
 }
@@ -409,13 +409,13 @@
 }
 
 .roleObserver {
-  color: #8b949e !important;
+  color: var(--color-text-tertiary) !important;
   border-color: rgba(139, 148, 158, 0.4) !important;
   background: rgba(139, 148, 158, 0.1) !important;
 }
 
 .statusActive {
-  color: #34d399 !important;
+  color: var(--color-success) !important;
   border-color: rgba(52, 211, 153, 0.4) !important;
   background: rgba(52, 211, 153, 0.1) !important;
 }
@@ -427,13 +427,13 @@
 }
 
 .statusIdle {
-  color: #8b949e !important;
+  color: var(--color-text-tertiary) !important;
   border-color: rgba(139, 148, 158, 0.4) !important;
   background: rgba(139, 148, 158, 0.1) !important;
 }
 
 .statusOffline {
-  color: #6e7681 !important;
+  color: var(--color-text-tertiary) !important;
   border-color: rgba(110, 118, 129, 0.4) !important;
   background: rgba(110, 118, 129, 0.1) !important;
 }
@@ -457,7 +457,7 @@
   align-items: center;
   justify-content: center;
   padding: 60px 20px;
-  color: #6e7681;
+  color: var(--color-text-tertiary);
   gap: 12px;
 }
 
@@ -468,7 +468,7 @@
 
 .emptyStateText {
   font-size: 14px;
-  color: #8b949e;
+  color: var(--color-text-tertiary);
 }
 
 .dueSoon {

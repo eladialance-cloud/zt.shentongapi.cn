@@ -207,7 +207,7 @@ export default function OPCTeamDetail() {
       key: 'assigneeName',
       width: 140,
       render: (v?: string) => (
-        <span style={{ color: '#a5b4fc' }}>{v || '未分配'}</span>
+        <span style={{ color: 'var(--color-text-secondary)' }}>{v || '未分配'}</span>
       )
     },
     {
@@ -241,7 +241,7 @@ export default function OPCTeamDetail() {
         <Spin
           fullscreen
           tip="加载中..."
-          style={{ background: 'rgba(10, 14, 26, 0.85)' }}
+          style={{ background: 'rgba(248, 250, 252, 0.85)' }}
         />
       </div>
     )
@@ -323,7 +323,7 @@ export default function OPCTeamDetail() {
             </div>
           </div>
           {team.description && (
-            <div style={{ marginTop: 12, color: '#94a3b8', fontSize: 13, lineHeight: 1.6 }}>
+            <div style={{ marginTop: 12, color: 'var(--color-text-tertiary)', fontSize: 13, lineHeight: 1.6 }}>
               {team.description}
             </div>
           )}

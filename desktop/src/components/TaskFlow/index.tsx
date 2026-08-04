@@ -68,7 +68,7 @@ const PARTICLE_DUR_SEC = 1
 const FILE_ICON_DUR = '0.8s'
 
 const NODE_COLOR: Record<TaskFlowNodeStatus, string> = {
-  pending: 'var(--color-text-quaternary)',
+  pending: 'var(--color-text-tertiary)',
   running: 'var(--color-primary)',
   success: 'var(--color-success)',
   error: 'var(--color-error)'

@@ -171,7 +171,7 @@ export default function FinanceInvoices() {
       key: 'user',
       width: 160,
       render: (_: unknown, r: InvoiceItem) => (
-        <span style={{ color: '#94a3b8' }}>
+        <span style={{ color: 'var(--color-text-tertiary)' }}>
           {r.username} #{r.userId}
         </span>
       )
@@ -181,7 +181,7 @@ export default function FinanceInvoices() {
       dataIndex: 'orderNo',
       key: 'orderNo',
       width: 180,
-      render: (v: string) => <span style={{ color: '#c7d2fe' }}>{v}</span>
+      render: (v: string) => <span style={{ color: 'var(--color-text-secondary)' }}>{v}</span>
     },
     {
       title: '发票类型',
@@ -202,7 +202,7 @@ export default function FinanceInvoices() {
       dataIndex: 'taxNo',
       key: 'taxNo',
       width: 160,
-      render: (v?: string) => <span style={{ color: '#8b949e' }}>{v || '-'}</span>
+      render: (v?: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{v || '-'}</span>
     },
     {
       title: '金额(元)',
@@ -227,7 +227,7 @@ export default function FinanceInvoices() {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 170,
-      render: (t: string) => <span style={{ color: '#8b949e' }}>{t}</span>
+      render: (t: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t}</span>
     },
     {
       title: '操作',

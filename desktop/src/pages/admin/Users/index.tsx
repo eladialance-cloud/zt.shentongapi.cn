@@ -224,7 +224,7 @@ export default function AdminUsers() {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 170,
-      render: (t: string) => <span style={{ color: '#8b949e' }}>{t}</span>
+      render: (t: string) => <span style={{ color: 'var(--color-text-tertiary)' }}>{t}</span>
     },
     {
       title: '操作',
@@ -393,7 +393,7 @@ export default function AdminUsers() {
         footer={null}
         destroyOnClose
       >
-        <p style={{ color: '#94a3b8', marginBottom: 12 }}>
+        <p style={{ color: 'var(--color-text-tertiary)', marginBottom: 12 }}>
           当前等级:Lv{levelTarget?.level}
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

@@ -64,6 +64,11 @@ export default defineConfig({
     }
   },
   renderer: {
+    optimizeDeps: {
+      exclude: ['@ant-design/colors'],
+      include: ['pixi.js', 'eventemitter3', '@esotericsoftware/spine-pixi-v8'],
+      force: true,
+    },
     root: resolve(__dirname, 'src'),
     publicDir: resolve(__dirname, 'public'),
     // K14 fix: Electron file:// protocol requires relative paths, not absolute '/' pointing to disk root
@@ -82,7 +87,7 @@ export default defineConfig({
           // only replace first occurrence of script-src 'self'; avoid affecting other CSP directives
           return html.replace(
             "script-src 'self';",
-            "script-src 'self' 'unsafe-inline';"
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval';"
           )
         }
       }
@@ -106,7 +111,7 @@ export default defineConfig({
             if (!id.includes('node_modules')) {
               return undefined
             }
-            if (id.includes('/pixi.js/') || id.includes('/@pixi/')) {
+            if (id.includes('/pixi.js/') || id.includes('/@pixi/') || id.includes('/@esotericsoftware/spine-pixi-v8/')) {
               return 'vendor-pixi'
             }
             if (id.includes('/react-router-dom/') || id.includes('/react-dom/') || id.includes('/react/')) {

@@ -54,7 +54,7 @@ const STATUS_COLOR: Record<IndicatorStatus, string> = {
   running: 'var(--color-success)',
   warning: 'var(--color-warning)',
   stopped: 'var(--color-error)',
-  unknown: 'var(--color-text-quaternary)'
+  unknown: 'var(--color-text-tertiary)'
 }
 
 const STATUS_TEXT: Record<IndicatorStatus, string> = {

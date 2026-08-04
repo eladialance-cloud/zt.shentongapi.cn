@@ -313,7 +313,7 @@ export default function Chat() {
       options: modelOptions.map((m) => ({
         label: (
           <span>
-            <ThunderboltOutlined style={{ color: '#a5b4fc', marginRight: 6 }} />
+            <ThunderboltOutlined style={{ color: 'var(--color-text-secondary)', marginRight: 6 }} />
             {m.name}
             {m.provider && (
               <span style={{ color: '#6e7681', marginLeft: 6, fontSize: 11 }}>
@@ -353,7 +353,7 @@ export default function Chat() {
       options: agentOptions.map((a) => ({
         label: (
           <span>
-            <RobotOutlined style={{ color: '#a5b4fc', marginRight: 6 }} />
+            <RobotOutlined style={{ color: 'var(--color-text-secondary)', marginRight: 6 }} />
             {a.name}
           </span>
         ),
@@ -368,7 +368,7 @@ export default function Chat() {
       options: kbOptions.map((k) => ({
         label: (
           <span>
-            <BookOutlined style={{ color: '#a5b4fc', marginRight: 6 }} />
+            <BookOutlined style={{ color: 'var(--color-text-secondary)', marginRight: 6 }} />
             {k.name}
           </span>
         ),
@@ -402,7 +402,7 @@ export default function Chat() {
               icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
               onClick={() => setCollapsed((v) => !v)}
               className={styles.collapseBtn}
-              style={{ color: '#a5b4fc' }}
+              style={{ color: 'var(--color-text-secondary)' }}
             />
           </Tooltip>
           <span className={styles.selectorLabel}>模型:</span>

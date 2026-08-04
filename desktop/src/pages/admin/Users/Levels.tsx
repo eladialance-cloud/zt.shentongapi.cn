@@ -102,7 +102,7 @@ export default function AdminUserLevels() {
       key: 'level',
       width: 80,
       render: (lv: number) => (
-        <span style={{ color: '#c7d2fe', fontWeight: 600 }}>
+        <span style={{ color: 'var(--color-text-secondary)', fontWeight: 600 }}>
           <CrownOutlined style={{ marginRight: 4 }} />Lv{lv}
         </span>
       )

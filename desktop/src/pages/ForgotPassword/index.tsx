@@ -46,7 +46,7 @@ export default function ForgotPassword() {
         justifyContent: 'center',
         alignItems: 'center',
         padding: 24,
-        background: '#0a0e1a',
+        background: 'var(--color-bg-root)',
         backgroundImage:
           'radial-gradient(circle at 20% 30%, rgba(99,102,241,0.15) 0%, transparent 50%), radial-gradient(circle at 80% 70%, rgba(139,92,246,0.12) 0%, transparent 50%), linear-gradient(135deg, #0a0e1a 0%, #111827 100%)',
       }}
@@ -55,7 +55,7 @@ export default function ForgotPassword() {
         style={{
           width: 420,
           maxWidth: '100%',
-          background: 'rgba(17,24,39,0.85)',
+          background: 'rgba(255, 255, 255,0.85)',
           backdropFilter: 'blur(20px)',
           border: '1px solid rgba(99,102,241,0.2)',
           borderRadius: 16,
@@ -66,7 +66,7 @@ export default function ForgotPassword() {
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <RobotOutlined style={{ fontSize: 48, color: '#6366f1', filter: 'drop-shadow(0 0 12px rgba(99,102,241,0.6))', marginBottom: 12 }} />
           <h2 style={{ color: '#f1f5f9', fontSize: 24, fontWeight: 600, margin: '0 0 8px' }}>忘记密码</h2>
-          <p style={{ color: '#94a3b8', fontSize: 13, margin: 0 }}>
+          <p style={{ color: 'var(--color-text-tertiary)', fontSize: 13, margin: 0 }}>
             {sent ? '重置链接已发送，请查收邮件' : '输入注册邮箱，我们将发送密码重置链接'}
           </p>
         </div>
@@ -82,12 +82,12 @@ export default function ForgotPassword() {
               ]}
             >
               <Input
-                prefix={<MailOutlined style={{ color: '#64748b' }} />}
+                prefix={<MailOutlined style={{ color: 'var(--color-text-tertiary)' }} />}
                 placeholder="your@email.com"
                 style={{
-                  background: 'rgba(15,23,42,0.6)',
+                  background: 'rgba(248, 250, 252,0.6)',
                   borderColor: 'rgba(99,102,241,0.2)',
-                  color: '#e2e8f0',
+                  color: 'var(--color-text-primary)',
                   height: 44,
                   borderRadius: 8,
                 }}
@@ -115,7 +115,7 @@ export default function ForgotPassword() {
           </Form>
         ) : (
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <p style={{ color: '#94a3b8', fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
+            <p style={{ color: 'var(--color-text-tertiary)', fontSize: 14, lineHeight: 1.8, marginBottom: 24 }}>
               重置链接已发送到您的邮箱，<br />
               请在 30 分钟内完成密码重置。<br />
               如果没有收到邮件，请检查垃圾邮件文件夹。
@@ -138,7 +138,7 @@ export default function ForgotPassword() {
 
         <div style={{ marginTop: 20, textAlign: 'center' }}>
           <span
-            style={{ color: '#818cf8', fontSize: 13, cursor: 'pointer' }}
+            style={{ color: 'var(--color-brand)', fontSize: 13, cursor: 'pointer' }}
             onClick={() => navigate('/login')}
           >
             <ArrowLeftOutlined /> 返回登录

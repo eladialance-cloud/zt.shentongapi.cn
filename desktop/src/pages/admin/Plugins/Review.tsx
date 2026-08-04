@@ -128,7 +128,7 @@ export default function AdminPluginsReview() {
   }
 
   const renderSecurityCheck = (item: AdminPluginItem) => {
-    if (!item.securityCheck) return <span style={{ color: '#8b949e' }}>-</span>
+    if (!item.securityCheck) return <span style={{ color: 'var(--color-text-tertiary)' }}>-</span>
     const checks: Array<{ label: string; passed?: boolean }> = [
       { label: '漏洞', passed: item.securityCheck.vulnerabilityScan?.passed },
       { label: 'XSS', passed: item.securityCheck.xssCheck?.passed },
@@ -150,9 +150,9 @@ export default function AdminPluginsReview() {
   }
 
   const renderPerformanceCheck = (item: AdminPluginItem) => {
-    if (!item.performanceCheck) return <span style={{ color: '#8b949e' }}>-</span>
+    if (!item.performanceCheck) return <span style={{ color: 'var(--color-text-tertiary)' }}>-</span>
     return (
-      <span style={{ fontSize: 12, color: '#c7d2fe' }}>
+      <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
         {item.performanceCheck.avgDurationMs}ms / {item.performanceCheck.memoryUsageMb}MB
       </span>
     )
@@ -177,7 +177,7 @@ export default function AdminPluginsReview() {
       dataIndex: 'creatorName',
       key: 'creatorName',
       width: 140,
-      render: (v?: string) => <span style={{ color: '#c7d2fe' }}>{v || '-'}</span>
+      render: (v?: string) => <span style={{ color: 'var(--color-text-secondary)' }}>{v || '-'}</span>
     },
     {
       title: '安全检查',
@@ -312,28 +312,28 @@ export default function AdminPluginsReview() {
           <div>
             <div className={styles.detailSection}>
               <div className={styles.sectionTitle}>基本信息</div>
-              <p><span style={{ color: '#8b949e' }}>类型:</span> {TYPE_LABEL[detailTarget.type]}</p>
-              <p><span style={{ color: '#8b949e' }}>版本:</span> {detailTarget.version}</p>
-              <p><span style={{ color: '#8b949e' }}>入口:</span> {detailTarget.entryPoint || '-'}</p>
-              <p><span style={{ color: '#8b949e' }}>调用次数:</span> {detailTarget.callCount.toLocaleString()}</p>
+              <p><span style={{ color: 'var(--color-text-tertiary)' }}>类型:</span> {TYPE_LABEL[detailTarget.type]}</p>
+              <p><span style={{ color: 'var(--color-text-tertiary)' }}>版本:</span> {detailTarget.version}</p>
+              <p><span style={{ color: 'var(--color-text-tertiary)' }}>入口:</span> {detailTarget.entryPoint || '-'}</p>
+              <p><span style={{ color: 'var(--color-text-tertiary)' }}>调用次数:</span> {detailTarget.callCount.toLocaleString()}</p>
             </div>
             <div className={styles.detailSection}>
               <div className={styles.sectionTitle}>描述</div>
-              <p style={{ color: '#c7d2fe' }}>{detailTarget.description}</p>
+              <p style={{ color: 'var(--color-text-secondary)' }}>{detailTarget.description}</p>
             </div>
             {detailTarget.sandboxConfig ? (
               <div className={styles.detailSection}>
                 <div className={styles.sectionTitle}>沙箱配置</div>
                 <p>
-                  <span style={{ color: '#8b949e' }}>内存上限:</span>{' '}
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>内存上限:</span>{' '}
                   {detailTarget.sandboxConfig.memoryLimit} MB
                 </p>
                 <p>
-                  <span style={{ color: '#8b949e' }}>超时:</span>{' '}
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>超时:</span>{' '}
                   {detailTarget.sandboxConfig.timeout} ms
                 </p>
                 <p>
-                  <span style={{ color: '#8b949e' }}>CPU 限制:</span>{' '}
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>CPU 限制:</span>{' '}
                   {detailTarget.sandboxConfig.cpuLimit}%
                 </p>
               </div>
@@ -342,19 +342,19 @@ export default function AdminPluginsReview() {
               <div className={styles.detailSection}>
                 <div className={styles.sectionTitle}>安全检查结果</div>
                 <p>
-                  <span style={{ color: '#8b949e' }}>漏洞扫描:</span>{' '}
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>漏洞扫描:</span>{' '}
                   <Tag color={detailTarget.securityCheck.vulnerabilityScan?.passed ? 'green' : 'red'}>
                     {detailTarget.securityCheck.vulnerabilityScan?.passed ? '通过' : '未通过'}
                   </Tag>
                 </p>
                 <p>
-                  <span style={{ color: '#8b949e' }}>XSS 检测:</span>{' '}
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>XSS 检测:</span>{' '}
                   <Tag color={detailTarget.securityCheck.xssCheck?.passed ? 'green' : 'red'}>
                     {detailTarget.securityCheck.xssCheck?.passed ? '通过' : '未通过'}
                   </Tag>
                 </p>
                 <p>
-                  <span style={{ color: '#8b949e' }}>SQL 注入:</span>{' '}
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>SQL 注入:</span>{' '}
                   <Tag color={detailTarget.securityCheck.sqliCheck?.passed ? 'green' : 'red'}>
                     {detailTarget.securityCheck.sqliCheck?.passed ? '通过' : '未通过'}
                   </Tag>
@@ -365,11 +365,11 @@ export default function AdminPluginsReview() {
               <div className={styles.detailSection}>
                 <div className={styles.sectionTitle}>性能检查结果</div>
                 <p>
-                  <span style={{ color: '#8b949e' }}>平均耗时:</span>{' '}
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>平均耗时:</span>{' '}
                   {detailTarget.performanceCheck.avgDurationMs} ms
                 </p>
                 <p>
-                  <span style={{ color: '#8b949e' }}>内存占用:</span>{' '}
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>内存占用:</span>{' '}
                   {detailTarget.performanceCheck.memoryUsageMb} MB
                 </p>
               </div>
