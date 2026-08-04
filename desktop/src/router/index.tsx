@@ -40,7 +40,7 @@ import TeamBoard from "@/pages/Team/Board";
 import Settings from "@/pages/Settings";
 import ServiceManager from "@/pages/ServiceManager";
 import MainLayout from "@/components/MainLayout";
-import { useOnboardingStore, useAuthStore } from "@/store";
+import { useAuthStore } from "@/store";
 
 // 管理端页面导入
 import AdminLogin from "@/pages/admin/Login";
@@ -87,8 +87,8 @@ import AdminPublish from "@/pages/admin/Publish";
 import SystemAnnouncements from "@/pages/admin/System/Announcements";
 
 function RootRedirect() {
-  const completed = useOnboardingStore((s) => s.completed);
-  return <Navigate to={completed ? "/dashboard" : "/onboarding"} replace />;
+  // 不需要本地离线引导：未登录由 RequireAuth 自动转到 /login
+  return <Navigate to="/dashboard" replace />;
 }
 
 /**

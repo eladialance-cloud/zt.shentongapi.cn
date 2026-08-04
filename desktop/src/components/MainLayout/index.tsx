@@ -35,7 +35,7 @@ export default function MainLayout() {
 
     async function check() {
       try {
-        await httpClient.get("/health", { timeout: 3000 });
+        await httpClient.get("/health", { timeout: 15000 });
         if (!cancelled) {
           setBackendOnline();
           setChecking(false);

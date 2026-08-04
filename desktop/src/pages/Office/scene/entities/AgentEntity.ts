@@ -66,6 +66,10 @@ export class AgentEntity extends Container {
     const prevCustomAnimation = this.agent.customAnimation
     this.agent = { ...this.agent, ...patch }
 
+    if (patch.name != null && patch.name !== this.agent.name) {
+      this.statusLabel.setName(this.agent.name)
+    }
+
     if (this.useSpine && this.spineChar) {
       if (patch.viewFacing != null && patch.viewFacing !== prevViewFacing) {
         this.spineChar.setViewFacing(patch.viewFacing)

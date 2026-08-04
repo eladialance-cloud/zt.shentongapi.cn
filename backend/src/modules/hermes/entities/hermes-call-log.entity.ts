@@ -24,6 +24,10 @@ export class HermesCallLogEntity {
   @Column({ name: 'user_id', type: 'bigint', transformer: bigintTransformer })
   userId: number;
 
+  @Index('idx_hermes_call_logs_team_id')
+  @Column({ name: 'team_id', type: 'bigint', transformer: bigintTransformer, nullable: true })
+  teamId?: number;
+
   @Column({
     name: 'call_type',
     type: 'enum',

@@ -6,7 +6,6 @@
 
 import { httpClient } from './http-client'
 import { useAuthStore } from '@/store/auth'
-import { signRequest } from '@/utils/hmac'
 import type { UploadResult } from '@/types/chat'
 
 /** API 基础地址 */
@@ -59,28 +58,12 @@ export function uploadFile(
     xhr.onerror = () => reject(new Error('上传网络错误'))
     xhr.onabort = () => reject(new Error('上传已取消'))
 
-    // 异步注入 HMAC 签名后发送
+    // 异步注入 Authorization 后发送（JWT 鉴权，无需 HMAC 签名）
     void (async () => {
       const url = `${API_BASE}/files/upload`
-      const { accessToken, secretKey } = useAuthStore.getState()
+      const { accessToken } = useAuthStore.getState()
       if (accessToken) {
         xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`)
-      }
-      // HMAC 签名（path 不含 query string，body 为 multipart 不参与 hash）
-      if (secretKey) {
-        try {
-          const { timestamp, nonce, signature } = await signRequest(
-            'post',
-            '/files/upload',
-            null,
-            secretKey
-          )
-          xhr.setRequestHeader('X-Timestamp', timestamp)
-          xhr.setRequestHeader('X-Nonce', nonce)
-          xhr.setRequestHeader('X-Signature', signature)
-        } catch (err) {
-          console.error('[file-api] sign upload request failed:', err)
-        }
       }
       xhr.open('POST', url, true)
       // 注意：multipart boundary 由浏览器自动设置，不要手动设置 Content-Type

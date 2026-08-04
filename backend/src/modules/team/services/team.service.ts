@@ -36,39 +36,64 @@ export class TeamService {
 
   // ============ Teams ============
 
-  async listTeams(
-    userId: number,
-    page = 1,
-    pageSize = 20,
-  ): Promise<Paginated<TeamEntity>> {
-    const p = Math.max(1, Number(page) || 1);
-    const ps = Math.min(100, Math.max(1, Number(pageSize) || 20));
-    const [list, total] = await this.teamRepo.findAndCount({
-      skip: (p - 1) * ps,
-      take: ps,
+  async listTeams(userId: number): Promise<TeamEntity[]> {
+    // 只返回当前用户创建的团队（与模块内 create/update/delete 的 creatorId 权限一致）
+    return this.teamRepo.find({
+      where: { creatorId: userId },
       order: { createdAt: "DESC" },
     });
-    return { list, total, page: p, pageSize: ps, totalPages: Math.ceil(total / ps) };
   }
 
   async createTeam(
     userId: number,
-    data: { name: string; description?: string; avatar?: string; memberAgentIds?: number[] },
+    data: {
+      name: string;
+      description?: string;
+      avatar?: string;
+      knowledgeBaseId?: number;
+      memberAgentIds?: number[];
+      members?: Array<{
+        agentId: number;
+        agentName?: string;
+        roleTitle?: string;
+        roleDescription?: string;
+        roleEmoji?: string;
+        themeColor?: string;
+      }>;
+    },
   ): Promise<TeamEntity> {
     return this.dataSource.transaction(async (manager) => {
       const teamRepo = manager.getRepository(TeamEntity);
       const memberRepo = manager.getRepository(TeamMemberEntity);
 
+      const memberCount = data.members?.length ?? data.memberAgentIds?.length ?? 0;
       const team = teamRepo.create({
         name: data.name,
         avatar: data.avatar,
         description: data.description,
-        memberCount: data.memberAgentIds ? data.memberAgentIds.length : 0,
+        knowledgeBaseId: data.knowledgeBaseId,
+        memberCount,
         creatorId: userId,
       });
       const saved = await teamRepo.save(team);
 
-      if (data.memberAgentIds && data.memberAgentIds.length > 0) {
+      if (data.members && data.members.length > 0) {
+        const members = data.members.map((m, index) =>
+          memberRepo.create({
+            teamId: saved.id,
+            agentId: m.agentId,
+            agentName: m.agentName || `Agent #${m.agentId}`,
+            roleTitle: m.roleTitle || "团队成员",
+            roleDescription: m.roleDescription,
+            roleEmoji: m.roleEmoji,
+            themeColor: m.themeColor,
+            sortOrder: index,
+            isActive: true,
+            addedBy: userId,
+          }),
+        );
+        await memberRepo.save(members);
+      } else if (data.memberAgentIds && data.memberAgentIds.length > 0) {
         const members = data.memberAgentIds.map((agentId, index) =>
           memberRepo.create({
             teamId: saved.id,

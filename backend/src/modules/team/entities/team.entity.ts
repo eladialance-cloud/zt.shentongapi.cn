@@ -16,6 +16,10 @@ export class TeamEntity extends BaseEntity {
   @Column({ name: "member_count", type: "int", default: 0 })
   memberCount: number;
 
+  /** 关联的知识库 ID（可选） */
+  @Column({ name: "knowledge_base_id", type: "bigint", nullable: true })
+  knowledgeBaseId?: number;
+
   @Index()
   @Column({ name: "creator_id", type: "bigint" })
   creatorId: number;

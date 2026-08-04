@@ -11,7 +11,6 @@
 
 import { httpClient } from "./http-client";
 import { useAuthStore } from "@/store/auth";
-import { signRequest } from "@/utils/hmac";
 import type {
   KnowledgeBase,
   KnowledgeDocument,
@@ -109,28 +108,13 @@ export function uploadDocument(
     xhr.onerror = () => reject(new Error("上传网络错误"));
     xhr.onabort = () => reject(new Error("上传已取消"));
 
-    // 异步注入 HMAC 签名后发送
+    // 异步注入 Authorization 后发送（JWT 鉴权，无需 HMAC 签名）
     void (async () => {
       const url = `${API_BASE}/knowledge/bases/${kbId}/documents`;
       xhr.open("POST", url, true);
-      const { accessToken, secretKey } = useAuthStore.getState();
+      const { accessToken } = useAuthStore.getState();
       if (accessToken) {
         xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
-      }
-      if (secretKey) {
-        try {
-          const { timestamp, nonce, signature } = await signRequest(
-            "post",
-            `/knowledge/bases/${kbId}/documents`,
-            null,
-            secretKey,
-          );
-          xhr.setRequestHeader("X-Timestamp", timestamp);
-          xhr.setRequestHeader("X-Nonce", nonce);
-          xhr.setRequestHeader("X-Signature", signature);
-        } catch (err) {
-          console.error("[knowledge-api] sign upload request failed:", err);
-        }
       }
       // multipart boundary 由浏览器自动设置，不要手动设置 Content-Type
       xhr.send(formData);

@@ -28,7 +28,7 @@ export class N8nMcpBridgeService {
     n8nInstanceId: number,
   ): Promise<McpToolDefinition[]> {
     try {
-      const workflows = await this.n8nService.listWorkflows(
+      const workflows = await this.n8nService.listWorkflowsByInstance(
         userId,
         n8nInstanceId,
       );

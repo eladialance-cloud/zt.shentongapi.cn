@@ -223,6 +223,23 @@ export class OpenClawService implements OnModuleInit {
 
   // ============ Agent 对话调用（流式） ============
 
+  /** 按后端 Agent ID 调用 OpenClaw（团队调用时使用） */
+  async invokeAgentByAgentId(
+    userId: number,
+    agentId: number,
+    message: string,
+  ): Promise<unknown> {
+    const instance = await this.instanceRepo.findOne({
+      where: { userId, agentId },
+    });
+    if (!instance) {
+      throw new NotFoundException(
+        'Agent ' + agentId + ' 未注册 OpenClaw 实例',
+      );
+    }
+    return this.invokeAgent(userId, instance.openclawAgentId, message);
+  }
+
   async invokeAgent(
     userId: number,
     openclawAgentId: string,

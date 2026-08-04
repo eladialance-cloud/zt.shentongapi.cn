@@ -105,6 +105,7 @@ export class OfficeScene {
     }
 
     this.drawMap(this.world)
+    this.applyCustomNames()
     this.spawnOffice(this.world)
     this.pushDataToEntities()
 
@@ -222,6 +223,62 @@ export class OfficeScene {
     canvas.style.height = '100%'
     canvas.style.maxWidth = '100%'
     canvas.style.maxHeight = '100%'
+  }
+
+  /** 动态替换员工名单（Hermes 任务关联团队时调用）：名字/颜色/任务跟随团队 */
+  setRoster(entries: Array<{ id: string; name: string; color: number; task?: string }>): void {
+    this.agents = this.agents.map((agent, i) => {
+      const entry = entries[i];
+      if (!entry) {
+        return { ...agent, name: '待命', state: 'idle', currentTask: undefined };
+      }
+      return {
+        ...agent,
+        id: entry.id,
+        name: entry.name,
+        color: entry.color,
+        currentTask: entry.task || agent.currentTask,
+      };
+    });
+    this.pushDataToEntities();
+    setOfficeAgents(this.agents);
+  }
+  /** 应用用户自定义的员工名字（localStorage: office_agent_names） */
+  private applyCustomNames(): void {
+    try {
+      const raw = localStorage.getItem('office_agent_names')
+      if (!raw) return
+      const map = JSON.parse(raw) as Record<string, string>
+      this.agents = this.agents.map((agent) =>
+        map[agent.id] ? { ...agent, name: map[agent.id] } : agent,
+      )
+    } catch {
+      // 忽略损坏的本地缓存
+    }
+  }
+
+  /** 重命名员工：同步实体标签 + 全局 store */
+  renameAgent(id: string, name: string): void {
+    const agent = this.agents.find((a) => a.id === id)
+    if (!agent) return
+    agent.name = name
+    const entity = this.agentEntities.get(id)
+    if (entity) {
+      entity.apply({ name })
+    }
+    setOfficeAgents(this.agents)
+  }
+
+  /**
+   * 暂停/恢复画布场景（ticker 停止时 AI 员工动画与自动工作流全部冻结）
+   */
+  setPaused(paused: boolean): void {
+    if (!this.app) return
+    if (paused) {
+      this.app.ticker.stop()
+    } else {
+      this.app.ticker.start()
+    }
   }
 
   destroy() {

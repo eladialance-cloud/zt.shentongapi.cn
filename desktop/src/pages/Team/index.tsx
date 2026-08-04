@@ -13,6 +13,8 @@ import {
 } from "@ant-design/icons";
 import * as teamApi from "@/api/team-api";
 import type { Team, CreateTeamDto, SelectableAgent } from "@/types/team";
+import type { KnowledgeBase } from "@/types/knowledge";
+import { listKnowledgeBases } from "@/api/knowledge-api";
 import { useSystemStore } from "@/store/system";
 import { NetworkError } from "@/utils/errors";
 import styles from "./styles.module.css";
@@ -24,8 +26,16 @@ function formatTime(value: unknown): string {
   return d.toLocaleString("zh-CN", { hour12: false });
 }
 
-interface CreateFormValues extends CreateTeamDto {
+interface CreateFormValues {
+  name: string;
+  description?: string;
+  knowledgeBaseId?: number;
   memberAgentIds?: number[];
+  members?: Array<{
+    agentName?: string;
+    roleTitle?: string;
+    agentId?: number;
+  }>;
 }
 
 export default function TeamList() {
@@ -37,6 +47,7 @@ export default function TeamList() {
   const [createForm] = Form.useForm<CreateFormValues>();
   const [creating, setCreating] = useState(false);
   const [agents, setAgents] = useState<SelectableAgent[]>([]);
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -64,8 +75,18 @@ export default function TeamList() {
 
   useEffect(() => { void loadData(); }, [loadData]);
 
+  const loadKnowledgeBases = useCallback(async () => {
+    try {
+      const list = await listKnowledgeBases();
+      setKnowledgeBases(list || []);
+    } catch (err) {
+      console.error("[TeamList] load knowledge bases failed:", err);
+    }
+  }, []);
+
   const handleOpenCreate = () => {
     void loadAgents();
+    void loadKnowledgeBases();
     createForm.resetFields();
     setCreateOpen(true);
   };
@@ -74,10 +95,19 @@ export default function TeamList() {
     try {
       const values = await createForm.validateFields();
       setCreating(true);
+      const members = (values.members || [])
+        .filter((m) => m && m.agentId != null)
+        .map((m) => ({
+          agentId: m.agentId as number,
+          agentName: m.agentName || undefined,
+          roleTitle: m.roleTitle || "团队成员",
+        }));
       const dto: CreateTeamDto = {
         name: values.name,
         description: values.description,
-        memberAgentIds: values.memberAgentIds || [],
+        knowledgeBaseId: values.knowledgeBaseId,
+        members: members.length > 0 ? members : undefined,
+        memberAgentIds: members.length === 0 ? values.memberAgentIds || [] : undefined,
       };
       const team = await teamApi.createTeam(dto);
       message.success(`团队 "${team.name}" 创建成功`);
@@ -154,6 +184,11 @@ export default function TeamList() {
                     <UserOutlined style={{ marginRight: 4 }} />
                     {team.memberCount} 成员
                   </span>
+                  {team.knowledgeBaseId != null && (
+                    <span title="关联知识库">
+                      📚 {knowledgeBases.find((kb) => kb.id === team.knowledgeBaseId)?.name || `知识库 #${team.knowledgeBaseId}`}
+                    </span>
+                  )}
                   <span>创建于 {formatTime(team.createdAt)}</span>
                 </div>
                 <div
@@ -217,19 +252,78 @@ export default function TeamList() {
             <Input.TextArea rows={3} placeholder="可选，团队职责描述" maxLength={256} showCount />
           </Form.Item>
           <Form.Item
-            label="初始成员"
-            name="memberAgentIds"
-            extra="可选，选择 Agent 作为初始成员。创建后可在详情页为每个成员设置自定义职能。"
+            label="团队知识库"
+            name="knowledgeBaseId"
+            extra="可选，团队共享的知识库"
           >
             <Select
-              mode="multiple"
-              placeholder="选择 Agent 作为初始成员"
-              options={agents.map((a) => ({ label: a.name, value: a.id }))}
+              placeholder="选择知识库（可选）"
+              options={knowledgeBases.map((kb) => ({ label: kb.name, value: kb.id }))}
               allowClear
               style={{ width: "100%" }}
-              notFoundContent={agents.length === 0 ? "暂无可用 Agent" : undefined}
+              notFoundContent={knowledgeBases.length === 0 ? "暂无知识库" : undefined}
             />
           </Form.Item>
+
+          <div style={{ fontWeight: 600, margin: "8px 0 4px" }}>AI 员工</div>
+          <Form.List name="members">
+            {(fields, { add, remove }) => (
+              <>
+                {fields.map(({ key, name, ...restField }) => (
+                  <div
+                    key={key}
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      marginBottom: 8,
+                      alignItems: "flex-start",
+                      background: "#f8fafc",
+                      borderRadius: 8,
+                      padding: 10,
+                    }}
+                  >
+                    <Form.Item
+                      {...restField}
+                      name={[name, "agentName"]}
+                      rules={[{ required: true, message: "填写员工名称" }]}
+                      style={{ marginBottom: 0, flex: 1, minWidth: 0 }}
+                    >
+                      <Input placeholder="员工名称，如：王明" maxLength={32} />
+                    </Form.Item>
+                    <Form.Item
+                      {...restField}
+                      name={[name, "roleTitle"]}
+                      style={{ marginBottom: 0, flex: 1, minWidth: 0 }}
+                    >
+                      <Input placeholder="职位，如：内容总监" maxLength={32} />
+                    </Form.Item>
+                    <Form.Item
+                      {...restField}
+                      name={[name, "agentId"]}
+                      rules={[{ required: true, message: "选择 Agent" }]}
+                      style={{ marginBottom: 0, flex: 1, minWidth: 0 }}
+                    >
+                      <Select
+                        placeholder="选择 Agent"
+                        options={agents.map((a) => ({ label: a.name, value: a.id }))}
+                        notFoundContent={agents.length === 0 ? "暂无可用 Agent" : undefined}
+                      />
+                    </Form.Item>
+                    <Button
+                      type="text"
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() => remove(name)}
+                      style={{ marginTop: 2 }}
+                    />
+                  </div>
+                ))}
+                <Button type="dashed" block icon={<PlusOutlined />} onClick={() => add()}>
+                  添加 AI 员工
+                </Button>
+              </>
+            )}
+          </Form.List>
         </Form>
       </Modal>
     </div>

@@ -14,6 +14,7 @@ import { CreditsService } from '../../credits/services/credits.service';
 import { McpService } from '../../mcp/services/mcp.service';
 import { N8nService } from '../../n8n/services/n8n.service';
 import { OpenClawService } from '../../openclaw/services/openclaw.service';
+import { TeamService } from '../../team/services/team.service';
 import { SkillRunnerService } from './skill-runner.service';
 import { InstanceWorkerService } from './instance-worker.service';
 import { SyncGateway } from '../../sync/sync.gateway';
@@ -33,6 +34,7 @@ export interface HermesTask {
   toolName?: string;
   args?: Record<string, unknown>;
   agentId?: number;
+  teamId?: number;
   n8nInstanceId?: number;
   workflowId?: string;
 }
@@ -62,6 +64,7 @@ export class HermesService {
     private skillRunner: SkillRunnerService,
     private instanceWorker: InstanceWorkerService,
     private syncGateway: SyncGateway,
+    private teamService: TeamService,
   ) {}
 
   // ============ 实例管理 ============
@@ -392,7 +395,7 @@ export class HermesService {
     const task: HermesTask = {
       userId, instanceId, callType: dto.callType, target: dto.target, input: dto.input || {},
       pricePerMinute: dto.pricePerMinute ?? 0, skillId: dto.skillId, serverId: dto.serverId,
-      toolName: dto.toolName, args: dto.args, agentId: dto.agentId, n8nInstanceId: dto.n8nInstanceId, workflowId: dto.workflowId,
+      toolName: dto.toolName, args: dto.args, agentId: dto.agentId, teamId: dto.teamId, n8nInstanceId: dto.n8nInstanceId, workflowId: dto.workflowId,
     };
 
     const startTime = Date.now();
@@ -400,6 +403,7 @@ export class HermesService {
     // 2. 创建调用日志
     const savedLog = await this.callLogRepo.save(this.callLogRepo.create({
       instanceId: task.instanceId, userId: task.userId, callType: task.callType, status: 'running', target: task.target,
+      teamId: task.teamId,
     }));
 
     // 3. 预冻结积分
@@ -453,6 +457,9 @@ export class HermesService {
   private async dispatchTask(task: HermesTask): Promise<unknown> {
     switch (task.callType) {
       case 'agent_invoke':
+        if (task.teamId) {
+          return this.invokeTeam(task);
+        }
         return this.invokeAgent(task);
       case 'workflow_run':
         return this.runWorkflow(task);
@@ -478,6 +485,41 @@ export class HermesService {
         );
       }),
     ]);
+  }
+
+  /** 调用整个 OPC 团队：按成员顺序逐个交给 OpenClaw 执行 */
+  private async invokeTeam(task: HermesTask): Promise<unknown> {
+    if (!task.teamId) {
+      throw new BadRequestException('团队调用需要 teamId');
+    }
+    const members = await this.teamService.listMembers(task.userId, task.teamId);
+    const active = members.filter((m) => m.isActive !== false);
+    if (active.length === 0) {
+      throw new BadRequestException('团队没有可用成员');
+    }
+    this.logger.log(
+      `invokeTeam via OpenClaw: teamId=${task.teamId}, members=${active.length}`,
+    );
+    const message = JSON.stringify(task.input);
+    const results: unknown[] = [];
+    for (const member of active) {
+      try {
+        const r = await this.openClawService.invokeAgentByAgentId(
+          task.userId,
+          member.agentId,
+          message,
+        );
+        results.push({ memberId: member.id, agentId: member.agentId, agentName: member.agentName, result: r });
+      } catch (err) {
+        results.push({
+          memberId: member.id,
+          agentId: member.agentId,
+          agentName: member.agentName,
+          error: (err as Error).message,
+        });
+      }
+    }
+    return { teamId: task.teamId, members: results };
   }
 
   private async invokeAgent(task: HermesTask): Promise<unknown> {

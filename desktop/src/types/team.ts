@@ -14,6 +14,8 @@ export interface Team {
   name: string
   avatar?: string
   description?: string
+  /** 关联的知识库 ID（可选） */
+  knowledgeBaseId?: number
   memberCount: number
   creatorId: number
   createdAt: string
@@ -65,12 +67,28 @@ export interface TeamTask {
   completedAt?: string
 }
 
+/** 创建团队-成员 DTO（员工名称/职位/选择 Agent） */
+export interface CreateTeamMemberDto {
+  agentId: number
+  /** 员工名称 */
+  agentName?: string
+  /** 职位（职能名） */
+  roleTitle?: string
+  roleDescription?: string
+  roleEmoji?: string
+  themeColor?: string
+}
+
 /** 创建团队 DTO */
 export interface CreateTeamDto {
   name: string
   description?: string
-  /** 初始成员 Agent ID 列表 */
+  /** 关联的知识库 ID（可选） */
+  knowledgeBaseId?: number
+  /** 初始成员 Agent ID 列表（简化方式） */
   memberAgentIds?: number[]
+  /** 初始成员详情（员工名称/职位/Agent） */
+  members?: CreateTeamMemberDto[]
 }
 
 /** 添加成员 DTO */

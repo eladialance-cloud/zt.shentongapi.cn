@@ -1,7 +1,7 @@
 // HttpClient - 基于 axios 的 HTTP 客户端封装
 //
 // 核心能力：
-// 1. 请求拦截器：自动注入 X-Timestamp / X-Nonce / X-Signature（HMAC-SHA256）+ Authorization
+// 1. 请求拦截器：自动注入 Authorization（JWT）
 // 2. 响应拦截器：
 //    - 401 触发 refreshToken 流程（并发队列，参考 frontend/user/src/utils/request.ts）
 //    - 401 且 refresh 失败时跳转登录页
@@ -16,7 +16,6 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios";
 import { useAuthStore } from "@/store/auth";
-import { signRequest } from "@/utils/hmac";
 import { BusinessError, NetworkError } from "@/utils/errors";
 import { useSystemStore } from "@/store/system";
 
@@ -25,27 +24,6 @@ interface ApiResponse<T = unknown> {
   code: number;
   message: string;
   data: T;
-}
-
-/** 不需要签名的白名单路径（登录/注册/刷新等公开接口） */
-const UNSIGNED_PATHS = ["/auth/login", "/auth/register", "/auth/refresh"];
-
-/** 从请求配置中提取 path（含 query string） */
-function getRequestPath(config: InternalAxiosRequestConfig): string {
-  let path = config.url || "/";
-  if (config.params) {
-    const searchParams = new URLSearchParams();
-    for (const [key, value] of Object.entries(config.params)) {
-      if (value != null && value !== "") {
-        searchParams.append(key, String(value));
-      }
-    }
-    const qs = searchParams.toString();
-    if (qs) {
-      path += path.includes("?") ? `&${qs}` : `?${qs}`;
-    }
-  }
-  return path;
 }
 
 class HttpClient {
@@ -119,35 +97,14 @@ class HttpClient {
 
   // ===== 拦截器 =====
 
-  /** 请求拦截器：注入 Authorization + HMAC 签名 headers */
+  /** 请求拦截器：注入 Authorization（JWT 鉴权由后端 JwtAuthGuard 完成，无需 HMAC 签名） */
   private setupRequestInterceptor(): void {
     this.instance.interceptors.request.use(
-      async (config) => {
-        // 1. 注入 Authorization
-        const { accessToken, secretKey } = useAuthStore.getState();
+      (config) => {
+        const { accessToken } = useAuthStore.getState();
         if (accessToken) {
           config.headers.Authorization = `Bearer ${accessToken}`;
         }
-
-        // 2. 注入 HMAC 签名（白名单路径跳过）
-        const path = getRequestPath(config);
-        const isUnsigned = UNSIGNED_PATHS.some((p) => path.startsWith(p));
-        if (secretKey && !isUnsigned) {
-          try {
-            const { timestamp, nonce, signature } = await signRequest(
-              config.method || "get",
-              path,
-              config.data,
-              secretKey,
-            );
-            config.headers["X-Timestamp"] = timestamp;
-            config.headers["X-Nonce"] = nonce;
-            config.headers["X-Signature"] = signature;
-          } catch (err) {
-            console.error("[http-client] sign request failed:", err);
-          }
-        }
-
         return config;
       },
       (error: AxiosError) => Promise.reject(error),

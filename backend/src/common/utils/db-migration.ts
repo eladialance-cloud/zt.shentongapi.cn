@@ -279,6 +279,28 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       logger.log('Created table: user_api_keys');
     }
 
+    // 团队可关联知识库
+    const [hermesTeamCol] = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'hermes_call_logs' AND COLUMN_NAME = 'team_id'`
+    );
+    if (!hermesTeamCol) {
+      await queryRunner.query(
+        `ALTER TABLE hermes_call_logs ADD COLUMN team_id BIGINT DEFAULT NULL COMMENT '关联 OPC 团队 ID' AFTER user_id`
+      );
+      logger.log('Added column: hermes_call_logs.team_id');
+    }
+    // 团队表补充知识库关联列（TeamEntity.knowledgeBaseId 需要，缺失会导致 listTeams 报 Unknown column）
+    const [teamsKbCol] = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'teams' AND COLUMN_NAME = 'knowledge_base_id'`
+    );
+    if (!teamsKbCol) {
+      await queryRunner.query(
+        `ALTER TABLE teams ADD COLUMN knowledge_base_id BIGINT DEFAULT NULL COMMENT '关联知识库 ID' AFTER member_count`
+      );
+      logger.log('Added column: teams.knowledge_base_id');
+    }
     logger.log('Startup migrations completed');
   } catch (err) {
     logger.error(`Startup migration failed: ${(err as Error).message}`);

@@ -47,7 +47,12 @@ const EMOTE_ACTIONS = [
   { label: '挥手', animation: 'emotes/wave' },
 ] as const
 
-export default function OfficeCanvas() {
+interface OfficeCanvasProps {
+  /** 场景就绪后回调，供外部控制暂停/继续等 */
+  onSceneReady?: (scene: OfficeScene) => void
+}
+
+export default function OfficeCanvas({ onSceneReady }: OfficeCanvasProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<OfficeScene | null>(null)
   const readyRef = useRef(false)
@@ -73,6 +78,7 @@ export default function OfficeCanvas() {
 
     const scene = new OfficeScene({ onAgentClick: handleAgentClick })
     sceneRef.current = scene
+    onSceneReady?.(scene)
 
     const doInit = (w: number, h: number) => {
       if (w <= 0 || h <= 0 || readyRef.current) return

@@ -84,6 +84,8 @@ export interface CallLog {
   creditsCost: number
   /** 调用的技能/工具名称 */
   target?: string
+  /** 关联的 OPC 团队 ID（agent_invoke 团队调用时存在） */
+  teamId?: number
   /** 错误信息 */
   errorMessage?: string
   createdAt: string

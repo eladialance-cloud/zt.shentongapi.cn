@@ -73,6 +73,11 @@ export class ExecuteTaskDto {
   @IsNumber()
   agentId?: number;
 
+  @ApiPropertyOptional({ description: 'OPC 团队 ID（callType=agent_invoke 时可选，表示调用整个团队）' })
+  @IsOptional()
+  @IsNumber()
+  teamId?: number;
+
   @ApiPropertyOptional({ description: 'N8N实例ID（callType=workflow_run 时必填）' })
   @IsOptional()
   @IsNumber()

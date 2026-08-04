@@ -23,16 +23,8 @@ export class TeamController {
 
   @Get()
   @ApiOperation({ summary: "团队列表" })
-  listTeams(
-    @CurrentUser("userId") userId: number,
-    @Query("page") page?: string,
-    @Query("pageSize") pageSize?: string,
-  ) {
-    return this.service.listTeams(
-      userId,
-      page ? Number(page) : 1,
-      pageSize ? Number(pageSize) : 20,
-    );
+  listTeams(@CurrentUser("userId") userId: number) {
+    return this.service.listTeams(userId);
   }
 
   @Post()
@@ -43,10 +35,25 @@ export class TeamController {
       name: string;
       description?: string;
       avatar?: string;
+      knowledgeBaseId?: number;
       memberAgentIds?: number[];
+      members?: Array<{
+        agentId: number;
+        agentName?: string;
+        roleTitle?: string;
+        roleDescription?: string;
+        roleEmoji?: string;
+        themeColor?: string;
+      }>;
     },
   ) {
     return this.service.createTeam(userId, body);
+  }
+
+  @Get("agents")
+  @ApiOperation({ summary: "可选 Agent 列表（用于选择团队成员）" })
+  async listSelectableAgents() {
+    return this.service.listSelectableAgents();
   }
 
   @Get(":teamId")
@@ -78,12 +85,6 @@ export class TeamController {
     return null;
   }
 
-
-    @Get('agents')
-  @ApiOperation({ summary: '可选 Agent 列表（用于选择团队成员）' })
-  async listSelectableAgents() {
-    return this.service.listSelectableAgents();
-  }
 
   // ============ Members ============
 

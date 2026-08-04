@@ -19,7 +19,6 @@
 
 import { httpClient } from "./http-client";
 import { useAuthStore } from "@/store/auth";
-import { signRequest } from "@/utils/hmac";
 import type {
   ChatSession,
   ChatMessage,
@@ -126,7 +125,7 @@ export async function sendMessage(
  *
  * 实现说明：
  * - 使用 fetch + ReadableStream，因为 EventSource 不支持 POST + Authorization Header
- * - 手动注入 HMAC 签名 headers（与 httpClient 拦截器一致）
+ * - 仅注入 Authorization（JWT 鉴权）
  * - 按 SSE 协议解析 `event: xxx\ndata: yyy\n\n` 帧
  *
  * @returns AbortController（调用 .abort() 可中断流）
@@ -141,29 +140,13 @@ export function streamMessage(
 
   void (async () => {
     try {
-      const { accessToken, secretKey } = useAuthStore.getState();
+      const { accessToken } = useAuthStore.getState();
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         Accept: "text/event-stream",
       };
       if (accessToken) {
         headers.Authorization = `Bearer ${accessToken}`;
-      }
-      // 注入 HMAC 签名
-      if (secretKey) {
-        try {
-          const { timestamp, nonce, signature } = await signRequest(
-            "post",
-            `/chat/sessions/${sessionId}/messages/stream`,
-            dto,
-            secretKey,
-          );
-          headers["X-Timestamp"] = timestamp;
-          headers["X-Nonce"] = nonce;
-          headers["X-Signature"] = signature;
-        } catch (err) {
-          console.error("[chat-api] sign stream request failed:", err);
-        }
       }
 
       const resp = await fetch(url, {

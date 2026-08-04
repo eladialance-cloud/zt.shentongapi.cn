@@ -27,9 +27,10 @@ import type {
   PaginatedResult,
 } from "@/types/team";
 
-/** 团队列表 GET /teams */
+/** 团队列表 GET /teams（兼容旧版分页对象 {list,...} 与新版数组两种返回） */
 export async function listTeams(): Promise<Team[]> {
-  return httpClient.get<Team[]>("/teams");
+  const res = await httpClient.get<Team[] | PaginatedResult<Team>>("/teams");
+  return Array.isArray(res) ? res : (res?.list ?? []);
 }
 
 /** 创建团队 POST /teams */
