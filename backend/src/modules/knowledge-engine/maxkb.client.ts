@@ -227,6 +227,7 @@ export class MaxkbClient extends KnowledgeEngineClient {
       {
         name,
         desc: description || undefined,
+        folder_id: MAXKB_WORKSPACE_ID,
       },
     );
     const id = res?.knowledge_id ?? res?.id;
