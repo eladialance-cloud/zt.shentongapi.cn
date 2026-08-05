@@ -228,7 +228,7 @@ export class MaxkbClient extends KnowledgeEngineClient {
       `${MAXKB_ADMIN_PREFIX}/workspace/${MAXKB_WORKSPACE_ID}/knowledge/base`,
       {
         name,
-        desc: description || undefined,
+        desc: description || '',
         folder_id: MAXKB_WORKSPACE_ID,
         ...(this.embeddingModelId ? { embedding_model_id: this.embeddingModelId } : {}),
       },
