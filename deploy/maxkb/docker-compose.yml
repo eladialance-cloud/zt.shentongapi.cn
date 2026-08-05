@@ -1,0 +1,26 @@
+# MaxKB 知识库引擎（飞致云开源）单机部署
+#
+# ⚠️ 端口说明：容器内 8080 为 MaxKB Web 端口；宿主机映射到 3003
+#    （避开 3001 后端 / 3002 其它 / 3306 MySQL / 6379 Redis）
+# ⚠️ 如与官方文档不一致，以官方为准：https://github.com/1Panel-dev/MaxKB
+version: '3'
+
+services:
+  maxkb:
+    image: 1panel/maxkb
+    container_name: maxkb
+    restart: always
+    ports:
+      - "3003:8080"
+    volumes:
+      - maxkb-data:/var/lib/postgresql/data
+      - maxkb-python-packages:/opt/maxkb/app/sandbox/python-packages
+    environment:
+      # 容器内访问自身时使用的地址（Web 界面生成 API 地址用）
+      - MAXKB_BASE_URL=http://127.0.0.1:3003
+      # 生产环境请改成随机长字符串（openssl rand -hex 32）
+      - SECRET_KEY=change-me-please-use-a-long-random-string
+
+volumes:
+  maxkb-data:
+  maxkb-python-packages:

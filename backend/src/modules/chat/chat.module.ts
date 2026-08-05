@@ -13,6 +13,7 @@ import { LlmClientService } from './services/llm-client.service';
 import { CommonModule } from '../../common/common.module';
 import { CreditsModule } from '../credits/credits.module';
 import { ApiKeyPoolModule } from '../api-key-pool/api-key-pool.module';
+import { KnowledgeEngineModule } from '../knowledge-engine/knowledge-engine.module';
 
 /**
  * Chat 模块
@@ -40,6 +41,7 @@ import { ApiKeyPoolModule } from '../api-key-pool/api-key-pool.module';
     CommonModule,
     CreditsModule,
     ApiKeyPoolModule,
+    KnowledgeEngineModule,
   ],
   controllers: [ChatController, LlmProxyController],
   providers: [ChatService, LlmProxyService, LlmClientService],

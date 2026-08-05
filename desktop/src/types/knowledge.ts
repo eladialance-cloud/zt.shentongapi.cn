@@ -47,6 +47,26 @@ export interface CreateKnowledgeBaseDto {
   description?: string;
 }
 
+/** 官方知识库（管理后台发布，用户端只读浏览） */
+export interface OfficialKnowledgeBase {
+  id: number;
+  name: string;
+  description?: string;
+  industryId?: number;
+  industryName?: string;
+  documentCount: number;
+  publishStatus: "draft" | "published" | "unpublished";
+  createdAt: Date;
+  updatedAt?: Date;
+}
+
+/** 行业分类 */
+export interface KnowledgeIndustry {
+  id: number;
+  name: string;
+  sortOrder: number;
+}
+
 /** 分页结果 */
 export interface PaginatedResult<T> {
   list: T[];

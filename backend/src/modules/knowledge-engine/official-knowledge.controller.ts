@@ -15,6 +15,12 @@ export class OfficialKnowledgeController {
     private readonly engineService: KnowledgeEngineService,
   ) {}
 
+  @Get('industries')
+  @ApiOperation({ summary: '行业分类列表（官方库筛选用）' })
+  industries() {
+    return this.engineService.listIndustries();
+  }
+
   @Get()
   @ApiOperation({ summary: '已发布官方知识库列表（按行业筛选）' })
   @ApiQuery({ name: 'page', required: false, type: Number })

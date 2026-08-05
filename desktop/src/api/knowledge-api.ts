@@ -14,6 +14,9 @@ import { useAuthStore } from "@/store/auth";
 import type {
   KnowledgeBase,
   KnowledgeDocument,
+  KnowledgeIndustry,
+  OfficialKnowledgeBase,
+  PaginatedResult,
   SearchResult,
   CreateKnowledgeBaseDto,
 } from "@/types/knowledge";
@@ -152,6 +155,29 @@ export async function search(
   });
 }
 
+/**
+ * 官方知识库列表（分页 + 行业筛选）
+ * GET /knowledge/official
+ */
+export async function listOfficialKnowledgeBases(params: {
+  page?: number;
+  pageSize?: number;
+  industryId?: number;
+}): Promise<PaginatedResult<OfficialKnowledgeBase>> {
+  return httpClient.get<PaginatedResult<OfficialKnowledgeBase>>(
+    "/knowledge/official",
+    { params },
+  );
+}
+
+/**
+ * 行业分类列表（官方库筛选用）
+ * GET /knowledge/industries
+ */
+export async function listKnowledgeIndustries(): Promise<KnowledgeIndustry[]> {
+  return httpClient.get<KnowledgeIndustry[]>("/knowledge/industries");
+}
+
 export default {
   listKnowledgeBases,
   createKnowledgeBase,
@@ -160,4 +186,6 @@ export default {
   uploadDocument,
   deleteDocument,
   search,
+  listOfficialKnowledgeBases,
+  listKnowledgeIndustries,
 };

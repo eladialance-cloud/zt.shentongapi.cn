@@ -146,6 +146,26 @@ export class KnowledgeEngineService {
   }
 
   /**
+   * 聊天注入用检索：带权限校验（本人私有库 或 已发布官方库）
+   * 无权限 / 未同步引擎 / 引擎不可用时返回空数组（聊天行为退化为无知识库）
+   */
+  async retrieveForChat(
+    userId: number,
+    kbId: number,
+    query: string,
+    topK = 5,
+  ): Promise<EngineSearchResultDto[]> {
+    const kb = await this.kbRepo.findOne({ where: { id: kbId } });
+    if (!kb) return [];
+    const isOwner = kb.userId === userId;
+    const isOfficialPublished =
+      !!kb.isOfficial && kb.publishStatus === 'published';
+    if (!isOwner && !isOfficialPublished) return [];
+    if (!kb.engineKbId) return [];
+    return this.retrieveEngine(kbId, query, topK);
+  }
+
+  /**
    * 引擎语义检索（调用方已完成权限校验）
    * 引擎未配置 / 未同步 / 检索失败时降级返回空数组
    */
@@ -170,6 +190,11 @@ export class KnowledgeEngineService {
       this.logger.warn(`引擎检索失败 kb=${kbId}: ${(err as Error).message}`);
       return [];
     }
+  }
+
+  /** 行业分类列表（用户端官方库筛选用） */
+  async listIndustries() {
+    return this.industryRepo.find({ order: { sortOrder: 'ASC' } });
   }
 
   /** 已发布官方知识库列表（按行业筛选 + 分页） */

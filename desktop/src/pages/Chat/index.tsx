@@ -18,6 +18,7 @@ import { MessageList } from './components/MessageList'
 import { MessageInput } from './components/MessageInput'
 import * as chatApi from '@/api/chat-api'
 import { listMarketAgents } from '@/api/agent-api'
+import { listKnowledgeBases, listOfficialKnowledgeBases } from '@/api/knowledge-api'
 import { officeBridge, isRetrieveTool } from '@/pages/Office/services/officeBridge'
 import type {
   ChatSession,
@@ -77,7 +78,7 @@ export default function Chat() {
   const [modelOptions] = useState<ModelOption[]>(FALLBACK_MODELS)
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([])
   const [agentPriceMap, setAgentPriceMap] = useState<Record<number, Agent>>({})
-  const [kbOptions] = useState<KnowledgeBaseOption[]>([])
+  const [kbOptions, setKbOptions] = useState<KnowledgeBaseOption[]>([])
 
   /** 加载市场 Agent 列表（用于顶部 Agent 选择器 + 价格提示） */
   useEffect(() => {
@@ -109,7 +110,40 @@ export default function Chat() {
     }
   }, [])
 
+  /** 加载我的知识库 + 官方知识库（顶部知识库挂载选择器用） */
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const [mine, official] = await Promise.all([
+          listKnowledgeBases(),
+          listOfficialKnowledgeBases({ page: 1, pageSize: 50 }),
+        ])
+        if (cancelled) return
+        const options: KnowledgeBaseOption[] = [
+          ...(mine || []).map((k) => ({
+            id: k.id,
+            name: k.name,
+            description: k.description,
+          })),
+          ...(official?.list || []).map((k) => ({
+            id: k.id,
+            name: k.industryName ? `${k.name} · ${k.industryName}` : k.name,
+            description: k.description || '官方知识库',
+          })),
+        ]
+        setKbOptions(options)
+      } catch (err) {
+        console.error('[Chat] load kb options failed:', err)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   /** 切换会话 */
+
   const handleSelectSession = useCallback(async (session: ChatSession | null) => {
     if (!session) {
       setActiveSession(null)
@@ -307,8 +341,22 @@ export default function Chat() {
     }
   }
 
+  /** 修改知识库时同步到会话 */
+  const handleKnowledgeBaseChange = async (newKbId?: number) => {
+    setKnowledgeBaseId(newKbId)
+    if (activeSession && activeSession.knowledgeBaseId !== newKbId) {
+      try {
+        await chatApi.updateSession(activeSession.id, { knowledgeBaseId: newKbId })
+        setActiveSession({ ...activeSession, knowledgeBaseId: newKbId })
+      } catch (err) {
+        console.error('[Chat] update knowledge base failed:', err)
+      }
+    }
+  }
+
   /** 选项数据构造 */
   const modelSelectProps: SelectProps = useMemo(
+
     () => ({
       options: modelOptions.map((m) => ({
         label: (
@@ -446,7 +494,7 @@ export default function Chat() {
           <Select
             {...kbSelectProps}
             value={knowledgeBaseId}
-            onChange={(v) => setKnowledgeBaseId(v)}
+            onChange={(v) => handleKnowledgeBaseChange(v)}
             placeholder="选择知识库（可选）"
             allowClear
             className={styles.selectorItem}

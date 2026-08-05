@@ -16,6 +16,7 @@ import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ChatService } from '../services/chat.service';
 import { LlmProxyService } from '../services/llm-proxy.service';
+import { KnowledgeEngineService } from '../../knowledge-engine/knowledge-engine.service';
 import { CreditsService } from '../../credits/services/credits.service';
 import { Public } from '../../../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
@@ -87,6 +88,7 @@ export class ChatController {
     private readonly chatService: ChatService,
     private readonly llmProxyService: LlmProxyService,
     private readonly creditsService: CreditsService,
+    private readonly engineService: KnowledgeEngineService,
   ) {}
 
   @Get('health')
@@ -251,7 +253,38 @@ export class ChatController {
       // 添加当前用户消息
       messages.push({ role: 'user', content: dto.content });
 
+      // 2.5 知识库检索注入（会话挂了知识库才注入；不挂库行为与原来完全一致）
+      const attachedKbIds = [
+        ...(session.knowledgeBaseId ? [session.knowledgeBaseId] : []),
+        ...(session.attachedKnowledgeBaseIds ?? []),
+      ];
+      if (attachedKbIds.length > 0) {
+        const refs: string[] = [];
+        for (const kbId of [...new Set(attachedKbIds)]) {
+          const hits = await this.engineService.retrieveForChat(
+            user.userId,
+            kbId,
+            dto.content,
+            5,
+          );
+          for (const hit of hits) {
+            refs.push(`【${hit.documentName || '知识库'}】${hit.content}`);
+            if (refs.length >= 10) break;
+          }
+          if (refs.length >= 10) break;
+        }
+        if (refs.length > 0) {
+          messages.unshift({
+            role: 'system',
+            content:
+              '以下是知识库检索到的参考资料，请优先依据这些资料回答用户问题，不要编造资料外的信息：\n' +
+              refs.join('\n'),
+          });
+        }
+      }
+
       // 3. 保存用户消息到数据库
+
       await this.chatService.createMessage(sessionId, user.userId, {
         role: 'user',
         content: dto.content,

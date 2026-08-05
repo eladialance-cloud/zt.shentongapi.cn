@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Form, Input, Modal, Popconfirm, Spin, message } from "antd";
+import { Button, Form, Input, Modal, Popconfirm, Select, Spin, Tabs, message } from "antd";
 import {
   ArrowLeftOutlined,
   BookOutlined,
@@ -14,7 +14,12 @@ import {
   SearchOutlined,
 } from "@ant-design/icons";
 import * as kbApi from "@/api/knowledge-api";
-import type { KnowledgeBase, CreateKnowledgeBaseDto } from "@/types/knowledge";
+import type {
+  KnowledgeBase,
+  CreateKnowledgeBaseDto,
+  KnowledgeIndustry,
+  OfficialKnowledgeBase,
+} from "@/types/knowledge";
 import { useSystemStore } from "@/store/system";
 import { NetworkError } from "@/utils/errors";
 import styles from "./styles.module.css";
@@ -36,6 +41,12 @@ export default function KnowledgeList() {
   const [createForm] = Form.useForm<CreateKnowledgeBaseDto>();
   const [creating, setCreating] = useState(false);
 
+  // ===== 官方知识库 =====  
+  const [officialBases, setOfficialBases] = useState<OfficialKnowledgeBase[]>([]);
+  const [officialLoading, setOfficialLoading] = useState(false);
+  const [industries, setIndustries] = useState<KnowledgeIndustry[]>([]);
+  const [industryFilter, setIndustryFilter] = useState<number | undefined>(undefined);
+
   /** 加载知识库列表 */
   const loadBases = useCallback(async () => {
     setLoading(true);
@@ -56,6 +67,46 @@ export default function KnowledgeList() {
   useEffect(() => {
     void loadBases();
   }, [loadBases]);
+
+  /** 加载官方知识库列表 */
+  const loadOfficial = useCallback(async () => {
+    setOfficialLoading(true);
+    try {
+      const data = await kbApi.listOfficialKnowledgeBases({
+        page: 1,
+        pageSize: 50,
+        industryId: industryFilter,
+      });
+      setOfficialBases(data?.list || []);
+    } catch (err) {
+      console.error("[KnowledgeList] load official failed:", err);
+      if (!(err instanceof NetworkError) || backendAvailable) {
+        message.error("加载官方知识库失败");
+      }
+      setOfficialBases([]);
+    } finally {
+      setOfficialLoading(false);
+    }
+  }, [backendAvailable, industryFilter]);
+
+  /** 加载行业分类 */
+  const loadIndustries = useCallback(async () => {
+    try {
+      const data = await kbApi.listKnowledgeIndustries();
+      setIndustries(data || []);
+    } catch (err) {
+      console.error("[KnowledgeList] load industries failed:", err);
+      setIndustries([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadIndustries();
+  }, [loadIndustries]);
+
+  useEffect(() => {
+    void loadOfficial();
+  }, [loadOfficial]);
 
   /** 新建知识库 */
   const handleCreate = async () => {
@@ -130,68 +181,138 @@ export default function KnowledgeList() {
         </div>
       </div>
 
-      <Spin spinning={loading}>
-        {bases.length === 0 && !loading ? (
-          <div className={styles.emptyState}>
-            <BookOutlined className={styles.emptyStateIcon} />
-            <div className={styles.emptyStateText}>
-              暂无知识库，点击右上角"新建知识库"开始
-            </div>
-          </div>
-        ) : (
-          <div className={styles.kbGrid}>
-            {bases.map((kb) => (
-              <div key={kb.id} className={styles.kbCard}>
-                <div className={styles.kbCardIcon}>
-                  <BookOutlined />
-                </div>
-                <div className={styles.kbCardBody}>
-                  <div className={styles.kbCardTitle}>{kb.name}</div>
-                  <div className={styles.kbCardDescription}>
-                    {kb.description || "暂无描述"}
+      <Tabs
+        defaultActiveKey="mine"
+        items={[
+          {
+            key: "mine",
+            label: "我的知识库",
+            children: (
+              <Spin spinning={loading}>
+                {bases.length === 0 && !loading ? (
+                  <div className={styles.emptyState}>
+                    <BookOutlined className={styles.emptyStateIcon} />
+                    <div className={styles.emptyStateText}>
+                      暂无知识库，点击右上角"新建知识库"开始
+                    </div>
                   </div>
-                  <div className={styles.kbCardMeta}>
-                    <span>
-                      <FileTextOutlined style={{ marginRight: 4 }} />
-                      {kb.documentCount ?? 0} 个文档
-                    </span>
-                    <span>创建于 {formatTime(kb.createdAt)}</span>
+                ) : (
+                  <div className={styles.kbGrid}>
+                    {bases.map((kb) => (
+                      <div key={kb.id} className={styles.kbCard}>
+                        <div className={styles.kbCardIcon}>
+                          <BookOutlined />
+                        </div>
+                        <div className={styles.kbCardBody}>
+                          <div className={styles.kbCardTitle}>{kb.name}</div>
+                          <div className={styles.kbCardDescription}>
+                            {kb.description || "暂无描述"}
+                          </div>
+                          <div className={styles.kbCardMeta}>
+                            <span>
+                              <FileTextOutlined style={{ marginRight: 4 }} />
+                              {kb.documentCount ?? 0} 个文档
+                            </span>
+                            <span>创建于 {formatTime(kb.createdAt)}</span>
+                          </div>
+                        </div>
+                        <div className={styles.kbCardFooter}>
+                          <Button
+                            type="primary"
+                            className={styles.enterBtn}
+                            onClick={() => handleEnter(kb)}
+                            block
+                          >
+                            进入详情
+                          </Button>
+                          <Button
+                            className={styles.backBtn}
+                            icon={<SearchOutlined />}
+                            onClick={() => handleSearch(kb)}
+                          />
+                          <Popconfirm
+                            title="确定删除该知识库吗？"
+                            description="删除后将清除所有文档与向量索引"
+                            onConfirm={() => handleDelete(kb)}
+                            okText="删除"
+                            cancelText="取消"
+                            okButtonProps={{ danger: true }}
+                          >
+                            <Button
+                              className={styles.deleteBtn}
+                              icon={<DeleteOutlined />}
+                              danger
+                            />
+                          </Popconfirm>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-                <div className={styles.kbCardFooter}>
-                  <Button
-                    type="primary"
-                    className={styles.enterBtn}
-                    onClick={() => handleEnter(kb)}
-                    block
-                  >
-                    进入详情
-                  </Button>
-                  <Button
-                    className={styles.backBtn}
-                    icon={<SearchOutlined />}
-                    onClick={() => handleSearch(kb)}
+                )}
+              </Spin>
+            ),
+          },
+          {
+            key: "official",
+            label: "官方知识库",
+            children: (
+              <>
+                <div style={{ marginBottom: 16, display: "flex", gap: 12, alignItems: "center" }}>
+                  <Select
+                    allowClear
+                    placeholder="全部行业"
+                    style={{ width: 200 }}
+                    value={industryFilter}
+                    onChange={(v?: number) => setIndustryFilter(v)}
+                    options={industries.map((c) => ({ label: c.name, value: c.id }))}
                   />
-                  <Popconfirm
-                    title="确定删除该知识库吗？"
-                    description="删除后将清除所有文档与向量索引"
-                    onConfirm={() => handleDelete(kb)}
-                    okText="删除"
-                    cancelText="取消"
-                    okButtonProps={{ danger: true }}
-                  >
-                    <Button
-                      className={styles.deleteBtn}
-                      icon={<DeleteOutlined />}
-                      danger
-                    />
-                  </Popconfirm>
+                  <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
+                    管理后台按行业发布的官方知识库，可在聊天中选择挂载使用
+                  </span>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Spin>
+                <Spin spinning={officialLoading}>
+                  {officialBases.length === 0 && !officialLoading ? (
+                    <div className={styles.emptyState}>
+                      <BookOutlined className={styles.emptyStateIcon} />
+                      <div className={styles.emptyStateText}>暂无官方知识库</div>
+                    </div>
+                  ) : (
+                    <div className={styles.kbGrid}>
+                      {officialBases.map((kb) => (
+                        <div key={kb.id} className={styles.kbCard}>
+                          <div className={styles.kbCardIcon}>
+                            <BookOutlined />
+                          </div>
+                          <div className={styles.kbCardBody}>
+                            <div className={styles.kbCardTitle}>
+                              {kb.name}
+                              {kb.industryName && (
+                                <span style={{ marginLeft: 8, fontSize: 12, color: "var(--color-primary, #1677ff)" }}>
+                                  {kb.industryName}
+                                </span>
+                              )}
+                            </div>
+                            <div className={styles.kbCardDescription}>
+                              {kb.description || "暂无描述"}
+                            </div>
+                            <div className={styles.kbCardMeta}>
+                              <span>
+                                <FileTextOutlined style={{ marginRight: 4 }} />
+                                {kb.documentCount ?? 0} 个文档
+                              </span>
+                              <span>发布于 {formatTime(kb.createdAt)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Spin>
+              </>
+            ),
+          },
+        ]}
+      />
 
       {/* 新建知识库弹窗 */}
       <Modal

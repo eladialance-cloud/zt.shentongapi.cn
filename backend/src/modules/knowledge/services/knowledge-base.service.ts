@@ -131,6 +131,14 @@ export class KnowledgeBaseService {
     });
 
     const saved = await this.kbRepo.save(kb);
+
+    // 同步到引擎（MaxKB 未部署时降级：本地库照常可用，engineKbId 留空）
+    try {
+      await this.engineService.createEngineKb(saved.id, saved.name, saved.description);
+    } catch (err) {
+      this.logger.warn(`知识库 ${saved.id} 引擎建库失败: ${(err as Error).message}`);
+    }
+
     return this.toBaseDto(saved);
   }
 
@@ -147,6 +155,9 @@ export class KnowledgeBaseService {
     const docs = await this.docRepo.find({
       where: { knowledgeBaseId: kbId },
     });
+
+    // 删除引擎数据集（尽力而为，内部已捕获异常）
+    await this.engineService.deleteEngineKb(kbId);
 
     // 先删除关联的 chunks
     await this.chunkRepo.delete({ knowledgeBaseId: kbId });
@@ -266,6 +277,18 @@ export class KnowledgeBaseService {
     // 更新知识库文档计数
     await this.kbRepo.increment({ id: kbId }, 'documentCount', 1);
 
+    // 同步文档到引擎（尽力而为：失败标记 engine_status=failed，不阻断上传）
+    try {
+      const buffer = fs.readFileSync(path.resolve('.', 'uploads/knowledge/' + file.filename));
+      await this.engineService.syncDocumentToEngine(kbId, doc.id, {
+        originalname: file.originalname,
+        buffer,
+        mimetype: file.mimetype,
+      });
+    } catch (err) {
+      this.logger.warn(`知识库 ${kbId} 文档引擎同步失败: ${(err as Error).message}`);
+    }
+
     this.logger.log(
       '用户 ' + userId + ' 上传知识库文档 ' + file.originalname + ' -> ' + fileUrl + ' (' + file.size + ' bytes)',
     );
@@ -288,6 +311,9 @@ export class KnowledgeBaseService {
     if (!doc) {
       throw new NotFoundException('文档不存在');
     }
+
+    // 删除引擎文档（尽力而为，内部已捕获异常）
+    await this.engineService.deleteEngineDocument(kbId, docId);
 
     // 先删除关联的 chunks
     await this.chunkRepo.delete({ documentId: docId });
