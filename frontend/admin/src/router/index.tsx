@@ -59,6 +59,7 @@ const LandingBlocks = lazy(() => import('@/pages/Content/LandingBlocks'))
 const CommunityPostReview = lazy(() => import('@/pages/Community/PostReview'))
 const CommunityChannels = lazy(() => import('@/pages/Community/Channels'))
 const CommunityTags = lazy(() => import('@/pages/Community/Tags'))
+const AdminKnowledgeBases = lazy(() => import('@/pages/Content/KnowledgeBases'))
 const AdminReview = lazy(() => import('@/pages/Review'))
 const AdminMcp = lazy(() => import('@/pages/Mcp'))
 const AdminInfraHub = lazy(() => import('@/pages/InfraHub'))
@@ -148,6 +149,7 @@ const router = createBrowserRouter(
         // 内容管理
         { path: 'content', element: <Navigate to="/content/landing" replace /> },
         { path: 'content/landing', element: withSuspense(<LandingBlocks />) },
+        { path: 'content/knowledge-bases', element: withSuspense(<AdminKnowledgeBases />) },
         // 社区管理
         { path: 'community', element: <Navigate to="/community/review" replace /> },
         { path: 'community/review', element: withSuspense(<CommunityPostReview />) },

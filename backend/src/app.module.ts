@@ -17,6 +17,8 @@ import { UserModule } from './modules/user/user.module';
 import { AgentModule } from './modules/agent/agent.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { KnowledgeBaseModule } from './modules/knowledge/knowledge-base.module';
+import { KnowledgeEngineModule } from './modules/knowledge-engine/knowledge-engine.module';
+import { AdminKnowledgeModule } from './modules/admin-knowledge/admin-knowledge.module';
 import { ModelModule } from './modules/model/model.module';
 import { PaymentModule } from './modules/payment/payment.module';
 import { CreditsModule } from './modules/credits/credits.module';
@@ -96,6 +98,8 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     AgentModule,
     ChatModule,
     KnowledgeBaseModule,
+    KnowledgeEngineModule,
+    AdminKnowledgeModule,
     ModelModule,
     PaymentModule,
     CreditsModule,

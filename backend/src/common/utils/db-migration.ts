@@ -494,6 +494,97 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
         ('stripe', 'Stripe', 0, 1)`);
       logger.log('Seeded payment_configs with 3 default channels');
     }
+
+    // ===== 知识库引擎升级（MaxKB）Phase 1 =====
+    // 行业分类表 industry_categories（官方知识库按行业归类）
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS industry_categories (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      name VARCHAR(64) NOT NULL COMMENT '行业名称',
+      sort_order INT NOT NULL DEFAULT 0 COMMENT '排序',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_industry_categories_name (name)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='行业分类表'`);
+    logger.log('Ensured table: industry_categories');
+
+    // 官方知识库下载记录表 user_kb_downloads（Phase 3 同步到本地用）
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS user_kb_downloads (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      user_id BIGINT NOT NULL COMMENT '用户 ID',
+      kb_id BIGINT NOT NULL COMMENT '知识库 ID',
+      status ENUM('pending','completed','failed') NOT NULL DEFAULT 'pending' COMMENT '下载状态',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_user_kb_downloads_user (user_id),
+      KEY idx_user_kb_downloads_kb (kb_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='官方知识库下载记录表'`);
+    logger.log('Ensured table: user_kb_downloads');
+
+    // knowledge_bases 表兜底（服务器缺失时自动补建，含新列）
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS knowledge_bases (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      user_id BIGINT NOT NULL COMMENT '所属用户 ID（官方库为 0）',
+      name VARCHAR(128) NOT NULL COMMENT '知识库名称',
+      description VARCHAR(512) DEFAULT NULL COMMENT '描述',
+      visibility ENUM('private','public') NOT NULL DEFAULT 'private' COMMENT '可见性',
+      status ENUM('active','processing','reindexing','error','deleting','delete_failed') NOT NULL DEFAULT 'active' COMMENT '状态',
+      embedding_model VARCHAR(64) NOT NULL DEFAULT 'text-embedding-ada-002' COMMENT '嵌入模型',
+      chunk_size INT NOT NULL DEFAULT 1000,
+      chunk_overlap INT NOT NULL DEFAULT 200,
+      document_count INT NOT NULL DEFAULT 0,
+      total_chunks INT NOT NULL DEFAULT 0,
+      total_tokens INT NOT NULL DEFAULT 0,
+      is_official TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否官方知识库',
+      industry_id BIGINT UNSIGNED DEFAULT NULL COMMENT '所属行业分类 ID',
+      engine_kb_id VARCHAR(64) DEFAULT NULL COMMENT '引擎侧（MaxKB）数据集 ID',
+      publish_status VARCHAR(16) NOT NULL DEFAULT 'draft' COMMENT '发布状态: draft/published/unpublished',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_knowledge_bases_user_id (user_id),
+      KEY idx_knowledge_bases_industry_id (industry_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='知识库表'`);
+    logger.log('Ensured table: knowledge_bases');
+    const kbCols: Array<[string, string]> = [
+      ['is_official', "TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否官方知识库'"],
+      ['industry_id', "BIGINT UNSIGNED DEFAULT NULL COMMENT '所属行业分类 ID'"],
+      ['engine_kb_id', "VARCHAR(64) DEFAULT NULL COMMENT '引擎侧（MaxKB）数据集 ID'"],
+      ['publish_status', "VARCHAR(16) NOT NULL DEFAULT 'draft' COMMENT '发布状态: draft/published/unpublished'"],
+    ];
+    for (const [colName, colDef] of kbCols) {
+      await ensureColumn('knowledge_bases', colName, colDef);
+    }
+
+    // knowledge_base_documents 表兜底 + 引擎列
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS knowledge_base_documents (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      knowledge_base_id BIGINT NOT NULL COMMENT '知识库 ID',
+      name VARCHAR(256) NOT NULL COMMENT '文档名',
+      file_path VARCHAR(512) NOT NULL COMMENT '文件路径',
+      file_size INT NOT NULL DEFAULT 0 COMMENT '文件大小',
+      mime_type VARCHAR(128) DEFAULT NULL,
+      chunk_count INT NOT NULL DEFAULT 0,
+      token_count INT NOT NULL DEFAULT 0,
+      status ENUM('pending','processing','done','error') NOT NULL DEFAULT 'pending' COMMENT '处理状态',
+      error VARCHAR(512) DEFAULT NULL,
+      engine_document_id VARCHAR(64) DEFAULT NULL COMMENT '引擎侧（MaxKB）文档 ID',
+      engine_status VARCHAR(16) DEFAULT NULL COMMENT '引擎索引状态',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_knowledge_base_documents_kb_id (knowledge_base_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='知识库文档表'`);
+    logger.log('Ensured table: knowledge_base_documents');
+    const kbDocCols: Array<[string, string]> = [
+      ['engine_document_id', "VARCHAR(64) DEFAULT NULL COMMENT '引擎侧（MaxKB）文档 ID'"],
+      ['engine_status', "VARCHAR(16) DEFAULT NULL COMMENT '引擎索引状态'"],
+    ];
+    for (const [colName, colDef] of kbDocCols) {
+      await ensureColumn('knowledge_base_documents', colName, colDef);
+    }
+
     logger.log('Startup migrations completed');
   } catch (err) {
     logger.error(`Startup migration failed: ${(err as Error).message}`);

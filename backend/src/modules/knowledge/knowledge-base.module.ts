@@ -9,9 +9,11 @@ import {
   KnowledgeBasesController,
 } from './controllers/knowledge-base.controller';
 import { KnowledgeBaseService } from './services/knowledge-base.service';
+import { KnowledgeEngineModule } from '../knowledge-engine/knowledge-engine.module';
 
 @Module({
   imports: [
+    KnowledgeEngineModule,
     TypeOrmModule.forFeature([
       KnowledgeBaseEntity,
       KnowledgeBaseChunkEntity,

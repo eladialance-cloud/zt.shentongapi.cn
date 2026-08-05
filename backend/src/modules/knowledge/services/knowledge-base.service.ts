@@ -12,6 +12,7 @@ import { KnowledgeBaseEntity } from '../entities/knowledge-base.entity';
 import { KnowledgeBaseDocumentEntity } from '../entities/knowledge-base-document.entity';
 import { KnowledgeBaseChunkEntity } from '../entities/knowledge-base-chunk.entity';
 import { FileEntity } from '../../file/entities/file.entity';
+import { KnowledgeEngineService } from '../../knowledge-engine/knowledge-engine.service';
 import {
   PaginationQuery,
   PaginatedResult,
@@ -64,6 +65,7 @@ export class KnowledgeBaseService {
     private readonly chunkRepo: Repository<KnowledgeBaseChunkEntity>,
     @InjectRepository(FileEntity)
     private readonly fileRepo: Repository<FileEntity>,
+    private readonly engineService: KnowledgeEngineService,
   ) {}
 
   health() {
@@ -302,14 +304,24 @@ export class KnowledgeBaseService {
 
   // ============ 搜索 ============
 
-  /** 搜索知识库（chunks 表 LIKE 匹配，返回桌面端契约 SearchResult[]） */
+  /**
+   * 搜索知识库（返回桌面端契约 SearchResult[]）
+   * 权限：本人私有库 或 已发布官方库
+   * 引擎已同步（engine_kb_id 存在）时走引擎语义检索；否则降级本地 LIKE 兜底
+   */
   async search(
     userId: number,
     kbId: number,
     dto: { query: string; topK?: number },
   ): Promise<SearchResultDto[]> {
-    // 校验知识库归属权
-    await this.getBase(userId, kbId);
+    // 加载知识库并校验权限：本人私有库 或 已发布官方库
+    const kb = await this.kbRepo.findOne({ where: { id: kbId } });
+    const isOwner = !!kb && kb.userId === userId;
+    const isOfficialPublished =
+      !!kb && !!kb.isOfficial && kb.publishStatus === 'published';
+    if (!kb || (!isOwner && !isOfficialPublished)) {
+      throw new NotFoundException('知识库不存在');
+    }
 
     const query = dto.query?.trim();
     if (!query) {
@@ -317,6 +329,11 @@ export class KnowledgeBaseService {
     }
 
     const topK = Math.min(dto.topK ?? 5, 50);
+
+    // 已同步引擎：走引擎语义检索（本地 LIKE 仅作降级兜底）
+    if (kb.engineKbId) {
+      return this.engineService.retrieveEngine(kbId, query, topK);
+    }
 
     // 在 chunks 表中做 LIKE 搜索
     const chunks = await this.chunkRepo.find({

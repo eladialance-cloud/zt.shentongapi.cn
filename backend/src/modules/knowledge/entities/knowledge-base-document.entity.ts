@@ -35,4 +35,12 @@ export class KnowledgeBaseDocumentEntity extends BaseEntity {
 
   @Column({ length: 512, nullable: true })
   error?: string;
+
+  /** 引擎侧（MaxKB）文档 ID */
+  @Column({ name: 'engine_document_id', length: 64, nullable: true })
+  engineDocumentId?: string;
+
+  /** 引擎索引状态：pending / processing / completed / failed */
+  @Column({ name: 'engine_status', length: 16, nullable: true })
+  engineStatus?: string;
 }
