@@ -73,6 +73,8 @@ const MENU_ENTRIES: MenuEntry[] = [
       { key: 'finance-orders', label: '订单管理', path: '/finance/orders' },
       { key: 'finance-invoices', label: '发票管理', path: '/finance/invoices' },
       { key: 'finance-reconciliation', label: '对账管理', path: '/finance/reconciliation' },
+      { key: 'finance-recharge-plans', label: '充值档位', path: '/finance/recharge-plans' },
+      { key: 'finance-payment-config', label: '支付配置', path: '/finance/payment-config' },
       { key: 'plans', label: '套餐管理', path: '/plans' }
     ]
   },

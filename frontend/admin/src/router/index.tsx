@@ -42,6 +42,8 @@ const AdminFinanceTransactions = lazy(() => import('@/pages/Finance/Transactions
 const AdminFinanceOrders = lazy(() => import('@/pages/Finance/Orders'))
 const AdminFinanceInvoices = lazy(() => import('@/pages/Finance/Invoices'))
 const AdminFinanceReconciliation = lazy(() => import('@/pages/Finance/Reconciliation'))
+const AdminRechargePlans = lazy(() => import('@/pages/Finance/RechargePlans'))
+const AdminPaymentConfig = lazy(() => import('@/pages/Finance/PaymentConfig'))
 const AuditSensitiveWords = lazy(() => import('@/pages/Audit/SensitiveWords'))
 const AuditAIConfig = lazy(() => import('@/pages/Audit/AIConfig'))
 const AuditQueue = lazy(() => import('@/pages/Audit/Queue'))
@@ -128,6 +130,8 @@ const router = createBrowserRouter(
         { path: 'finance/orders', element: withSuspense(<AdminFinanceOrders />) },
         { path: 'finance/invoices', element: withSuspense(<AdminFinanceInvoices />) },
         { path: 'finance/reconciliation', element: withSuspense(<AdminFinanceReconciliation />) },
+        { path: 'finance/recharge-plans', element: withSuspense(<AdminRechargePlans />) },
+        { path: 'finance/payment-config', element: withSuspense(<AdminPaymentConfig />) },
         // 内容审核
         { path: 'audit', element: <Navigate to="/audit/queue" replace /> },
         { path: 'audit/sensitive-words', element: withSuspense(<AuditSensitiveWords />) },

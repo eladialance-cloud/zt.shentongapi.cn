@@ -1,55 +1,58 @@
-import { Injectable } from '@nestjs/common';
+﻿import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { RechargeOrderEntity } from '../../payment/entities/recharge-order.entity';
 import { PaymentRecordEntity } from '../../payment/entities/payment-record.entity';
+import { RechargePlanEntity } from '../../payment/entities/recharge-plan.entity';
+import { PaymentConfigEntity } from '../../payment/entities/payment-config.entity';
 import { BusinessException } from '../../../common/exceptions/business.exception';
 import { ErrorCode } from '../../../common/constants/error.constant';
 import { CreateRechargeDto } from '../dto/create-recharge.dto';
 
-/** 充值套餐 */
-export interface RechargePlan {
-  id: number;
-  name: string;
-  credits: number;
-  bonusCredits: number;
-  price: number;
-  currency: string;
-  isRecommended: boolean;
-}
-
 /**
- * 内置充值套餐种子（recharge_plans 表上线前以静态配置兜底）
- * 数据合同真源：desktop/src/types/credits.ts RechargePlan
- */
-const RECHARGE_PLANS: RechargePlan[] = [
-  { id: 1, name: '体验包', credits: 100, bonusCredits: 0, price: 10, currency: 'CNY', isRecommended: false },
-  { id: 2, name: '基础包', credits: 500, bonusCredits: 20, price: 48, currency: 'CNY', isRecommended: false },
-  { id: 3, name: '标准包', credits: 1000, bonusCredits: 100, price: 88, currency: 'CNY', isRecommended: true },
-  { id: 4, name: '进阶包', credits: 3000, bonusCredits: 400, price: 248, currency: 'CNY', isRecommended: false },
-  { id: 5, name: '尊享包', credits: 5000, bonusCredits: 800, price: 398, currency: 'CNY', isRecommended: false },
-];
-
-/**
- * 充值服务：套餐列表 + 创建充值订单
+ * 充值服务：档位列表（读 DB）+ 创建充值订单
  * 数据合同真源：desktop/src/api/credits-api.ts
- * - GET  /credits/recharge-plans  充值套餐列表
+ * - GET  /credits/recharge-plans  充值档位列表（管理后台 recharge_plans 表）
  * - POST /credits/recharge        创建充值订单（返回支付链接/二维码）
  */
 @Injectable()
 export class RechargeService {
   constructor(@InjectDataSource() private dataSource: DataSource) {}
 
-  /** 获取充值套餐列表 */
-  getRechargePlans(): RechargePlan[] {
-    return RECHARGE_PLANS.map((plan) => ({ ...plan }));
+  /** 获取启用中的充值档位列表 */
+  async getRechargePlans() {
+    const plans = await this.dataSource
+      .getRepository(RechargePlanEntity)
+      .find({
+        where: { isActive: true },
+        order: { sortOrder: 'ASC', price: 'ASC' },
+      });
+    return plans.map((p) => ({
+      id: p.id,
+      name: p.name,
+      credits: p.credits,
+      bonusCredits: p.bonusCredits,
+      price: Number(p.price),
+      currency: p.currency,
+      isRecommended: p.isRecommended,
+    }));
   }
 
   /** 创建充值订单并返回支付信息 */
   async createRecharge(userId: number, dto: CreateRechargeDto) {
-    const plan = RECHARGE_PLANS.find((p) => p.id === dto.planId);
+    const plan = await this.dataSource
+      .getRepository(RechargePlanEntity)
+      .findOne({ where: { id: dto.planId, isActive: true } });
     if (!plan) {
-      BusinessException.throw(ErrorCode.NOT_FOUND, '充值套餐不存在');
+      BusinessException.throw(ErrorCode.NOT_FOUND, '充值档位不存在或已停用');
+    }
+
+    // 校验支付渠道已启用
+    const channelCfg = await this.dataSource
+      .getRepository(PaymentConfigEntity)
+      .findOne({ where: { channel: dto.paymentMethod } });
+    if (!channelCfg || !channelCfg.enabled) {
+      BusinessException.throw(ErrorCode.FORBIDDEN, '该支付方式未启用，请选择其他支付方式');
     }
 
     const orderNo = this.generateOrderNo();
@@ -62,7 +65,7 @@ export class RechargeService {
         userId,
         orderNo,
         channel: dto.paymentMethod,
-        amount: plan.price,
+        amount: Number(plan.price),
         currency: plan.currency,
         status: 'pending',
         payParams: { payUrl: payInfo.payUrl, qrCode: payInfo.qrCode },
@@ -77,7 +80,7 @@ export class RechargeService {
         userId,
         packageId: plan.id,
         credits: totalCredits,
-        amount: plan.price,
+        amount: Number(plan.price),
         status: 'pending',
         paymentChannel: dto.paymentMethod,
         paymentRecordId: savedPayment.id,
@@ -105,16 +108,16 @@ export class RechargeService {
 
   /**
    * 生成支付信息
-   * 说明：支付网关（微信 V3 / 支付宝 / Stripe）接入前返回模拟占位链接/二维码，
-   * 字段结构与真实网关一致，网关接入后仅需替换此方法实现。
+   * 说明：当前为模拟支付，返回占位链接/二维码；
+   * 真实网关（微信 V3 / 支付宝 / Stripe）接入时仅需替换此方法实现。
    */
   private buildPayInfo(
     orderNo: string,
     channel: CreateRechargeDto['paymentMethod'],
-    plan: RechargePlan,
+    plan: RechargePlanEntity,
   ): { payUrl: string; qrCode?: string } {
     const nonce = Math.random().toString(36).slice(2, 14);
-    const amount = plan.price.toFixed(2);
+    const amount = Number(plan.price).toFixed(2);
 
     switch (channel) {
       case 'wechat':

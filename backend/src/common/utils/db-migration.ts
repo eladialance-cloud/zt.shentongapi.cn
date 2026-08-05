@@ -446,6 +446,54 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       await ensureColumn('hermes_instances', colName, colDef);
     }
 
+    // 充值档位表 recharge_plans（管理后台可配置，替代写死的静态数组）
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS recharge_plans (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      name VARCHAR(64) NOT NULL COMMENT '档位名称',
+      credits INT NOT NULL COMMENT '到账积分',
+      bonus_credits INT NOT NULL DEFAULT 0 COMMENT '赠送积分',
+      price DECIMAL(10,2) NOT NULL COMMENT '价格(元)',
+      currency VARCHAR(8) NOT NULL DEFAULT 'CNY',
+      is_recommended TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否推荐',
+      is_active TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+      sort_order INT NOT NULL DEFAULT 0 COMMENT '排序',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_recharge_plans_name (name)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='充值档位表'`);
+    const [rechargePlanCount] = await queryRunner.query('SELECT COUNT(*) AS c FROM recharge_plans');
+    if (Number(rechargePlanCount.c) === 0) {
+      await queryRunner.query(`INSERT INTO recharge_plans (name, credits, bonus_credits, price, currency, is_recommended, is_active, sort_order) VALUES
+        ('体验包', 100, 0, 10.00, 'CNY', 0, 1, 1),
+        ('基础包', 500, 20, 48.00, 'CNY', 0, 1, 2),
+        ('标准包', 1000, 100, 88.00, 'CNY', 1, 1, 3),
+        ('进阶包', 3000, 400, 248.00, 'CNY', 0, 1, 4),
+        ('尊享包', 5000, 800, 398.00, 'CNY', 0, 1, 5)`);
+      logger.log('Seeded recharge_plans with 5 default plans');
+    }
+
+    // 支付渠道配置表 payment_configs
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS payment_configs (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      channel VARCHAR(16) NOT NULL COMMENT '渠道: wechat/alipay/stripe',
+      display_name VARCHAR(32) DEFAULT NULL COMMENT '渠道展示名',
+      enabled TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用',
+      config JSON DEFAULT NULL COMMENT '商户参数',
+      is_mock TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否模拟支付',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_payment_configs_channel (channel)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='支付渠道配置表'`);
+    const [paymentConfigCount] = await queryRunner.query('SELECT COUNT(*) AS c FROM payment_configs');
+    if (Number(paymentConfigCount.c) === 0) {
+      await queryRunner.query(`INSERT INTO payment_configs (channel, display_name, enabled, is_mock) VALUES
+        ('wechat', '微信支付', 0, 1),
+        ('alipay', '支付宝', 0, 1),
+        ('stripe', 'Stripe', 0, 1)`);
+      logger.log('Seeded payment_configs with 3 default channels');
+    }
     logger.log('Startup migrations completed');
   } catch (err) {
     logger.error(`Startup migration failed: ${(err as Error).message}`);
