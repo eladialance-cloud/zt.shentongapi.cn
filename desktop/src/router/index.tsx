@@ -8,6 +8,9 @@ import Onboarding from "@/pages/Onboarding";
 import Dashboard from "@/pages/Dashboard";
 import Chat from "@/pages/Chat";
 import Credits from "@/pages/Credits";
+import CreditsRecharge from "@/pages/Credits/Recharge";
+import CreditsTransactions from "@/pages/Credits/Transactions";
+import CreditsConsumption from "@/pages/Credits/Consumption";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import ForgotPassword from "@/pages/ForgotPassword";
@@ -124,6 +127,9 @@ const router = createHashRouter([
       { path: "/dashboard", element: <Dashboard /> },
       { path: "/chat", element: <Chat /> },
       { path: "/credits", element: <Credits /> },
+      { path: "/credits/recharge", element: <CreditsRecharge /> },
+      { path: "/credits/transactions", element: <CreditsTransactions /> },
+      { path: "/credits/consumption", element: <CreditsConsumption /> },
       // ===== Task 9: 工作流 =====
       { path: "/workflow", element: <WorkflowList /> },
       { path: "/workflow/editor", element: <WorkflowEditor /> },
