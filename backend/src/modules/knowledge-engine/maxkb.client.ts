@@ -30,7 +30,8 @@ export class MaxkbException extends Error {
  * 部署后请按实际版本核对：路径前缀 /api/dataset 与请求/响应字段。
  * 若字段不同，只需修改本文件内的映射，不影响上层业务。
  */
-const MAXKB_DATASET_BASE = '/api/dataset';
+const MAXKB_ADMIN_PREFIX = '/admin/api';
+const MAXKB_WORKSPACE_ID = 'default';
 
 @Injectable()
 export class MaxkbClient extends KnowledgeEngineClient {
@@ -59,7 +60,7 @@ export class MaxkbClient extends KnowledgeEngineClient {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      const resp = await fetch(this.baseUrl + '/api/user/login', {
+      const resp = await fetch(this.baseUrl + MAXKB_ADMIN_PREFIX + '/user/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: this.username, password: this.password }),
@@ -207,7 +208,7 @@ export class MaxkbClient extends KnowledgeEngineClient {
   async ping(): Promise<boolean> {
     if (!this.enabled) return false;
     try {
-      await this.request<unknown>('GET', `${MAXKB_DATASET_BASE}?page=1&size=1`);
+      await this.request<unknown>('GET', `${MAXKB_ADMIN_PREFIX}/workspace/${MAXKB_WORKSPACE_ID}/knowledge`);
       return true;
     } catch (err) {
       this.logger.warn(`MaxKB ping 失败: ${(err as Error).message}`);
@@ -217,19 +218,26 @@ export class MaxkbClient extends KnowledgeEngineClient {
 
   /** 创建数据集，返回数据集 ID */
   async createKnowledgeBase(name: string, description?: string): Promise<string> {
-    const res = await this.request<{ id?: string | number }>('POST', `${MAXKB_DATASET_BASE}`, {
-      name,
-      description: description || undefined,
-    });
-    const id = res?.id ?? (res as unknown as { dataset_id?: string | number })?.dataset_id;
-    if (id === undefined || id === null) {
-      throw new MaxkbException('MaxKB 创建数据集未返回 ID');
-    }
+    const res = await this.request<{
+      knowledge_id?: string | number;
+      id?: string | number;
+    }>(
+      'POST',
+      `${MAXKB_ADMIN_PREFIX}/workspace/${MAXKB_WORKSPACE_ID}/knowledge/base`,
+      {
+        name,
+        desc: description || undefined,
+      },
+    );
+    const id = res?.knowledge_id ?? res?.id;
     return String(id);
   }
 
   async deleteKnowledgeBase(engineKbId: string): Promise<void> {
-    await this.request<unknown>('DELETE', `${MAXKB_DATASET_BASE}/${encodeURIComponent(engineKbId)}`);
+    await this.request<unknown>(
+      'DELETE',
+      `${MAXKB_ADMIN_PREFIX}/workspace/${MAXKB_WORKSPACE_ID}/knowledge/${encodeURIComponent(engineKbId)}`,
+    );
   }
 
   /** 上传文档，返回文档 ID 与索引状态 */
@@ -238,7 +246,7 @@ export class MaxkbClient extends KnowledgeEngineClient {
     file: EngineUploadFile,
   ): Promise<EngineDocument> {
     const res = await this.multipart<Record<string, unknown>>(
-      `${MAXKB_DATASET_BASE}/${encodeURIComponent(engineKbId)}/document`,
+      `${MAXKB_ADMIN_PREFIX}/workspace/${MAXKB_WORKSPACE_ID}/knowledge/${encodeURIComponent(engineKbId)}/document`,
       file,
     );
     const docId = (res?.id ?? (res as { document_id?: string | number })?.document_id) as
@@ -262,7 +270,7 @@ export class MaxkbClient extends KnowledgeEngineClient {
   ): Promise<void> {
     await this.request<unknown>(
       'DELETE',
-      `${MAXKB_DATASET_BASE}/${encodeURIComponent(engineKbId)}/document/${encodeURIComponent(engineDocumentId)}`,
+      `${MAXKB_ADMIN_PREFIX}/workspace/${MAXKB_WORKSPACE_ID}/knowledge/${encodeURIComponent(engineKbId)}/document/${encodeURIComponent(engineDocumentId)}`,
     );
   }
 
@@ -272,20 +280,24 @@ export class MaxkbClient extends KnowledgeEngineClient {
     query: string,
     topK = 5,
   ): Promise<EngineRetrieveHit[]> {
-    const res = await this.request<{ records?: Array<Record<string, unknown>> }>(
+    const raw = await this.request<Array<Record<string, unknown>> | { records?: Array<Record<string, unknown>> }>(
       'POST',
-      `${MAXKB_DATASET_BASE}/${encodeURIComponent(engineKbId)}/retrieval`,
-      { query, top_k: topK, topK },
+      `${MAXKB_ADMIN_PREFIX}/workspace/${MAXKB_WORKSPACE_ID}/knowledge/${encodeURIComponent(engineKbId)}/hit_test`,
+      { query_text: query, top_number: topK, similarity: 0.3, search_mode: 'embedding' },
     );
-    const records = res?.records ?? [];
+    const records = Array.isArray(raw)
+      ? raw
+      : (raw as { records?: Array<Record<string, unknown>> })?.records ?? [];
     return records.map((rec) => {
-      const doc = (rec.document ?? rec.document_id ?? {}) as Record<string, unknown>;
+      const doc = (rec.document ?? {}) as Record<string, unknown>;
       return {
         id: rec.id ? String(rec.id) : undefined,
         content: String(rec.content ?? rec.text ?? ''),
-        score: Number(rec.score ?? rec.similarity ?? 0),
+        score: Number(rec.similarity ?? rec.comprehensive_score ?? 0),
         documentId: rec.document_id ? String(rec.document_id) : undefined,
-        documentName: typeof doc === 'object' ? String(doc.name ?? '') : undefined,
+        documentName: typeof doc === 'object'
+          ? String(doc.name ?? rec.document_name ?? '')
+          : undefined,
         metadata: (rec.metadata as Record<string, unknown>) || undefined,
       };
     });
