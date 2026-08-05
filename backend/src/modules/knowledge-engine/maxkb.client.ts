@@ -19,10 +19,15 @@ export class MaxkbException extends Error {
 }
 
 /**
- * MaxKB 引擎 HTTP 适配（飞致云开源，Go 实现）
+ * MaxKB 引擎 HTTP 适配（飞致云开源）
  *
- * ⚠️ 端点基于 MaxKB v1 API（Swagger 地址：http://<host>/swagger-ui.html）
- * 部署后请按实际版本核对：路径前缀 /api/dataset 与请求/响应字段（dataset_id / document_id 等）。
+ * 认证：MaxKB v2 管理接口（数据集/文档/检索）只接受「用户 token」，
+ *   即先用管理员账号密码 POST /api/user/login 换取 token，再以
+ *   Authorization: Bearer <token> 调用。token 每次请求自动续期，
+ *   失效（Login expired）时自动重新登录重试一次。
+ *
+ * ⚠️ 端点基于 MaxKB v2 API（Swagger 地址：<host>/api/docs/）
+ * 部署后请按实际版本核对：路径前缀 /api/dataset 与请求/响应字段。
  * 若字段不同，只需修改本文件内的映射，不影响上层业务。
  */
 const MAXKB_DATASET_BASE = '/api/dataset';
@@ -31,43 +36,100 @@ const MAXKB_DATASET_BASE = '/api/dataset';
 export class MaxkbClient extends KnowledgeEngineClient {
   private readonly logger = new Logger(MaxkbClient.name);
   private readonly baseUrl: string;
-  private readonly apiKey: string;
+  private readonly username: string;
+  private readonly password: string;
   private readonly timeoutMs: number;
+  private token: string | null = null;
 
   constructor(private readonly configService: ConfigService) {
     super();
     this.baseUrl = (configService.get<string>('MAXKB_BASE_URL') || '').replace(/\/+$/, '');
-    this.apiKey = configService.get<string>('MAXKB_API_KEY') || '';
+    this.username = configService.get<string>('MAXKB_USERNAME') || '';
+    this.password = configService.get<string>('MAXKB_PASSWORD') || '';
     this.timeoutMs = Number(configService.get<number>('MAXKB_TIMEOUT_MS', 15000));
   }
 
-  /** 引擎是否已配置（部署后配 MAXKB_BASE_URL / MAXKB_API_KEY 即自动生效） */
+  /** 引擎是否已配置（需 baseUrl + 账号密码，或兼容旧版直填 token） */
   get enabled(): boolean {
-    return !!this.baseUrl && !!this.apiKey;
+    return !!this.baseUrl && (!!this.username || !!this.token);
+  }
+
+  /** 登录 MaxKB 换取用户 token */
+  private async login(): Promise<string> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const resp = await fetch(this.baseUrl + '/api/user/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: this.username, password: this.password }),
+        signal: controller.signal,
+      });
+      const text = await resp.text().catch(() => '');
+      let json: any = {};
+      try {
+        json = text ? JSON.parse(text) : {};
+      } catch {
+        /* 非 JSON 响应 */
+      }
+      if (!resp.ok) {
+        throw new MaxkbException(
+          `MaxKB 登录失败 ${resp.status}: ${(json.message || text).slice(0, 200)}`,
+          resp.status,
+        );
+      }
+      const data = (json.data ?? json) as { token?: string } | string;
+      const token = typeof data === 'string' ? data : data?.token;
+      if (!token) {
+        throw new MaxkbException(
+          `MaxKB 登录未返回 token: ${text.slice(0, 200)}`,
+        );
+      }
+      this.token = token;
+      return token;
+    } catch (err) {
+      if (err instanceof MaxkbException) throw err;
+      throw new MaxkbException(`MaxKB 登录网络错误: ${(err as Error).message}`);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** 获取可用 token（未登录则先登录） */
+  private async ensureToken(): Promise<string> {
+    if (this.token) return this.token;
+    return this.login();
   }
 
   private async request<T>(
     method: string,
     path: string,
     body?: unknown,
+    retry = true,
   ): Promise<T> {
     if (!this.enabled) {
-      throw new MaxkbException('MAXKB 未配置（缺 MAXKB_BASE_URL / MAXKB_API_KEY）');
+      throw new MaxkbException('MAXKB 未配置（缺 MAXKB_BASE_URL / MAXKB_USERNAME / MAXKB_PASSWORD）');
     }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
+      const token = await this.ensureToken();
       const resp = await fetch(this.baseUrl + path, {
         method,
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${token}`,
         },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
       });
       if (!resp.ok) {
         const text = await resp.text().catch(() => '');
+        // token 失效时重新登录重试一次
+        if (retry && this.username && (resp.status === 401 || /login expired|未登录|登录已过期/i.test(text))) {
+          this.token = null;
+          return this.request<T>(method, path, body, false);
+        }
         throw new MaxkbException(
           `MaxKB 请求失败 ${resp.status}: ${text.slice(0, 300)}`,
           resp.status,
@@ -93,13 +155,15 @@ export class MaxkbClient extends KnowledgeEngineClient {
   private async multipart<T>(
     path: string,
     file: EngineUploadFile,
+    retry = true,
   ): Promise<T> {
     if (!this.enabled) {
-      throw new MaxkbException('MAXKB 未配置（缺 MAXKB_BASE_URL / MAXKB_API_KEY）');
+      throw new MaxkbException('MAXKB 未配置（缺 MAXKB_BASE_URL / MAXKB_USERNAME / MAXKB_PASSWORD）');
     }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
+      const token = await this.ensureToken();
       const form = new FormData();
       form.append(
         'file',
@@ -108,12 +172,16 @@ export class MaxkbClient extends KnowledgeEngineClient {
       );
       const resp = await fetch(this.baseUrl + path, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${this.apiKey}` },
+        headers: { Authorization: `Bearer ${token}` },
         body: form,
         signal: controller.signal,
       });
       if (!resp.ok) {
         const text = await resp.text().catch(() => '');
+        if (retry && this.username && (resp.status === 401 || /login expired|未登录|登录已过期/i.test(text))) {
+          this.token = null;
+          return this.multipart<T>(path, file, false);
+        }
         throw new MaxkbException(
           `MaxKB 上传失败 ${resp.status}: ${text.slice(0, 300)}`,
           resp.status,
@@ -147,7 +215,7 @@ export class MaxkbClient extends KnowledgeEngineClient {
     }
   }
 
-  /** 创建数据集，返回数据集 ID（MaxKB 数据集列表接口返回 { id, name }） */
+  /** 创建数据集，返回数据集 ID */
   async createKnowledgeBase(name: string, description?: string): Promise<string> {
     const res = await this.request<{ id?: string | number }>('POST', `${MAXKB_DATASET_BASE}`, {
       name,

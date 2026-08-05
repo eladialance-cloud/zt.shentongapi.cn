@@ -28,14 +28,15 @@ docker logs --tail 50 maxkb   # 确认无 ERROR
    - 嵌入模型（Embedding）：选你们模型代理的 OpenAI 兼容接口，模型名如 `text-embedding-3-small`
    - 对话模型（Chat）：同上，选你们代理里的对话模型（如 `deepseek-chat`）
    - 两个模型都要填：API 地址（你们模型代理地址）、API Key、模型名称
-3. 「系统管理 → API 访问令牌」新建一个 API Key，复制保存（下一步要用）
+3. 无需配置「API 访问令牌」：后端直接使用管理员账号密码登录换取 token（MaxKB v2 管理接口只接受用户 token）
 
 ## 3. 后端接入
 
 ```bash
 cd /opt/shentong/backend
 grep -q "^MAXKB_BASE_URL=" .env || echo "MAXKB_BASE_URL=http://127.0.0.1:3003" >> .env
-grep -q "^MAXKB_API_KEY=" .env || echo "MAXKB_API_KEY=第2步复制的Key" >> .env
+grep -q "^MAXKB_USERNAME=" .env || echo "MAXKB_USERNAME=你的MaxKB管理员账号" >> .env
+grep -q "^MAXKB_PASSWORD=" .env || echo "MAXKB_PASSWORD=你的MaxKB管理员密码" >> .env
 pkill -9 -f "dist/main.js"; sleep 2
 nohup node dist/main.js > server.log 2>&1 &
 sleep 8
