@@ -402,6 +402,22 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
     for (const [colName, colDef] of teamTaskCols) {
       await ensureColumn('team_tasks', colName, colDef);
     }
+    // 旧版 teams/team_members 表（init.sql 结构）含 owner_id/user_id/role 等 NOT NULL 旧列，
+    // 新实体（creator_id/agent_id/role_title）INSERT 时不提供这些列会报
+    // "Field ... doesn't have a default value"。这里把旧列调整为可空，兼容新旧两套结构共存。
+    const adjustLegacyColumn = async (table: string, name: string, def: string) => {
+      const [row] = await queryRunner.query(
+        `SELECT COLUMN_NAME, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${table}' AND COLUMN_NAME = '${name}'`
+      );
+      if (row && row.IS_NULLABLE !== 'YES') {
+        await queryRunner.query(`ALTER TABLE ${table} MODIFY COLUMN \`${name}\` ${def}`);
+        logger.log(`Adjusted column: ${table}.${name} -> nullable`);
+      }
+    };
+    await adjustLegacyColumn('teams', 'owner_id', "BIGINT UNSIGNED DEFAULT NULL COMMENT '团队所有者 ID（旧字段，新版本使用 creator_id）'");
+    await adjustLegacyColumn('team_members', 'user_id', "BIGINT UNSIGNED DEFAULT NULL COMMENT '用户 ID（旧字段，新版本使用 agent_id）'");
+    await adjustLegacyColumn('team_members', 'role', "VARCHAR(32) DEFAULT NULL COMMENT '团队内角色（旧字段，新版本使用 role_title）'");
     // Hermes 实例：确保表存在 + 补齐执行目标字段（团队 / N8N 工作流 / 知识库）
     await queryRunner.query(`CREATE TABLE IF NOT EXISTS hermes_instances (
       id BIGINT NOT NULL AUTO_INCREMENT,
