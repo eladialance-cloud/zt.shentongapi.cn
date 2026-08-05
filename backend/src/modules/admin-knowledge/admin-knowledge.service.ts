@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Like, Repository } from 'typeorm';
 import * as fs from 'fs';
 import * as path from 'path';
 import { KnowledgeBaseEntity } from '../knowledge/entities/knowledge-base.entity';
@@ -52,43 +52,30 @@ export class AdminKnowledgeService {
   }): Promise<AdminKnowledgeListResult> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
-    const qb = this.kbRepo
-      .createQueryBuilder('kb')
-      .leftJoin(IndustryCategoryEntity, 'ic', 'ic.id = kb.industry_id')
-      .select([
-        'kb.id',
-        'kb.name',
-        'kb.description',
-        'kb.visibility',
-        'kb.industryId',
-        'kb.documentCount',
-        'kb.publishStatus',
-        'kb.engineKbId',
-        'kb.status',
-        'kb.createdAt',
-        'kb.updatedAt',
-        'ic.name AS industry_name',
-      ])
-      .where('kb.is_official = :isOfficial', { isOfficial: true })
-      .orderBy('kb.created_at', 'DESC')
-      .skip((page - 1) * pageSize)
-      .take(pageSize);
+    const where: Record<string, unknown> = { isOfficial: true };
+    if (query.keyword) where.name = Like(`%${query.keyword}%`);
+    if (query.industryId) where.industryId = query.industryId;
+    if (query.publishStatus) where.publishStatus = query.publishStatus;
 
-    if (query.keyword) {
-      qb.andWhere('kb.name LIKE :kw', { kw: '%' + query.keyword + '%' });
+    const [rows, total] = await this.kbRepo.findAndCount({
+      where,
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    // 批量查行业名（避免原始 join + select + getManyAndCount 的 TypeORM 兼容问题）
+    const industryIds = [
+      ...new Set(rows.map((r) => r.industryId).filter((v): v is number => !!v)),
+    ];
+    const industryMap = new Map<number, string>();
+    if (industryIds.length > 0) {
+      const cats = await this.industryRepo.find({ where: { id: In(industryIds) } });
+      for (const c of cats) industryMap.set(c.id, c.name);
     }
-    if (query.industryId) {
-      qb.andWhere('kb.industry_id = :industryId', { industryId: query.industryId });
-    }
-    if (query.publishStatus) {
-      qb.andWhere('kb.publish_status = :publishStatus', { publishStatus: query.publishStatus });
-    }
-
-    const [list, total] = await qb.getManyAndCount();
     return {
-      list: (list as Array<KnowledgeBaseEntity & { industry_name?: string }>).map((kb) => ({
+      list: rows.map((kb) => ({
         ...kb,
-        industryName: kb.industry_name ?? undefined,
+        industryName: kb.industryId ? industryMap.get(kb.industryId) : undefined,
       })),
       total,
       page,
@@ -237,7 +224,9 @@ export class AdminKnowledgeService {
       buffer,
       mimetype: file.mimetype,
     });
-    return doc;
+    // 返回数据库最新实体（同步完成后带上 engineDocumentId / engineStatus）
+    const synced = await this.docRepo.findOne({ where: { id: doc.id } });
+    return synced ?? doc;
   }
 
   async deleteDocument(kbId: number, docId: number): Promise<void> {
