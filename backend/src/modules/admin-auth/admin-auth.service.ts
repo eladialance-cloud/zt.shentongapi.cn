@@ -89,7 +89,14 @@ export class AdminAuthService {
       username: user.username,
       role: 'admin',
     };
-    const token = await this.jwtService.signAsync(payload);
+    const adminSecret = this.config.get<string>('ADMIN_JWT_SECRET');
+    if (!adminSecret) {
+      BusinessException.throw(ErrorCode.INTERNAL_ERROR, '管理端密钥未配置');
+    }
+    const token = await this.jwtService.signAsync(payload, {
+      secret: adminSecret,
+      expiresIn: this.config.get<string>('ADMIN_JWT_EXPIRES_IN', '8h'),
+    });
     const expiresAt = Date.now() + this.parseExpiresMs();
 
     return {

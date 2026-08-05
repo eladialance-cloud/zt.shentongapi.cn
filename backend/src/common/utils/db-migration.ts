@@ -324,6 +324,8 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       ['member_count', "INT NOT NULL DEFAULT 0 COMMENT '成员数量'"],
       ['creator_id', "BIGINT NOT NULL DEFAULT 0 COMMENT '创建者 ID'"],
       ['knowledge_base_id', "BIGINT DEFAULT NULL COMMENT '关联知识库 ID'"],
+      ['created_at', "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'"],
+      ['updated_at', "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'"],
     ];
     for (const [colName, colDef] of teamCols) {
       await ensureColumn('teams', colName, colDef);
@@ -361,6 +363,7 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       ['sort_order', 'INT NOT NULL DEFAULT 0'],
       ['is_active', 'TINYINT(1) NOT NULL DEFAULT 1'],
       ['added_by', 'BIGINT NOT NULL DEFAULT 0'],
+      ['joined_at', "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '加入时间'"],
     ];
     for (const [colName, colDef] of teamMemberCols) {
       await ensureColumn('team_members', colName, colDef);
@@ -393,6 +396,8 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       ['priority', "ENUM('low','medium','high','urgent') NOT NULL DEFAULT 'medium'"],
       ['due_date', 'DATETIME DEFAULT NULL'],
       ['result', 'JSON DEFAULT NULL'],
+      ['created_at', "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'"],
+      ['completed_at', "DATETIME DEFAULT NULL COMMENT '完成时间'"],
     ];
     for (const [colName, colDef] of teamTaskCols) {
       await ensureColumn('team_tasks', colName, colDef);

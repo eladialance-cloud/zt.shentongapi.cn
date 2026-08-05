@@ -5,6 +5,7 @@
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 
 /**
  * 管理端守卫
@@ -17,7 +18,10 @@ import { JwtService } from '@nestjs/jwt';
  */
 @Injectable()
 export class AdminGuard implements CanActivate {
-  constructor(private jwtService: JwtService) {}
+  constructor(
+    private jwtService: JwtService,
+    private config: ConfigService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
@@ -27,10 +31,14 @@ export class AdminGuard implements CanActivate {
       throw new UnauthorizedException('未授权');
     }
     try {
+      const adminSecret = this.config.get<string>('ADMIN_JWT_SECRET');
+      if (!adminSecret) {
+        throw new UnauthorizedException('管理端密钥未配置');
+      }
       const payload = await this.jwtService.verifyAsync<{
         userId: number;
         username: string;
-      }>(match[1]);
+      }>(match[1], { secret: adminSecret });
       request.adminUser = { id: payload.userId, username: payload.username };
       return true;
     } catch {
