@@ -9,6 +9,8 @@ import {
   EngineUploadFile,
 } from './engine-client.interface';
 import { MaxkbException } from './maxkb.client';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /** 桌面端检索结果契约（与 knowledge-base.service.ts SearchResultDto 对齐） */
 export interface EngineSearchResultDto {
@@ -122,13 +124,37 @@ export class KnowledgeEngineService {
     } catch (err) {
       this.logger.warn(`文档 ${docId} 引擎同步失败: ${(err as Error).message}`);
       try {
-        await this.docRepo.update({ id: docId }, { engineStatus: 'failed' });
+        await this.docRepo.update({ id: docId }, { engineStatus: 'failed', error: (err as Error).message.slice(0, 512) });
       } catch {
         // 忽略标记失败
       }
     }
   }
 
+
+  /** 重试引擎同步：用于上传时引擎不可用 / 未同步失败的文档 */
+  async retryEngineSync(kbId: number, docId: number): Promise<void> {
+    const kb = await this.kbRepo.findOne({ where: { id: kbId } });
+    if (!kb || !kb.engineKbId) {
+      throw new MaxkbException('知识库未同步到引擎');
+    }
+    const doc = await this.docRepo.findOne({ where: { id: docId, knowledgeBaseId: kbId } });
+    if (!doc) throw new NotFoundException('文档不存在');
+    if (doc.engineDocumentId) return; // 已同步无需重试
+    if (!doc.filePath) throw new MaxkbException('文档缺少文件路径，无法重试');
+    const filePath = path.resolve('.', doc.filePath.replace(/^\/uploads\//, 'uploads/'));
+    let buffer: Buffer;
+    try {
+      buffer = fs.readFileSync(filePath);
+    } catch (err) {
+      throw new MaxkbException(`读取文档文件失败: ${(err as Error).message}`);
+    }
+    await this.syncDocumentToEngine(kbId, docId, {
+      originalname: doc.name,
+      buffer,
+      mimetype: doc.mimeType ?? 'application/octet-stream',
+    });
+  }
   /** 删除引擎文档并清空 engine_document_id（引擎失败仅告警） */
   async deleteEngineDocument(kbId: number, docId: number): Promise<void> {
     const doc = await this.docRepo.findOne({ where: { id: docId, knowledgeBaseId: kbId } });

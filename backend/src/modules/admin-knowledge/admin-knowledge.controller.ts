@@ -192,4 +192,13 @@ export class AdminKnowledgeController {
     await this.service.deleteDocument(id, docId);
     return null;
   }
+  @Post(':id/documents/:docId/retry-engine-sync')
+  @ApiOperation({ summary: '重试文档引擎同步' })
+  async retryEngineSync(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('docId', ParseIntPipe) docId: number,
+  ) {
+    await this.service.retryEngineSync(id, docId);
+    return null;
+  }
 }

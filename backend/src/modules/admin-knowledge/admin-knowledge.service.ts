@@ -229,6 +229,12 @@ export class AdminKnowledgeService {
     return synced ?? doc;
   }
 
+  /** 重试文档引擎同步 */
+  async retryEngineSync(kbId: number, docId: number): Promise<void> {
+    await this.getOfficialBase(kbId);
+    await this.engineService.retryEngineSync(kbId, docId);
+  }
+
   async deleteDocument(kbId: number, docId: number): Promise<void> {
     await this.getOfficialBase(kbId);
     const doc = await this.docRepo.findOne({ where: { id: docId, knowledgeBaseId: kbId } });

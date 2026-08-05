@@ -42,6 +42,7 @@ export class MaxkbClient extends KnowledgeEngineClient {
   private readonly timeoutMs: number;
   private readonly embeddingModelId: string;
   private token: string | null = null;
+  private loginPromise: Promise<string> | null = null;
 
   constructor(private readonly configService: ConfigService) {
     super();
@@ -101,7 +102,12 @@ export class MaxkbClient extends KnowledgeEngineClient {
   /** 获取可用 token（未登录则先登录） */
   private async ensureToken(): Promise<string> {
     if (this.token) return this.token;
-    return this.login();
+    if (!this.loginPromise) {
+      this.loginPromise = this.login().finally(() => {
+        this.loginPromise = null;
+      });
+    }
+    return this.loginPromise;
   }
 
   private async request<T>(
@@ -155,58 +161,6 @@ export class MaxkbClient extends KnowledgeEngineClient {
     }
   }
 
-  private async multipart<T>(
-    path: string,
-    file: EngineUploadFile,
-    retry = true,
-  ): Promise<T> {
-    if (!this.enabled) {
-      throw new MaxkbException('MAXKB 未配置（缺 MAXKB_BASE_URL / MAXKB_USERNAME / MAXKB_PASSWORD）');
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-    try {
-      const token = await this.ensureToken();
-      const form = new FormData();
-      form.append(
-        'file',
-        new Blob([file.buffer.buffer.slice(file.buffer.byteOffset, file.buffer.byteOffset + file.buffer.byteLength) as ArrayBuffer], { type: file.mimetype || 'application/octet-stream' }),
-        file.originalname,
-      );
-      form.append('name', file.originalname);
-      const resp = await fetch(this.baseUrl + path, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
-        signal: controller.signal,
-      });
-      if (!resp.ok) {
-        const text = await resp.text().catch(() => '');
-        if (retry && this.username && (resp.status === 401 || /login expired|未登录|登录已过期/i.test(text))) {
-          this.token = null;
-          return this.multipart<T>(path, file, false);
-        }
-        throw new MaxkbException(
-          `MaxKB 上传失败 ${resp.status}: ${text.slice(0, 300)}`,
-          resp.status,
-        );
-      }
-      const data = (await resp.json().catch(() => ({}))) as {
-        code?: number;
-        message?: string;
-        data?: T;
-      };
-      if (typeof data.code === 'number' && data.code !== 0 && data.code !== 200) {
-        throw new MaxkbException(`MaxKB 业务错误 ${data.code}: ${data.message || ''}`);
-      }
-      return (data.data ?? data) as T;
-    } catch (err) {
-      if (err instanceof MaxkbException) throw err;
-      throw new MaxkbException(`MaxKB 上传网络错误: ${(err as Error).message}`);
-    } finally {
-      clearTimeout(timer);
-    }
-  }
 
   async ping(): Promise<boolean> {
     if (!this.enabled) return false;
@@ -250,23 +204,95 @@ export class MaxkbClient extends KnowledgeEngineClient {
     engineKbId: string,
     file: EngineUploadFile,
   ): Promise<EngineDocument> {
-    const res = await this.multipart<Record<string, unknown>>(
-      `${MAXKB_ADMIN_PREFIX}/workspace/${MAXKB_WORKSPACE_ID}/knowledge/${encodeURIComponent(engineKbId)}/document`,
-      file,
-    );
-    const docId = (res?.id ?? (res as { document_id?: string | number })?.document_id) as
-      | string
-      | number
-      | undefined;
-    if (docId === undefined || docId === null) {
-      throw new MaxkbException('MaxKB 上传文档未返回文档 ID');
+    const text = this.bufferToText(file);
+    if (text === null) {
+      throw new MaxkbException(
+        `暂不支持自动解析的文件类型: ${file.mimetype || 'unknown'}（请上传 txt/markdown/csv/json 等文本文件）`,
+      );
     }
-    const status = String(res?.status ?? 'pending') as EngineDocument['status'];
+    const paragraphs = this.splitParagraphs(text);
+    if (paragraphs.length === 0) {
+      throw new MaxkbException('文件内容为空，未生成段落');
+    }
+    // MaxKB v2 的 document 接口不解析文件，需直接提交解析后的段落
+    const res = await this.request<unknown>(
+      'POST',
+      `${MAXKB_ADMIN_PREFIX}/workspace/${MAXKB_WORKSPACE_ID}/knowledge/${encodeURIComponent(engineKbId)}/document`,
+      {
+        name: file.originalname,
+        paragraphs: paragraphs.map((content) => ({ content })),
+      },
+    );
+    const arr = Array.isArray(res) ? (res as unknown[]) : undefined;
+    const docObj =
+      (arr && arr[0] && typeof arr[0] === 'object' ? (arr[0] as Record<string, unknown>) : undefined) ??
+      (res as Record<string, unknown>);
+    const docId = docObj?.id ?? docObj?.document_id ?? (arr?.[1] as string | number | undefined);
+    if (docId === undefined || docId === null) {
+      throw new MaxkbException('MaxKB 创建文档未返回文档 ID');
+    }
+    const status = String(docObj?.status ?? 'pending') as EngineDocument['status'];
     return {
       engineDocumentId: String(docId),
       status: status === 'completed' || status === 'failed' ? status : 'pending',
-      errorMessage: res?.error_message as string | undefined,
+      errorMessage: docObj?.error_message as string | undefined,
     };
+  }
+
+  /** 将上传缓冲解析为文本；无法安全解码为文本时返回 null */
+  private bufferToText(file: EngineUploadFile): string | null {
+    const mime = (file.mimetype || '').toLowerCase();
+    const textishMimes = [
+      'text/plain',
+      'text/markdown',
+      'text/csv',
+      'text/xml',
+      'application/json',
+      'application/xml',
+      'application/octet-stream',
+    ];
+    const buf = file.buffer;
+    if (buf.includes(0)) return null; // 含 NUL 字节视为二进制
+    if (!textishMimes.includes(mime)) return null; // 非文本类 MIME（pdf/docx 等）不尝试解析
+    // 统一按 UTF-8 解码并校验：GBK/ANSI 等非 UTF-8 文本会解码出替换符，直接拒绝避免乱码入库
+    const decoded = buf.toString('utf8');
+    const replacementRatio =
+      (decoded.match(/\uFFFD/g) || []).length / Math.max(decoded.length, 1);
+    if (replacementRatio > 0.01) return null;
+    return decoded.replace(/^\uFEFF/, ''); // 去掉 UTF-8 BOM
+  }
+
+  /** 按换行切分段落，控制单段长度（MaxKB 单段上限 102400 字符） */
+  private splitParagraphs(text: string, maxLen = 1000, hardMax = 100000): string[] {
+    const lines = text
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    const out: string[] = [];
+    let current = '';
+    const pushCurrent = () => {
+      if (current) {
+        out.push(current);
+        current = '';
+      }
+    };
+    for (const line of lines) {
+      // 超长行（压缩 JSON/日志）按硬上限强制截断，避免超过 MaxKB 单段 102400 字符上限
+      if (line.length > hardMax) {
+        pushCurrent();
+        for (let i = 0; i < line.length; i += hardMax) {
+          out.push(line.slice(i, i + hardMax));
+        }
+        continue;
+      }
+      if (current && current.length + line.length + 1 > maxLen) {
+        pushCurrent();
+      }
+      current = current ? `${current}\n${line}` : line;
+    }
+    pushCurrent();
+    return out;
   }
 
   async deleteDocument(
