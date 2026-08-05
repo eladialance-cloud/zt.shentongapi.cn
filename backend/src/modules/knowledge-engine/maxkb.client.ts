@@ -173,6 +173,7 @@ export class MaxkbClient extends KnowledgeEngineClient {
         new Blob([file.buffer.buffer.slice(file.buffer.byteOffset, file.buffer.byteOffset + file.buffer.byteLength) as ArrayBuffer], { type: file.mimetype || 'application/octet-stream' }),
         file.originalname,
       );
+      form.append('name', file.originalname);
       const resp = await fetch(this.baseUrl + path, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
