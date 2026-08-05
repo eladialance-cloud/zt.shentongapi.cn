@@ -40,6 +40,7 @@ export class MaxkbClient extends KnowledgeEngineClient {
   private readonly username: string;
   private readonly password: string;
   private readonly timeoutMs: number;
+  private readonly embeddingModelId: string;
   private token: string | null = null;
 
   constructor(private readonly configService: ConfigService) {
@@ -48,6 +49,7 @@ export class MaxkbClient extends KnowledgeEngineClient {
     this.username = configService.get<string>('MAXKB_USERNAME') || '';
     this.password = configService.get<string>('MAXKB_PASSWORD') || '';
     this.timeoutMs = Number(configService.get<number>('MAXKB_TIMEOUT_MS', 15000));
+    this.embeddingModelId = configService.get<string>('MAXKB_EMBEDDING_MODEL_ID') || '';
   }
 
   /** 引擎是否已配置（需 baseUrl + 账号密码，或兼容旧版直填 token） */
@@ -228,6 +230,7 @@ export class MaxkbClient extends KnowledgeEngineClient {
         name,
         desc: description || undefined,
         folder_id: MAXKB_WORKSPACE_ID,
+        ...(this.embeddingModelId ? { embedding_model_id: this.embeddingModelId } : {}),
       },
     );
     const id = res?.knowledge_id ?? res?.id;

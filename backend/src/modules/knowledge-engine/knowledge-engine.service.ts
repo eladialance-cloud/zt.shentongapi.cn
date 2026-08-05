@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { KnowledgeBaseEntity } from '../knowledge/entities/knowledge-base.entity';
 import { KnowledgeBaseDocumentEntity } from '../knowledge/entities/knowledge-base-document.entity';
 import { IndustryCategoryEntity } from '../knowledge/entities/industry-category.entity';
@@ -211,48 +211,43 @@ export class KnowledgeEngineService {
   }> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
-    const qb = this.kbRepo
-      .createQueryBuilder('kb')
-      .leftJoin(IndustryCategoryEntity, 'ic', 'ic.id = kb.industry_id')
-      .select([
-        'kb.id',
-        'kb.name',
-        'kb.description',
-        'kb.industryId',
-        'kb.documentCount',
-        'kb.publishStatus',
-        'kb.engineKbId',
-        'kb.createdAt',
-        'kb.updatedAt',
-        'ic.name AS industry_name',
-      ])
-      .where('kb.is_official = :isOfficial', { isOfficial: true })
-      .andWhere('kb.publish_status = :published', { published: 'published' })
-      .orderBy('kb.created_at', 'DESC')
-      .skip((page - 1) * pageSize)
-      .take(pageSize);
-
-    if (query.industryId) {
-      qb.andWhere('kb.industry_id = :industryId', { industryId: query.industryId });
+    const where: Record<string, unknown> = {
+      isOfficial: true,
+      publishStatus: 'published',
+    };
+    if (query.industryId) where.industryId = query.industryId;
+    const [rows, total] = await this.kbRepo.findAndCount({
+      where,
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    // 批量查行业名（避免 join 带来的 TypeORM 排序/分页兼容问题）
+    const industryIds = [
+      ...new Set(
+        rows
+          .map((r) => r.industryId)
+          .filter((v): v is number => !!v),
+      ),
+    ];
+    const industryMap = new Map<number, string>();
+    if (industryIds.length > 0) {
+      const cats = await this.industryRepo.find({ where: { id: In(industryIds) } });
+      for (const c of cats) industryMap.set(c.id, c.name);
     }
-
-    const [list, total] = await qb.getManyAndCount();
     return {
-      list: list.map((row) => {
-        const kb = row as KnowledgeBaseEntity & { industry_name?: string };
-        return {
-          id: kb.id,
-          name: kb.name,
-          description: kb.description,
-          industryId: kb.industryId,
-          industryName: kb.industry_name ?? undefined,
-          documentCount: kb.documentCount,
-          publishStatus: kb.publishStatus,
-          engineKbId: kb.engineKbId ?? undefined,
-          createdAt: kb.createdAt,
-          updatedAt: kb.updatedAt,
-        };
-      }),
+      list: rows.map((kb) => ({
+        id: kb.id,
+        name: kb.name,
+        description: kb.description,
+        industryId: kb.industryId,
+        industryName: kb.industryId ? industryMap.get(kb.industryId) : undefined,
+        documentCount: kb.documentCount,
+        publishStatus: kb.publishStatus,
+        engineKbId: kb.engineKbId ?? undefined,
+        createdAt: kb.createdAt,
+        updatedAt: kb.updatedAt,
+      })),
       total,
       page,
       pageSize,
