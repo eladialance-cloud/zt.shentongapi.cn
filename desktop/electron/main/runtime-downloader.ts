@@ -17,6 +17,7 @@ import * as crypto from "node:crypto";
 import { createGunzip } from "node:zlib";
 import type { WriteStream } from "node:fs";
 import { getRuntimeRoot } from "./runtime-config";
+import { EMBEDDED_MANIFEST } from "./runtime-manifest-embedded";
 import type { ServiceName } from "../shared/types";
 
 export interface DownloadProgress {
@@ -88,7 +89,8 @@ function readBuiltinManifest(): RuntimeManifest | null {
     "[runtime-downloader] read builtin manifest failed, candidates:",
     builtinManifestCandidates(),
   );
-  return null;
+  // 文件缺失（打包遗漏）时使用代码内嵌兜底副本，保证下载始终可用
+  return EMBEDDED_MANIFEST as RuntimeManifest;
 }
 
 /** 当前运行时根目录（默认 userData/runtime，可被用户自定义） */
@@ -405,6 +407,31 @@ function extractTarGz(
   });
 }
 
+
+/**
+ * 清理历史遗留的下载临时文件（.tmp 目录）
+ *
+ * 旧版本 App 卸载/升级时不会清理 userData/runtime/.tmp，残留的半成品压缩包
+ * 可能因版本/大小不一致导致续传校验失败。应用启动时调用一次，
+ * 让所有服务从头开始干净下载（CDN 带宽充足，续传收益有限）。
+ */
+export function cleanupStaleTempFiles(): void {
+  const dir = tmpDir();
+  try {
+    if (!fs.existsSync(dir)) return;
+    for (const item of fs.readdirSync(dir)) {
+      const p = path.join(dir, item);
+      try {
+        fs.rmSync(p, { recursive: true, force: true });
+      } catch (err) {
+        console.warn(`[runtime-downloader] cleanup tmp ${p} failed:`, err);
+      }
+    }
+    console.log("[runtime-downloader] stale temp files cleaned:", dir);
+  } catch (err) {
+    console.warn("[runtime-downloader] cleanup .tmp failed:", err);
+  }
+}
 export async function download(
   name: ServiceName,
   onProgress?: (progress: DownloadProgress) => void,

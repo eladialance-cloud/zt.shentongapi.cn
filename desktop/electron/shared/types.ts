@@ -59,6 +59,10 @@ export interface RuntimeManifestEntry {
   downloadUrl: Record<string, string>;
   /** 平台-架构 -> SHA-256 哈希（构建期填充，空字符串表示未填充） */
   sha256: Record<string, string>;
+  /** 服务类型（local = 本地运行时） */
+  type?: string;
+  /** 平台-架构 -> 归档大小（字节，构建期填充） */
+  size?: Record<string, number>;
 }
 
 /** runtime/manifest.json 的类型结构 */

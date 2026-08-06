@@ -17,6 +17,7 @@ import * as fs from "node:fs";
 import * as crypto from "node:crypto";
 import { execSync } from "node:child_process";
 import { getRuntimeRoot } from "./runtime-config";
+import { EMBEDDED_MANIFEST } from "./runtime-manifest-embedded";
 import type {
   ServiceName,
   RuntimeManifest,
@@ -107,12 +108,13 @@ function compareSemver(a: string, b: string): number {
 }
 
 /**
- * 比较两个 manifest 的服务版本，返回较新者（Task 9.1）
+ * 比较两个 manifest 的服务版本，返回较新者
  *
  * - 两者都为 null → null
  * - 其中一个为 null → 返回另一个
  * - 两者都存在 → 比较 manifest.version 字段（语义化版本比较），返回较大者
- * - 版本相等时优先返回 userData（保留补丁优先语义）
+ * - 版本相等时以 builtin 为准（内置清单是当前安装包权威来源，
+ *   避免旧版本残留的 userData manifest（版本号相同但字段过时）遮蔽当前构建条目）
  */
 export function pickNewerManifest(
   builtin: RuntimeManifest | null,
@@ -125,7 +127,9 @@ export function pickNewerManifest(
   const cmp = compareSemver(builtin.version, userData.version);
   // builtin 更新（例如 electron-updater 更新后自带新 runtime）
   if (cmp > 0) return builtin;
-  // userData 版本 >= builtin → 用 userData（补丁优先）
+  // 版本相等：以 builtin 为准（内置清单是当前安装包权威来源）
+  if (cmp === 0) return builtin;
+  // userData 严格更新（补丁优先）
   return userData;
 }
 
@@ -157,6 +161,51 @@ export function loadManifest(): RuntimeManifest | null {
     path.join(getUserDataRuntimePath(), "manifest.json"),
   );
   return pickNewerManifest(builtin, userData);
+}
+
+/**
+ * 读取内置 manifest（打包 extraResources / app.asar / 开发目录依次尝试）
+ */
+function readBuiltinManifest(): RuntimeManifest | null {
+  const candidates: string[] = [];
+  if (app.isPackaged) {
+    candidates.push(
+      path.join(process.resourcesPath, "runtime", "manifest.json"),
+    );
+    candidates.push(path.join(__dirname, "..", "..", "runtime", "manifest.json"));
+  } else {
+    candidates.push(path.join(getBuiltinRuntimePath(), "manifest.json"));
+  }
+  for (const p of candidates) {
+    const m = readManifestFile(p);
+    if (m) return m;
+  }
+  // 文件缺失（打包遗漏）时使用代码内嵌兜底副本，保证下载/校验始终可用
+  return EMBEDDED_MANIFEST;
+}
+
+/**
+ * 计算某服务在 userData 与 builtin manifest 中的版本差
+ *
+ * 返回 userDataVersion 相对 builtinVersion 的语义化比较：
+ * - 负数：userData 版本过旧（旧版本 App 残留，应重装该服务运行时）
+ * - 0：版本一致
+ * - 正数：userData 是补丁更新（保留，不强制重装）
+ * 任一侧缺失该服务时返回 null（无法比较）
+ */
+export function getServiceVersionGap(
+  name: ServiceName,
+): number | null {
+  const builtin = readBuiltinManifest();
+  if (!builtin) return null;
+  const userData = readManifestFile(
+    path.join(getUserDataRuntimePath(), "manifest.json"),
+  );
+  if (!userData) return null;
+  const b = builtin.services?.[name]?.version;
+  const u = userData.services?.[name]?.version;
+  if (!b || !u) return null;
+  return compareSemver(u, b);
 }
 
 /**
@@ -221,12 +270,17 @@ export function resolve(name: ServiceName): ResolvedRuntime | null {
 }
 
 /**
- * 校验服务运行时完整性（SHA-256）
+ * 校验服务运行时完整性
  *
- * - 读取 manifest 中该服务的 sha256[platform-arch]
- * - 空字符串（构建期未填充）→ 返回 true（开发环境兼容，跳过校验）
- * - 否则计算入口文件 SHA-256 并比对
- * - 仅校验 builtin/userData 来源的文件，host 来源无可校验文件
+ * 注意：manifest 中的 sha256[platform-arch] 是 CDN 压缩包（tar.gz）的哈希，
+ * 不是解压后入口文件的哈希，因此不能把入口文件与 sha256 直接比对
+ * （历史上该错误导致所有服务永远“校验不通过”，下载完成后仍提示失败）。
+ *
+ * 校验逻辑（对 builtin/userData 来源）：
+ * 1. 入口文件存在（manifest entry[platform]）
+ * 2. 自带 node 运行时存在（runtime/<service>/node/node.exe 或 node/node）
+ * 3. 若 manifest 提供可选的 entrySha256[platform-arch]，再比对入口文件哈希
+ * host 来源（宿主机命令回退）无本地文件可校验，直接视为可用。
  */
 export async function verifyIntegrity(name: ServiceName): Promise<boolean> {
   const manifest = loadManifest();
@@ -236,21 +290,33 @@ export async function verifyIntegrity(name: ServiceName): Promise<boolean> {
   if (!serviceEntry) return false;
 
   const platformKey = `${process.platform}-${process.arch}`;
-  const expectedHash = serviceEntry.sha256[platformKey];
-
-  // 构建期未填充：跳过校验
-  if (!expectedHash) return true;
 
   // 解析入口文件路径（仅 builtin / userData 来源有效）
   const resolved = resolve(name);
-  if (!resolved || resolved.source === "host") {
-    // 期望有内置文件但未找到
-    return false;
-  }
+  if (!resolved) return false;
+  if (resolved.source === "host") return true;
 
   try {
-    const actualHash = await computeFileSha256(resolved.cmd);
-    return actualHash === expectedHash;
+    // 1. 入口文件存在
+    if (!fs.existsSync(resolved.cmd)) return false;
+    // 2. 自带 node 运行时存在
+    const runtimeDir = path.dirname(resolved.cmd);
+    const nodeBin = path.join(
+      runtimeDir,
+      "node",
+      process.platform === "win32" ? "node.exe" : "node",
+    );
+    if (!fs.existsSync(nodeBin)) return false;
+    // 3. 可选的入口文件哈希校验（manifest 未提供则跳过）
+    const serviceWithEntryHash = serviceEntry as typeof serviceEntry & {
+      entrySha256?: Record<string, string>;
+    };
+    const entrySha = serviceWithEntryHash.entrySha256?.[platformKey];
+    if (entrySha) {
+      const actualHash = await computeFileSha256(resolved.cmd);
+      if (actualHash !== entrySha) return false;
+    }
+    return true;
   } catch {
     return false;
   }

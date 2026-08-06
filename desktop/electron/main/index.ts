@@ -22,7 +22,7 @@ import { getDeviceFingerprint } from './device'
 import { localDb } from './local-db'
 import { getOrCreateSalt, deriveDbKey } from './local-db/crypto'
 import { verifyAll, verifyIntegrity } from './runtime-resolver'
-import { download as downloadRuntime, cancelDownload } from './runtime-downloader'
+import { download as downloadRuntime, cancelDownload, cleanupStaleTempFiles } from './runtime-downloader'
 import type { ServiceName, SyncQueueItem, SyncQueueRow } from '../shared/types'
 
 // 日志落盘：主进程 console 输出同步写入 userData/logs/main.log，便于远程排查
@@ -59,6 +59,8 @@ if (!gotLock) {
   })
 
   app.whenReady().then(() => {
+    // 清理旧版本遗留的下载临时文件（避免残留半成品导致“运行时下载失败”）
+    cleanupStaleTempFiles()
     app.setAppUserModelId('com.shentong.ai')
 
     const mainWindow = createMainWindow(serviceManager, isDev)

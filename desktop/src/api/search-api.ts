@@ -34,7 +34,7 @@ export const DEFAULT_CATEGORIES: SearchCategory[] = [
   { key: 'agent', label: 'AI员工', enabled: true, routePath: '/agents/:id' },
   { key: 'skill', label: '技能', enabled: true, routePath: '/skill-market' },
   { key: 'knowledge', label: '知识库', enabled: true, routePath: '/knowledge/search' },
-  { key: 'workflow', label: '工作流', enabled: true, routePath: '/workflows/:id' }
+  { key: 'workflow', label: '工作流', enabled: true, routePath: '/workflow/:id' }
 ]
 
 /** localStorage 缓存 key */

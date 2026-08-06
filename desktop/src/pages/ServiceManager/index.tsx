@@ -124,7 +124,13 @@ export default function ServiceManager() {
 
   // 加载运行时下载安装位置（失败时展示原因，可重试）
   const loadRuntimeDir = useCallback(() => {
-    void getRuntimeDir()
+    // 主进程获取磁盘信息（statfs）在异常磁盘/网络盘上可能长时间阻塞，
+    // 加 8s 超时兜底：超时展示默认位置并提示可重试，避免界面永远“加载中”
+    const timeout = new Promise<never>((_, reject) => {
+      const t = setTimeout(() => reject(new Error("获取磁盘信息超时，已回退默认位置")), 8000);
+      if (typeof (t as unknown as { unref?: () => void }).unref === "function") (t as unknown as { unref: () => void }).unref();
+    });
+    void Promise.race([getRuntimeDir(), timeout])
       .then((info) => {
         setRuntimeDir(info);
         setRuntimeDirError(info.error ? String(info.error) : null);

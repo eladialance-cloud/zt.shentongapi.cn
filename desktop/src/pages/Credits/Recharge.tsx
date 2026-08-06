@@ -25,6 +25,7 @@ import {
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { getRechargePlans, createRecharge } from '@/api/credits-api'
+import { BusinessError } from '@/utils/errors'
 import type {
   RechargePlan,
   PaymentMethod,
@@ -61,7 +62,7 @@ export default function Recharge() {
       }
     } catch (err) {
       console.error('[Recharge] load plans failed:', err)
-      message.error('加载套餐失败')
+      message.error(err instanceof BusinessError ? err.message : '加载套餐失败')
     } finally {
       setLoading(false)
     }
@@ -82,7 +83,7 @@ export default function Recharge() {
       message.success('订单已创建，请完成支付')
     } catch (err) {
       console.error('[Recharge] create order failed:', err)
-      message.error('创建订单失败')
+      message.error(err instanceof BusinessError ? err.message : '创建订单失败')
     } finally {
       setSubmitting(false)
     }

@@ -21,7 +21,8 @@ import type {
   ServiceEnvCheck,
   ServiceErrorPayload
 } from '../shared/types'
-import { resolve, verifyAll } from './runtime-resolver'
+import { resolve, verifyAll, getServiceVersionGap } from './runtime-resolver'
+import treeKill from 'tree-kill'
 import { getRuntimeRoot } from './runtime-config'
 
 interface ServiceDef {
@@ -240,6 +241,12 @@ export class ServiceManager extends EventEmitter {
   private lastCpuSample: Map<ServiceName, { time: number; cpuMs: number }> = new Map()
   /** metrics 采样定时器 */
   private metricsTimer: NodeJS.Timeout | null = null
+  /** 各服务最近一次启动的子进程输出（stdout+stderr 尾部），用于失败时展示真实原因 */
+  private serviceOutputs: Map<ServiceName, string> = new Map()
+  /** n8n 原生依赖修复标记（一次运行内最多自动修复一次，重新下载后重置） */
+  private n8nRepairAttempted = false
+  /** MCP 依赖链自愈冷却时间戳 */
+  private lastMcpRetryTs = 0
 
   constructor() {
     super()
@@ -254,16 +261,74 @@ export class ServiceManager extends EventEmitter {
     this.startMetricsSampler()
   }
 
+  /** 追加子进程输出（滚动保留尾部，供失败时展示真实原因） */
+  private appendServiceOutput(name: ServiceName, text: string): void {
+    const prev = this.serviceOutputs.get(name) ?? ''
+    this.serviceOutputs.set(name, (prev + text).slice(-6000))
+  }
+
+  private getServiceOutput(name: ServiceName): string {
+    return this.serviceOutputs.get(name) ?? ''
+  }
+
+  private clearServiceOutput(name: ServiceName): void {
+    this.serviceOutputs.delete(name)
+  }
+
+  /** 结束整个子进程树（Windows shell:true 下 kill 只杀 cmd.exe，node 子进程会成孤儿继续占用端口） */
+  private killProcessTree(pid: number | undefined): Promise<void> {
+    return new Promise((resolve) => {
+      if (!pid) {
+        resolve()
+        return
+      }
+      let settled = false
+      let done: () => void = () => {}
+      const timer = setTimeout(() => done(), 3000)
+      done = () => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve()
+      }
+      try {
+        treeKill(pid, 'SIGKILL', done)
+      } catch {
+        done()
+      }
+    })
+  }
+
   /** 启动每秒 metrics 采样 */
   private startMetricsSampler(): void {
     if (this.metricsTimer) return
     this.metricsTimer = setInterval(() => {
       void this.sampleAllMetrics()
+      void this.healDependencyChain()
     }, 1000)
     // 不阻止进程退出
     if (typeof this.metricsTimer.unref === 'function') {
       this.metricsTimer.unref()
     }
+  }
+
+  /**
+   * 依赖链自愈：MCP Gateway 依赖 OpenClaw 的 SSE 后端。
+   * mcp-gateway 在后端不可达时会直接退出（code=1）且自身不重试，
+   * 因此当 OpenClaw 已就绪而 MCP 处于错误态时自动重新拉起（带冷却避免空转）。
+   */
+  private healDependencyChain(): void {
+    const openclaw = this.services.get('openclaw')
+    const mcp = this.services.get('mcp')
+    if (!openclaw || !mcp) return
+    if (openclaw.status !== 'running') return
+    if (mcp.status === 'running' || mcp.status === 'starting') return
+    if (this.intentionalStop.has('mcp')) return
+    const now = Date.now()
+    if (now - this.lastMcpRetryTs < 15000) return
+    this.lastMcpRetryTs = now
+    console.log('[service-manager] OpenClaw 已就绪但 MCP 未运行，自动重试启动 MCP Gateway')
+    void this.start('mcp')
   }
 
   /** 采样所有运行中服务的 CPU/内存 */
@@ -341,8 +406,44 @@ export class ServiceManager extends EventEmitter {
     this.restartCounts.delete(name)
     this.intentionalStop.delete(name)
 
+    // 旧版本 App 残留的 userData 运行时（服务版本 < 内置清单版本）：直接重装，
+    // 避免用旧版/损坏的运行时光启动（这正是“卸载重装后仍报运行时失败”的根因之一）
+    if (!this.autoInstallAttempted.has(name)) {
+      const gap = getServiceVersionGap(name)
+      if (gap !== null && gap < 0) {
+        console.log(`[service-manager] ${name} userData 运行时版本过旧（版本差 ${gap}），自动重装后再启动`)
+        this.autoInstallAttempted.add(name)
+        try {
+          const reinstalled = await this.install(name)
+          if (reinstalled) return await isPortListening(info.port)
+        } finally {
+          this.autoInstallAttempted.delete(name)
+        }
+      }
+    }
+
     try {
       const result = await this.spawnService(name, info)
+
+      // n8n 原生依赖缺失修复：sqlite3 NAPI 预编译库缺失时 n8n 启动即退出（code=1）
+      if (!result && name === 'n8n' && !this.n8nRepairAttempted) {
+        const binding = path.join(getRuntimeRoot(), 'n8n', 'node_modules', 'sqlite3', 'build', 'Release', 'node_sqlite3.node')
+        const output = this.getServiceOutput(name)
+        if (
+          !fs.existsSync(binding) ||
+          /SQLite package has not been found|DriverPackageNotInstalledError|initializing DB/i.test(output)
+        ) {
+          this.n8nRepairAttempted = true
+          console.log('[service-manager] n8n 启动失败且 sqlite3 原生依赖缺失，开始自动修复...')
+          const repaired = await this.repairN8nNativeDeps()
+          if (repaired) {
+            console.log('[service-manager] n8n 原生依赖修复完成，自动重试启动')
+            const retry = await this.spawnService(name, info)
+            if (retry) return true
+          }
+        }
+      }
+
       // start 失败且未触发过自动安装：尝试 install（install 内部会 download + start）
       if (!result && !this.autoInstallAttempted.has(name)) {
         this.autoInstallAttempted.add(name)
@@ -419,6 +520,9 @@ export class ServiceManager extends EventEmitter {
           ? ['serve', '--port', String(info.port), '--host', '127.0.0.1', '--skip-build']
           : resolved.args
 
+    // 每次启动前清空上一次的输出缓存
+    this.clearServiceOutput(name)
+
     let child: ChildProcess
     try {
       // Windows 下 .cmd/.bat 必须经 cmd.exe 执行；路径可能含空格/中文，
@@ -460,13 +564,15 @@ export class ServiceManager extends EventEmitter {
     }
 
     child.stdout?.on('data', (chunk: Buffer) => {
-      const text = chunk.toString().trim()
-      if (text) console.log(`[${name}] ${text}`)
+      const text = chunk.toString()
+      if (text.trim()) console.log(`[${name}] ${text.trim()}`)
+      this.appendServiceOutput(name, text)
       checkMcpOutputReady(text)
     })
     child.stderr?.on('data', (chunk: Buffer) => {
-      const text = chunk.toString().trim()
-      if (text) console.warn(`[${name}] ${text}`)
+      const text = chunk.toString()
+      if (text.trim()) console.warn(`[${name}] ${text.trim()}`)
+      this.appendServiceOutput(name, text)
       checkMcpOutputReady(text)
     })
 
@@ -499,21 +605,25 @@ export class ServiceManager extends EventEmitter {
         return
       }
 
+      // 真实失败原因：子进程 stdout/stderr 尾部（如 n8n sqlite3 缺失、openclaw 端口冲突等）
+      const output = this.getServiceOutput(name).trim()
+      const detail = output ? `\n${output.slice(-1500)}` : ''
+
       // 非主动退出：运行中异常退出才自动重启；启动阶段失败给出可操作的错误提示
       if (wasRunning) {
         info.status = 'error'
         info.error =
           name === 'mcp'
-            ? `MCP Gateway 异常退出 (code=${code})：需要可用的 SSE 后端（OpenClaw 或云端 MCP 服务），请确认服务链已就绪`
-            : `进程异常退出 (code=${code} signal=${signal})`
+            ? `MCP Gateway 异常退出 (code=${code})：需要可用的 SSE 后端（OpenClaw 或云端 MCP 服务），请确认服务链已就绪${detail}`
+            : `进程异常退出 (code=${code} signal=${signal})${detail}`
         this.emitStatus(name)
         void this.tryAutoRestart(name)
       } else {
         info.status = 'error'
         info.error =
           name === 'mcp'
-            ? `MCP Gateway 启动失败：无法连接 SSE 后端（code=${code}），请先启动 OpenClaw 或配置云端 MCP 服务`
-            : `${info.displayName} 启动失败（code=${code} signal=${signal}），可点击“修复”重新安装运行时`
+            ? `MCP Gateway 启动失败：无法连接 SSE 后端（code=${code}），请先启动 OpenClaw 或配置云端 MCP 服务${detail}`
+            : `${info.displayName} 启动失败（code=${code} signal=${signal}），可点击“修复”重新安装运行时${detail}`
         this.emitStatus(name)
       }
     })
@@ -608,23 +718,9 @@ export class ServiceManager extends EventEmitter {
       try {
         child.removeAllListeners('exit')
         child.removeAllListeners('error')
-        const exited = new Promise<boolean>((resolve) => {
-          child.once('exit', () => resolve(true))
-          setTimeout(() => {
-            try {
-              child.kill('SIGKILL')
-            } catch {
-              // ignore
-            }
-            resolve(true)
-          }, 5000)
-        })
-        try {
-          child.kill('SIGTERM')
-        } catch {
-          // ignore
-        }
-        await exited
+        // 结束整个进程树：Windows 下 spawn(shell:true) 的 child 只是 cmd.exe，
+        // kill 它只会留下 node 孤儿进程继续占用端口，导致下次启动失败
+        await this.killProcessTree(child.pid)
       } catch (err) {
         console.warn(`[service-manager] stop ${name} kill failed:`, err)
       } finally {
@@ -632,6 +728,7 @@ export class ServiceManager extends EventEmitter {
         this.lastCpuSample.delete(name)
       }
     }
+    this.clearServiceOutput(name)
 
     info.status = 'stopped'
     info.pid = undefined
@@ -689,6 +786,14 @@ export class ServiceManager extends EventEmitter {
         this.emitStatus(name)
         return false
       }
+      // 下载成功：重置原生依赖修复标记
+      if (name === 'n8n') {
+        this.n8nRepairAttempted = false
+      }
+      // 下载后补齐原生依赖（n8n sqlite3 NAPI 预编译库），缺失时 n8n 启动即退出
+      if (name === 'n8n') {
+        await this.repairN8nNativeDeps()
+      }
       // 下载成功后自动启动
       return await this.start(name)
     } catch (err) {
@@ -697,6 +802,61 @@ export class ServiceManager extends EventEmitter {
       this.emitStatus(name)
       return false
     }
+  }
+
+  /**
+   * 修复 N8N 原生依赖：sqlite3 的 NAPI 预编译库（node_sqlite3.node）缺失时，
+   * n8n 启动即退出（code=1, "SQLite package has not been found installed"）。
+   * 通过 prebuild-install 从 GitHub 下载 NAPI 预编译库（与 node 版本无关）。
+   */
+  private async repairN8nNativeDeps(): Promise<boolean> {
+    const n8nDir = path.join(getRuntimeRoot(), 'n8n')
+    const binding = path.join(n8nDir, 'node_modules', 'sqlite3', 'build', 'Release', 'node_sqlite3.node')
+    if (fs.existsSync(binding)) return true
+
+    const nodeExe = path.join(n8nDir, 'node', process.platform === 'win32' ? 'node.exe' : 'node')
+    const prebuildBin = path.join(n8nDir, 'node_modules', 'prebuild-install', 'bin.js')
+    const sqliteDir = path.join(n8nDir, 'node_modules', 'sqlite3')
+    if (!fs.existsSync(nodeExe) || !fs.existsSync(prebuildBin) || !fs.existsSync(sqliteDir)) {
+      console.warn('[service-manager] n8n 原生依赖修复前置条件不满足（运行时不完整）')
+      return false
+    }
+
+    console.log('[service-manager] n8n sqlite3 原生依赖缺失，正在下载 NAPI 预编译库（需要网络）...')
+    try {
+      await new Promise<void>((resolve) => {
+        const child = spawn(nodeExe, [prebuildBin, '-r', 'napi'], {
+          cwd: sqliteDir,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true
+        })
+        let out = ''
+        const done = () => resolve()
+        child.stdout?.on('data', (d: Buffer) => { out += d.toString() })
+        child.stderr?.on('data', (d: Buffer) => { out += d.toString() })
+        child.on('close', (code) => {
+          if (code !== 0) console.warn(`[service-manager] prebuild-install exit=${code} output=${out.slice(-800)}`)
+          done()
+        })
+        child.on('error', (err) => {
+          console.warn('[service-manager] prebuild-install 启动失败:', err)
+          done()
+        })
+        const timer = setTimeout(() => {
+          console.warn('[service-manager] n8n 原生依赖下载超时，放弃自动修复')
+          void this.killProcessTree(child.pid)
+          done()
+        }, 150000)
+        if (typeof timer.unref === 'function') timer.unref()
+      })
+    } catch (err) {
+      console.warn('[service-manager] n8n 原生依赖下载失败:', err)
+      return false
+    }
+
+    const ok = fs.existsSync(binding)
+    console.log(`[service-manager] n8n sqlite3 原生依赖修复${ok ? '成功' : '失败'}`)
+    return ok
   }
 
   // K2 修复：四个服务存在启动依赖链（MCP 依赖 OpenClaw 端口就绪，Hermes 依赖 MCP 端口就绪），

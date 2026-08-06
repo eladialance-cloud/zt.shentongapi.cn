@@ -68,7 +68,7 @@ function buildRoutePath(item: SearchResultItem, query: string): string {
     case 'agent':      return `/agents/${item.id}`
     case 'skill':      return '/skill-market'
     case 'knowledge':  return `/knowledge/search?q=${encodeURIComponent(query)}`
-    case 'workflow':   return `/workflows/${item.id}`
+    case 'workflow':   return `/workflow/${item.id}`
     default:           return '/dashboard'
   }
 }
