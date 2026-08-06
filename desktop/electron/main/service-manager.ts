@@ -19,7 +19,8 @@ import type {
   ServiceStatus,
   ServiceInfo,
   ServiceEnvCheck,
-  ServiceErrorPayload
+  ServiceErrorPayload,
+  ResolvedRuntime
 } from '../shared/types'
 import { resolve, verifyAll, getServiceVersionGap, isServiceContentStale } from './runtime-resolver'
 import treeKill from 'tree-kill'
@@ -49,15 +50,6 @@ const N8N_ENV: NodeJS.ProcessEnv = {
   GENERIC_TIMEZONE: 'Asia/Shanghai'
 }
 
-/** MCP 子进程环境变量 */
-const MCP_ENV: NodeJS.ProcessEnv = {
-  ...process.env,
-  MCP_PORT: '3100',
-  MCP_HOST: '127.0.0.1',
-  // MCP Gateway 是协议转换器，必须知道后端 SSE 服务器地址
-  // 默认指向本地 OpenClaw 的 MCP SSE 端点；与 SERVICE_DEFS.openclaw.port 保持一致
-  MCP_SERVER_URL: `http://127.0.0.1:${SERVICE_DEFS.openclaw.port}/api/mcp/sse`
-}
 
 /**
  * Hermes API Server Key（生成并持久化到 userData）
@@ -115,6 +107,14 @@ function buildHermesEnv(): NodeJS.ProcessEnv {
 /** OpenClaw 数据目录（状态/配置隔离，避免写入默认 ~/.openclaw 导致权限或路径冲突） */
 function getOpenClawHome(): string {
   return path.join(app.getPath('userData'), 'openclaw-home')
+}
+
+/** MCP Gateway SSE 桥脚本路径（打包后位于 resources/mcp/，开发环境位于 desktop/resources/mcp/） */
+function getMcpBridgeScriptPath(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'mcp', 'mcp-gateway-server.js')
+  }
+  return path.join(process.cwd(), 'resources', 'mcp', 'mcp-gateway-server.js')
 }
 
 /** OpenClaw 子进程环境变量（每次启动实时构建，确保 OPENCLAW_HOME 目录已创建） */
@@ -313,8 +313,8 @@ export class ServiceManager extends EventEmitter {
   }
 
   /**
-   * 依赖链自愈：MCP Gateway 依赖 OpenClaw 的 SSE 后端。
-   * mcp-gateway 在后端不可达时会直接退出（code=1）且自身不重试，
+   * 依赖链自愈：MCP Gateway 依赖 OpenClaw 的 Gateway（WebSocket）后端。
+   * 桥进程在 OpenClaw 未就绪时启动会失败退出（code=1）且自身不重试，
    * 因此当 OpenClaw 已就绪而 MCP 处于错误态时自动重新拉起（带冷却避免空转）。
    */
   private healDependencyChain(): void {
@@ -498,48 +498,79 @@ export class ServiceManager extends EventEmitter {
       }
     }
 
-    const resolved = resolve(name)
-    if (!resolved) {
-      info.status = 'error'
-      info.error = '运行时未安装'
-      this.emitStatus(name)
-      return false
+    // MCP Gateway：本地 SSE 桥（不再依赖旧 mcp-gateway 包的远程 SSE 后端）。
+    // OpenClaw 2026.7.1 的 MCP 服务为 stdio 模式（openclaw mcp serve），
+    // 本应用以 ELECTRON_RUN_AS_NODE 启动内置桥脚本（resources/mcp/mcp-gateway-server.js），
+    // 将 OpenClaw 的 stdio MCP 桥接为本地 SSE 端点（默认 127.0.0.1:3100）。
+    let resolved: ResolvedRuntime | null = null
+    let spawnTarget: string
+    let spawnArgs: string[]
+    let spawnEnv: NodeJS.ProcessEnv
+    let useShell = process.platform === 'win32'
+
+    if (name === 'mcp') {
+      const openclaw = resolve('openclaw')
+      if (!openclaw) {
+        info.status = 'error'
+        info.error = 'MCP Gateway 启动失败：OpenClaw 运行时未安装，请先下载/修复 OpenClaw'
+        this.emitStatus(name)
+        return false
+      }
+      const bridgeScript = getMcpBridgeScriptPath()
+      spawnTarget = process.execPath
+      spawnArgs = [
+        bridgeScript,
+        '--port', String(info.port),
+        '--gateway-ws', `ws://127.0.0.1:${SERVICE_DEFS.openclaw.port}`,
+        '--openclaw-dir', path.dirname(openclaw.cmd),
+        '--openclaw-home', getOpenClawHome(),
+      ]
+      spawnEnv = { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+      useShell = false
+    } else {
+      resolved = resolve(name)
+      if (!resolved) {
+        info.status = 'error'
+        info.error = '运行时未安装'
+        this.emitStatus(name)
+        return false
+      }
+
+      // 合并环境变量：各服务专用 ENV 优先于 resolved.env
+      spawnEnv =
+        name === 'n8n' ? { ...resolved.env, ...N8N_ENV } :
+        name === 'hermes' ? { ...resolved.env, ...buildHermesEnv() } :
+        name === 'openclaw' ? { ...resolved.env, ...buildOpenClawEnv() } :
+        resolved.env
+
+      // 各服务启动参数：
+      // - openclaw：WebSocket Gateway 前台运行（openclaw 顶层没有 --port，必须用 gateway run --port）
+      // - hermes：headless backend server（serve），监听 127.0.0.1:<port>
+      spawnArgs =
+        name === 'openclaw'
+          ? ['gateway', 'run', '--port', String(info.port), '--bind', 'loopback', '--auth', 'none', '--force', '--allow-unconfigured']
+          : name === 'hermes'
+            ? ['serve', '--port', String(info.port), '--host', '127.0.0.1', '--skip-build']
+            : resolved.args
+
+      // Windows 下 .cmd/.bat 必须经 cmd.exe 执行；路径可能含空格/中文，
+      // 用双引号包裹命令路径，避免 cmd.exe 将路径截断为不存在的命令
+      const isCmdScript = process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolved.cmd)
+      // 路径含空格/中文时同样加引号（cmd.exe 会按空格截断命令路径）
+      const needsQuote = isCmdScript || (process.platform === 'win32' && /\s/.test(resolved.cmd))
+      spawnTarget = needsQuote ? '"' + resolved.cmd + '"' : resolved.cmd
     }
-
-    // 合并环境变量：各服务专用 ENV 优先于 resolved.env
-    const env =
-      name === 'n8n' ? { ...resolved.env, ...N8N_ENV } :
-      name === 'mcp' ? { ...resolved.env, ...MCP_ENV } :
-      name === 'hermes' ? { ...resolved.env, ...buildHermesEnv() } :
-      name === 'openclaw' ? { ...resolved.env, ...buildOpenClawEnv() } :
-      resolved.env
-
-    // 各服务启动参数：
-    // - openclaw：WebSocket Gateway 前台运行（openclaw 顶层没有 --port，必须用 gateway run --port）
-    // - hermes：headless backend server（serve），监听 127.0.0.1:<port>
-    const spawnArgs =
-      name === 'openclaw'
-        ? ['gateway', 'run', '--port', String(info.port), '--bind', 'loopback', '--auth', 'none', '--force', '--allow-unconfigured']
-        : name === 'hermes'
-          ? ['serve', '--port', String(info.port), '--host', '127.0.0.1', '--skip-build']
-          : resolved.args
 
     // 每次启动前清空上一次的输出缓存
     this.clearServiceOutput(name)
 
     let child: ChildProcess
     try {
-      // Windows 下 .cmd/.bat 必须经 cmd.exe 执行；路径可能含空格/中文，
-      // 用双引号包裹命令路径，避免 cmd.exe 将路径截断为不存在的命令
-      const isCmdScript = process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolved.cmd)
-      // 路径含空格/中文时同样加引号（cmd.exe 会按空格截断命令路径）
-      const needsQuote = isCmdScript || (process.platform === 'win32' && /\s/.test(resolved.cmd))
-      const spawnTarget = needsQuote ? '"' + resolved.cmd + '"' : resolved.cmd
       child = spawn(spawnTarget, spawnArgs, {
-        env,
+        env: spawnEnv,
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
-        shell: process.platform === 'win32'
+        shell: useShell
       })
     } catch (err) {
       info.status = 'error'
@@ -618,7 +649,7 @@ export class ServiceManager extends EventEmitter {
         info.status = 'error'
         info.error =
           name === 'mcp'
-            ? `MCP Gateway 异常退出 (code=${code})：需要可用的 SSE 后端（OpenClaw 或云端 MCP 服务），请确认服务链已就绪${detail}`
+            ? `MCP Gateway 异常退出 (code=${code})：需要 OpenClaw Gateway 正在运行（MCP 桥依赖其 WebSocket），请确认服务链已就绪${detail}`
             : `进程异常退出 (code=${code} signal=${signal})${detail}`
         this.emitStatus(name)
         void this.tryAutoRestart(name)
@@ -626,7 +657,7 @@ export class ServiceManager extends EventEmitter {
         info.status = 'error'
         info.error =
           name === 'mcp'
-            ? `MCP Gateway 启动失败：无法连接 SSE 后端（code=${code}），请先启动 OpenClaw 或配置云端 MCP 服务${detail}`
+            ? `MCP Gateway 启动失败（code=${code}）：需要 OpenClaw 正在运行（MCP 桥依赖其 Gateway WebSocket）${detail}`
             : `${info.displayName} 启动失败（code=${code} signal=${signal}），可点击“修复”重新安装运行时${detail}`
         this.emitStatus(name)
       }
