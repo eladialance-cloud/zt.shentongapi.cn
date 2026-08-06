@@ -100,6 +100,8 @@ export default function ServiceManager() {
   const [progress, setProgress] = useState<Partial<Record<ServiceName, number>>>({});
   /** 运行时下载安装位置信息 */
   const [runtimeDir, setRuntimeDir] = useState<RuntimeDirInfo | null>(null);
+  /** 位置加载失败原因 */
+  const [runtimeDirError, setRuntimeDirError] = useState<string | null>(null);
   /** 正在选择目录 */
   const [choosingDir, setChoosingDir] = useState(false);
 
@@ -120,12 +122,23 @@ export default function ServiceManager() {
     void loadData();
   }, [loadData]);
 
-  // 加载运行时下载安装位置
-  useEffect(() => {
+  // 加载运行时下载安装位置（失败时展示原因，可重试）
+  const loadRuntimeDir = useCallback(() => {
     void getRuntimeDir()
-      .then(setRuntimeDir)
-      .catch(() => setRuntimeDir(null));
+      .then((info) => {
+        setRuntimeDir(info);
+        setRuntimeDirError(info.error ? String(info.error) : null);
+      })
+      .catch((err) => {
+        console.error("[ServiceManager] getRuntimeDir failed:", err);
+        setRuntimeDir(null);
+        setRuntimeDirError(err instanceof Error ? err.message : String(err));
+      });
   }, []);
+
+  useEffect(() => {
+    loadRuntimeDir();
+  }, [loadRuntimeDir]);
 
   // 监听状态变更事件，实时更新对应服务
   useEffect(() => {
@@ -295,11 +308,25 @@ export default function ServiceManager() {
       <div className={styles.locationBar}>
         <FolderOpenOutlined className={styles.locationIcon} />
         <span className={styles.locationLabel}>下载安装位置</span>
-        <Tooltip title={runtimeDir?.path ?? "-"}>
-          <span className={styles.locationPath}>
-            {runtimeDir?.path ?? "加载中..."}
+        {runtimeDirError ? (
+          <span className={styles.locationError}>
+            位置加载失败：{runtimeDirError}
+            <Button
+              size="small"
+              className={styles.locationBtn}
+              icon={<ReloadOutlined />}
+              onClick={() => void loadRuntimeDir()}
+            >
+              重试
+            </Button>
           </span>
-        </Tooltip>
+        ) : (
+          <Tooltip title={runtimeDir?.path ?? "-"}>
+            <span className={styles.locationPath}>
+              {runtimeDir?.path ?? "加载中..."}
+            </span>
+          </Tooltip>
+        )}
         <span className={styles.locationSpace}>
           {runtimeDir
             ? `剩余 ${formatBytes(runtimeDir.freeBytes)} / 共 ${formatBytes(runtimeDir.totalBytes)}`

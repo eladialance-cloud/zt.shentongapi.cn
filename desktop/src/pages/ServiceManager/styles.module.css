@@ -384,3 +384,16 @@
   font-size: 11px;
   color: var(--color-text-tertiary);
 }
+
+.locationError {
+  flex: 1;
+  min-width: 0;
+  color: #dc2626;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

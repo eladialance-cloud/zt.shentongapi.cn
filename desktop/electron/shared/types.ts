@@ -39,6 +39,8 @@ export interface RuntimeDirInfo {
   freeBytes: number;
   /** 所在磁盘总空间（字节） */
   totalBytes: number;
+  /** 获取目录信息失败时的错误信息（渲染层展示用） */
+  error?: string;
 }
 
 /** 选择运行时目录结果 */

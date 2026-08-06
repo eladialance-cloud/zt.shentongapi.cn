@@ -90,6 +90,8 @@ export interface RuntimeDirInfo {
   defaultPath: string;
   freeBytes: number;
   totalBytes: number;
+  /** 获取目录信息失败时的错误信息（渲染层展示用） */
+  error?: string;
 }
 
 /** 获取当前运行时目录及其所在磁盘空间 */
