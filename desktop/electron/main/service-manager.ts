@@ -21,7 +21,7 @@ import type {
   ServiceEnvCheck,
   ServiceErrorPayload
 } from '../shared/types'
-import { resolve, verifyAll, getServiceVersionGap } from './runtime-resolver'
+import { resolve, verifyAll, getServiceVersionGap, isServiceContentStale } from './runtime-resolver'
 import treeKill from 'tree-kill'
 import { getRuntimeRoot } from './runtime-config'
 
@@ -410,8 +410,9 @@ export class ServiceManager extends EventEmitter {
     // 避免用旧版/损坏的运行时光启动（这正是“卸载重装后仍报运行时失败”的根因之一）
     if (!this.autoInstallAttempted.has(name)) {
       const gap = getServiceVersionGap(name)
-      if (gap !== null && gap < 0) {
-        console.log(`[service-manager] ${name} userData 运行时版本过旧（版本差 ${gap}），自动重装后再启动`)
+      const contentStale = isServiceContentStale(name)
+      if ((gap !== null && gap < 0) || contentStale) {
+        console.log(`[service-manager] ${name} 运行时需重新安装（版本差 ${gap} / 内容指纹过期 ${contentStale}），自动重装后再启动`)
         this.autoInstallAttempted.add(name)
         try {
           const reinstalled = await this.install(name)

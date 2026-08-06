@@ -219,6 +219,35 @@ export function getServiceVersionGap(
  * 内置/userData 来源：cmd = 入口文件绝对路径，args = []
  * 宿主机来源：cmd = 命令名，args = 服务特定参数（n8n 用 ['start']，其他为 []）
  */
+/**
+ * 检查 userData 已安装的服务运行时内容是否与当前内置清单一致（内容指纹）。
+ *
+ * 目的：服务版本号相同但 CDN 内容已更新（如内置 node 版本升级）时，
+ * 单纯的"版本差"重装逻辑无法识别旧残留，需要按 sha256 指纹识别并强制重装。
+ * - 清单未提供 sha256（开发构建）→ 视为一致，不强制
+ * - 服务入口文件不存在（尚未安装）→ 视为无需重装（由下载/启动流程处理）
+ * - 指纹文件缺失（旧版本 App 下载的残留）或与清单不一致 → 视为过期，需重装
+ */
+export function isServiceContentStale(name: ServiceName): boolean {
+  const manifest = loadManifest();
+  if (!manifest) return false;
+  const service = manifest.services?.[name];
+  if (!service) return false;
+  const sha = service.sha256?.[`${process.platform}-${process.arch}`];
+  if (!sha) return false; // 开发构建未填充 sha，不强制
+  const entryFile = service.entry?.[process.platform];
+  if (!entryFile) return false;
+  const serviceDir = path.join(getUserDataRuntimePath(), name);
+  if (!fs.existsSync(path.join(serviceDir, entryFile))) return false; // 未安装
+  const markerPath = path.join(serviceDir, ".runtime-sha256");
+  try {
+    const marker = fs.readFileSync(markerPath, "utf-8").trim();
+    return marker !== sha;
+  } catch {
+    return true; // 无指纹记录（旧版下载残留）→ 视为过期，强制重装一次
+  }
+}
+
 export function resolve(name: ServiceName): ResolvedRuntime | null {
   const manifest = loadManifest();
 

@@ -549,6 +549,23 @@ export async function download(
       return false;
     }
 
+    // 记录本次下载的内容指纹（sha256）：供启动时识别"版本号相同但内容已更新"的旧残留，
+    // 缺失或不一致时强制重装，避免旧版运行时光（如内置 node 版本过旧）继续被使用
+    try {
+      const markerPath = path.join(destDir, ".runtime-sha256");
+      if (expectedSha256) {
+        fs.writeFileSync(markerPath, expectedSha256, "utf-8");
+      } else {
+        try {
+          fs.unlinkSync(markerPath);
+        } catch {
+          // ignore
+        }
+      }
+    } catch (err) {
+      console.warn(`[runtime-downloader] write sha marker for ${name} failed:`, err);
+    }
+
     // 更新 userData manifest（失败不阻断主流程）
     if (!updateLocalManifest(name, service.version, manifest)) {
       console.warn(
