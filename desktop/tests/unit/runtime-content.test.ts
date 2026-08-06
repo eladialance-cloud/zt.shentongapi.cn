@@ -9,7 +9,7 @@ jest.mock('electron', () => {
     }
   }
 })
-import { isServiceContentStale } from '../../electron/main/runtime-resolver'
+import { isServiceContentStale, loadManifest } from '../../electron/main/runtime-resolver'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
@@ -64,5 +64,22 @@ describe('isServiceContentStale 内容指纹校验', () => {
     ensureEntry()
     fs.writeFileSync(path.join(USERDATA_RT, SVC, '.runtime-sha256'), 'deadbeef', 'utf-8')
     expect(isServiceContentStale(SVC)).toBe(true)
+  })
+
+  test('内置清单文件缺失时回退到内嵌清单，旧指纹仍判定过期', () => {
+    const builtinPath = path.join(process.cwd(), 'runtime', 'manifest.json')
+    const backupPath = builtinPath + '.bak-test'
+    fs.renameSync(builtinPath, backupPath)
+    try {
+      ensureEntry()
+      fs.writeFileSync(path.join(USERDATA_RT, SVC, '.runtime-sha256'), 'deadbeef', 'utf-8')
+      const manifest = loadManifest()
+      expect(manifest).not.toBeNull()
+      const key = process.platform + '-' + process.arch
+      expect(manifest!.services[SVC].sha256[key]).toBeTruthy()
+      expect(isServiceContentStale(SVC)).toBe(true)
+    } finally {
+      fs.renameSync(backupPath, builtinPath)
+    }
   })
 })

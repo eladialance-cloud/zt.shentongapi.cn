@@ -157,6 +157,11 @@ export function loadManifest(): RuntimeManifest | null {
       break;
     }
   }
+  // 兜底：打包遗漏 manifest.json 时使用代码内嵌副本（与 readBuiltinManifest 一致），
+  // 避免 loadManifest 退化为返回旧版 userData 清单，导致内容指纹永远一致、无法触发重装
+  if (!builtin) {
+    builtin = EMBEDDED_MANIFEST as RuntimeManifest;
+  }
   const userData = readManifestFile(
     path.join(getUserDataRuntimePath(), "manifest.json"),
   );
