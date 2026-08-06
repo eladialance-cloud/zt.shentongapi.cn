@@ -417,6 +417,9 @@ export class ServiceManager extends EventEmitter {
         try {
           const reinstalled = await this.install(name)
           if (reinstalled) return await isPortListening(info.port)
+          // 重装失败：直接返回并暴露真实下载错误，
+          // 不再回退到宿主机命令（会掩盖问题，例如用系统旧 node 启动 OpenClaw）
+          return false
         } finally {
           this.autoInstallAttempted.delete(name)
         }
