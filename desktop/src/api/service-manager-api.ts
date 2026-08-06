@@ -16,7 +16,9 @@ import type {
   ServiceName,
   ServiceInfo,
   ServiceStatusChangedPayload,
-  ServiceErrorPayload
+  ServiceErrorPayload,
+  RuntimeDirInfo,
+  ChooseRuntimeDirResult
 } from '@/types/service-manager'
 import type { InstallProgressPayload } from '@shared/types'
 
@@ -68,6 +70,16 @@ export function onServiceStatusChanged(
 /** 安装/修复服务（下载运行时并启动） */
 export async function installService(name: ServiceName): Promise<boolean> {
   return getService().install(name)
+}
+
+/** 获取当前运行时下载安装位置（路径 + 磁盘空间） */
+export async function getRuntimeDir(): Promise<RuntimeDirInfo> {
+  return (await getService().getRuntimeDir()) as RuntimeDirInfo
+}
+
+/** 弹窗选择新的下载安装位置（方案 B：不迁移已下载内容） */
+export async function chooseRuntimeDir(): Promise<ChooseRuntimeDirResult> {
+  return (await getService().chooseRuntimeDir()) as ChooseRuntimeDirResult
 }
 
 /** 监听安装进度推送，返回取消监听函数 */

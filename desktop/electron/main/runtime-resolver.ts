@@ -16,6 +16,7 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import * as crypto from "node:crypto";
 import { execSync } from "node:child_process";
+import { getRuntimeRoot } from "./runtime-config";
 import type {
   ServiceName,
   RuntimeManifest,
@@ -38,9 +39,9 @@ function getBuiltinRuntimePath(): string {
   return path.join(process.cwd(), "runtime");
 }
 
-/** userData 运行时根目录：用于 CDN 下载的补丁版本 */
+/** 运行时根目录（默认 userData/runtime，可被用户自定义）：用于 CDN 下载的补丁版本 */
 function getUserDataRuntimePath(): string {
-  return path.join(app.getPath("userData"), "runtime");
+  return getRuntimeRoot();
 }
 
 /** 检测宿主机命令是否存在：Windows 用 where，Linux/Mac 用 which */
@@ -134,9 +135,24 @@ export function pickNewerManifest(
  * 解析失败返回 null
  */
 export function loadManifest(): RuntimeManifest | null {
-  const builtin = readManifestFile(
-    path.join(getBuiltinRuntimePath(), "manifest.json"),
-  );
+  // 内置清单候选路径（extraResources / app.asar / 开发目录）
+  const candidates: string[] = [];
+  if (app.isPackaged) {
+    candidates.push(
+      path.join(process.resourcesPath, "runtime", "manifest.json"),
+    );
+    candidates.push(path.join(__dirname, "..", "..", "runtime", "manifest.json"));
+  } else {
+    candidates.push(path.join(getBuiltinRuntimePath(), "manifest.json"));
+  }
+  let builtin: RuntimeManifest | null = null;
+  for (const p of candidates) {
+    const m = readManifestFile(p);
+    if (m) {
+      builtin = m;
+      break;
+    }
+  }
   const userData = readManifestFile(
     path.join(getUserDataRuntimePath(), "manifest.json"),
   );

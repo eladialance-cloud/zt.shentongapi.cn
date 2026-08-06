@@ -9,6 +9,7 @@ files:
   - dist/preload/**/*
   - dist/renderer/**/*
   - package.json
+  - runtime/manifest.json
   - "!**/*.{ts,tsx,map}"
   - "!src/**"
   - "!electron/**"
@@ -31,9 +32,8 @@ nodeGypRebuild: false
 extraResources:
   - from: resources/
     to: resources/
-  - from: runtime/
-    to: runtime/
-    filter: ["manifest.json"]
+  - from: runtime/manifest.json
+    to: runtime/manifest.json
 win:
   target:
     - target: nsis

@@ -7,5 +7,7 @@ export type {
   ServiceInfo,
   ServiceEnvCheck,
   ServiceStatusChangedPayload,
-  ServiceErrorPayload
+  ServiceErrorPayload,
+  RuntimeDirInfo,
+  ChooseRuntimeDirResult
 } from '@shared/types'

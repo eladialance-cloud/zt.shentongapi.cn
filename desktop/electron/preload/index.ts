@@ -26,6 +26,8 @@ const electronAPI: ElectronAPI = {
     restart: (name: ServiceName) => ipcRenderer.invoke('service:restart', name),
     checkEnv: () => ipcRenderer.invoke('service:checkEnv'),
     install: (name: ServiceName) => ipcRenderer.invoke('service:install', name),
+    getRuntimeDir: () => ipcRenderer.invoke('service:get-runtime-dir'),
+    chooseRuntimeDir: () => ipcRenderer.invoke('service:set-runtime-dir'),
     onInstallProgress: (callback: (payload: InstallProgressPayload) => void) => {
       const handler = (
         _event: IpcRendererEvent,

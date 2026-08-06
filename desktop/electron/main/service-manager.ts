@@ -22,6 +22,7 @@ import type {
   ServiceErrorPayload
 } from '../shared/types'
 import { resolve, verifyAll } from './runtime-resolver'
+import { getRuntimeRoot } from './runtime-config'
 
 interface ServiceDef {
   displayName: string
@@ -663,8 +664,7 @@ export class ServiceManager extends EventEmitter {
     await this.stop(name)
 
     // 删除旧运行时目录，避免旧文件冲突
-    const { app } = await import('electron')
-    const runtimeDir = path.join(app.getPath('userData'), 'runtime', name)
+    const runtimeDir = path.join(getRuntimeRoot(), name)
     try {
       fs.rmSync(runtimeDir, { recursive: true, force: true })
     } catch (err) {
@@ -672,7 +672,7 @@ export class ServiceManager extends EventEmitter {
     }
 
     try {
-      const { download } = await import('./runtime-downloader')
+      const { download, getLastDownloadError } = await import('./runtime-downloader')
       const ok = await download(name, (progress) => {
         onProgress?.(progress.percent)
         // 推送安装进度事件
@@ -685,7 +685,7 @@ export class ServiceManager extends EventEmitter {
       })
       if (!ok) {
         info.status = 'error'
-        info.error = '运行时下载失败'
+        info.error = getLastDownloadError(name) ?? '运行时下载失败'
         this.emitStatus(name)
         return false
       }

@@ -330,6 +330,19 @@ jobs:
           }
         shell: pwsh
 
+      # ===== 12a. Verify packaged runtime manifest =====
+      # 防回归：extraResources 打包失败会导致运行时下载全部失败（2026-08-06 事故根因）
+      - name: ✅ Verify packaged runtime manifest
+        shell: pwsh
+        run: |
+          $manifest = "dist\installer\win-unpacked\resources\runtime\manifest.json"
+          if (-not (Test-Path $manifest)) {
+            Write-Host "::error::缺少 resources/runtime/manifest.json - 运行时下载将全部失败"
+            Get-ChildItem "dist\installer" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  - $($_.Name)" }
+            exit 1
+          }
+          Write-Host "✅ packaged manifest: $manifest ($((Get-Item $manifest).Length) bytes)"
+
       # ===== 12b. Rename zip artifacts =====
       - name: 🏷️ Rename zip artifacts
         run: |

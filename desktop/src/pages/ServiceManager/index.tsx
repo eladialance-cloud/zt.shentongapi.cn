@@ -25,6 +25,7 @@ import {
   ApartmentOutlined,
   ApiOutlined,
   DownloadOutlined,
+  FolderOpenOutlined,
 } from "@ant-design/icons";
 import {
   listServices,
@@ -35,11 +36,14 @@ import {
   onServiceError,
   installService,
   onInstallProgress,
+  getRuntimeDir,
+  chooseRuntimeDir,
 } from "@/api/service-manager-api";
 import type {
   ServiceName,
   ServiceInfo,
   ServiceStatus,
+  RuntimeDirInfo,
 } from "@/types/service-manager";
 import styles from "./styles.module.css";
 
@@ -71,6 +75,19 @@ function formatTime(value: string | undefined | null): string {
   return d.toLocaleString("zh-CN", { hour12: false });
 }
 
+/** 格式化字节数 */
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return "-";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${value.toFixed(value >= 100 ? 0 : 1)} ${units[unit]}`;
+}
+
 export default function ServiceManager() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -81,6 +98,10 @@ export default function ServiceManager() {
   const [installing, setInstalling] = useState<Set<ServiceName>>(new Set());
   /** 安装进度（0-100） */
   const [progress, setProgress] = useState<Partial<Record<ServiceName, number>>>({});
+  /** 运行时下载安装位置信息 */
+  const [runtimeDir, setRuntimeDir] = useState<RuntimeDirInfo | null>(null);
+  /** 正在选择目录 */
+  const [choosingDir, setChoosingDir] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -98,6 +119,13 @@ export default function ServiceManager() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // 加载运行时下载安装位置
+  useEffect(() => {
+    void getRuntimeDir()
+      .then(setRuntimeDir)
+      .catch(() => setRuntimeDir(null));
+  }, []);
 
   // 监听状态变更事件，实时更新对应服务
   useEffect(() => {
@@ -201,6 +229,26 @@ export default function ServiceManager() {
     }
   };
 
+  /** 更改运行时下载安装位置（方案 B：不迁移已下载内容） */
+  const handleChooseDir = async () => {
+    setChoosingDir(true);
+    try {
+      const result = await chooseRuntimeDir();
+      if (result.ok) {
+        message.success(`下载安装位置已更新：${result.path}`);
+        const info = await getRuntimeDir();
+        setRuntimeDir(info);
+      } else if (!result.canceled) {
+        message.error(`设置失败：${result.error ?? "未知错误"}`);
+      }
+    } catch (err) {
+      console.error("[ServiceManager] choose dir failed:", err);
+      message.error(`设置失败：${(err as Error).message}`);
+    } finally {
+      setChoosingDir(false);
+    }
+  };
+
   const handleInstall = async (name: ServiceName) => {
     setInstalling((prev) => new Set(prev).add(name));
     setProgress((prev) => ({ ...prev, [name]: 0 }));
@@ -241,6 +289,34 @@ export default function ServiceManager() {
         >
           返回主页
         </Button>
+      </div>
+
+      {/* 下载安装位置设置条 */}
+      <div className={styles.locationBar}>
+        <FolderOpenOutlined className={styles.locationIcon} />
+        <span className={styles.locationLabel}>下载安装位置</span>
+        <Tooltip title={runtimeDir?.path ?? "-"}>
+          <span className={styles.locationPath}>
+            {runtimeDir?.path ?? "加载中..."}
+          </span>
+        </Tooltip>
+        <span className={styles.locationSpace}>
+          {runtimeDir
+            ? `剩余 ${formatBytes(runtimeDir.freeBytes)} / 共 ${formatBytes(runtimeDir.totalBytes)}`
+            : ""}
+        </span>
+        <Button
+          size="small"
+          className={styles.locationBtn}
+          icon={<FolderOpenOutlined />}
+          loading={choosingDir}
+          onClick={() => void handleChooseDir()}
+        >
+          更改位置
+        </Button>
+        <span className={styles.locationTip}>
+          更改后仅对之后下载生效
+        </span>
       </div>
 
       <Spin spinning={loading}>

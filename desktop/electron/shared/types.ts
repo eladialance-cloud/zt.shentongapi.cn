@@ -29,6 +29,23 @@ export interface ServiceEnvCheck {
   hermes: boolean;
 }
 
+/** 运行时下载安装位置信息 */
+export interface RuntimeDirInfo {
+  /** 当前运行时根目录 */
+  path: string;
+  /** 默认根目录（userData/runtime） */
+  defaultPath: string;
+  /** 所在磁盘剩余空间（字节） */
+  freeBytes: number;
+  /** 所在磁盘总空间（字节） */
+  totalBytes: number;
+}
+
+/** 选择运行时目录结果 */
+export type ChooseRuntimeDirResult =
+  | { ok: true; path: string }
+  | { ok: false; error?: string; canceled?: boolean };
+
 /** 运行时 manifest 中单个服务的入口定义 */
 export interface RuntimeManifestEntry {
   version: string;
@@ -187,6 +204,10 @@ export interface ElectronAPI {
     restart(name: ServiceName): Promise<boolean>;
     checkEnv(): Promise<ServiceEnvCheck>;
     install(name: ServiceName): Promise<boolean>;
+    /** 获取当前运行时下载安装位置（路径 + 磁盘空间） */
+    getRuntimeDir(): Promise<RuntimeDirInfo>;
+    /** 弹窗选择新的下载安装位置（方案 B：不迁移已下载内容） */
+    chooseRuntimeDir(): Promise<ChooseRuntimeDirResult>;
     /** 监听服务状态变更，返回取消监听函数 */
     onStatusChanged(
       callback: (payload: ServiceStatusChangedPayload) => void,

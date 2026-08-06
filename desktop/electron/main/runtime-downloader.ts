@@ -16,6 +16,7 @@ import * as https from "node:https";
 import * as crypto from "node:crypto";
 import { createGunzip } from "node:zlib";
 import type { WriteStream } from "node:fs";
+import { getRuntimeRoot } from "./runtime-config";
 import type { ServiceName } from "../shared/types";
 
 export interface DownloadProgress {
@@ -51,35 +52,48 @@ const PROGRESS_EMIT_INTERVAL_MS = 1000;
 const downloadControllers: Map<ServiceName, AbortController> = new Map();
 /** 各服务取消标记 */
 const cancelFlags: Set<ServiceName> = new Set();
+/** 最近一次下载失败原因（供 UI/日志展示真实错误） */
+const lastDownloadErrors: Map<ServiceName, string> = new Map();
 
 /** 计算平台 key，例如 win32-x64 / darwin-arm64 */
 function platformKey(): string {
   return `${process.platform}-${process.arch}`;
 }
 
-/** 内置 manifest 路径（打包后 process.resourcesPath/runtime/，开发环境 process.cwd()/runtime/） */
-function builtinManifestPath(): string {
+/** 内置 manifest 候选路径（多兜底：extraResources / app.asar / 开发目录） */
+function builtinManifestCandidates(): string[] {
+  const candidates: string[] = [];
   if (app.isPackaged) {
-    return path.join(process.resourcesPath, "runtime", "manifest.json");
+    // 1) extraResources 副本
+    candidates.push(path.join(process.resourcesPath, "runtime", "manifest.json"));
+    // 2) app.asar 内（files 打包）：dist/main -> app.asar 根，../.. 即 app.asar
+    candidates.push(path.join(__dirname, "..", "..", "runtime", "manifest.json"));
+  } else {
+    candidates.push(path.join(process.cwd(), "runtime", "manifest.json"));
   }
-  return path.join(process.cwd(), "runtime", "manifest.json");
+  return candidates;
 }
 
-/** 读取内置 manifest */
+/** 读取内置 manifest（依次尝试候选路径） */
 function readBuiltinManifest(): RuntimeManifest | null {
-  try {
-    const p = builtinManifestPath();
-    const content = fs.readFileSync(p, "utf-8");
-    return JSON.parse(content) as RuntimeManifest;
-  } catch (err) {
-    console.error("[runtime-downloader] read builtin manifest failed:", err);
-    return null;
+  for (const p of builtinManifestCandidates()) {
+    try {
+      const content = fs.readFileSync(p, "utf-8");
+      return JSON.parse(content) as RuntimeManifest;
+    } catch {
+      // 尝试下一个候选
+    }
   }
+  console.error(
+    "[runtime-downloader] read builtin manifest failed, candidates:",
+    builtinManifestCandidates(),
+  );
+  return null;
 }
 
-/** userData 下的 runtime 根目录 */
+/** 当前运行时根目录（默认 userData/runtime，可被用户自定义） */
 function userDataRuntimeDir(): string {
-  return path.join(app.getPath("userData"), "runtime");
+  return getRuntimeRoot();
 }
 
 /** 临时下载目录 */
@@ -396,10 +410,14 @@ export async function download(
   onProgress?: (progress: DownloadProgress) => void,
 ): Promise<boolean> {
   const manifest = readBuiltinManifest();
-  if (!manifest) return false;
+  if (!manifest) {
+    lastDownloadErrors.set(name, "内置运行时清单(manifest.json)缺失，请重装应用");
+    return false;
+  }
 
   const service = manifest.services?.[name];
   if (!service) {
+    lastDownloadErrors.set(name, `运行时清单中缺少服务 ${name}`);
     console.error(
       `[runtime-downloader] service "${name}" not found in manifest`,
     );
@@ -410,6 +428,7 @@ export async function download(
   const url = service.downloadUrl?.[key];
   const expectedSha256 = service.sha256?.[key] ?? "";
   if (!url) {
+    lastDownloadErrors.set(name, `运行时清单没有 ${key} 平台的下载地址`);
     console.error(`[runtime-downloader] no downloadUrl for ${name} on ${key}`);
     return false;
   }
@@ -418,6 +437,10 @@ export async function download(
   try {
     fs.mkdirSync(tmpDir(), { recursive: true });
   } catch (err) {
+    lastDownloadErrors.set(
+      name,
+      `创建下载临时目录失败: ${err instanceof Error ? err.message : String(err)}`,
+    );
     console.error("[runtime-downloader] mkdir tmp failed:", err);
     return false;
   }
@@ -430,6 +453,7 @@ export async function download(
   try {
     let attempt = 0;
     let success = false;
+    let lastAttemptError = "";
     while (attempt < MAX_RETRIES && !success) {
       if (cancelFlags.has(name)) {
         console.log(
@@ -451,6 +475,7 @@ export async function download(
           console.log(`[runtime-downloader] ${name} download aborted`);
           return false;
         }
+        lastAttemptError = err instanceof Error ? err.message : String(err);
         console.warn(
           `[runtime-downloader] ${name} attempt ${attempt} failed:`,
           err,
@@ -465,6 +490,12 @@ export async function download(
     }
 
     if (!success) {
+      lastDownloadErrors.set(
+        name,
+        lastAttemptError
+          ? `下载失败（已重试 ${MAX_RETRIES} 次）: ${lastAttemptError}`
+          : `下载失败（已重试 ${MAX_RETRIES} 次）`,
+      );
       console.error(
         `[runtime-downloader] ${name} download failed after ${MAX_RETRIES} attempts`,
       );
@@ -483,6 +514,10 @@ export async function download(
         }
       });
     } catch (err) {
+      lastDownloadErrors.set(
+        name,
+        `解压失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
       console.error(`[runtime-downloader] ${name} extract failed:`, err);
       return false;
     }
@@ -501,6 +536,7 @@ export async function download(
       // ignore
     }
 
+    lastDownloadErrors.delete(name);
     return true;
   } finally {
     downloadControllers.delete(name);
@@ -760,6 +796,11 @@ function updateLocalManifest(
     console.error("[runtime-downloader] write local manifest failed:", err);
     return false;
   }
+}
+
+/** 获取最近一次下载失败原因（用于 UI 展示真实错误） */
+export function getLastDownloadError(name: ServiceName): string | null {
+  return lastDownloadErrors.get(name) ?? null;
 }
 
 /** 取消正在进行的下载（保留临时文件以便下次断点续传） */

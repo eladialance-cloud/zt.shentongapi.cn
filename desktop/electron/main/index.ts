@@ -1,6 +1,8 @@
 // Electron 主进程入口
 
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import log from 'electron-log'
+import { getRuntimeDirInfo, setRuntimeRoot } from './runtime-config'
 
 // GPU 白名单开关：解决部分显卡/驱动/远程桌面环境下 WebGL 被 Chromium 黑名单拦截的问题
 // 必须在 app.whenReady 之前设置
@@ -22,6 +24,16 @@ import { getOrCreateSalt, deriveDbKey } from './local-db/crypto'
 import { verifyAll, verifyIntegrity } from './runtime-resolver'
 import { download as downloadRuntime, cancelDownload } from './runtime-downloader'
 import type { ServiceName, SyncQueueItem, SyncQueueRow } from '../shared/types'
+
+// 日志落盘：主进程 console 输出同步写入 userData/logs/main.log，便于远程排查
+log.initialize()
+log.transports.file.level = 'info'
+const __consoleLog = console.log.bind(console)
+const __consoleWarn = console.warn.bind(console)
+const __consoleError = console.error.bind(console)
+console.log = (...args: unknown[]) => { log.info(...args); __consoleLog(...args) }
+console.warn = (...args: unknown[]) => { log.warn(...args); __consoleWarn(...args) }
+console.error = (...args: unknown[]) => { log.error(...args); __consoleError(...args) }
 
 const serviceManager = new ServiceManager()
 const isDev = !app.isPackaged
@@ -89,6 +101,23 @@ function registerIpcHandlers(): void {
   ipcMain.handle('service:restart', (_event, name: ServiceName) => serviceManager.restart(name))
   ipcMain.handle('service:checkEnv', () => serviceManager.checkEnvironment())
   ipcMain.handle('service:install', (_event, name: ServiceName) => serviceManager.install(name))
+
+  // 运行时下载安装位置（方案 B：更改后不迁移，仅对新下载生效）
+  ipcMain.handle('service:get-runtime-dir', () => getRuntimeDirInfo())
+  ipcMain.handle('service:set-runtime-dir', async () => {
+    const win = getMainWindow()
+    const options: Electron.OpenDialogOptions = {
+      title: '选择运行时下载安装位置',
+      properties: ['openDirectory', 'createDirectory'],
+    }
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || !result.filePaths?.[0]) {
+      return { ok: false, canceled: true }
+    }
+    return setRuntimeRoot(result.filePaths[0])
+  })
 
   // 服务状态变更 → 转发到渲染进程
   serviceManager.on('status-changed', (name: ServiceName, status: string, info: unknown) => {
