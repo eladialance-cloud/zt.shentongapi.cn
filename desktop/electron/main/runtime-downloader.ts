@@ -417,12 +417,19 @@ function extractTarGz(
  */
 export function cleanupStaleTempFiles(): void {
   const dir = tmpDir();
+  // 只清理 1 小时前的残留临时文件：避免另一 App 实例启动时的清理
+  // 误删正在下载中的临时包（导致解压 ENOENT）
+  const MAX_AGE_MS = 60 * 60 * 1000;
   try {
     if (!fs.existsSync(dir)) return;
+    const now = Date.now();
     for (const item of fs.readdirSync(dir)) {
       const p = path.join(dir, item);
       try {
-        fs.rmSync(p, { recursive: true, force: true });
+        const st = fs.statSync(p);
+        if (now - st.mtimeMs > MAX_AGE_MS) {
+          fs.rmSync(p, { recursive: true, force: true });
+        }
       } catch (err) {
         console.warn(`[runtime-downloader] cleanup tmp ${p} failed:`, err);
       }
@@ -432,7 +439,31 @@ export function cleanupStaleTempFiles(): void {
     console.warn("[runtime-downloader] cleanup .tmp failed:", err);
   }
 }
-export async function download(
+/** 进行中的下载任务（按服务去重，避免并发写同一临时文件互相截断） */
+const activeDownloads = new Map<ServiceName, Promise<boolean>>();
+
+/**
+ * 下载并安装服务运行时（按服务去重：同一服务已有下载任务时复用，避免并发写同一临时文件）
+ */
+export function download(
+  name: ServiceName,
+  onProgress?: (progress: DownloadProgress) => void,
+): Promise<boolean> {
+  const existing = activeDownloads.get(name);
+  if (existing) {
+    console.log(
+      `[runtime-downloader] ${name} 下载任务已在进行，复用进行中的下载`,
+    );
+    return existing;
+  }
+  const task = doDownload(name, onProgress).finally(() => {
+    activeDownloads.delete(name);
+  });
+  activeDownloads.set(name, task);
+  return task;
+}
+
+async function doDownload(
   name: ServiceName,
   onProgress?: (progress: DownloadProgress) => void,
 ): Promise<boolean> {
@@ -531,7 +562,7 @@ export async function download(
 
     // 解压到服务目录（纯 Node 流式解压，不依赖系统 tar / shell）
     const destDir = serviceInstallDir(name);
-    try {
+    const extractWithRetry = async (): Promise<void> => {
       fs.mkdirSync(destDir, { recursive: true });
       await extractTarGz(tmpFile, destDir, (extracted) => {
         if (extracted % 1000 === 0) {
@@ -540,13 +571,41 @@ export async function download(
           );
         }
       });
+    };
+    try {
+      await extractWithRetry();
     } catch (err) {
-      lastDownloadErrors.set(
-        name,
-        `解压失败: ${err instanceof Error ? err.message : String(err)}`,
+      // 临时包可能被并发任务/另一实例的启动清理删除（ENOENT）或截断：
+      // 删除残留临时文件后重新下载一次再解压，避免一次偶发失败就卡住
+      console.warn(
+        `[runtime-downloader] ${name} 首次解压失败，删除临时文件后重新下载一次: `,
+        err,
       );
-      console.error(`[runtime-downloader] ${name} extract failed:`, err);
-      return false;
+      try {
+        fs.unlinkSync(tmpFile);
+      } catch {
+        // ignore
+      }
+      try {
+        const redownloaded = await downloadOnce(
+          url,
+          tmpFile,
+          expectedSha256,
+          controller,
+          onProgress,
+        );
+        if (!redownloaded) {
+          throw new Error("重新下载失败");
+        }
+        await extractWithRetry();
+      } catch (retryErr) {
+        lastDownloadErrors.set(
+          name,
+          `解压失败: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`,
+        );
+        console.error(`[runtime-downloader] ${name} extract failed after retry:`, retryErr);
+        return false;
+      }
     }
 
     // 记录本次下载的内容指纹（sha256）：供启动时识别"版本号相同但内容已更新"的旧残留，
