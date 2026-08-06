@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "services": {
     "n8n": {
       "type": "local",
@@ -18,13 +18,13 @@
         "linux-x64": ""
       },
       "size": {
-        "win32-x64": 174457628,
+        "win32-x64": 175978449,
         "darwin-x64": 0,
         "darwin-arm64": 0,
         "linux-x64": 0
       },
       "sha256": {
-        "win32-x64": "",
+        "win32-x64": "86e5037279fd9448ea62d9a438bbc2abe982ff52a4ea62df1dc91a26aca08025",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""
@@ -34,7 +34,7 @@
       "type": "local",
       "version": "2026.7.1",
       "displayName": "OpenClaw",
-      "port": 51096,
+      "port": 8080,
       "entry": {
         "win32": "openclaw.exe.cmd",
         "darwin": "openclaw",
@@ -47,13 +47,13 @@
         "linux-x64": "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-linux-x64.tar.gz"
       },
       "size": {
-        "win32-x64": 90151719,
+        "win32-x64": 98008562,
         "darwin-x64": 0,
         "darwin-arm64": 0,
         "linux-x64": 0
       },
       "sha256": {
-        "win32-x64": "",
+        "win32-x64": "185b701ee53a608bbbb70e708c17948cf98116fcb13b44f9cd7354dd0b3ea223",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""
@@ -76,13 +76,13 @@
         "linux-x64": "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-linux-x64.tar.gz"
       },
       "size": {
-        "win32-x64": 32964253,
+        "win32-x64": 33060813,
         "darwin-x64": 0,
         "darwin-arm64": 0,
         "linux-x64": 0
       },
       "sha256": {
-        "win32-x64": "",
+        "win32-x64": "36d94571f4abcb9c967bd657654e3c4a04a003bee1785ffefeec4ee8ddf4d848",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""
@@ -105,13 +105,13 @@
         "linux-x64": ""
       },
       "size": {
-        "win32-x64": 29918236,
+        "win32-x64": 130379671,
         "darwin-x64": 0,
         "darwin-arm64": 0,
         "linux-x64": 0
       },
       "sha256": {
-        "win32-x64": "",
+        "win32-x64": "937be9e85acf513d47a819e5f61e9276f3151aa63e7f612e5854e6124adc6378",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""

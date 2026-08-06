@@ -108,6 +108,7 @@ services:
       - ./updates:/usr/share/nginx/html/desktop:ro
       - ./frontend/admin/dist:/usr/share/nginx/html/admin:ro
       - ./frontend/user/dist:/usr/share/nginx/html/landing:ro
+      - ./cdn:/usr/share/nginx/html/runtime:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
     networks:
       - shentong-net

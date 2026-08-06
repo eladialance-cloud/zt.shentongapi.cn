@@ -1,3 +1,14 @@
+// 单元测试环境无真实 electron：mock app 供 service-manager / runtime-resolver 导入
+jest.mock('electron', () => {
+  const path = require('node:path')
+  return {
+    app: {
+      isPackaged: false,
+      getPath: () => path.join(process.cwd(), 'test-userdata'),
+      getAppPath: () => process.cwd()
+    }
+  }
+})
 import { ServiceManager } from '../../electron/main/service-manager'
 import { verifyAll } from '../../electron/main/runtime-resolver'
 import type { ServiceName } from '../../electron/shared/types'
@@ -15,7 +26,7 @@ describe('Hermes Agent service integration', () => {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'))
     expect(manifest.services.hermes).toBeDefined()
     expect(manifest.services.hermes.port).toBe(8642)
-    expect(manifest.services.hermes.entry.win32).toBe('hermes')
+    expect(manifest.services.hermes.entry.win32).toBe('hermes.exe.cmd')
     expect(manifest.services.hermes.downloadUrl['win32-x64']).toMatch(/hermes/)
   })
 

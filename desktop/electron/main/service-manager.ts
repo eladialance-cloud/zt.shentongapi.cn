@@ -12,6 +12,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { createConnection } from 'node:net'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import * as crypto from 'node:crypto'
 import { app } from 'electron'
 import type {
   ServiceName,
@@ -57,35 +58,76 @@ const MCP_ENV: NodeJS.ProcessEnv = {
 }
 
 /**
- * Hermes API Server Key
- * - 开发环境（未打包）：使用 'local-dev-key'
- * - 生产环境（已打包）：从 process.env.HERMES_API_SERVER_KEY 读取
+ * Hermes API Server Key（生成并持久化到 userData）
+ * - 生产环境不再依赖外部 process.env.HERMES_API_SERVER_KEY（此前从未注入导致 Hermes 永远无法启动）
+ * - 首次启动生成随机 key 并写入 userData/hermes-server-key，后续启动复用，保证前后端一致
  */
-const HERMES_API_SERVER_KEY = (() => {
-  // FIX: 使用顶层静态 import { app } from 'electron'，配合 external 配置，
-  // 避免打包时把 npm electron 包 bundle 进产物。
-  if (!app.isPackaged) {
-    return 'local-dev-key'
+function getOrCreateHermesServerKey(): string {
+  try {
+    const keyFile = path.join(app.getPath('userData'), 'hermes-server-key')
+    if (fs.existsSync(keyFile)) {
+      const existing = fs.readFileSync(keyFile, 'utf-8').trim()
+      if (existing) return existing
+    }
+    const key = 'shentong-' + crypto.randomBytes(24).toString('hex')
+    fs.mkdirSync(path.dirname(keyFile), { recursive: true })
+    fs.writeFileSync(keyFile, key, 'utf-8')
+    return key
+  } catch (err) {
+    console.error('[service-manager] generate hermes server key failed:', err)
+    return 'shentong-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)
   }
-  const key = process.env.HERMES_API_SERVER_KEY
-  if (!key) {
-    console.error('[service-manager] HERMES_API_SERVER_KEY 未设置，生产环境使用空字符串')
-    return ''
-  }
-  return key
-})()
-
-/** Hermes 子进程环境变量 */
-const HERMES_ENV: NodeJS.ProcessEnv = {
-  ...process.env,
-  PORT: '8642',
-  HERMES_API_SERVER_KEY,
-  // K1 修复：Hermes 进程实际读取的环境变量名是 CUSTOM_API_KEY，
-  // 需将 HERMES_API_SERVER_KEY 映射到 CUSTOM_API_KEY，否则 spawnService 中的检查永远失败
-  CUSTOM_API_KEY: HERMES_API_SERVER_KEY,
-  MCP_BACKEND_URL: `http://127.0.0.1:${SERVICE_DEFS.mcp.port}`
 }
 
+/**
+ * Hermes 数据目录
+ * - 固定指向 userData/hermes-home，避免使用 %LOCALAPPDATA%\\hermes（该目录可能残留损坏的
+ *   hermes-agent 链接/ACL，导致 Hermes 启动时 banner 的 git 探测抛 PermissionError 直接崩溃）
+ */
+function getHermesHome(): string {
+  return path.join(app.getPath('userData'), 'hermes-home')
+}
+
+/** Hermes 子进程环境变量（每次启动实时构建，确保 HERMES_HOME 目录已创建） */
+function buildHermesEnv(): NodeJS.ProcessEnv {
+  const key = getOrCreateHermesServerKey()
+  const home = getHermesHome()
+  try {
+    fs.mkdirSync(home, { recursive: true })
+  } catch (err) {
+    console.warn('[service-manager] mkdir hermes-home failed:', err)
+  }
+  return {
+    ...process.env,
+    PORT: String(SERVICE_DEFS.hermes.port),
+    HERMES_HOME: home,
+    HERMES_API_SERVER_KEY: key,
+    // K1 修复：Hermes 进程实际读取的环境变量名是 CUSTOM_API_KEY，
+    // 需将 HERMES_API_SERVER_KEY 映射到 CUSTOM_API_KEY，否则 spawnService 中的检查永远失败
+    CUSTOM_API_KEY: key,
+    MCP_BACKEND_URL: 'http://127.0.0.1:' + SERVICE_DEFS.mcp.port
+  }
+}
+
+
+/** OpenClaw 数据目录（状态/配置隔离，避免写入默认 ~/.openclaw 导致权限或路径冲突） */
+function getOpenClawHome(): string {
+  return path.join(app.getPath('userData'), 'openclaw-home')
+}
+
+/** OpenClaw 子进程环境变量（每次启动实时构建，确保 OPENCLAW_HOME 目录已创建） */
+function buildOpenClawEnv(): NodeJS.ProcessEnv {
+  const home = getOpenClawHome()
+  try {
+    fs.mkdirSync(home, { recursive: true })
+  } catch (err) {
+    console.warn('[service-manager] mkdir openclaw-home failed:', err)
+  }
+  return {
+    ...process.env,
+    OPENCLAW_HOME: home
+  }
+}
 /** 自动重启配置 */
 const MAX_RESTART_RETRIES = 3
 const RESTART_INTERVAL_MS = 5000
@@ -339,12 +381,12 @@ export class ServiceManager extends EventEmitter {
       return true
     }
 
-    // Hermes 必须配置 CUSTOM_API_KEY
+    // Hermes 必须配置 CUSTOM_API_KEY（由 getOrCreateHermesServerKey 自动生成）
     if (name === 'hermes') {
-      const customApiKey = HERMES_ENV.CUSTOM_API_KEY
-      if (customApiKey === undefined || customApiKey === '') {
+      const customApiKey = buildHermesEnv().CUSTOM_API_KEY
+      if (!customApiKey) {
         info.status = 'error'
-        info.error = 'Hermes Agent 启动失败：CUSTOM_API_KEY 未设置，请登录后再试'
+        info.error = 'Hermes Agent 启动失败：CUSTOM_API_KEY 未设置'
         this.emitStatus(name)
         return false
       }
@@ -362,15 +404,29 @@ export class ServiceManager extends EventEmitter {
     const env =
       name === 'n8n' ? { ...resolved.env, ...N8N_ENV } :
       name === 'mcp' ? { ...resolved.env, ...MCP_ENV } :
-      name === 'hermes' ? { ...resolved.env, ...HERMES_ENV } :
+      name === 'hermes' ? { ...resolved.env, ...buildHermesEnv() } :
+      name === 'openclaw' ? { ...resolved.env, ...buildOpenClawEnv() } :
       resolved.env
 
-    // OpenClaw 需要显式指定端口，避免默认端口与 manifest 不一致
-    const spawnArgs = name === 'openclaw' ? ['--port', String(info.port)] : resolved.args
+    // 各服务启动参数：
+    // - openclaw：WebSocket Gateway 前台运行（openclaw 顶层没有 --port，必须用 gateway run --port）
+    // - hermes：headless backend server（serve），监听 127.0.0.1:<port>
+    const spawnArgs =
+      name === 'openclaw'
+        ? ['gateway', 'run', '--port', String(info.port), '--bind', 'loopback', '--auth', 'none', '--force', '--allow-unconfigured']
+        : name === 'hermes'
+          ? ['serve', '--port', String(info.port), '--host', '127.0.0.1', '--skip-build']
+          : resolved.args
 
     let child: ChildProcess
     try {
-      child = spawn(resolved.cmd, spawnArgs, {
+      // Windows 下 .cmd/.bat 必须经 cmd.exe 执行；路径可能含空格/中文，
+      // 用双引号包裹命令路径，避免 cmd.exe 将路径截断为不存在的命令
+      const isCmdScript = process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolved.cmd)
+      // 路径含空格/中文时同样加引号（cmd.exe 会按空格截断命令路径）
+      const needsQuote = isCmdScript || (process.platform === 'win32' && /\s/.test(resolved.cmd))
+      const spawnTarget = needsQuote ? '"' + resolved.cmd + '"' : resolved.cmd
+      child = spawn(spawnTarget, spawnArgs, {
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
@@ -428,7 +484,9 @@ export class ServiceManager extends EventEmitter {
       console.warn(`[service-manager] ${name} exited: code=${code} signal=${signal}`)
       this.processes.delete(name)
       this.lastCpuSample.delete(name)
-      const wasRunning = info.status === 'running' || info.status === 'starting'
+      // 只有真正进入 running 后的异常退出才自动重启；启动阶段（starting）失败直接报错，
+      // 避免“反复重启 + 持久通知”骚扰用户（见 review_service_manager_2026-07-25.md）
+      const wasRunning = info.status === 'running'
       info.pid = undefined
       info.cpuUsage = undefined
       info.memoryUsage = undefined
@@ -440,12 +498,22 @@ export class ServiceManager extends EventEmitter {
         return
       }
 
-      // 非主动退出：标记 error 并尝试自动重启
+      // 非主动退出：运行中异常退出才自动重启；启动阶段失败给出可操作的错误提示
       if (wasRunning) {
         info.status = 'error'
-        info.error = `进程异常退出 (code=${code} signal=${signal})`
+        info.error =
+          name === 'mcp'
+            ? `MCP Gateway 异常退出 (code=${code})：需要可用的 SSE 后端（OpenClaw 或云端 MCP 服务），请确认服务链已就绪`
+            : `进程异常退出 (code=${code} signal=${signal})`
         this.emitStatus(name)
         void this.tryAutoRestart(name)
+      } else {
+        info.status = 'error'
+        info.error =
+          name === 'mcp'
+            ? `MCP Gateway 启动失败：无法连接 SSE 后端（code=${code}），请先启动 OpenClaw 或配置云端 MCP 服务`
+            : `${info.displayName} 启动失败（code=${code} signal=${signal}），可点击“修复”重新安装运行时`
+        this.emitStatus(name)
       }
     })
 

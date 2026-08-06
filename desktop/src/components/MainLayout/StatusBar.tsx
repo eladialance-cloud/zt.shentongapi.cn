@@ -1,7 +1,7 @@
 /**
  * StatusBar — v1.0 底部状态栏
  * 28px 高度，6 个指示器:
- *   OpenClaw(51096) / N8N(5678) / MCP(3100) / 网络 / 同步 / 版本
+ *   OpenClaw(8080) / N8N(5678) / MCP(3100) / 网络 / 同步 / 版本
  * 服务状态优先读取 service-manager-api，失败时使用占位状态
  *
  * Task 5: 同步状态 Modal（当前使用占位日志）
@@ -37,7 +37,7 @@ interface ServiceIndicator {
 }
 
 const SERVICES: ServiceIndicator[] = [
-  { name: 'openclaw', label: 'OpenClaw', port: 51096 },
+  { name: 'openclaw', label: 'OpenClaw', port: 8080 },
   { name: 'n8n', label: 'N8N', port: 5678 },
   { name: 'mcp', label: 'MCP', port: 3100 }
 ]

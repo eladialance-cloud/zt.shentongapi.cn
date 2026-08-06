@@ -1,7 +1,7 @@
 // OpenClaw 实例管理模块类型定义
 // 数据合同真源：v0.3.1 Task 25 - 四大基座 API 对齐 (OpenClaw)
 //
-// OpenClaw 是本地派发基座（端口 51096），负责意图解析、SKILL 匹配与
+// OpenClaw 是本地派发基座（端口 8080），负责意图解析、SKILL 匹配与
 // 向垂直 AI 员工派发任务。本模块对应 /openclaw/* 端点。
 
 /** OpenClaw 实例状态 */
@@ -32,7 +32,7 @@ export interface OpenClawInstance {
   name: string
   /** 实例状态 */
   status: OpenClawStatus
-  /** 基础地址（通常为 http://localhost:51096） */
+  /** 基础地址（通常为 http://localhost:8080） */
   baseUrl: string
   /** 实例配置 */
   config?: OpenClawConfig

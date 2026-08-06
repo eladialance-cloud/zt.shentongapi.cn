@@ -14,7 +14,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as https from "node:https";
 import * as crypto from "node:crypto";
-import { execSync } from "node:child_process";
+import { createGunzip } from "node:zlib";
+import type { WriteStream } from "node:fs";
 import type { ServiceName } from "../shared/types";
 
 export interface DownloadProgress {
@@ -101,6 +102,295 @@ function serviceInstallDir(name: ServiceName): string {
  *
  * @returns 成功返回 true；失败或被取消返回 false
  */
+/**
+ * 流式解压 .tar.gz（纯 Node 实现，不依赖系统 tar / shell）
+ * - 支持 ustar prefix、GNU 长文件名（L）、PAX 扩展头（x/g）、目录/文件冲突“后者胜出”
+ * - 名字以 / 结尾的条目按目录处理（tar 惯例，即使 typeflag 为 0）
+ * - 拒绝绝对路径与 .. 穿越，防解压路径逃逸
+ * - 内存有界：文件内容按 chunk 直接写盘；元数据条目跨 chunk 有状态机保持对齐
+ */
+function extractTarGz(
+  tarGzPath: string,
+  destDir: string,
+  onProgress?: (extractedEntries: number) => void,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const source = fs.createReadStream(tarGzPath);
+    const gunzip = createGunzip();
+
+    let buf: Buffer = Buffer.alloc(0);
+    let offset = 0;
+    let outStream: WriteStream | null = null;
+    let outRemaining = 0;
+    let padRemaining = 0;
+    let metaRemaining = 0;
+    let metaKind: string | null = null;
+    let metaSize = 0;
+    let metaChunks: Buffer[] = [];
+    let pendingName: string | null = null;
+    let pax: Record<string, string> | null = null;
+    let eof = false;
+    let settled = false;
+    let entries = 0;
+    let activeStreams = 0;
+
+    const cleanup = () => {
+      source.destroy();
+      gunzip.destroy();
+      if (outStream) {
+        try {
+          outStream.destroy();
+        } catch {
+          // ignore
+        }
+        outStream = null;
+      }
+    };
+    const fail = (message: string) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error(message));
+    };
+    const done = () => {
+      if (settled) return;
+      if (activeStreams > 0) return; // 等待最后一批文件 flush 完成
+      settled = true;
+      cleanup();
+      resolve();
+    };
+
+    const parseOctal = (b: Buffer, start: number, len: number): number => {
+      // 支持 base-256 编码（首位 0x80）
+      if (b[start] & 0x80) {
+        let value = 0;
+        for (let i = start + 1; i < start + len; i++) {
+          value = value * 256 + b[i];
+        }
+        return value;
+      }
+      const s = b.toString("ascii", start, start + len).trim();
+      if (!s) return 0;
+      const value = parseInt(s, 8);
+      return Number.isNaN(value) ? 0 : value;
+    };
+
+    const safeTarget = (entryName: string): string => {
+      const normalized = entryName.replace(/\\/g, "/");
+      if (
+        normalized.startsWith("/") ||
+        /^[A-Za-z]:/.test(normalized) ||
+        normalized.split("/").includes("..")
+      ) {
+        throw new Error(`归档条目包含不安全路径: ${entryName}`);
+      }
+      return path.join(destDir, ...normalized.split("/").filter(Boolean));
+    };
+
+    // 目录/文件同名冲突时“后者胜出”，与系统 tar 行为一致
+    const ensureDir = (target: string) => {
+      if (fs.existsSync(target)) {
+        const st = fs.lstatSync(target);
+        if (!st.isDirectory()) fs.unlinkSync(target);
+      }
+      fs.mkdirSync(target, { recursive: true });
+    };
+    const ensureWritableFile = (target: string) => {
+      if (fs.existsSync(target)) {
+        const st = fs.lstatSync(target);
+        if (st.isDirectory()) fs.rmdirSync(target, { recursive: true });
+      }
+    };
+
+    const processBuffer = () => {
+      while (true) {
+        // 元数据条目（L/x/g/K）数据消费：跨 chunk 保持状态，防止错位
+        if (metaRemaining > 0) {
+          if (offset >= buf.length) return;
+          const take = Math.min(metaRemaining, buf.length - offset);
+          metaChunks.push(buf.subarray(offset, offset + take));
+          offset += take;
+          metaRemaining -= take;
+          if (metaRemaining > 0) return;
+          const full = Buffer.concat(metaChunks);
+          metaChunks = [];
+          if (metaKind === "L") {
+            pendingName = full.toString("utf8", 0, metaSize).replace(/\0[\s\S]*$/, "");
+          } else if (metaKind === "x" || metaKind === "X") {
+            pax = pax || {};
+            for (const line of full.toString("utf8", 0, metaSize).split("\n")) {
+              const m = /^\d+ ([^=]+)=(.*)$/.exec(line);
+              if (m) pax[m[1]] = m[2];
+            }
+          }
+          metaKind = null;
+          continue;
+        }
+
+        // 文件数据写入
+        if (outStream) {
+          if (outRemaining > 0) {
+            if (offset >= buf.length) return;
+            const want = Math.min(outRemaining, buf.length - offset);
+            outStream.write(buf.subarray(offset, offset + want));
+            offset += want;
+            outRemaining -= want;
+            if (outRemaining > 0) return;
+          }
+          outStream.end();
+          outStream = null;
+        }
+
+        // 512 对齐填充
+        if (padRemaining > 0) {
+          const take = Math.min(padRemaining, buf.length - offset);
+          offset += take;
+          padRemaining -= take;
+          if (padRemaining > 0) return;
+        }
+
+        // header 解析
+        if (buf.length - offset < 512) return;
+        const header = buf.subarray(offset, offset + 512);
+        offset += 512;
+        if (header.every((b) => b === 0)) {
+          if (buf.length - offset >= 512) {
+            const next = buf.subarray(offset, offset + 512);
+            offset += 512;
+            if (next.every((b) => b === 0)) {
+              eof = true;
+              done();
+              return;
+            }
+            continue;
+          }
+          offset -= 512;
+          return;
+        }
+
+        const typeflag = String.fromCharCode(header[156]);
+        let entryName = header.toString("utf8", 0, 100).replace(/\0[\s\S]*$/, "");
+        const prefix = header
+          .toString("utf8", 345, 500)
+          .replace(/\0[\s\S]*$/, "");
+        if (prefix) entryName = `${prefix}/${entryName}`;
+        const size = parseOctal(header, 124, 12);
+        const paddedSize = Math.ceil(size / 512) * 512;
+
+        if (
+          typeflag === "L" ||
+          typeflag === "x" ||
+          typeflag === "X" ||
+          typeflag === "g" ||
+          typeflag === "K"
+        ) {
+          metaRemaining = paddedSize;
+          metaKind = typeflag;
+          metaSize = size;
+          metaChunks = [];
+          continue;
+        }
+
+        let finalName = pendingName ?? entryName;
+        pendingName = null;
+        if (pax && pax.path) finalName = pax.path;
+        let finalSize = size;
+        if (pax && pax.size !== undefined) {
+          const paxSize = parseInt(pax.size, 10);
+          if (!Number.isNaN(paxSize)) finalSize = paxSize;
+        }
+        pax = null;
+
+        // 目录判定：显式目录类型，或名字以 / 结尾（tar 惯例，即使 typeflag 为 0）
+        const isDir = typeflag === "5" || typeflag === "D" || finalName.endsWith("/");
+        const isLink = ["1", "2", "3", "4", "6", "7", "S"].includes(typeflag);
+
+        if (isDir) {
+          if (buf.length - offset < paddedSize) return;
+          offset += paddedSize;
+          try {
+            ensureDir(safeTarget(finalName));
+          } catch (err) {
+            fail(`创建目录失败: ${err instanceof Error ? err.message : String(err)}`);
+            return;
+          }
+          continue;
+        }
+        if (isLink) {
+          if (buf.length - offset < paddedSize) return;
+          offset += paddedSize;
+          continue;
+        }
+
+        // 普通文件
+        let target: string;
+        try {
+          target = safeTarget(finalName);
+          ensureWritableFile(target);
+          fs.mkdirSync(path.dirname(target), { recursive: true });
+          outStream = fs.createWriteStream(target);
+        } catch (err) {
+          fail(`创建文件失败: ${err instanceof Error ? err.message : String(err)}`);
+          return;
+        }
+        activeStreams++;
+        outStream.on("error", (err) =>
+          fail(`写入文件失败: ${err instanceof Error ? err.message : String(err)}`),
+        );
+        outStream.on("close", () => {
+          activeStreams--;
+          if (settled) return;
+          if (eof && activeStreams === 0) {
+            cleanup();
+            resolve();
+          }
+        });
+        outRemaining = finalSize;
+        padRemaining = (512 - (finalSize % 512)) % 512;
+        entries++;
+        if (entries % 1000 === 0) onProgress?.(entries);
+      }
+    };
+
+    source.on("error", (err) =>
+      fail(`读取压缩包失败: ${err instanceof Error ? err.message : String(err)}`),
+    );
+    gunzip.on("error", (err) =>
+      fail(`gzip 解压失败: ${err instanceof Error ? err.message : String(err)}`),
+    );
+    gunzip.on("data", (chunk: Buffer) => {
+      if (offset > 0) {
+        if (offset === buf.length) buf = chunk;
+        else buf = Buffer.concat([buf.subarray(offset), chunk]);
+        offset = 0;
+      } else {
+        buf = buf.length === 0 ? chunk : Buffer.concat([buf, chunk]);
+      }
+      try {
+        processBuffer();
+      } catch (err) {
+        fail(err instanceof Error ? err.message : String(err));
+      }
+    });
+    gunzip.on("end", () => {
+      try {
+        processBuffer();
+        if (settled) return;
+        const rest = buf.subarray(offset);
+        if (rest.every((b) => b === 0)) {
+          eof = true;
+          done();
+          return;
+        }
+        fail("归档数据不完整（缺少结束标记）");
+      } catch (err) {
+        fail(err instanceof Error ? err.message : String(err));
+      }
+    });
+    source.pipe(gunzip);
+  });
+}
+
 export async function download(
   name: ServiceName,
   onProgress?: (progress: DownloadProgress) => void,
@@ -181,11 +471,17 @@ export async function download(
       return false;
     }
 
-    // 解压到服务目录
+    // 解压到服务目录（纯 Node 流式解压，不依赖系统 tar / shell）
     const destDir = serviceInstallDir(name);
     try {
       fs.mkdirSync(destDir, { recursive: true });
-      execSync(`tar -xzf "${tmpFile}" -C "${destDir}"`, { stdio: "ignore" });
+      await extractTarGz(tmpFile, destDir, (extracted) => {
+        if (extracted % 1000 === 0) {
+          console.log(
+            `[runtime-downloader] ${name} extracting... ${extracted} entries`,
+          );
+        }
+      });
     } catch (err) {
       console.error(`[runtime-downloader] ${name} extract failed:`, err);
       return false;
@@ -449,11 +745,11 @@ function updateLocalManifest(
       JSON.stringify(builtin.services),
     ) as RuntimeManifest["services"];
   }
-  if (!local.services[name]) {
-    local.services[name] = JSON.parse(
-      JSON.stringify(builtin.services[name]),
-    ) as ServiceManifest;
-  }
+  // 整体刷新该服务条目（entry/port/downloadUrl/sha256/size 等），
+  // 避免 userData 旧 manifest 残留过时字段（如 openclaw.port=51096）
+  local.services[name] = JSON.parse(
+    JSON.stringify(builtin.services[name]),
+  ) as ServiceManifest;
   local.services[name].version = version;
 
   try {

@@ -14,6 +14,10 @@ const config: Config = {
     "^@shared/(.*)$": "<rootDir>/electron/shared/$1",
   },
   setupFilesAfterEnv: ["<rootDir>/tests/setup.ts"],
+  modulePathIgnorePatterns: [
+    // runtime 目录是下载/解压产物，含 node/python 运行时，无需 jest 扫描
+    "<rootDir>/runtime/",
+  ],
 };
 
 export default config;

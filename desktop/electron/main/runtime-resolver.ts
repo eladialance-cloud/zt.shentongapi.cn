@@ -122,10 +122,10 @@ export function pickNewerManifest(
   if (!userData) return builtin;
 
   const cmp = compareSemver(builtin.version, userData.version);
-  // userData 版本 >= builtin → 用 userData（补丁优先）
-  if (cmp >= 0) return userData;
   // builtin 更新（例如 electron-updater 更新后自带新 runtime）
-  return builtin;
+  if (cmp > 0) return builtin;
+  // userData 版本 >= builtin → 用 userData（补丁优先）
+  return userData;
 }
 
 /**

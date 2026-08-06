@@ -1,7 +1,7 @@
 // SubTask 10.5: 内置本地服务运行时 - 运行时解析与校验 e2e 测试
 //
 // 测试场景：
-// 1. manifest.json 结构验证：3 个服务、字段完整性、端口正确性
+// 1. manifest.json 结构验证：4 个服务、字段完整性、端口正确性
 // 2. pickNewerManifest 语义化版本比较：null 处理、版本高低、相等时优先 userData
 // 3. manifest 完整性：downloadUrl / entry / sha256 多平台字段覆盖
 //
@@ -64,9 +64,10 @@ function pickNewerManifest(
   if (!builtin) return userData
   if (!userData) return builtin
   const cmp = compareSemver(builtin.version, userData.version)
+  // builtin 更新（例如 electron-updater 更新后自带新 runtime）
+  if (cmp > 0) return builtin
   // userData 版本 >= builtin → 用 userData（补丁优先）
-  if (cmp >= 0) return userData
-  return builtin
+  return userData
 }
 
 /** 构造测试用 manifest（pickNewerManifest 仅依赖 version 字段） */
@@ -78,7 +79,7 @@ function makeManifest(version: string): RuntimeManifest {
 }
 
 /** 全部服务名 */
-const SERVICE_NAMES: ServiceName[] = ['n8n', 'openclaw', 'mcp']
+const SERVICE_NAMES: ServiceName[] = ['n8n', 'openclaw', 'mcp', 'hermes']
 /** 平台-架构组合（downloadUrl / sha256 字段 key） */
 const PLATFORM_ARCH_KEYS = [
   'win32-x64',
@@ -91,7 +92,7 @@ const PLATFORM_KEYS = ['win32', 'darwin', 'linux']
 
 describe('SubTask 10.5 - 运行时解析与校验', () => {
   describe('Runtime Manifest', () => {
-    it('should load manifest.json with all 3 services', () => {
+    it('should load manifest.json with all 4 services', () => {
       // act
       const manifest = loadManifest()
 
@@ -100,8 +101,9 @@ describe('SubTask 10.5 - 运行时解析与校验', () => {
       expect(typeof manifest.version).toBe('string')
       expect(manifest.services).toBeDefined()
 
-      // assert - services 包含 n8n / openclaw / mcp 三个 key
+      // assert - services 包含 n8n / openclaw / mcp / hermes 四个 key
       expect(Object.keys(manifest.services).sort()).toEqual([
+        'hermes',
         'mcp',
         'n8n',
         'openclaw'
@@ -130,6 +132,7 @@ describe('SubTask 10.5 - 运行时解析与校验', () => {
       expect(manifest.services.n8n.port).toBe(5678)
       expect(manifest.services.openclaw.port).toBe(8080)
       expect(manifest.services.mcp.port).toBe(3100)
+      expect(manifest.services.hermes.port).toBe(8642)
     })
   })
 
@@ -218,8 +221,10 @@ describe('SubTask 10.5 - 运行时解析与校验', () => {
         for (const key of PLATFORM_ARCH_KEYS) {
           expect(downloadUrl).toHaveProperty(key)
           expect(typeof downloadUrl[key]).toBe('string')
-          expect(downloadUrl[key].length).toBeGreaterThan(0)
-          expect(downloadUrl[key]).toMatch(/^https?:\/\//)
+          // 未发布平台允许空字符串；非空则必须是 http(s) URL
+          if (downloadUrl[key].length > 0) {
+            expect(downloadUrl[key]).toMatch(/^https?:\/\//)
+          }
         }
       }
     })
@@ -236,8 +241,8 @@ describe('SubTask 10.5 - 运行时解析与校验', () => {
           expect(typeof entry[key]).toBe('string')
           expect(entry[key].length).toBeGreaterThan(0)
         }
-        // win32 入口必须以 .exe 结尾
-        expect(entry.win32.endsWith('.exe')).toBe(true)
+        // win32 入口是 <name>.exe.cmd 包装脚本（内部调用 node <name>.exe）
+        expect(entry.win32).toMatch(/\.exe\.cmd$/)
       }
     })
 

@@ -12,7 +12,7 @@
 //   PUT    /openclaw/instances/:id/config    更新实例配置
 //   POST   /openclaw/instances/:id/pull-status  从 OpenClaw 拉取状态快照
 //
-// 说明：OpenClaw 是本地派发基座（端口 51096），负责意图解析、SKILL 匹配
+// 说明：OpenClaw 是本地派发基座（端口 8080），负责意图解析、SKILL 匹配
 // 并向垂直 AI 员工派发任务。本模块与 service-manager-api（进程级启停）互补：
 //   - service-manager-api：管理本地服务进程的启动/停止/重启
 //   - openclaw-api：管理 OpenClaw 业务实例、同步 AI 员工、拉取状态
