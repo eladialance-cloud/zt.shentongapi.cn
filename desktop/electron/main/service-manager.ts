@@ -165,6 +165,32 @@ async function waitForPort(
   return false
 }
 
+/** 等待毫秒 */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** 是否为 Windows 文件占用类错误（删除/写入/重命名时常见） */
+function isLockError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const code = (err as NodeJS.ErrnoException).code
+  return code === 'EBUSY' || code === 'EPERM' || code === 'ENOTEMPTY' || code === 'EACCES'
+}
+
+/** 删除目录，遇到进程占用（EBUSY/EPERM）时按间隔重试，返回是否成功 */
+async function removeDirWithRetry(dir: string, maxAttempts = 20, delayMs = 500): Promise<boolean> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true })
+      return true
+    } catch (err) {
+      if (!isLockError(err)) return false
+      if (attempt < maxAttempts) await sleep(delayMs)
+    }
+  }
+  return false
+}
+
 /** 进程指标采样结果 */
 interface ProcessMetrics {
   /** CPU 累计时间（毫秒，user+kernel） */
@@ -297,6 +323,81 @@ export class ServiceManager extends EventEmitter {
         done()
       }
     })
+  }
+
+  /**
+   * 列出可执行文件位于指定目录下的进程 PID（Windows）。
+   * 用于找出未被本实例 spawn 跟踪的孤儿进程（旧版 App 残留、手动启动的 n8n 等），
+   * 它们持有 node.exe 等文件句柄，导致后续删除/解压写入报 EBUSY。
+   */
+  private listPidsUnderDir(dir: string): Promise<number[]> {
+    return new Promise((resolve) => {
+      if (process.platform !== 'win32') {
+        resolve([])
+        return
+      }
+      const pattern = path.join(dir, "*")
+      const psCmd =
+        'Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like "' +
+        pattern.replace(/"/g, "") +
+        '" } | Select-Object -ExpandProperty ProcessId'
+      execFile(
+        'powershell',
+        ['-NoProfile', '-NonInteractive', '-Command', psCmd],
+        { windowsHide: true, timeout: 5000 },
+        (err, stdout) => {
+          if (err || !stdout) {
+            resolve([])
+            return
+          }
+          const pids = stdout
+            .trim()
+            .split(/\r?\n/)
+            .map((s) => parseInt(s.trim(), 10))
+            .filter((n) => Number.isInteger(n) && n > 0)
+          resolve(pids)
+        }
+      )
+    })
+  }
+
+  /** 强制结束指定 PID 及其进程树（taskkill /F /T，Windows） */
+  private killPids(pids: number[]): Promise<void> {
+    if (pids.length === 0) return Promise.resolve()
+    const args = ['/F', '/T']
+    for (const pid of pids) args.push('/PID', String(pid))
+    return new Promise((resolve) => {
+      execFile('taskkill', args, { windowsHide: true, timeout: 10000 }, () => resolve())
+    })
+  }
+
+  /**
+   * 等待运行时目录完全释放：
+   * 1) 结束所有可执行文件位于该服务目录下的进程（含未被跟踪的孤儿进程）
+   * 2) 轮询等待服务端口关闭且目录下无进程残留（Windows 句柄释放有延迟）
+   */
+  private async waitForRuntimeDirReleased(name: ServiceName, timeoutMs = 20000): Promise<void> {
+    const dir = path.join(getRuntimeRoot(), name)
+    const port = SERVICE_DEFS[name].port
+    try {
+      const pids = await this.listPidsUnderDir(dir)
+      if (pids.length > 0) {
+        console.log(
+          `[service-manager] ${name} 发现 ${pids.length} 个残留进程占用运行时目录（PID: ${pids.join(", ")}），强制结束`
+        )
+        await this.killPids(pids)
+      }
+    } catch (err) {
+      console.warn(`[service-manager] ${name} 清理残留进程失败:`, err)
+    }
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      const listening = await isPortListening(port)
+      const leftovers = await this.listPidsUnderDir(dir)
+      if (!listening && leftovers.length === 0) return
+      await sleep(1000)
+    }
+    console.warn(`[service-manager] ${name} 运行时目录等待释放超时（${timeoutMs}ms），继续尝试安装`)
   }
 
   /** 启动每秒 metrics 采样 */
@@ -794,13 +895,14 @@ export class ServiceManager extends EventEmitter {
 
     // install 前先停止服务，避免进程占用文件
     await this.stop(name)
+    // 等待进程树完全退出、文件句柄释放（Windows 上被占用文件删除/写入会报 EBUSY）
+    await this.waitForRuntimeDirReleased(name)
 
-    // 删除旧运行时目录，避免旧文件冲突
+    // 删除旧运行时目录，避免旧文件冲突（占用未释放时按间隔重试）
     const runtimeDir = path.join(getRuntimeRoot(), name)
-    try {
-      fs.rmSync(runtimeDir, { recursive: true, force: true })
-    } catch (err) {
-      console.warn(`[service-manager] rm old runtime dir for ${name} failed:`, err)
+    const removed = await removeDirWithRetry(runtimeDir)
+    if (!removed) {
+      console.warn(`[service-manager] rm old runtime dir for ${name} failed after retry`)
     }
 
     try {

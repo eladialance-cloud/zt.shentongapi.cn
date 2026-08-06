@@ -560,21 +560,78 @@ async function doDownload(
       return false;
     }
 
-    // 解压到服务目录（纯 Node 流式解压，不依赖系统 tar / shell）
+    // 解压到 staging 目录后原子替换目标目录（纯 Node 流式解压，不依赖系统 tar / shell）：
+    // - 写入全新的 staging 目录，不受旧目录中仍被进程锁定的文件影响（EBUSY 根因）
+    // - 通过 rename 交换目录，避免出现"半新半旧"的中间态
     const destDir = serviceInstallDir(name);
-    const extractWithRetry = async (): Promise<void> => {
-      fs.mkdirSync(destDir, { recursive: true });
-      await extractTarGz(tmpFile, destDir, (extracted) => {
+    const stagingDir = path.join(tmpDir(), `${name}-extract`);
+
+    const extractToStaging = async (): Promise<void> => {
+      try {
+        fs.rmSync(stagingDir, { recursive: true, force: true });
+      } catch {
+        // ignore
+      }
+      fs.mkdirSync(stagingDir, { recursive: true });
+      await extractTarGz(tmpFile, stagingDir, (extracted) => {
         if (extracted % 1000 === 0) {
           console.log(
             `[runtime-downloader] ${name} extracting... ${extracted} entries`,
           );
         }
       });
+      // 内容指纹（sha256）随目录一起换入，供启动时识别"版本号相同但内容已更新"的旧残留，
+      // 缺失或不一致时强制重装，避免旧版运行时光（如内置 node 版本过旧）继续被使用
+      try {
+        const markerPath = path.join(stagingDir, ".runtime-sha256");
+        if (expectedSha256) {
+          fs.writeFileSync(markerPath, expectedSha256, "utf-8");
+        } else {
+          try {
+            fs.unlinkSync(markerPath);
+          } catch {
+            // ignore
+          }
+        }
+      } catch (err) {
+        console.warn(`[runtime-downloader] write sha marker for ${name} failed:`, err);
+      }
+    };
+
+    /** 目录替换：旧目录改名 .old -> staging 改名 destDir -> 异步清理 .old */
+    const swapIntoPlace = async (): Promise<void> => {
+      const backupDir = path.join(userDataRuntimeDir(), `.${name}.old-${Date.now()}`);
+      if (fs.existsSync(destDir)) {
+        await retryFsOperation(() => fs.renameSync(destDir, backupDir));
+      }
+      try {
+        await retryFsOperation(() => fs.renameSync(stagingDir, destDir));
+      } catch (err) {
+        // 回滚：避免服务目录丢失
+        try {
+          if (fs.existsSync(backupDir)) fs.renameSync(backupDir, destDir);
+        } catch {
+          // ignore
+        }
+        throw err;
+      }
+      // 异步清理旧目录（进程占用时重试；失败残留 .old 不影响运行）
+      void removeDirWithRetry(backupDir);
+    };
+
+    const extractAndSwap = async (): Promise<void> => {
+      await extractToStaging();
+      await swapIntoPlace();
     };
     try {
-      await extractWithRetry();
+      await extractAndSwap();
     } catch (err) {
+      // 清理可能残留的 staging，避免下次解压 EEXIST/半成品
+      try {
+        fs.rmSync(stagingDir, { recursive: true, force: true });
+      } catch {
+        // ignore
+      }
       // 临时包可能被并发任务/另一实例的启动清理删除（ENOENT）或截断：
       // 删除残留临时文件后重新下载一次再解压，避免一次偶发失败就卡住
       console.warn(
@@ -597,7 +654,7 @@ async function doDownload(
         if (!redownloaded) {
           throw new Error("重新下载失败");
         }
-        await extractWithRetry();
+        await extractAndSwap();
       } catch (retryErr) {
         lastDownloadErrors.set(
           name,
@@ -606,23 +663,6 @@ async function doDownload(
         console.error(`[runtime-downloader] ${name} extract failed after retry:`, retryErr);
         return false;
       }
-    }
-
-    // 记录本次下载的内容指纹（sha256）：供启动时识别"版本号相同但内容已更新"的旧残留，
-    // 缺失或不一致时强制重装，避免旧版运行时光（如内置 node 版本过旧）继续被使用
-    try {
-      const markerPath = path.join(destDir, ".runtime-sha256");
-      if (expectedSha256) {
-        fs.writeFileSync(markerPath, expectedSha256, "utf-8");
-      } else {
-        try {
-          fs.unlinkSync(markerPath);
-        } catch {
-          // ignore
-        }
-      }
-    } catch (err) {
-      console.warn(`[runtime-downloader] write sha marker for ${name} failed:`, err);
     }
 
     // 更新 userData manifest（失败不阻断主流程）
@@ -921,4 +961,41 @@ export function cancelDownload(name: ServiceName): void {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** 是否为 Windows 文件占用类错误（解压/删除/重命名时常见） */
+export function isLockError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const code = (err as NodeJS.ErrnoException).code;
+  return code === 'EBUSY' || code === 'EPERM' || code === 'ENOTEMPTY' || code === 'EACCES';
+}
+
+/** 重试文件系统操作（旧运行时目录被进程占用时，等待句柄释放后重试） */
+export async function retryFsOperation(op: () => void, maxAttempts = 10, delayMs = 500): Promise<void> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      op();
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (!isLockError(err)) throw err;
+      await sleep(delayMs);
+    }
+  }
+  throw lastErr;
+}
+
+/** 删除目录（占用未释放时重试；尽力而为，失败残留 .old 目录不影响运行） */
+export async function removeDirWithRetry(dir: string, maxAttempts = 20, delayMs = 1000): Promise<void> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (err) {
+      if (!isLockError(err)) return;
+      await sleep(delayMs);
+    }
+  }
+  console.warn(`[runtime-downloader] 清理旧运行时目录失败（进程可能仍占用）: ${dir}`);
 }
