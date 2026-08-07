@@ -39,8 +39,8 @@ win:
     - target: nsis
       arch: [x64]
   icon: build/icon.ico
+  # 默认 signAndEditExecutable=true：rcedit 会把 build/icon.ico 写入 exe（桌面快捷方式/任务栏图标），无证书时只改图标不签名
   artifactName: ShenTongAI-Setup-${version}-${arch}.${ext}
-  signAndEditExecutable: false
   # 代码签名：通过环境变量配置，不硬编码证书路径/密码
   # 构建时设置 CSC_LINK（证书文件路径或 base64）与 CSC_KEY_PASSWORD 环境变量即可启用签名
   # certificateFile: ${env.CSC_LINK}
