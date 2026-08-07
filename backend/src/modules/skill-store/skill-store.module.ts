@@ -9,6 +9,7 @@ import { SkillStoreService } from './services/skill-store.service';
 import { SkillAnalyzerService } from './services/skill-analyzer.service';
 import { SkillRunnerService } from './services/skill-runner.service';
 import { GitHubAdapter } from './adapters/github-adapter';
+import { LocalZipAdapter } from './adapters/local-zip-adapter';
 import { ManifestGenerator } from './adapters/manifest-generator';
 import { CreditsModule } from '../credits/credits.module';
 
@@ -28,6 +29,7 @@ import { CreditsModule } from '../credits/credits.module';
     SkillAnalyzerService,
     SkillRunnerService,
     GitHubAdapter,
+    LocalZipAdapter,
     ManifestGenerator,
   ],
   exports: [SkillStoreService, SkillAnalyzerService, SkillRunnerService],

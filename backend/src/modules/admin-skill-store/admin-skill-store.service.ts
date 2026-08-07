@@ -13,6 +13,8 @@ import {
   CreateSkillSourceDto,
   SkillSourceQueryDto,
 } from './dto/skill-source.dto';
+import { UploadSkillSourceDto } from './dto/upload-skill-source.dto';
+import * as path from 'path';
 import {
   SkillPackageQueryDto,
   UpdateSkillPackageDto,
@@ -53,6 +55,32 @@ export class AdminSkillStoreService {
     source.status = 'pending';
     return this.sourceRepo.save(source);
   }
+  /** 本地上传 zip 技能源：落盘 zip → 创建 pending 来源，由前端触发解析 */
+  async createSourceFromZip(file: Express.Multer.File, dto: UploadSkillSourceDto) {
+    if (!file || !file.buffer || file.buffer.length === 0) {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '请上传 zip 文件');
+    }
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    if (ext !== '.zip') {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '仅支持 .zip 压缩包');
+    }
+    const uploadDir = path.resolve(process.cwd(), 'uploads', 'skills');
+    await fs.mkdir(uploadDir, { recursive: true });
+    const safeName = (dto.skillName || 'skill').replace(/[^\w.-]/g, '_').slice(0, 32);
+    const zipName = `${safeName}-${Date.now()}.zip`;
+    const zipPath = path.join(uploadDir, zipName);
+    await fs.writeFile(zipPath, file.buffer);
+
+    const source = new SkillSourceEntity();
+    source.sourceUrl = `local://${zipPath}`;
+    source.sourceType = 'zip';
+    source.skillName = dto.skillName;
+    source.skillDesc = dto.skillDesc;
+    source.skillType = dto.skillType;
+    source.status = 'pending';
+    return this.sourceRepo.save(source);
+  }
+
 
   /** 技能源列表（分页，按创建时间倒序） */
   async listSources(query: SkillSourceQueryDto) {

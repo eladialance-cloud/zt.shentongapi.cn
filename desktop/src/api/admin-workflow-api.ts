@@ -10,7 +10,7 @@
 //   POST   /admin/workflows/:id/reject            驳回审核 body: { reason }
 //   GET    /admin/workflows/stats                 统计
 
-import { adminRequest } from './admin-auth-api'
+import { adminRequest, adminUpload } from './admin-auth-api'
 import type { AdminPaginatedResult } from '@/types/admin-auth'
 import type {
   AdminWorkflowItem,
@@ -91,4 +91,18 @@ export default {
   approveWorkflow,
   rejectWorkflow,
   getWorkflowStats
+}
+
+/** 本地上传导入工作流（.json / .zip，支持多文件） */
+export async function importLocalWorkflows(
+  files: File[]
+): Promise<{ imported: number; failed: number; errors: string[] }> {
+  const form = new FormData();
+  for (const f of files) {
+    form.append('files', f);
+  }
+  return adminUpload<{ imported: number; failed: number; errors: string[] }>(
+    '/admin/workflows/import-local',
+    form,
+  );
 }

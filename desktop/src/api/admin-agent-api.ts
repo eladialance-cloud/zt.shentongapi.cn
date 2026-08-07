@@ -15,7 +15,7 @@
 //   POST   /admin/agents/:id/force-unpublish     强制下架 body: { reason }
 //   GET    /admin/agents/categories              分类列表
 
-import { adminRequest } from './admin-auth-api'
+import { adminRequest, adminUpload } from './admin-auth-api'
 import type { AdminPaginatedResult } from '@/types/admin-auth'
 import type {
   AdminAgentItem,
@@ -153,4 +153,27 @@ export default {
   forceUnpublishAgent,
   listAgentCategories,
   updateAgentCategoryDisplay
+}
+
+/** 本地上传 zip 批量导入 Agent（同步返回统计） */
+export async function importLocalAgent(
+  file: File
+): Promise<{
+  total: number;
+  inserted: number;
+  skipped: number;
+  failed: number;
+  errors: Array<{ filePath: string; error: string }>;
+  message: string;
+}> {
+  const form = new FormData();
+  form.append('file', file);
+  return adminUpload<{
+    total: number;
+    inserted: number;
+    skipped: number;
+    failed: number;
+    errors: Array<{ filePath: string; error: string }>;
+    message: string;
+  }>('/admin/agents/import-local', form);
 }

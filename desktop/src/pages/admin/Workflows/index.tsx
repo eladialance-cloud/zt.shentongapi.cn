@@ -20,6 +20,7 @@ import {
   Switch,
   Table,
   Tag,
+  Upload,
   message
 } from 'antd'
 import type { TableColumnsType } from 'antd'
@@ -28,11 +29,13 @@ import {
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
-  ReloadOutlined
+  ReloadOutlined,
+  UploadOutlined
 } from '@ant-design/icons'
 import {
   createAdminWorkflow,
   deleteAdminWorkflow,
+  importLocalWorkflows,
   listAdminWorkflows,
   updateAdminWorkflow
 } from '@/api/admin-workflow-api'
@@ -97,6 +100,11 @@ export default function AdminWorkflows() {
   const [form] = Form.useForm<WorkflowFormValues>()
   const [saving, setSaving] = useState(false)
 
+  // 本地上传导入（.json / .zip，多文件）
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [uploadFiles, setUploadFiles] = useState<File[]>([])
+  const [uploading, setUploading] = useState(false)
+
   const loadList = useCallback(async () => {
     setLoading(true)
     try {
@@ -128,6 +136,26 @@ export default function AdminWorkflows() {
       isActive: true
     })
     setEditOpen(true)
+  }
+
+  const handleLocalUpload = async () => {
+    if (uploadFiles.length === 0) {
+      message.warning('请先选择 .json 或 .zip 文件')
+      return
+    }
+    setUploading(true)
+    try {
+      const result = await importLocalWorkflows(uploadFiles)
+      message.success(`导入完成：成功 ${result.imported} 条，失败 ${result.failed || 0} 条`)
+      setUploadOpen(false)
+      setUploadFiles([])
+      void loadList()
+    } catch (err) {
+      console.error('[AdminWorkflows] local import failed:', err)
+      message.error('导入失败')
+    } finally {
+      setUploading(false)
+    }
   }
 
   const handleEdit = (item: AdminWorkflowItem) => {
@@ -334,6 +362,13 @@ export default function AdminWorkflows() {
             刷新
           </Button>
           <Button
+            icon={<UploadOutlined />}
+            onClick={() => setUploadOpen(true)}
+            className={styles.ghostBtn}
+          >
+            本地上传
+          </Button>
+          <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={handleAdd}
@@ -383,6 +418,44 @@ export default function AdminWorkflows() {
           />
         </div>
       </Spin>
+
+      {/* 本地上传导入 Modal */}
+      <Modal
+        title="本地上传导入工作流"
+        open={uploadOpen}
+        onCancel={() => {
+          setUploadOpen(false)
+          setUploadFiles([])
+        }}
+        onOk={handleLocalUpload}
+        confirmLoading={uploading}
+        okText="上传并导入"
+        cancelText="取消"
+        destroyOnClose
+      >
+        <Upload.Dragger
+          accept=".json,.zip"
+          multiple
+          beforeUpload={(file) => {
+            setUploadFiles((prev) => [...prev, file as File])
+            return false
+          }}
+          onRemove={(file) => {
+            setUploadFiles((prev) => prev.filter((f) => f.name !== file.name))
+          }}
+          fileList={uploadFiles.map((f, idx) => ({
+            uid: String(idx),
+            name: f.name,
+            status: 'done' as const,
+          }))}
+        >
+          <p className="ant-upload-drag-icon">
+            <UploadOutlined style={{ color: 'var(--color-primary, #4f8cff)' }} />
+          </p>
+          <p className="ant-upload-text">点击或拖拽 n8n 工作流文件到此处</p>
+          <p className="ant-upload-hint">支持单个 .json 工作流，或包含多个 .json 的 .zip 压缩包（可多选）</p>
+        </Upload.Dragger>
+      </Modal>
 
       {/* 新增/编辑 Modal */}
       <Modal

@@ -116,6 +116,38 @@ export async function adminRequest<T = unknown>(
   return adminAxios.request(config) as unknown as Promise<T>;
 }
 
+
+/**
+ * 管理端 multipart 上传助手（fetch 实现）
+ * axios 实例默认 Content-Type: application/json，会把 FormData 序列化成 JSON，
+ * 因此上传走 fetch 并让运行时自动设置 multipart boundary。
+ */
+export async function adminUpload<T = unknown>(
+  url: string,
+  formData: FormData,
+): Promise<T> {
+  const token = useAdminAuthStore.getState().token;
+  let response: Response;
+  try {
+    response = await fetch(`${ADMIN_API_BASE_URL}${url}`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: formData,
+    });
+  } catch (err) {
+    throw new NetworkError('网络连接失败', { cause: err });
+  }
+  const body = (await response.json().catch(() => ({}))) as ApiResponse<T>;
+  if (body && typeof body.code === 'number') {
+    if (body.code === 0) return body.data;
+    throw new BusinessError(body.code, body.message || '请求失败', body.data);
+  }
+  if (!response.ok) {
+    throw new BusinessError(response.status, `请求失败 (${response.status})`, undefined);
+  }
+  return body as unknown as T;
+}
+
 // ===== 权限编码常量(前端硬编码) =====
 
 /** 全部权限定义(按分组组织,供角色权限编辑树使用) */

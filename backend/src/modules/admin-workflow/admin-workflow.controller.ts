@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -8,9 +9,13 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFiles,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { AdminGuard } from '../admin-auth/admin.guard';
 import { AdminWorkflowService } from './admin-workflow.service';
@@ -62,7 +67,33 @@ export class AdminWorkflowController {
     return this.service.create(dto);
   }
 
+
+  @Post('import-local')
+  @ApiOperation({ summary: '本地上传导入工作流（.json 或 .zip，支持多文件）' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        files: { type: 'array', items: { type: 'string', format: 'binary' } },
+      },
+    },
+  })
+  @UseInterceptors(
+    FilesInterceptor('files', 20, {
+      storage: memoryStorage(),
+      limits: { fileSize: 100 * 1024 * 1024 },
+    }),
+  )
+  async importLocal(@UploadedFiles() files: Express.Multer.File[]) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('请上传工作流文件');
+    }
+    return this.service.importLocalFiles(files);
+  }
+
   @Post('import-github')
+
   @ApiOperation({ summary: 'GitHub 导入工作流（支持单文件或批量）' })
   async importFromGithub(@Body() dto: ImportGithubWorkflowDto) {
     return this.service.importFromGithub(dto);

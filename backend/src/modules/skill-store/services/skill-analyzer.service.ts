@@ -12,6 +12,7 @@ import {
   SkillManifest,
 } from '../adapters/skill-adapter.interface';
 import { GitHubAdapter } from '../adapters/github-adapter';
+import { LocalZipAdapter } from '../adapters/local-zip-adapter';
 import { ManifestGenerator } from '../adapters/manifest-generator';
 
 /**
@@ -30,6 +31,7 @@ export class SkillAnalyzerService {
     @InjectRepository(SkillPackageEntity)
     private readonly packageRepo: Repository<SkillPackageEntity>,
     private readonly githubAdapter: GitHubAdapter,
+    private readonly zipAdapter: LocalZipAdapter,
     private readonly manifestGenerator: ManifestGenerator,
   ) {}
 
@@ -164,6 +166,9 @@ export class SkillAnalyzerService {
   private getAdapter(sourceType: string): SkillAdapterInterface {
     if (sourceType === 'github') {
       return this.githubAdapter;
+    }
+    if (sourceType === 'zip') {
+      return this.zipAdapter;
     }
     BusinessException.throw(ErrorCode.VALIDATION_FAILED, '暂不支持该来源类型');
   }

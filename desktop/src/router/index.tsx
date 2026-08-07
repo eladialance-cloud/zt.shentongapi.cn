@@ -67,6 +67,7 @@ import AdminWorkflows from "@/pages/admin/Workflows";
 import AdminWorkflowsReview from "@/pages/admin/Workflows/Review";
 import AdminWorkflowsStats from "@/pages/admin/Workflows/Stats";
 import AdminPlugins from "@/pages/admin/Plugins";
+import AdminSkillStore from "@/pages/admin/SkillStore";
 import AdminPluginsReview from "@/pages/admin/Plugins/Review";
 import AdminPluginsSync from "@/pages/admin/Plugins/Sync";
 import AdminModels from "@/pages/admin/Models";
@@ -212,6 +213,7 @@ const router = createHashRouter([
       { path: "workflows/stats", element: <AdminWorkflowsStats /> },
       // Task 22: 插件管理
       { path: "plugins", element: <AdminPlugins /> },
+      { path: "skill-store", element: <AdminSkillStore /> },
       { path: "plugins/review", element: <AdminPluginsReview /> },
       { path: "plugins/sync", element: <AdminPluginsSync /> },
       // Task 23: 大模型配置

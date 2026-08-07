@@ -22,6 +22,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Upload,
   message
 } from 'antd'
 import type { TableColumnsType } from 'antd'
@@ -33,13 +34,15 @@ import {
   ReloadOutlined,
   RobotOutlined,
   ArrowUpOutlined,
-  ArrowDownOutlined
+  ArrowDownOutlined,
+  UploadOutlined
 } from '@ant-design/icons'
 import {
   createAdminAgent,
   deleteAdminAgent,
   getImportGithubTask,
   importGithubAgent,
+  importLocalAgent,
   listAdminAgents,
   publishAdminAgent,
   unpublishAdminAgent,
@@ -48,7 +51,6 @@ import {
 import type {
   AdminAgentItem,
   AgentCategory,
-  AgentPricingMode,
   AgentStatus,
   CreateAdminAgentDto,
   ImportGithubTask,
@@ -82,11 +84,6 @@ const STATUS_TAG: Record<AgentStatus, { color: string; text: string }> = {
   rejected: { color: 'red', text: '已驳回' }
 }
 
-const PRICING_MODE_OPTIONS: Array<{ label: string; value: AgentPricingMode }> = [
-  { label: '按次计费', value: 'perCall' },
-  { label: '按 Token 计费', value: 'perToken' }
-]
-
 interface AgentFormValues {
   name: string
   displayName?: string
@@ -94,13 +91,7 @@ interface AgentFormValues {
   systemPrompt?: string
   category: AgentCategory
   usageExamples?: string[]
-  modelId?: string
-  modelConfig?: string
-  apiKey?: string
-  pricingMode: AgentPricingMode
   pricePerCall: number
-  pricePerTokenInput: number
-  pricePerTokenOutput: number
 }
 
 interface ImportFormValues {
@@ -124,6 +115,11 @@ export default function AdminAgents() {
   const [importOpen, setImportOpen] = useState(false)
   const [importForm] = Form.useForm<ImportFormValues>()
   const [importSubmitting, setImportSubmitting] = useState(false)
+
+  // 本地上传 zip 批量导入
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
   const [importTask, setImportTask] = useState<ImportGithubTask | null>(null)
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -167,10 +163,7 @@ export default function AdminAgents() {
     form.resetFields()
     form.setFieldsValue({
       category: 'office',
-      pricingMode: 'perCall',
       pricePerCall: 0,
-      pricePerTokenInput: 0,
-      pricePerTokenOutput: 0,
       usageExamples: []
     })
     setEditOpen(true)
@@ -185,13 +178,7 @@ export default function AdminAgents() {
       systemPrompt: item.systemPrompt,
       category: item.category,
       usageExamples: item.usageExamples || [],
-      modelId: item.modelId,
-      modelConfig: item.modelConfig ? JSON.stringify(item.modelConfig, null, 2) : '',
-      apiKey: '',
-      pricingMode: item.pricingMode,
-      pricePerCall: item.pricePerCall,
-      pricePerTokenInput: item.pricePerTokenInput,
-      pricePerTokenOutput: item.pricePerTokenOutput
+      pricePerCall: item.pricePerCall
     })
     setEditOpen(true)
   }
@@ -199,54 +186,26 @@ export default function AdminAgents() {
   const handleSave = async () => {
     try {
       const values = await form.validateFields()
-      // 校验 modelConfig JSON
-      let modelConfigParsed: Record<string, unknown> | undefined
-      if (values.modelConfig && values.modelConfig.trim()) {
-        try {
-          modelConfigParsed = JSON.parse(values.modelConfig) as Record<string, unknown>
-        } catch {
-          message.error('模型配置 JSON 格式错误')
-          return
-        }
-      }
       setSaving(true)
       const usageExamples = (values.usageExamples || []).filter((s) => s && s.trim())
+      const baseDto = {
+        name: values.name,
+        displayName: values.displayName,
+        description: values.description,
+        systemPrompt: values.systemPrompt,
+        category: values.category,
+        usageExamples,
+        pricingMode: 'perCall' as const,
+        pricePerCall: values.pricePerCall,
+        pricePerTokenInput: 0,
+        pricePerTokenOutput: 0
+      }
       if (editing) {
-        const dto: UpdateAdminAgentDto = {
-          name: values.name,
-          displayName: values.displayName,
-          description: values.description,
-          systemPrompt: values.systemPrompt,
-          category: values.category,
-          usageExamples,
-          modelId: values.modelId,
-          modelConfig: modelConfigParsed,
-          pricingMode: values.pricingMode,
-          pricePerCall: values.pricePerCall,
-          pricePerTokenInput: values.pricePerTokenInput,
-          pricePerTokenOutput: values.pricePerTokenOutput
-        }
-        if (values.apiKey && values.apiKey.trim()) {
-          dto.apiKey = values.apiKey
-        }
+        const dto: UpdateAdminAgentDto = baseDto
         await updateAdminAgent(editing.id, dto)
         message.success('Agent 已更新')
       } else {
-        const dto: CreateAdminAgentDto = {
-          name: values.name,
-          displayName: values.displayName,
-          description: values.description,
-          systemPrompt: values.systemPrompt,
-          category: values.category,
-          usageExamples,
-          modelId: values.modelId,
-          modelConfig: modelConfigParsed,
-          apiKey: values.apiKey,
-          pricingMode: values.pricingMode,
-          pricePerCall: values.pricePerCall,
-          pricePerTokenInput: values.pricePerTokenInput,
-          pricePerTokenOutput: values.pricePerTokenOutput
-        }
+        const dto: CreateAdminAgentDto = baseDto
         await createAdminAgent(dto)
         message.success('Agent 已新增')
       }
@@ -346,6 +305,26 @@ export default function AdminAgents() {
       message.error('提交导入任务失败')
     } finally {
       setImportSubmitting(false)
+    }
+  }
+
+  const handleLocalUpload = async () => {
+    if (!uploadFile) {
+      message.warning('请先选择 .zip 压缩包')
+      return
+    }
+    setUploading(true)
+    try {
+      const result = await importLocalAgent(uploadFile)
+      message.success(result.message || '导入完成')
+      setUploadOpen(false)
+      setUploadFile(null)
+      void loadList()
+    } catch (err) {
+      console.error('[AdminAgents] local import failed:', err)
+      message.error('导入失败')
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -470,6 +449,13 @@ export default function AdminAgents() {
             刷新
           </Button>
           <Button
+            icon={<UploadOutlined />}
+            onClick={() => setUploadOpen(true)}
+            className={styles.ghostBtn}
+          >
+            本地上传
+          </Button>
+          <Button
             icon={<GithubOutlined />}
             onClick={() => setImportOpen(true)}
             className={styles.ghostBtn}
@@ -585,30 +571,6 @@ export default function AdminAgents() {
               )}
             </Form.List>
           </div>
-          <Form.Item name="modelId" label="绑定模型 ID">
-            <Input placeholder="如:gpt-4o" />
-          </Form.Item>
-          <Form.Item name="modelConfig" label="模型配置(JSON)">
-            <Input.TextArea
-              rows={4}
-              placeholder='{"temperature":0.7,"maxTokens":2048}'
-              className={styles.modelConfigTextarea}
-            />
-          </Form.Item>
-          <Form.Item
-            name="apiKey"
-            label="API Key(AES 加密存储,可选)"
-            extra={editing ? '留空表示不修改' : undefined}
-          >
-            <Input.Password placeholder="sk-..." autoComplete="new-password" />
-          </Form.Item>
-          <Form.Item
-            name="pricingMode"
-            label="定价模式"
-            rules={[{ required: true, message: '请选择定价模式' }]}
-          >
-            <Select options={PRICING_MODE_OPTIONS} />
-          </Form.Item>
           <Form.Item
             name="pricePerCall"
             label="每次调用价格(积分)"
@@ -616,21 +578,41 @@ export default function AdminAgents() {
           >
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item
-            name="pricePerTokenInput"
-            label="输入 Token 单价(decimal)"
-            rules={[{ required: true, message: '请输入' }]}
-          >
-            <InputNumber min={0} step={0.0001} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item
-            name="pricePerTokenOutput"
-            label="输出 Token 单价(decimal)"
-            rules={[{ required: true, message: '请输入' }]}
-          >
-            <InputNumber min={0} step={0.0001} style={{ width: '100%' }} />
-          </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 本地上传 zip 批量导入 Modal */}
+      <Modal
+        title="本地上传批量导入 Agent"
+        open={uploadOpen}
+        onCancel={() => {
+          setUploadOpen(false)
+          setUploadFile(null)
+        }}
+        onOk={handleLocalUpload}
+        confirmLoading={uploading}
+        okText="上传并导入"
+        cancelText="取消"
+        destroyOnClose
+      >
+        <Upload.Dragger
+          accept=".zip"
+          maxCount={1}
+          beforeUpload={(file) => {
+            setUploadFile(file as File)
+            return false
+          }}
+          onRemove={() => setUploadFile(null)}
+          fileList={uploadFile ? [{ uid: '-1', name: uploadFile.name, status: 'done' }] : []}
+        >
+          <p className="ant-upload-drag-icon">
+            <UploadOutlined style={{ color: 'var(--color-primary, #4f8cff)' }} />
+          </p>
+          <p className="ant-upload-text">点击或拖拽 zip 压缩包到此处</p>
+          <p className="ant-upload-hint">
+            压缩包内需包含 Markdown 格式的 Agent 定义文件（如 agents/**\/*.md），导入后直接上架
+          </p>
+        </Upload.Dragger>
       </Modal>
 
       {/* GitHub 导入 Modal */}

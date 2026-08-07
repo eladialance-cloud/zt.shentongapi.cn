@@ -21,6 +21,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import fg from 'fast-glob';
+import { extractZipFile } from '../../common/utils/zip.util';
 
 const execFileAsync = promisify(execFile);
 
@@ -209,6 +210,72 @@ export class AdminWorkflowService {
 
     this.logger.log(`[Workflow] 导入完成: ${imported} 条`);
     return { imported };
+  }
+
+
+  /**
+   * 本地上传导入工作流
+   * 支持 .json（n8n 工作流）与 .zip（内含 .json 工作流，自动扫描）
+   */
+  async importLocalFiles(files: Express.Multer.File[]): Promise<{ imported: number; failed: number; errors: string[] }> {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('请上传工作流文件（.json 或 .zip）');
+    }
+    let imported = 0;
+    const errors: string[] = [];
+
+    for (const file of files) {
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      try {
+        if (ext === '.json') {
+          const content = file.buffer.toString('utf-8');
+          const parsed = this.parseWorkflowJson(content, file.originalname);
+          if (!parsed) {
+            errors.push(`${file.originalname}: 不是有效的 n8n 工作流 JSON`);
+            continue;
+          }
+          await this.upsertWorkflow({
+            ...parsed,
+            name: parsed.name,
+            nodeCount: parsed.nodeCount,
+            categories: parsed.categories,
+            sourcePath: file.originalname,
+            repoUrl: `local://${file.originalname}`,
+            category: 'other',
+          });
+          imported++;
+        } else if (ext === '.zip') {
+          const stamp = Date.now();
+          const uploadDir = path.resolve(process.cwd(), 'uploads', 'workflows');
+          await fs.mkdir(uploadDir, { recursive: true });
+          const safeName = file.originalname.replace(/[^\w.-]/g, '_');
+          const zipPath = path.join(uploadDir, `workflow-local-${stamp}-${safeName}`);
+          await fs.writeFile(zipPath, file.buffer);
+          const tmpDir = path.join(os.tmpdir(), `workflow-local-${stamp}`);
+          await fs.mkdir(tmpDir, { recursive: true });
+          try {
+            extractZipFile(zipPath, tmpDir);
+            const count = await this.importWorkflowsDir(tmpDir, {
+              repoUrl: `local://${path.basename(zipPath)}`,
+              category: 'other',
+            });
+            imported += count;
+          } finally {
+            try { await fs.rm(tmpDir, { recursive: true, force: true }); } catch {}
+          }
+        } else {
+          errors.push(`${file.originalname}: 不支持的文件类型（仅 .json / .zip）`);
+        }
+      } catch (e) {
+        errors.push(`${file.originalname}: ${(e as Error).message}`);
+      }
+    }
+
+    if (imported === 0 && errors.length > 0) {
+      throw new BadRequestException(`导入失败: ${errors.join('; ')}`);
+    }
+    this.logger.log(`[Workflow] 本地上传导入完成: ${imported} 条, 失败 ${errors.length}`);
+    return { imported, failed: errors.length, errors };
   }
 
   /** 导入单个指定文件 */

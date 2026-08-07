@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -9,9 +10,13 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { AdminGuard } from '../admin-auth/admin.guard';
 import { AdminAgentService } from './admin-agent.service';
@@ -70,7 +75,33 @@ export class AdminAgentController {
 
   // ============ 具名子路径（必须在 :id 之前声明） ============
 
+
+  @Post('import-local')
+  @ApiOperation({ summary: '本地上传 zip 批量导入 Agent' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 100 * 1024 * 1024 },
+    }),
+  )
+  async importLocal(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('请上传 zip 文件');
+    }
+    return this.service.importLocalZip(file);
+  }
+
   @Post('import-github')
+
   @ApiOperation({ summary: 'GitHub 仓库异步导入' })
   async importGithub(@Body() dto: ImportGithubDto) {
     return this.service.importGithub(dto);

@@ -1,11 +1,27 @@
 /** @Public() 跳过 JwtAuthGuard，由 AdminGuard 使用独立 ADMIN_JWT_SECRET 校验。双 JWT 隔离模式：用户端与管理端认证互不干扰。 */
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { AdminGuard } from '../admin-auth/admin.guard';
 import { BigIntParsePipe } from '../../common/pipes/bigint-parse.pipe';
 import { AdminSkillStoreService } from './admin-skill-store.service';
 import { CreateSkillSourceDto, SkillSourceQueryDto } from './dto/skill-source.dto';
+import { UploadSkillSourceDto } from './dto/upload-skill-source.dto';
 import { UpdateSkillPackageDto, SkillPackageQueryDto, RejectSkillPackageDto } from './dto/skill-package.dto';
 
 @ApiTags('管理端-技能商店')
@@ -25,6 +41,36 @@ export class AdminSkillStoreController {
   async createSource(@Body() dto: CreateSkillSourceDto) {
     return this.service.createSource(dto);
   }
+  @Post('sources/upload')
+  @ApiOperation({ summary: '本地上传 zip 技能源' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        skillName: { type: 'string' },
+        skillDesc: { type: 'string' },
+        skillType: { type: 'string', enum: ['skill', 'workflow'] },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 100 * 1024 * 1024 },
+    }),
+  )
+  async uploadSource(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() dto: UploadSkillSourceDto,
+  ) {
+    if (!file) {
+      throw new BadRequestException('请上传 zip 文件');
+    }
+    return this.service.createSourceFromZip(file, dto);
+  }
+
 
   @Get('sources')
   @ApiOperation({ summary: '技能源列表' })

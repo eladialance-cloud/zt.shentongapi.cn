@@ -24,6 +24,7 @@ import { UpdateAgentDto } from './dto/update-agent.dto';
 import { RejectAgentDto } from './dto/reject-agent.dto';
 import { ImportGithubDto } from './dto/import-github.dto';
 import { UpdateCategoryDisplayDto } from './dto/update-category-display.dto';
+import { extractZipFile } from '../../common/utils/zip.util';
 import {
   ParsedAgentMarkdown,
   parseAgentMarkdown,
@@ -341,6 +342,51 @@ export class AdminAgentService {
     return { taskId };
   }
 
+  /** 本地上传 zip 批量导入（同步返回统计） */
+  async importLocalZip(file: Express.Multer.File): Promise<ImportTaskStats & { message: string }> {
+    const ext = path.extname(file?.originalname || '').toLowerCase();
+    if (!file?.buffer || file.buffer.length === 0 || ext !== '.zip') {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '请上传 .zip 压缩包');
+    }
+    const stamp = Date.now();
+    const uploadDir = path.resolve(process.cwd(), 'uploads', 'agents');
+    await fs.mkdir(uploadDir, { recursive: true });
+    const zipPath = path.join(uploadDir, `agent-local-${stamp}.zip`);
+    await fs.writeFile(zipPath, file.buffer);
+
+    const tmpDir = path.join(os.tmpdir(), `agent-local-${stamp}`);
+    await fs.mkdir(tmpDir, { recursive: true });
+    try {
+      extractZipFile(zipPath, tmpDir);
+      const dto: ImportGithubDto = {
+        repoUrl: `local://${path.basename(zipPath)}`,
+        targetStatus: 'published',
+        defaultModelId: DEFAULT_MODEL_ID,
+        defaultCreatorId: DEFAULT_CREATOR_ID,
+        dryRun: false,
+        overwriteExisting: false,
+      };
+      const defaults = {
+        targetStatus: dto.targetStatus || 'published',
+        defaultModelId: dto.defaultModelId || DEFAULT_MODEL_ID,
+        defaultCreatorId: dto.defaultCreatorId || DEFAULT_CREATOR_ID,
+        dryRun: dto.dryRun ?? false,
+        overwriteExisting: dto.overwriteExisting ?? false,
+      };
+      const stats = await this.processDirectoryImport(tmpDir, dto, defaults, undefined);
+      return {
+        ...stats,
+        message: `导入完成：新增 ${stats.inserted}，跳过 ${stats.skipped}，失败 ${stats.failed}`,
+      };
+    } finally {
+      try {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+      } catch {
+        // 忽略临时目录清理错误
+      }
+    }
+  }
+
   /** 异步处理导入任务：克隆 → 解析 → 去重 → 入库 */
   private async processImportTask(
     taskId: string,
@@ -378,153 +424,10 @@ export class AdminAgentService {
       );
       commitSha = shaStdout.trim();
 
-      // c. 遍历目标源目录下的 markdown 文件
-      const files: string[] = await fg(
-        [
-          ...SOURCE_DIRS_TO_SCAN.map((d) => `${d}/**/*.md`),
-          ...EXCLUDE_PATTERNS.map((p) => '!' + p),
-        ],
-        { cwd: tmpDir, ignore: EXCLUDE_PATTERNS },
-      );
-      stats.total = files.length;
-
-      // d-g. 读取并解析每个文件，单文件错误不中断
-      const parsed: Array<{
-        relPath: string;
-        data: ParsedAgentMarkdown;
-        category: AgentCategory;
-      }> = [];
-      for (const relPath of files) {
-        try {
-          const content = await fs.readFile(path.join(tmpDir, relPath), 'utf8');
-          const result = parseAgentMarkdown(relPath, content);
-          if (result.error) {
-            stats.failed++;
-            if (stats.errors && stats.errors.length < 50) {
-              stats.errors.push({ filePath: relPath, error: result.error });
-            }
-            continue;
-          }
-          const sourceDir = relPath.split('/')[0];
-          const category: AgentCategory =
-            SOURCE_DIR_TO_CATEGORY[sourceDir] || 'other';
-          parsed.push({ relPath, data: result, category });
-        } catch (e) {
-          stats.failed++;
-          if (stats.errors && stats.errors.length < 50) {
-            stats.errors.push({ filePath: relPath, error: (e as Error).message });
-          }
-        }
-      }
-
-      // h. 按 sourceRepoUrl + sourceFilePath 去重
-      const existingMap = new Map<string, { id: number }>();
-      if (parsed.length > 0) {
-        const existing = await this.agentRepo.find({
-          where: {
-            sourceRepoUrl: dto.repoUrl,
-            sourceFilePath: In(parsed.map((p) => p.relPath)),
-          },
-          select: ['id', 'sourceFilePath'],
-        });
-        for (const e of existing) {
-          if (e.sourceFilePath) {
-            existingMap.set(e.sourceFilePath, { id: e.id });
-          }
-        }
-      }
-
-      // 构造新增 / 更新集合
-      const newEntities: AgentEntity[] = [];
-      const updatePayloads: Array<{
-        id: number;
-        fields: Partial<AgentEntity>;
-      }> = [];
-      for (const item of parsed) {
-        const existing = existingMap.get(item.relPath);
-        const sourceDir = item.relPath.split('/')[0];
-        if (existing) {
-          if (!defaults.overwriteExisting) {
-            stats.skipped++;
-            continue;
-          }
-          updatePayloads.push({
-            id: existing.id,
-            fields: {
-              name: item.data.name,
-              description: item.data.description,
-              avatar: item.data.avatar || undefined,
-              systemPrompt: item.data.systemPrompt,
-              modelId: defaults.defaultModelId,
-              category: item.category,
-              sourceCategory: sourceDir,
-              sourceVersion: commitSha,
-            },
-          });
-        } else {
-          const entity = this.agentRepo.create({
-            name: item.data.name,
-            description: item.data.description,
-            avatar: item.data.avatar || undefined,
-            systemPrompt: item.data.systemPrompt,
-            modelId: defaults.defaultModelId,
-            pricePerCall: DEFAULT_PRICE_PER_CALL,
-            creatorId: defaults.defaultCreatorId,
-            creatorType: 'official',
-            status: defaults.targetStatus,
-            category: item.category,
-            sourceType: 'imported',
-            sourceRepoUrl: dto.repoUrl,
-            sourceFilePath: item.relPath,
-            sourceCategory: sourceDir,
-            sourceVersion: commitSha,
-            runtimeType: DEFAULT_RUNTIME_TYPE,
-            userId: defaults.defaultCreatorId,
-            isOfficial: true,
-            publishedAt:
-              defaults.targetStatus === 'published' ? new Date() : undefined,
-          });
-          newEntities.push(entity);
-        }
-      }
-
-      // i/j. dryRun 跳过写入；否则分批入库
-      if (defaults.dryRun) {
-        stats.inserted = 0;
-        stats.skipped = existingMap.size;
-      } else {
-        let processedCount = 0;
-        // 分批 save 新增
-        for (let i = 0; i < newEntities.length; i += BATCH_SIZE) {
-          const batch = newEntities.slice(i, i + BATCH_SIZE);
-          await this.agentRepo.save(batch);
-          processedCount += batch.length;
-          const progress =
-            files.length > 0
-              ? Math.floor((processedCount / files.length) * 100)
-              : 100;
-          await this.agentImportTaskRepo.update({ taskId }, { progress, stats });
-        }
-        stats.inserted = newEntities.length;
-
-        // 分批 update 覆盖
-        for (let i = 0; i < updatePayloads.length; i += BATCH_SIZE) {
-          const batch = updatePayloads.slice(i, i + BATCH_SIZE);
-          for (const payload of batch) {
-            await this.agentRepo.update(payload.id, payload.fields);
-          }
-          processedCount += batch.length;
-          const progress =
-            files.length > 0
-              ? Math.floor((processedCount / files.length) * 100)
-              : 100;
-          await this.agentImportTaskRepo.update({ taskId }, { progress, stats });
-        }
-      }
-
-      // k. 完成
+      // c-k. 共享目录导入流程
+      const result = await this.processDirectoryImport(tmpDir, dto, defaults, commitSha, taskId);
+      Object.assign(stats, result);
       stats.durationMs = Date.now() - startTime;
-      stats.total = files.length;
       await this.agentImportTaskRepo.update(
         { taskId },
         {
@@ -548,6 +451,180 @@ export class AdminAgentService {
         // 忽略临时目录清理错误
       }
     }
+  }
+
+  /** 共享目录导入：扫描 → 解析 → 去重 → 分批入库（taskId 存在时更新任务进度） */
+  private async processDirectoryImport(
+    tmpDir: string,
+    dto: ImportGithubDto,
+    defaults: {
+      targetStatus: 'published' | 'pending_review' | 'draft';
+      defaultModelId: string;
+      defaultCreatorId: number;
+      dryRun: boolean;
+      overwriteExisting: boolean;
+    },
+    commitSha: string | undefined,
+    taskId?: string,
+  ): Promise<ImportTaskStats> {
+    const stats: ImportTaskStats = {
+      total: 0,
+      inserted: 0,
+      skipped: 0,
+      failed: 0,
+      durationMs: 0,
+      errors: [],
+    };
+
+    // c. 遍历目标源目录下的 markdown 文件
+    const files: string[] = await fg(
+      [
+        ...SOURCE_DIRS_TO_SCAN.map((d) => `${d}/**/*.md`),
+        ...EXCLUDE_PATTERNS.map((p) => '!' + p),
+      ],
+      { cwd: tmpDir, ignore: EXCLUDE_PATTERNS },
+    );
+    stats.total = files.length;
+
+    // d-g. 读取并解析每个文件，单文件错误不中断
+    const parsed: Array<{
+      relPath: string;
+      data: ParsedAgentMarkdown;
+      category: AgentCategory;
+    }> = [];
+    for (const relPath of files) {
+      try {
+        const content = await fs.readFile(path.join(tmpDir, relPath), 'utf8');
+        const result = parseAgentMarkdown(relPath, content);
+        if (result.error) {
+          stats.failed++;
+          if (stats.errors && stats.errors.length < 50) {
+            stats.errors.push({ filePath: relPath, error: result.error });
+          }
+          continue;
+        }
+        const sourceDir = relPath.split('/')[0];
+        const category: AgentCategory =
+          SOURCE_DIR_TO_CATEGORY[sourceDir] || 'other';
+        parsed.push({ relPath, data: result, category });
+      } catch (e) {
+        stats.failed++;
+        if (stats.errors && stats.errors.length < 50) {
+          stats.errors.push({ filePath: relPath, error: (e as Error).message });
+        }
+      }
+    }
+
+    // h. 按 sourceRepoUrl + sourceFilePath 去重
+    const existingMap = new Map<string, { id: number }>();
+    if (parsed.length > 0) {
+      const existing = await this.agentRepo.find({
+        where: {
+          sourceRepoUrl: dto.repoUrl,
+          sourceFilePath: In(parsed.map((p) => p.relPath)),
+        },
+        select: ['id', 'sourceFilePath'],
+      });
+      for (const e of existing) {
+        if (e.sourceFilePath) {
+          existingMap.set(e.sourceFilePath, { id: e.id });
+        }
+      }
+    }
+
+    // 构造新增 / 更新集合
+    const newEntities: AgentEntity[] = [];
+    const updatePayloads: Array<{
+      id: number;
+      fields: Partial<AgentEntity>;
+    }> = [];
+    for (const item of parsed) {
+      const existing = existingMap.get(item.relPath);
+      const sourceDir = item.relPath.split('/')[0];
+      if (existing) {
+        if (!defaults.overwriteExisting) {
+          stats.skipped++;
+          continue;
+        }
+        updatePayloads.push({
+          id: existing.id,
+          fields: {
+            name: item.data.name,
+            description: item.data.description,
+            avatar: item.data.avatar || undefined,
+            systemPrompt: item.data.systemPrompt,
+            modelId: defaults.defaultModelId,
+            category: item.category,
+            sourceCategory: sourceDir,
+            sourceVersion: commitSha,
+          },
+        });
+      } else {
+        const entity = this.agentRepo.create({
+          name: item.data.name,
+          description: item.data.description,
+          avatar: item.data.avatar || undefined,
+          systemPrompt: item.data.systemPrompt,
+          modelId: defaults.defaultModelId,
+          pricePerCall: DEFAULT_PRICE_PER_CALL,
+          creatorId: defaults.defaultCreatorId,
+          creatorType: 'official',
+          status: defaults.targetStatus,
+          category: item.category,
+          sourceType: 'imported',
+          sourceRepoUrl: dto.repoUrl,
+          sourceFilePath: item.relPath,
+          sourceCategory: sourceDir,
+          sourceVersion: commitSha,
+          runtimeType: DEFAULT_RUNTIME_TYPE,
+          userId: defaults.defaultCreatorId,
+          isOfficial: true,
+          publishedAt:
+            defaults.targetStatus === 'published' ? new Date() : undefined,
+        });
+        newEntities.push(entity);
+      }
+    }
+
+    // i/j. dryRun 跳过写入；否则分批入库
+    if (defaults.dryRun) {
+      stats.inserted = 0;
+      stats.skipped = existingMap.size;
+    } else {
+      let processedCount = 0;
+      // 分批 save 新增
+      for (let i = 0; i < newEntities.length; i += BATCH_SIZE) {
+        const batch = newEntities.slice(i, i + BATCH_SIZE);
+        await this.agentRepo.save(batch);
+        processedCount += batch.length;
+        if (taskId) {
+          const progress =
+            files.length > 0
+              ? Math.floor((processedCount / files.length) * 100)
+              : 100;
+          await this.agentImportTaskRepo.update({ taskId }, { progress, stats });
+        }
+      }
+      stats.inserted = newEntities.length;
+
+      // 分批 update 覆盖
+      for (let i = 0; i < updatePayloads.length; i += BATCH_SIZE) {
+        const batch = updatePayloads.slice(i, i + BATCH_SIZE);
+        for (const payload of batch) {
+          await this.agentRepo.update(payload.id, payload.fields);
+        }
+        processedCount += batch.length;
+        if (taskId) {
+          const progress =
+            files.length > 0
+              ? Math.floor((processedCount / files.length) * 100)
+              : 100;
+          await this.agentImportTaskRepo.update({ taskId }, { progress, stats });
+        }
+      }
+    }
+
+    return stats;
   }
 
   /** 查询导入任务状态 */
