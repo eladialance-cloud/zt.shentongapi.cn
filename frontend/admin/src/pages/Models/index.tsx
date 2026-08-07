@@ -48,6 +48,7 @@ import {
   updateAdminProvider
 } from '@/api/admin-model-api'
 import ProviderImportModal from './ProviderImportModal'
+import VideoPriceMatrixEditor from '@/components/VideoPriceMatrixEditor'
 import type {
   AdminModelItem,
   AdminProviderItem,
@@ -113,6 +114,9 @@ interface ModelFormValues {
   outputPricePerToken?: number
   capabilities: ModelCapability[]
   enabled: boolean
+  pricePerImage?: number
+  videoPrices?: Record<string, Record<string, number>>
+  generationParamsText?: string
 }
 
 export default function AdminModels() {
@@ -139,6 +143,7 @@ export default function AdminModels() {
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<AdminModelItem | null>(null)
   const [form] = Form.useForm<ModelFormValues>()
+  const modelType = Form.useWatch('modelType', form)
   const [saving, setSaving] = useState(false)
 
   // ----- 导入向导 -----
@@ -199,7 +204,10 @@ export default function AdminModels() {
       inputPricePerToken: item.inputPricePerToken ?? 0,
       outputPricePerToken: item.outputPricePerToken ?? 0,
       capabilities: item.capabilities || [],
-      enabled: item.enabled
+      enabled: item.enabled,
+      pricePerImage: item.pricePerImage ?? undefined,
+      videoPrices: item.videoPrices || undefined,
+      generationParamsText: item.generationParams ? JSON.stringify(item.generationParams, null, 2) : undefined
     })
     setEditOpen(true)
   }
@@ -216,6 +224,22 @@ export default function AdminModels() {
         outputPricePerToken: values.outputPricePerToken ?? 0,
         capabilities: values.capabilities,
         enabled: values.enabled
+      }
+      if (values.modelType === 'image' && values.pricePerImage != null) {
+        dto.pricePerImage = values.pricePerImage
+      }
+      if (values.modelType === 'image' || values.modelType === 'video') {
+        if (values.modelType === 'video') {
+          dto.videoPrices = values.videoPrices
+        }
+        if (values.generationParamsText) {
+          try {
+            dto.generationParams = JSON.parse(values.generationParamsText) as Record<string, unknown>
+          } catch (e) {
+            message.error('生成参数 JSON 格式错误')
+            return
+          }
+        }
       }
       await updateAdminModel(editing.id, dto)
       message.success('模型已更新')
@@ -429,7 +453,8 @@ export default function AdminModels() {
     providerForm.setFieldsValue({
       name: p.name,
       baseUrl: p.baseUrl,
-      status: p.status
+      status: p.status,
+      generationTemplate: p.config?.generation ? JSON.stringify(p.config.generation, null, 2) : undefined
     })
   }
 
@@ -437,6 +462,15 @@ export default function AdminModels() {
     if (!editProvider) return
     try {
       const values = await providerForm.validateFields()
+      const templateText = values.generationTemplate != null ? String(values.generationTemplate).trim() : ''
+      if (templateText) {
+        try {
+          JSON.parse(templateText)
+        } catch {
+          message.error('生成适配模板 JSON 格式错误')
+          return
+        }
+      }
       setProviderSaving(true)
       const dto: UpdateProviderDto = {
         name: values.name,
@@ -444,6 +478,12 @@ export default function AdminModels() {
         status: values.status
       }
       if (values.apiKey && String(values.apiKey).trim()) dto.apiKey = String(values.apiKey).trim()
+      if (templateText) {
+        dto.config = { ...(editProvider.config || {}), generation: JSON.parse(templateText) }
+      } else if (editProvider.config?.generation) {
+        const { generation: _removed, ...restConfig } = editProvider.config
+        dto.config = restConfig
+      }
       await updateAdminProvider(editProvider.id, dto)
       message.success('供应商已更新')
       setEditProvider(null)
@@ -677,9 +717,26 @@ export default function AdminModels() {
           >
             <Input maxLength={128} />
           </Form.Item>
-          <Form.Item name="modelType" label="模型类型标签" extra="用户端按标签展示，可修改">
+          <Form.Item name="modelType" label="模型类型标签" extra="文生图/文生视频需选对应类型">
             <Select options={MODEL_TYPE_OPTIONS} allowClear placeholder="选择类型" />
           </Form.Item>
+          {modelType === 'image' && (
+            <Form.Item name="pricePerImage" label="图片生成积分/张" extra="用户生成一张图扣除的积分">
+              <InputNumber min={0} step={0.1} style={{ width: '100%' }} placeholder="如 10" />
+            </Form.Item>
+          )}
+          {(modelType === 'image' || modelType === 'video') && (
+            <>
+              {modelType === 'video' && (
+                <Form.Item key={editing?.modelId ?? 'new-model'} name="videoPrices" label="视频价格矩阵（分辨率 × 时长）" extra="每个格子 = 该规格生成一条视频扣除的积分，留空表示不提供">
+                  <VideoPriceMatrixEditor />
+                </Form.Item>
+              )}
+              <Form.Item name="generationParamsText" label="生成参数(JSON)" extra='{"image_sizes":["1024x1024"],"video_resolutions":["720p","1080p"],"video_durations":[5,10],"video_fps":[24,30]}'>
+                <Input.TextArea rows={3} placeholder='{"image_sizes":["1024x1024"]}' />
+              </Form.Item>
+            </>
+          )}
           <Form.Item
             name="inputPricePerToken"
             label="输入单价(积分/千token)"
@@ -768,6 +825,17 @@ export default function AdminModels() {
                 { label: '启用', value: 'active' },
                 { label: '停用', value: 'disabled' }
               ]}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="generationTemplate"
+            label="生成适配模板 (JSON)"
+            extra={'{\"imagesPath\":\"/v1/images/generations\",\"videosPath\":\"/v1/videos/generations\",\"requestTemplate\":{\"model\":\"{upstreamModelId}\",\"prompt\":\"{prompt}\"},\"resultUrlPath\":\"data.task_result.videos[0].url\"} 留空表示清空生成配置'}
+          >
+            <Input.TextArea
+              rows={8}
+              placeholder={'{\n  \"imagesPath\": \"/v1/images/generations\",\n  \"videosPath\": \"/v1/videos/generations\",\n  \"async\": true,\n  \"requestTemplate\": { \"model\": \"{upstreamModelId}\", \"prompt\": \"{prompt}\" }\n}'}
             />
           </Form.Item>
         </Form>

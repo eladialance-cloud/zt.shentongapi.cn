@@ -1,0 +1,62 @@
+import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min, Max } from 'class-validator';
+
+/** 生成图片 DTO */
+export class GenerateImageDto {
+  @IsNotEmpty({ message: 'modelId 不能为空' })
+  @IsString()
+  modelId: string;
+
+  @IsNotEmpty({ message: '提示词不能为空' })
+  @IsString()
+  @MaxLength(2000)
+  prompt: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  size?: string;
+}
+
+/** 生成视频 DTO */
+export class GenerateVideoDto {
+  @IsNotEmpty({ message: 'modelId 不能为空' })
+  @IsString()
+  modelId: string;
+
+  @IsNotEmpty({ message: '提示词不能为空' })
+  @IsString()
+  @MaxLength(2000)
+  prompt: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  resolution?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(600)
+  duration?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(120)
+  fps?: number;
+}
+
+/** 生成任务查询 DTO */
+export class MediaJobQueryDto {
+  @IsOptional()
+  @IsInt()
+  page?: number;
+
+  @IsOptional()
+  @IsInt()
+  pageSize?: number;
+
+  @IsOptional()
+  @IsIn(['image', 'video'])
+  type?: 'image' | 'video';
+}

@@ -9,7 +9,7 @@
 // 同步状态:颜色标签,操作:手动同步 POST /admin/models/:id/sync
 // API: GET/POST/PATCH /admin/models, POST /admin/models/:id/sync
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Button,
   Empty,
@@ -52,6 +52,7 @@ import type {
 } from '@/types/admin-model'
 import type { AdminPaginatedResult } from '@/types/admin-auth'
 import ProxyImportModal from './ProxyImportModal'
+import VideoPriceMatrixEditor from '@/components/VideoPriceMatrixEditor'
 import styles from './styles.module.css'
 
 const PAGE_SIZE = 20
@@ -127,6 +128,10 @@ interface ModelFormValues {
   concurrencyLimit?: number
   rateLimitPerMinute?: number
   minUserLevel: MinUserLevel
+  modelType?: string
+  pricePerImage?: number
+  videoPrices?: Record<string, Record<string, number>>
+  generationParamsText?: string
 }
 
 export default function AdminModels() {
@@ -140,6 +145,7 @@ export default function AdminModels() {
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<AdminModelItem | null>(null)
   const [form] = Form.useForm<ModelFormValues>()
+  const modelType = Form.useWatch('modelType', form)
   const [saving, setSaving] = useState(false)
   const [syncingId, setSyncingId] = useState<number | null>(null)
   const [proxyOpen, setProxyOpen] = useState(false)
@@ -186,7 +192,8 @@ export default function AdminModels() {
       enabled: true,
       minUserLevel: 1,
       concurrencyLimit: 10,
-      rateLimitPerMinute: 60
+      rateLimitPerMinute: 60,
+      modelType: 'chat'
     })
     setEditOpen(true)
   }
@@ -203,7 +210,11 @@ export default function AdminModels() {
       enabled: item.enabled,
       concurrencyLimit: item.concurrencyLimit,
       rateLimitPerMinute: item.rateLimitPerMinute,
-      minUserLevel: item.minUserLevel
+      minUserLevel: item.minUserLevel,
+      modelType: item.modelType || 'chat',
+      pricePerImage: item.pricePerImage ?? undefined,
+      videoPrices: item.videoPrices || undefined,
+      generationParamsText: item.generationParams ? JSON.stringify(item.generationParams, null, 2) : undefined
     })
     setEditOpen(true)
   }
@@ -222,10 +233,27 @@ export default function AdminModels() {
           enabled: values.enabled,
           concurrencyLimit: values.concurrencyLimit,
           rateLimitPerMinute: values.rateLimitPerMinute,
-          minUserLevel: values.minUserLevel
+          minUserLevel: values.minUserLevel,
+          modelType: values.modelType || 'chat'
         }
         if (values.apiKey && values.apiKey.trim()) {
           dto.apiKey = values.apiKey
+        }
+        if (values.modelType === 'image' && values.pricePerImage != null) {
+          dto.pricePerImage = values.pricePerImage
+        }
+        if (values.modelType === 'image' || values.modelType === 'video') {
+          if (values.modelType === 'video') {
+            dto.videoPrices = values.videoPrices
+          }
+          if (values.generationParamsText) {
+            try {
+              dto.generationParams = JSON.parse(values.generationParamsText) as Record<string, unknown>
+            } catch (e) {
+              message.error('生成参数 JSON 格式错误')
+              return
+            }
+          }
         }
         await updateAdminModel(editing.id, dto)
         message.success('模型已更新')
@@ -240,7 +268,24 @@ export default function AdminModels() {
           enabled: values.enabled,
           concurrencyLimit: values.concurrencyLimit,
           rateLimitPerMinute: values.rateLimitPerMinute,
-          minUserLevel: values.minUserLevel
+          minUserLevel: values.minUserLevel,
+          modelType: values.modelType || 'chat'
+        }
+        if (values.modelType === 'image' && values.pricePerImage != null) {
+          dto.pricePerImage = values.pricePerImage
+        }
+        if (values.modelType === 'image' || values.modelType === 'video') {
+          if (values.modelType === 'video') {
+            dto.videoPrices = values.videoPrices
+          }
+          if (values.generationParamsText) {
+            try {
+              dto.generationParams = JSON.parse(values.generationParamsText) as Record<string, unknown>
+            } catch (e) {
+              message.error('生成参数 JSON 格式错误')
+              return
+            }
+          }
         }
         await createAdminModel(dto)
         message.success('模型已新增')
@@ -536,6 +581,35 @@ export default function AdminModels() {
           <Form.Item name="apiEndpoint" label="API Endpoint">
             <Input placeholder="https://api.openai.com/v1" />
           </Form.Item>
+          <Form.Item name="modelType" label="模型类型标签" extra="文生图/文生视频需选对应类型">
+            <Select
+              options={[
+                { value: 'chat', label: '对话' },
+                { value: 'image', label: '文生图' },
+                { value: 'video', label: '文生视频' },
+                { value: 'embedding', label: '向量' },
+                { value: 'rerank', label: '重排' },
+              ]}
+              placeholder="选择类型"
+            />
+          </Form.Item>
+          {modelType === 'image' && (
+            <Form.Item name="pricePerImage" label="图片生成积分/张" extra="用户生成一张图扣除的积分">
+              <InputNumber min={0} precision={1} style={{ width: '100%' }} placeholder="如 10" />
+            </Form.Item>
+          )}
+          {(modelType === 'image' || modelType === 'video') && (
+            <>
+              {modelType === 'video' && (
+                <Form.Item name="videoPrices" label="视频价格矩阵（分辨率 × 时长）" extra="每个格子 = 该规格生成一条视频扣除的积分，留空表示不提供">
+                  <VideoPriceMatrixEditor />
+                </Form.Item>
+              )}
+              <Form.Item name="generationParamsText" label="生成参数(JSON)" extra='{"image_sizes":["1024x1024"],"video_resolutions":["720p","1080p"],"video_durations":[5,10],"video_fps":[24,30]}'>
+                <Input.TextArea rows={3} placeholder='{"image_sizes":["1024x1024"]}' />
+              </Form.Item>
+            </>
+          )}
           <Form.Item
             name="capabilities"
             label="能力(多选)"

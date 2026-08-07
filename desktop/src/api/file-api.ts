@@ -43,7 +43,14 @@ export function uploadFile(
             data: UploadResult
           }
           if (body.code === 0) {
-            resolve(body.data)
+            const d = body.data as any
+            resolve({
+              fileId: String(d.id),
+              url: d.path,
+              fileName: d.name,
+              fileSize: d.size,
+              mimeType: d.mimeType || 'application/octet-stream'
+            })
           } else {
             reject(new Error(body.message || '上传失败'))
           }

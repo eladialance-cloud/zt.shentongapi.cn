@@ -85,4 +85,15 @@ export class UpdateModelDto {
   @IsString()
   @MaxLength(128)
   upstreamModelId?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  pricePerImage?: number;
+
+  @IsOptional()
+  videoPrices?: Record<string, Record<string, number>>;
+
+  @IsOptional()
+  generationParams?: Record<string, unknown>;
 }

@@ -16,6 +16,8 @@ import {
 import { SessionList } from './components/SessionList'
 import { MessageList } from './components/MessageList'
 import { MessageInput } from './components/MessageInput'
+import { MediaGenerationModal } from './components/MediaGenerationModal'
+import type { MediaJob } from '@/api/media-generation-api'
 import * as chatApi from '@/api/chat-api'
 import { listMarketAgents } from '@/api/agent-api'
 import { listKnowledgeBases, listOfficialKnowledgeBases } from '@/api/knowledge-api'
@@ -50,6 +52,10 @@ export default function Chat() {
   // ===== 当前会话与消息 =====
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
+
+  // ===== 文生图/文生视频弹窗 =====
+  const [generationOpen, setGenerationOpen] = useState(false)
+  const [generationType, setGenerationType] = useState<'image' | 'video'>('image')
 
   // ===== 流式状态 =====
   const [streaming, setStreaming] = useState(false)
@@ -302,6 +308,35 @@ export default function Chat() {
     [activeSession]
   )
 
+  /** 生成完成：以助手媒体消息插入会话（含缩略图/播放器/积分消耗） */
+  const handleGenerationComplete = useCallback(
+    (job: MediaJob) => {
+      const promptText = job.prompt || ''
+      const firstUrl = job.resultUrls?.[0] || ''
+      const typeLabel = job.type === 'image' ? '文生图' : '文生视频'
+      let mediaMarkdown = ''
+      if (firstUrl) {
+        mediaMarkdown = job.type === 'image'
+          ? `![${promptText}](${firstUrl})`
+          : `${firstUrl}`
+      }
+      const costText = job.creditsCost > 0 ? `（已扣除 ${job.creditsCost} 积分）` : ''
+      const assistantMsg: ChatMessage = {
+        id: Date.now() + 2,
+        sessionId: activeSession?.id ?? 0,
+        userId: 0,
+        role: 'assistant',
+        content: `✨ ${typeLabel}完成${costText}\n${promptText ? `提示词：${promptText}\n` : ''}${mediaMarkdown}`.replace(/\n$/,''),
+        status: 'done',
+        creditsCost: job.creditsCost,
+        createdAt: new Date()
+      }
+      setMessages((prev) => [...prev, assistantMsg])
+      setGenerationOpen(false)
+    },
+    [activeSession]
+  )
+
   /** 中断流式 */
   const handleAbort = useCallback(() => {
     abortControllerRef.current?.abort()
@@ -521,7 +556,22 @@ export default function Chat() {
         )}
 
         {/* 底部输入区 */}
-        <MessageInput onSend={handleSend} sending={streaming} onAbort={handleAbort} />
+        <MessageInput
+          onSend={handleSend}
+          sending={streaming}
+          onAbort={handleAbort}
+          onOpenGeneration={(type) => {
+            setGenerationType(type)
+            setGenerationOpen(true)
+          }}
+        />
+
+        <MediaGenerationModal
+          open={generationOpen}
+          onClose={() => setGenerationOpen(false)}
+          defaultType={generationType}
+          onComplete={handleGenerationComplete}
+        />
       </div>
     </div>
   )

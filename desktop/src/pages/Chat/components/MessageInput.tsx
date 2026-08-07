@@ -11,10 +11,13 @@ import {
   PaperClipOutlined,
   SendOutlined,
   CloseOutlined,
-  FileOutlined
+  FileOutlined,
+  PictureOutlined,
+  VideoCameraOutlined
 } from '@ant-design/icons'
 import { uploadFile } from '@/api/file-api'
 import type { UploadResult } from '@/types/chat'
+import { isImageMime, isVideoMime } from '@/utils/media'
 import styles from '../styles.module.css'
 
 interface MessageInputProps {
@@ -26,6 +29,8 @@ interface MessageInputProps {
   onAbort?: () => void
   /** 占位文案 */
   placeholder?: string
+  /** 打开文生图/文生视频弹窗 */
+  onOpenGeneration?: (type: 'image' | 'video') => void
 }
 
 /** 附件项（含上传进度） */
@@ -35,13 +40,16 @@ interface AttachmentItem {
   status: 'uploading' | 'done' | 'error'
   progress: number
   result?: UploadResult
+  /** 本地预览 URL（图片/视频） */
+  previewUrl?: string
 }
 
 export function MessageInput({
   onSend,
   sending = false,
   onAbort,
-  placeholder = '输入消息，Enter 发送，Shift+Enter 换行...'
+  placeholder = '输入消息，Enter 发送，Shift+Enter 换行...',
+  onOpenGeneration,
 }: MessageInputProps) {
   const [content, setContent] = useState('')
   const [attachments, setAttachments] = useState<AttachmentItem[]>([])
@@ -58,18 +66,33 @@ export function MessageInput({
     }
     setAttachments((prev) => [...prev, item])
 
+    const previewUrl = isImageMime(file.type) || isVideoMime(file.type) ? URL.createObjectURL(file) : ''
+
     try {
+
       const result = await uploadFile(file, (percent) => {
+
         setAttachments((prev) =>
+
           prev.map((a) => (a.uid === uid ? { ...a, progress: percent } : a))
+
         )
+
       })
+
       setAttachments((prev) =>
+
         prev.map((a) =>
-          a.uid === uid ? { ...a, status: 'done', progress: 100, result } : a
+
+          a.uid === uid ? { ...a, status: 'done', progress: 100, result, previewUrl } : a
+
         )
+
       )
+
     } catch (err) {
+
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
       console.error('[MessageInput] upload failed:', err)
       setAttachments((prev) =>
         prev.map((a) => (a.uid === uid ? { ...a, status: 'error' } : a))
@@ -91,7 +114,11 @@ export function MessageInput({
 
   /** 移除附件 */
   const handleRemoveAttachment = (uid: string) => {
-    setAttachments((prev) => prev.filter((a) => a.uid !== uid))
+    setAttachments((prev) => {
+      const target = prev.find((a) => a.uid === uid)
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl)
+      return prev.filter((a) => a.uid !== uid)
+    })
   }
 
   /** 发送 */
@@ -137,7 +164,21 @@ export function MessageInput({
         <div className={styles.attachmentList}>
           {attachments.map((a) => (
             <div key={a.uid} className={styles.attachmentItem}>
-              <FileOutlined />
+              {a.previewUrl && isImageMime(a.file.type) && (
+                <img
+                  src={a.previewUrl}
+                  alt={a.file.name}
+                  className={styles.attachmentPreviewImg}
+                />
+              )}
+              {a.previewUrl && isVideoMime(a.file.type) && (
+                <video
+                  src={a.previewUrl}
+                  className={styles.attachmentPreviewVideo}
+                  muted
+                />
+              )}
+              {!a.previewUrl && <FileOutlined />}
               <span>{a.file.name}</span>
               <span style={{ color: '#6e7681', fontSize: 11 }}>
                 {formatSize(a.file.size)}
@@ -161,6 +202,28 @@ export function MessageInput({
         </div>
       )}
       <div className={styles.inputRow}>
+        {onOpenGeneration && (
+          <>
+            <Tooltip title="文生图（扣除积分）">
+              <Button
+                type="default"
+                icon={<PictureOutlined />}
+                className={styles.uploadBtn}
+                disabled={sending}
+                onClick={() => onOpenGeneration('image')}
+              />
+            </Tooltip>
+            <Tooltip title="文生视频（扣除积分）">
+              <Button
+                type="default"
+                icon={<VideoCameraOutlined />}
+                className={styles.uploadBtn}
+                disabled={sending}
+                onClick={() => onOpenGeneration('video')}
+              />
+            </Tooltip>
+          </>
+        )}
         <Upload {...uploadProps}>
           <Tooltip title="添加附件">
             <Button

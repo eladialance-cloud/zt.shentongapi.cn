@@ -504,3 +504,37 @@
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
+
+/* ===== 多模态媒体展示（P1） ===== */
+.messageAttachmentImage {
+  border-radius: 8px;
+  max-width: 100%;
+  object-fit: contain;
+  cursor: zoom-in;
+}
+
+.messageAttachmentVideo {
+  width: 100%;
+  max-width: 360px;
+  max-height: 240px;
+  border-radius: 8px;
+  background: #000;
+  display: block;
+}
+
+.attachmentPreviewImg {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.attachmentPreviewVideo {
+  width: 60px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #000;
+  flex-shrink: 0;
+}

@@ -3,13 +3,14 @@ import { EncryptionService } from './services/encryption.service';
 import { RedisService } from './services/redis.service';
 import { CacheService } from './services/cache.service';
 import { HmacVerifyMiddleware } from './middleware/hmac-verify.middleware';
+import { VideoFrameService } from './services/video-frame.service';
 
 /**
  * 公共模块：聚合通用服务提供者
  * 数据合同真源：spec.md - 公共基础设施
  */
 @Module({
-  providers: [EncryptionService, RedisService, CacheService, HmacVerifyMiddleware],
-  exports: [EncryptionService, RedisService, CacheService, HmacVerifyMiddleware],
+  providers: [EncryptionService, RedisService, CacheService, HmacVerifyMiddleware, VideoFrameService],
+  exports: [EncryptionService, RedisService, CacheService, HmacVerifyMiddleware, VideoFrameService],
 })
 export class CommonModule {}

@@ -1,13 +1,16 @@
 // 消息列表组件 - 中间消息区
 // 渲染消息气泡，区分用户/助手
-// - 助手消息支持工具调用展示
+// - 用户附件：图片缩略图 / 视频播放器 / 文件 chip
+// - 助手消息：轻量 Markdown 媒体渲染（图片/视频内嵌）
 // - 助手消息底部显示计费信息（流式完成后）
 // - 自动滚动到底部
 
 import { useEffect, useRef } from "react";
-import { Avatar } from "antd";
+import { Avatar, Image } from "antd";
 import { RobotOutlined, UserOutlined } from "@ant-design/icons";
 import type { ChatMessage } from "@/types/chat";
+import { MediaRenderer } from "@/components/MediaRenderer";
+import { resolveMediaUrl, isImageMime, isVideoMime } from "@/utils/media";
 import { ToolCallBadge } from "./ToolCallBadge";
 import { CreditsBadge } from "./CreditsBadge";
 import styles from "../styles.module.css";
@@ -28,6 +31,40 @@ function formatTime(date: Date): string {
   const d = new Date(date);
   const pad = (n: number) => n.toString().padStart(2, "0");
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** 单个附件渲染：图片缩略图 / 视频播放器 / 文件 chip */
+function AttachmentView({ att }: { att: NonNullable<ChatMessage["attachments"]>[number] }) {
+  const mime = att.mimeType || ""
+  const name = att.fileName || att.url?.split("/").pop() || "附件"
+  const url = resolveMediaUrl(att.url)
+
+  if (isImageMime(mime)) {
+    return (
+      <Image
+        src={url}
+        alt={name}
+        width={160}
+        className={styles.messageAttachmentImage}
+        preview={{ mask: "查看大图" }}
+      />
+    )
+  }
+  if (isVideoMime(mime)) {
+    return (
+      <video
+        className={styles.messageAttachmentVideo}
+        src={url}
+        controls
+        preload="metadata"
+      />
+    )
+  }
+  return (
+    <span className={styles.attachmentChip}>
+      📎 {name}
+    </span>
+  )
 }
 
 export function MessageList({
@@ -75,15 +112,17 @@ export function MessageList({
                     : styles.messageBubbleAssistant
                 }`}
               >
-                {msg.content}
+                {isUser ? (
+                  msg.content
+                ) : (
+                  <MediaRenderer content={msg.content} />
+                )}
               </div>
               {/* 附件展示 */}
               {msg.attachments && msg.attachments.length > 0 && (
                 <div className={styles.messageAttachments}>
                   {msg.attachments.map((att) => (
-                    <span key={att.fileId} className={styles.attachmentChip}>
-                      📎 {att.fileName}
-                    </span>
+                    <AttachmentView key={att.fileId || att.url || att.fileName} att={att} />
                   ))}
                 </div>
               )}
@@ -124,7 +163,11 @@ export function MessageList({
             <div
               className={`${styles.messageBubble} ${styles.messageBubbleAssistant} ${styles.messageBubbleStreaming}`}
             >
-              {streamingContent || "..."}
+              {streamingContent ? (
+                <MediaRenderer content={streamingContent} />
+              ) : (
+                "..."
+              )}
             </div>
             <div className={styles.messageMeta}>
               <span>生成中...</span>

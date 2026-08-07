@@ -771,6 +771,56 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       logger.log('Created table: purchased_items');
     }
 
+    // models 表：文生图/文生视频生成字段（幂等）
+    const genModelCols = [
+      { name: 'price_per_image', def: "DECIMAL(10,4) DEFAULT NULL COMMENT '图片生成积分/张'", after: 'price_per_1k_output' },
+      { name: 'video_prices', def: "JSON DEFAULT NULL COMMENT '视频生成价格矩阵'", after: 'price_per_image' },
+      { name: 'generation_params', def: "JSON DEFAULT NULL COMMENT '生成参数选项'", after: 'video_prices' },
+    ];
+    for (const col of genModelCols) {
+      const [exists] = await queryRunner.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'models' AND COLUMN_NAME = ?`,
+        [col.name]
+      );
+      if (!exists) {
+        await queryRunner.query(
+          'ALTER TABLE models ADD COLUMN ' + col.name + ' ' + col.def + ' AFTER ' + col.after
+        );
+        logger.log('Added column: models.' + col.name);
+      }
+    }
+
+    // media_jobs 表（文生图/文生视频任务）
+    const [mediaJobsTable] = await queryRunner.query(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'media_jobs'`
+    );
+    if (!mediaJobsTable) {
+      await queryRunner.query(`
+        CREATE TABLE IF NOT EXISTS media_jobs (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          user_id BIGINT UNSIGNED NOT NULL,
+          session_id BIGINT UNSIGNED DEFAULT NULL,
+          model_id VARCHAR(64) NOT NULL,
+          type VARCHAR(8) NOT NULL COMMENT 'image|video',
+          prompt MEDIUMTEXT NOT NULL,
+          params JSON DEFAULT NULL,
+          status VARCHAR(16) NOT NULL DEFAULT 'pending' COMMENT 'pending|processing|done|failed',
+          result_urls JSON DEFAULT NULL,
+          credits_cost INT NOT NULL DEFAULT 0,
+          frozen_txn_id BIGINT UNSIGNED DEFAULT NULL,
+          error VARCHAR(512) DEFAULT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          KEY idx_media_jobs_user_id (user_id),
+          KEY idx_media_jobs_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文生图/文生视频生成任务'
+      `);
+      logger.log('Created table: media_jobs');
+    }
+
     logger.log('Startup migrations completed');
   } catch (err) {
     logger.error(`Startup migration failed: ${(err as Error).message}`);

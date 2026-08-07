@@ -66,6 +66,7 @@ import { ApiKeyPoolModule } from './modules/api-key-pool/api-key-pool.module';
 import { VersionModule } from './modules/version/version.module';
 import { SearchModule } from './modules/search/search.module';
 import { MarketModule } from './modules/market/market.module';
+import { MediaGenerationModule } from './modules/media-generation/media-generation.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 
@@ -147,6 +148,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     VersionModule,
     SearchModule,
     MarketModule,
+    MediaGenerationModule,
   ],
   controllers: [AppController],
   providers: [

@@ -77,7 +77,7 @@ export class FileController {
           cb(null, filename);
         },
       }),
-      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+      limits: { fileSize: 200 * 1024 * 1024 }, // 200MB（支持聊天视频上传）
       fileFilter: (
         _req: Request,
         file: Express.Multer.File,

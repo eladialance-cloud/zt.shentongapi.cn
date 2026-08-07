@@ -16,6 +16,8 @@ import { CommonModule } from '../../common/common.module';
 import { CreditsModule } from '../credits/credits.module';
 import { ApiKeyPoolModule } from '../api-key-pool/api-key-pool.module';
 import { KnowledgeEngineModule } from '../knowledge-engine/knowledge-engine.module';
+import { FileEntity } from '../file/entities/file.entity';
+import { MediaContentService } from './services/media-content.service';
 
 /**
  * Chat 模块
@@ -48,7 +50,7 @@ import { KnowledgeEngineModule } from '../knowledge-engine/knowledge-engine.modu
     KnowledgeEngineModule,
   ],
   controllers: [ChatController, LlmProxyController],
-  providers: [ChatService, LlmProxyService, LlmClientService],
+  providers: [ChatService, LlmProxyService, LlmClientService, MediaContentService],
   exports: [ChatService, LlmProxyService, LlmClientService],
 })
 export class ChatModule {}

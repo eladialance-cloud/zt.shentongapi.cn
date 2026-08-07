@@ -35,6 +35,12 @@ export interface AdminModelItem {
   upstreamModelId: string
   /** 分类标签 */
   modelType: ModelType
+  /** 图片生成积分/张 */
+  pricePerImage?: number | null
+  /** 视频生成价格矩阵 */
+  videoPrices?: Record<string, Record<string, number>>
+  /** 生成参数选项 */
+  generationParams?: Record<string, unknown>
   /** 显示名 */
   displayName: string
   apiKeyMasked?: string
@@ -177,6 +183,9 @@ export interface CreateAdminModelDto {
   providerId?: number
   modelType?: ModelType
   upstreamModelId?: string
+  pricePerImage?: number
+  videoPrices?: Record<string, Record<string, number>>
+  generationParams?: Record<string, unknown>
 }
 
 /** 更新模型 DTO */
@@ -195,6 +204,9 @@ export interface UpdateAdminModelDto {
   minUserLevel?: MinUserLevel
   modelType?: ModelType
   upstreamModelId?: string
+  pricePerImage?: number | null
+  videoPrices?: Record<string, Record<string, number>>
+  generationParams?: Record<string, unknown>
 }
 
 /** 复用通用分页结果 */

@@ -49,6 +49,14 @@ export interface AdminModelItem {
   syncStatus: ModelSyncStatus
   /** 同步错误信息 */
   syncErrorMessage?: string
+  /** 分类标签：chat / reasoning / image / video / embedding */
+  modelType?: string
+  /** 图片生成积分/张（type=image） */
+  pricePerImage?: number | null
+  /** 视频生成价格矩阵：{分辨率:{时长:积分}} */
+  videoPrices?: Record<string, Record<string, number>>
+  /** 生成参数选项：image_sizes/video_resolutions/video_durations/video_fps */
+  generationParams?: Record<string, unknown>
   /** 模型能力 */
   capabilities: ModelCapability[]
   /** 并发上限 */
@@ -79,6 +87,10 @@ export interface CreateAdminModelDto {
   apiEndpoint?: string
   inputPricePerToken?: number
   outputPricePerToken?: number
+  modelType?: string
+  pricePerImage?: number
+  videoPrices?: Record<string, Record<string, number>>
+  generationParams?: Record<string, unknown>
   capabilities: ModelCapability[]
   enabled: boolean
   concurrencyLimit?: number
@@ -95,6 +107,10 @@ export interface UpdateAdminModelDto {
   apiEndpoint?: string
   inputPricePerToken?: number
   outputPricePerToken?: number
+  modelType?: string
+  pricePerImage?: number
+  videoPrices?: Record<string, Record<string, number>>
+  generationParams?: Record<string, unknown>
   capabilities?: ModelCapability[]
   enabled?: boolean
   concurrencyLimit?: number

@@ -15,6 +15,7 @@ import {
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ChatService } from '../services/chat.service';
+import { MediaContentService } from '../services/media-content.service';
 import { LlmProxyService } from '../services/llm-proxy.service';
 import { KnowledgeEngineService } from '../../knowledge-engine/knowledge-engine.service';
 import { CreditsService } from '../../credits/services/credits.service';
@@ -183,6 +184,7 @@ export class ChatController {
     private readonly llmProxyService: LlmProxyService,
     private readonly creditsService: CreditsService,
     private readonly engineService: KnowledgeEngineService,
+    private readonly mediaContentService: MediaContentService,
   ) {}
 
   @Get('health')
@@ -333,19 +335,37 @@ export class ChatController {
       // 1. 获取或生成用户的 llmProxyKey
       const apiKey = await this.llmProxyService.ensureLlmProxyKey(user.userId);
 
-      // 2. 获取会话历史消息，构建 messages 数组
+      // 2. 获取会话历史消息，构建 messages 数组（历史附件恢复为多模态）
       const historyMessages = await this.chatService.getSessionMessages(sessionId, 20);
-      const messages: Array<{ role: string; content: string }> = [];
+      const model = dto.model || session.modelId || 'deepseek-chat';
+      const vision = await this.mediaContentService.modelSupportsVision(model);
+      const messages: Array<{ role: string; content: string | unknown[] }> = [];
 
-      // 添加历史上下文
+      // 添加历史上下文（用户消息带附件时转多模态）
       for (const msg of historyMessages) {
         if (msg.role === 'user' || msg.role === 'assistant') {
-          messages.push({ role: msg.role, content: msg.content });
+          if (msg.role === 'user' && msg.attachments && msg.attachments.length > 0) {
+            const content = await this.mediaContentService.buildUserContent(
+              user.userId,
+              msg.content,
+              msg.attachments,
+              { vision },
+            );
+            messages.push({ role: msg.role, content });
+          } else {
+            messages.push({ role: msg.role, content: msg.content });
+          }
         }
       }
 
-      // 添加当前用户消息
-      messages.push({ role: 'user', content: dto.content });
+      // 添加当前用户消息（附件转多模态）
+      const currentContent = await this.mediaContentService.buildUserContent(
+        user.userId,
+        dto.content,
+        dto.attachments,
+        { vision },
+      );
+      messages.push({ role: 'user', content: currentContent });
 
       // 2.5 知识库检索注入（会话挂了知识库才注入；不挂库行为与原来完全一致）
       const attachedKbIds = [
@@ -382,17 +402,13 @@ export class ChatController {
       await this.chatService.createMessage(sessionId, user.userId, {
         role: 'user',
         content: dto.content,
-        attachments: dto.attachments?.map((url, idx) => ({
-          id: `att-${Date.now()}-${idx}`,
-          name: url.split('/').pop() || 'attachment',
-          type: 'file',
-          url,
-          size: 0,
-        })),
+        attachments: await this.mediaContentService.describeAttachments(
+          user.userId,
+          dto.attachments,
+        ),
       });
 
       // 4. 调用 LlmProxyService 进行真实 AI 调用
-      const model = dto.model || session.modelId || 'deepseek-chat';
       let settledCost = 0;
       const { stream: _isStream, iterator } = await this.llmProxyService.chatCompletions(
         apiKey,

@@ -1,0 +1,25 @@
+.mediaRenderer {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+
+.text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.image {
+  border-radius: 8px;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.video {
+  width: 100%;
+  max-width: 360px;
+  border-radius: 8px;
+  background: #000;
+}

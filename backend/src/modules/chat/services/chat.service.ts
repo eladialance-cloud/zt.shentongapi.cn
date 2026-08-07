@@ -122,12 +122,12 @@ export class ChatService {
   async getSessionMessages(
     sessionId: number,
     limit: number,
-  ): Promise<Array<{ role: string; content: string }>> {
+  ): Promise<Array<{ role: string; content: string; attachments?: any[] }>> {
     const messages = await this.messageRepo.find({
       where: { sessionId },
       order: { createdAt: 'ASC' },
       take: limit,
     });
-    return messages.map((m) => ({ role: m.role, content: m.content }));
+    return messages.map((m) => ({ role: m.role, content: m.content, attachments: m.attachments }));
   }
 }

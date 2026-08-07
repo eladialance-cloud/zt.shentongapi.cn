@@ -87,6 +87,18 @@ export class ModelEntity extends BaseEntity {
   })
   pricePer1kOutput?: number;
 
+    /** 图片生成固定积分（积分/张，type=image 时生效） */
+  @Column({ name: 'price_per_image', type: 'decimal', precision: 10, scale: 4, nullable: true })
+  pricePerImage?: number;
+
+  /** 视频生成价格矩阵：{ 分辨率: { 时长秒: 积分 } } */
+  @Column({ name: 'video_prices', type: 'json', nullable: true })
+  videoPrices?: Record<string, Record<string, number>> | null;
+
+  /** 生成参数选项：image_sizes / video_resolutions / video_durations / video_fps */
+  @Column({ name: 'generation_params', type: 'json', nullable: true })
+  generationParams?: Record<string, unknown> | null;
+
   @Index()
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;

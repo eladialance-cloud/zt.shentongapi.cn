@@ -482,6 +482,9 @@ export class AdminModelService {
     if (dto.modelId !== undefined) entity.modelId = dto.modelId;
     if (dto.upstreamModelId !== undefined) entity.upstreamModelId = dto.upstreamModelId;
     if (dto.modelType !== undefined) entity.modelType = dto.modelType;
+    if (dto.pricePerImage !== undefined) entity.pricePerImage = dto.pricePerImage;
+    if (dto.videoPrices !== undefined) entity.videoPrices = dto.videoPrices ?? null;
+    if (dto.generationParams !== undefined) entity.generationParams = dto.generationParams ?? null;
     if (dto.displayName !== undefined) entity.name = dto.displayName;
     if (dto.inputPricePerToken !== undefined) entity.pricePer1kInput = dto.inputPricePerToken;
     if (dto.outputPricePerToken !== undefined) entity.pricePer1kOutput = dto.outputPricePerToken;
@@ -509,6 +512,9 @@ export class AdminModelService {
       modelId: m.modelId,
       upstreamModelId: m.upstreamModelId ?? m.modelId,
       modelType: m.modelType || 'chat',
+      pricePerImage: m.pricePerImage ?? null,
+      videoPrices: m.videoPrices ?? {},
+      generationParams: m.generationParams ?? {},
       displayName: m.name,
       apiKeyMasked: m.apiKey ? this.encryption.maskKey(m.apiKey) : undefined,
       apiEndpoint: m.apiEndpoint,
