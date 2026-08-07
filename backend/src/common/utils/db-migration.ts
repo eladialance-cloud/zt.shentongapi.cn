@@ -585,6 +585,50 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       await ensureColumn('knowledge_base_documents', colName, colDef);
     }
 
+    // models 表补充模型管理列（实体新增，历史库缺列时自动补齐）
+    const modelCols: Array<[string, string]> = [
+      ['connection_status', "VARCHAR(16) NOT NULL DEFAULT 'untested' COMMENT '连接状态'"],
+      ['last_tested_at', "DATETIME DEFAULT NULL COMMENT '最后测试时间'"],
+      ['description', "VARCHAR(512) DEFAULT NULL COMMENT '模型描述'"],
+      ['context_window', "INT DEFAULT NULL COMMENT '上下文窗口'"],
+      ['max_tokens', "INT DEFAULT NULL COMMENT '最大输出'"],
+    ];
+    for (const [colName, colDef] of modelCols) {
+      await ensureColumn('models', colName, colDef);
+    }
+
+    // agents 表补充缺失列（实体新增，历史库缺列时自动补齐）
+    const agentCols: Array<[string, string]> = [
+      ['display_name', "VARCHAR(64) DEFAULT NULL COMMENT '展示名称'"],
+      ['download_count', "INT NOT NULL DEFAULT 0 COMMENT '下载次数'"],
+      ['pricing_strategy', "VARCHAR(16) NOT NULL DEFAULT 'model' COMMENT '定价策略'"],
+      ['dept_id', "BIGINT DEFAULT NULL COMMENT '部门 ID'"],
+      ['output_rule', "TEXT DEFAULT NULL COMMENT '输出规则'"],
+      ['model_config', "JSON DEFAULT NULL COMMENT '模型参数配置'"],
+      ['use_codex', "TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否使用 CodeX'"],
+      ['version', "INT NOT NULL DEFAULT 1 COMMENT '版本号'"],
+    ];
+    for (const [colName, colDef] of agentCols) {
+      await ensureColumn('agents', colName, colDef);
+    }
+
+    // workflows 表补充缺失列
+    const workflowCols: Array<[string, string]> = [
+      ['workflow_json', "MEDIUMTEXT DEFAULT NULL COMMENT 'n8n 工作流 JSON 定义'"],
+      ['source_repo', "VARCHAR(256) DEFAULT NULL COMMENT '来源仓库'"],
+      ['source_path', "VARCHAR(512) DEFAULT NULL COMMENT '来源路径'"],
+      ['version', "VARCHAR(32) DEFAULT NULL COMMENT '版本'"],
+      ['icon', "VARCHAR(256) DEFAULT NULL COMMENT '图标'"],
+      ['tags', "JSON DEFAULT NULL COMMENT '标签'"],
+      ['is_published', "TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已发布'"],
+      ['publish_status', "VARCHAR(32) NOT NULL DEFAULT 'draft' COMMENT '发布状态'"],
+      ['node_count', "INT NOT NULL DEFAULT 0 COMMENT '节点数'"],
+      ['trigger_type', "VARCHAR(64) DEFAULT NULL COMMENT '触发类型'"],
+    ];
+    for (const [colName, colDef] of workflowCols) {
+      await ensureColumn('workflows', colName, colDef);
+    }
+
     logger.log('Startup migrations completed');
   } catch (err) {
     logger.error(`Startup migration failed: ${(err as Error).message}`);
