@@ -61,6 +61,9 @@ export class AdminModelController {
 
   // ============ 模型 ============
 
+
+// ============ 列表 / 供应商（静态段必须先于 :id 参数段注册）============
+
   @Get()
   @ApiOperation({ summary: '模型列表' })
   async list(@Query() query: Record<string, unknown>) {
@@ -72,6 +75,67 @@ export class AdminModelController {
   async providerList() {
     return this.service.providerList();
   }
+
+// ============ 供应商 CRUD / 测试 / 导入 ============
+
+  @Post('providers')
+  @ApiOperation({ summary: '新增第三方供应商' })
+  async createProvider(@Body() dto: CreateProviderDto) {
+    return this.service.createProvider(dto);
+  }
+
+  @Patch('providers/:id')
+  @ApiOperation({ summary: '编辑供应商' })
+  async updateProvider(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateProviderDto,
+  ) {
+    await this.service.updateProvider(id, dto);
+  }
+
+  @Delete('providers/:id')
+  @ApiOperation({ summary: '删除供应商' })
+  async removeProvider(@Param('id', ParseIntPipe) id: number) {
+    await this.service.removeProvider(id);
+  }
+
+  @Post('providers/test')
+  @ApiOperation({ summary: '测试供应商连接' })
+  async testProvider(@Body() dto: TestProviderDto) {
+    return this.service.testProvider(dto);
+  }
+
+  @Post('providers/:id/fetch-models')
+  @ApiOperation({ summary: '读取上游模型列表' })
+  async fetchProviderModels(@Param('id', ParseIntPipe) id: number) {
+    return this.service.fetchProviderModels(id);
+  }
+
+  @Post('providers/:id/import')
+  @ApiOperation({ summary: '勾选逐模型定价导入' })
+  async importProviderModels(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ImportProviderModelsDto,
+  ) {
+    return this.service.importProviderModels(id, dto);
+  }
+
+  // ============ 旧中转站 ============
+
+
+  @Post('proxy/fetch-models')
+  @ApiOperation({ summary: '拉取上游模型列表（旧接口）' })
+  async fetchUpstreamModels(@Body() dto: FetchModelsDto) {
+    return this.service.fetchUpstreamModels(dto);
+  }
+
+  @Post('proxy/import')
+  @ApiOperation({ summary: '批量导入模型（旧接口）' })
+  async importModels(@Body() dto: ImportModelsDto) {
+    return this.service.importModels(dto);
+  }
+
+// ============ 模型 CRUD / 状态 ============
 
   @Get(':id')
   @ApiOperation({ summary: '模型详情' })
@@ -125,63 +189,5 @@ export class AdminModelController {
   @ApiOperation({ summary: '手动同步 OpenClaw' })
   async sync(@Param('id', ParseIntPipe) id: number) {
     await this.service.sync(id);
-  }
-
-  // ============ 供应商 ============
-
-  @Post('providers')
-  @ApiOperation({ summary: '新增第三方供应商' })
-  async createProvider(@Body() dto: CreateProviderDto) {
-    return this.service.createProvider(dto);
-  }
-
-  @Patch('providers/:id')
-  @ApiOperation({ summary: '编辑供应商' })
-  async updateProvider(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateProviderDto,
-  ) {
-    await this.service.updateProvider(id, dto);
-  }
-
-  @Delete('providers/:id')
-  @ApiOperation({ summary: '删除供应商' })
-  async removeProvider(@Param('id', ParseIntPipe) id: number) {
-    await this.service.removeProvider(id);
-  }
-
-  @Post('providers/test')
-  @ApiOperation({ summary: '测试供应商连接' })
-  async testProvider(@Body() dto: TestProviderDto) {
-    return this.service.testProvider(dto);
-  }
-
-  @Post('providers/:id/fetch-models')
-  @ApiOperation({ summary: '读取上游模型列表' })
-  async fetchProviderModels(@Param('id', ParseIntPipe) id: number) {
-    return this.service.fetchProviderModels(id);
-  }
-
-  @Post('providers/:id/import')
-  @ApiOperation({ summary: '勾选逐模型定价导入' })
-  async importProviderModels(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: ImportProviderModelsDto,
-  ) {
-    return this.service.importProviderModels(id, dto);
-  }
-
-  // ============ 旧中转站 ============
-
-  @Post('proxy/fetch-models')
-  @ApiOperation({ summary: '拉取上游模型列表（旧接口）' })
-  async fetchUpstreamModels(@Body() dto: FetchModelsDto) {
-    return this.service.fetchUpstreamModels(dto);
-  }
-
-  @Post('proxy/import')
-  @ApiOperation({ summary: '批量导入模型（旧接口）' })
-  async importModels(@Body() dto: ImportModelsDto) {
-    return this.service.importModels(dto);
   }
 }
