@@ -11,8 +11,11 @@ import { SyncService, SyncUploadItem } from './services/sync.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser, ICurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { IsArray, IsObject } from 'class-validator';
 
 class BatchUploadDto {
+  @IsArray()
+  @IsObject({ each: true })
   items: SyncUploadItem[];
 }
 

@@ -15,30 +15,79 @@ import { ApiKeyPoolService } from './services/api-key-pool.service';
 import { ApiKeyPoolEntity } from './entities/api-key-pool.entity';
 import { Public } from '../../common/decorators/public.decorator';
 import { AdminGuard } from '../admin-auth/admin.guard';
+import { IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 
 class CreateKeyDto {
+  @IsNotEmpty({ message: 'provider 不能为空' })
+  @IsString()
   provider: string;
+
+  @IsNotEmpty({ message: 'apiKey 不能为空' })
+  @IsString()
   apiKey: string;
+
+  @IsOptional()
+  @IsString()
   alias?: string;
+
+  @IsOptional()
+  @IsNumber()
   priority?: number;
+
+  @IsOptional()
+  @IsNumber()
   modelConfigId?: number;
+
+  @IsOptional()
+  @IsNumber()
   totalQuota?: number;
+
+  @IsOptional()
+  @IsNumber()
   dailyQuota?: number;
+
+  @IsOptional()
+  @IsNumber()
   monthlyQuota?: number;
 }
 
 class UpdateKeyDto {
+  @IsOptional()
+  @IsString()
   provider?: string;
+
+  @IsOptional()
+  @IsString()
   apiKey?: string;
+
+  @IsOptional()
+  @IsString()
   alias?: string;
+
+  @IsOptional()
+  @IsNumber()
   priority?: number;
+
+  @IsOptional()
+  @IsString()
   status?: string;
+
+  @IsOptional()
+  @IsNumber()
   modelConfigId?: number;
+
+  @IsOptional()
+  @IsNumber()
   totalQuota?: number;
 }
 
 class SetLimitsDto {
+  @IsOptional()
+  @IsNumber()
   dailyQuota?: number;
+
+  @IsOptional()
+  @IsNumber()
   monthlyQuota?: number;
 }
 

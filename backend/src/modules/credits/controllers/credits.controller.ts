@@ -10,6 +10,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CreditsService, CreditTxnQuery } from '../services/credits.service';
 import { RechargeService } from '../services/recharge.service';
 import { CreateRechargeDto } from '../dto/create-recharge.dto';
+import { IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { Public } from '../../../common/decorators/public.decorator';
 import { CurrentUser, ICurrentUser } from '../../../common/decorators/current-user.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
@@ -17,8 +18,16 @@ import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 
 class AdminAdjustDto {
+  @IsNotEmpty()
+  @IsNumber()
   userId: number;
+
+  @IsNotEmpty()
+  @IsNumber()
   amount: number;
+
+  @IsOptional()
+  @IsString()
   remark?: string;
 }
 

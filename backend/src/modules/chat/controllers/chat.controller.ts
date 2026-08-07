@@ -30,40 +30,112 @@ import { PaginationQuery } from '../../../common/types/pagination.type';
 
 /** 创建会话 DTO */
 class CreateSessionDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
   title?: string;
+
+  @IsNotEmpty({ message: 'modelId 不能为空' })
+  @IsString()
   modelId: string;
+
+  // 桌面端前端传 number，后端 agent_id 存 VARCHAR(64)，统一转字符串
+  @IsOptional()
+  @Type(() => String)
+  @IsString()
   agentId?: string;
+
+  @IsOptional()
+  @IsNumber()
   knowledgeBaseId?: number;
+
+  @IsOptional()
+  @IsNumber()
   groupId?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
   attachedKnowledgeBaseIds?: number[];
+
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
   enabledPluginIds?: number[];
+
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
   enabledWorkflowIds?: number[];
 }
 
 /** 更新会话 DTO */
 class UpdateSessionDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
   title?: string;
+
+  @IsOptional()
+  @IsString()
   modelId?: string;
+
+  @IsOptional()
+  @IsBoolean()
   pinned?: boolean;
+
+  @IsOptional()
+  @IsNumber()
   knowledgeBaseId?: number;
+
+  @IsOptional()
+  @IsNumber()
   groupId?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
   attachedKnowledgeBaseIds?: number[];
+
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
   enabledPluginIds?: number[];
+
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
   enabledWorkflowIds?: number[];
 }
 
 /** 保存消息 DTO */
 class CreateMessageDto {
+  @IsIn(['user', 'assistant', 'system', 'tool'])
   role: 'user' | 'assistant' | 'system' | 'tool';
+
+  @IsNotEmpty({ message: '消息内容不能为空' })
+  @IsString()
   content: string;
+
+  @IsOptional()
+  @IsArray()
   toolCalls?: Array<{
     id: string;
     name: string;
     args: Record<string, unknown>;
     result?: string;
   }>;
+
+  @IsOptional()
+  @IsObject()
   tokenUsage?: { input: number; output: number; total: number };
+
+  @IsOptional()
+  @IsNumber()
   creditsCost?: number;
+
+  @IsOptional()
+  @IsArray()
   attachments?: Array<{
     id: string;
     name: string;
@@ -75,8 +147,17 @@ class CreateMessageDto {
 
 /** 流式发送消息 DTO */
 class SendMessageStreamDto {
+  @IsNotEmpty({ message: '消息内容不能为空' })
+  @IsString()
   content: string;
+
+  @IsOptional()
+  @IsString()
   model?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   attachments?: string[];
 }
 
@@ -438,3 +519,16 @@ export class ChatController {
     }
   }
 }
+
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsNotEmpty,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';

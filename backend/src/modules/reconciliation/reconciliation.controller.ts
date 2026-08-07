@@ -15,13 +15,21 @@ import { CurrentUser, ICurrentUser } from '../../common/decorators/current-user.
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 
 class AdjustDiffDto {
+  @IsNotEmpty()
+  @IsNumber()
   amount: number;
+
+  @IsOptional()
+  @IsString()
   remark?: string;
 }
 
 class IgnoreDiffDto {
+  @IsOptional()
+  @IsString()
   remark?: string;
 }
 

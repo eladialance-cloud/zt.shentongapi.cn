@@ -15,26 +15,75 @@ import { VersionService } from './services/version.service';
 import { ClientVersionEntity } from './entities/client-version.entity';
 import { Public } from '../../common/decorators/public.decorator';
 import { AdminGuard } from '../admin-auth/admin.guard';
+import { Type } from 'class-transformer';
+import { IsBoolean, IsDate, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 
 class CreateVersionDto {
+  @IsNotEmpty()
+  @IsString()
   version: string;
+
+  @IsIn(['win', 'mac'])
   platform: 'win' | 'mac';
+
+  @IsNotEmpty()
+  @IsString()
   downloadUrl: string;
+
+  @IsOptional()
+  @IsString()
   changelog?: string;
+
+  @IsOptional()
+  @IsBoolean()
   forceUpdate?: boolean;
+
+  @IsOptional()
+  @IsNumber()
   grayscalePercent?: number;
+
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate()
   publishedAt?: Date;
+
+  @IsOptional()
+  @IsBoolean()
   isActive?: boolean;
 }
 
 class UpdateVersionDto {
+  @IsOptional()
+  @IsString()
   version?: string;
+
+  @IsOptional()
+  @IsIn(['win', 'mac'])
   platform?: 'win' | 'mac';
+
+  @IsOptional()
+  @IsString()
   downloadUrl?: string;
+
+  @IsOptional()
+  @IsString()
   changelog?: string;
+
+  @IsOptional()
+  @IsBoolean()
   forceUpdate?: boolean;
+
+  @IsOptional()
+  @IsNumber()
   grayscalePercent?: number;
+
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate()
   publishedAt?: Date;
+
+  @IsOptional()
+  @IsBoolean()
   isActive?: boolean;
 }
 
