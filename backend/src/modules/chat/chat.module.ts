@@ -43,6 +43,7 @@ import { MediaContentService } from './services/media-content.service';
       AgentEntity,
       ModelEntity,
       ModelProviderEntity,
+      FileEntity,
     ]),
     CommonModule,
     CreditsModule,
