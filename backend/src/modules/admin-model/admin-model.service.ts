@@ -284,8 +284,18 @@ export class AdminModelService {
       BusinessException.throw(ErrorCode.VALIDATION_FAILED, '请填写 Base URL 和 API Key');
     }
     try {
-      const model = dto.model || 'gpt-3.5-turbo';
-      const response = await this.callModelApi(baseUrl, apiKey, model, 'ping');
+      const model = dto.model?.trim() || 'gpt-3.5-turbo';
+      let response: string;
+      try {
+        response = await this.callModelApi(baseUrl, apiKey, model, 'ping');
+      } catch (chatErr: any) {
+        // 部分供应商不支持默认测试模型 gpt-3.5-turbo（如 DeepSeek 仅支持 deepseek-*），
+        // 此时连接本身有效：回退 GET /v1/models 验证 URL + Key
+        if (!this.isModelUnsupportedError(chatErr)) throw chatErr;
+        const list = await this.fetchModelList(baseUrl, apiKey, undefined);
+        const listData = Array.isArray(list) ? list : (list?.data ?? []);
+        response = `连接成功（chat 测试模型 ${model} 不受当前供应商支持，已通过模型列表验证 ${listData.length} 个模型）`;
+      }
       if (provider) {
         provider.connectionStatus = 'connected';
         provider.lastTestedAt = new Date();
@@ -630,7 +640,7 @@ export class AdminModelService {
     });
     if (!resp.ok) {
       const text = await resp.text();
-      throw new Error(`HTTP ${resp.status}: ${text.slice(0, 200)}`);
+      throw new Error(`HTTP ${resp.status} (${url}): ${text.slice(0, 200)}`);
     }
     const data = await resp.json();
     return data?.choices?.[0]?.message?.content || JSON.stringify(data);
@@ -651,9 +661,16 @@ export class AdminModelService {
     });
     if (!resp.ok) {
       const text = await resp.text();
-      throw new Error(`HTTP ${resp.status}: ${text.slice(0, 200)}`);
+      throw new Error(`HTTP ${resp.status} (${url}): ${text.slice(0, 200)}`);
     }
     return resp.json();
+  }
+
+  /** 判断错误是否为「模型名不受支持」（连接有效，仅测试模型名无效） */
+  private isModelUnsupportedError(err: unknown): boolean {
+    const msg = String((err as Error)?.message || err || '').toLowerCase();
+    if (!/http (400|404|422)[:\s]/.test(msg)) return false;
+    return /model/.test(msg);
   }
 
   /** 保证端点以 /v1 结尾 */

@@ -84,6 +84,7 @@ export default function ProviderImportModal({
   const [name, setName] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
+  const [testModel, setTestModel] = useState('')
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
   // 已保存供应商 ID（Step0 下一步时创建）
@@ -114,6 +115,7 @@ export default function ProviderImportModal({
     setName('')
     setBaseUrl('')
     setApiKey('')
+    setTestModel('')
     setTestResult(null)
     setFetchError('')
     setModels([])
@@ -149,7 +151,11 @@ export default function ProviderImportModal({
     setTesting(true)
     setTestResult(null)
     try {
-      const r = await testAdminProvider({ baseUrl: baseUrl.trim(), apiKey: apiKey.trim() })
+      const r = await testAdminProvider({
+        baseUrl: baseUrl.trim(),
+        apiKey: apiKey.trim(),
+        ...(testModel.trim() ? { model: testModel.trim() } : {})
+      })
       setTestResult({ type: 'success', msg: (r.response || '连接成功').slice(0, 120) })
     } catch (err: any) {
       setTestResult({ type: 'error', msg: err?.message || '连接失败' })
@@ -434,6 +440,15 @@ export default function ProviderImportModal({
                 测试连接
               </Button>
             </Space.Compact>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ marginBottom: 6, color: '#c7d2fe' }}>测试模型（可选，用于连接测试）</div>
+            <Input
+              value={testModel}
+              onChange={(e) => setTestModel(e.target.value)}
+              placeholder="默认 gpt-3.5-turbo；DeepSeek 可填 deepseek-chat；留空则自动检测"
+              maxLength={128}
+            />
           </div>
           {testResult && (
             <Alert
