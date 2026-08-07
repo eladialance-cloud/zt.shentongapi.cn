@@ -26,6 +26,19 @@ import {
 } from '../../../common/decorators/current-user.decorator';
 import { PaginationQuery } from '../../../common/types/pagination.type';
 
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsNotEmpty,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
+
 // ============ DTOs ============
 
 /** 创建会话 DTO */
@@ -519,16 +532,4 @@ export class ChatController {
     }
   }
 }
-
-import { Type } from 'class-transformer';
-import {
-  IsArray,
-  IsBoolean,
-  IsIn,
-  IsNotEmpty,
-  IsNumber,
-  IsObject,
-  IsOptional,
-  IsString,
-  MaxLength,
-} from 'class-validator';
+
