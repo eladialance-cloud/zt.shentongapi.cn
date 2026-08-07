@@ -21,6 +21,7 @@ import { httpClient } from "./http-client";
 import { useAuthStore } from "@/store/auth";
 import type {
   ChatSession,
+  ModelOption,
   ChatMessage,
   CreateSessionDto,
   SendMessageDto,
@@ -273,6 +274,15 @@ function dispatchSseEvent(
   }
 }
 
+/**
+ * 对话页可选模型列表
+ * GET /models/chat-options
+ * 返回管理后台上线的启用模型（含积分单价，排除 image/video/embedding）
+ */
+export async function listChatModels(): Promise<ModelOption[]> {
+  return httpClient.get<ModelOption[]>("/models/chat-options");
+}
+
 export default {
   createSession,
   listSessions,
@@ -282,4 +292,5 @@ export default {
   listMessages,
   sendMessage,
   streamMessage,
+  listChatModels,
 };

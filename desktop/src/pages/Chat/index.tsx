@@ -34,16 +34,6 @@ import type {
 import type { Agent } from '@/types/agent'
 import styles from './styles.module.css'
 
-/** 默认模型（占位，实际从 /models 接口加载） */
-const DEFAULT_MODEL_ID = 'gpt-4o-mini'
-
-/** 占位模型列表（后续接入 /models 接口） */
-const FALLBACK_MODELS: ModelOption[] = [
-  { id: 'gpt-4o-mini', name: 'GPT-4o mini', provider: 'OpenAI' },
-  { id: 'gpt-4o', name: 'GPT-4o', provider: 'OpenAI' },
-  { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'Anthropic' },
-  { id: 'deepseek-chat', name: 'DeepSeek Chat', provider: 'DeepSeek' }
-]
 
 export default function Chat() {
   // ===== 侧边栏折叠状态 =====
@@ -76,12 +66,13 @@ export default function Chat() {
   }, [streamingToolCalls])
 
   // ===== 顶部选择器 =====
-  const [modelId, setModelId] = useState<string>(DEFAULT_MODEL_ID)
+  const [modelId, setModelId] = useState<string>('')
   const [agentId, setAgentId] = useState<number | undefined>(undefined)
   const [knowledgeBaseId, setKnowledgeBaseId] = useState<number | undefined>(undefined)
 
   // ===== 选项数据 =====
-  const [modelOptions] = useState<ModelOption[]>(FALLBACK_MODELS)
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
+  const [modelLoading, setModelLoading] = useState(false)
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([])
   const [agentPriceMap, setAgentPriceMap] = useState<Record<number, Agent>>({})
   const [kbOptions, setKbOptions] = useState<KnowledgeBaseOption[]>([])
@@ -148,6 +139,31 @@ export default function Chat() {
     }
   }, [])
 
+  /** 加载可选模型列表（管理后台上线的启用模型，替代旧的写死列表） */
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      setModelLoading(true)
+      try {
+        const list = await chatApi.listChatModels()
+        if (cancelled) return
+        setModelOptions(list || [])
+        if (list && list.length > 0) {
+          setModelId((prev) =>
+            prev && list.some((m) => m.id === prev) ? prev : list[0].id,
+          )
+        }
+      } catch (err) {
+        console.error('[Chat] load models failed:', err)
+      } finally {
+        if (!cancelled) setModelLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   /** 切换会话 */
 
   const handleSelectSession = useCallback(async (session: ChatSession | null) => {
@@ -157,7 +173,7 @@ export default function Chat() {
       return
     }
     setActiveSession(session)
-    setModelId(session.modelId || DEFAULT_MODEL_ID)
+    setModelId(session.modelId || '')
     setAgentId(session.agentId)
     setKnowledgeBaseId(session.knowledgeBaseId)
     // 加载历史消息
@@ -403,12 +419,25 @@ export default function Chat() {
                 ({m.provider})
               </span>
             )}
+            {m.modelType && m.modelType !== 'chat' && (
+              <span style={{ color: '#8b5cf6', marginLeft: 6, fontSize: 11 }}>
+                [{m.modelType}]
+              </span>
+            )}
+            {(m.inputPricePer1k != null || m.outputPricePer1k != null) && (
+              <span style={{ color: '#22d3ee', marginLeft: 6, fontSize: 11 }}>
+                {m.inputPricePer1k ?? 0}/{m.outputPricePer1k ?? 0} 积分/千token
+              </span>
+            )}
           </span>
         ),
         value: m.id
-      }))
+      })),
+      notFoundContent: modelLoading
+        ? '加载中...'
+        : '管理后台暂未上线模型，请联系管理员',
     }),
-    [modelOptions]
+    [modelOptions, modelLoading]
   )
 
   /** 当前选中的 Agent（用于价格提示） */
@@ -491,8 +520,10 @@ export default function Chat() {
           <span className={styles.selectorLabel}>模型:</span>
           <Select
             {...modelSelectProps}
-            value={modelId}
+            value={modelId || undefined}
             onChange={handleModelChange}
+            loading={modelLoading}
+            placeholder="暂无可用模型"
             className={styles.selectorItem}
             size="small"
             popupMatchSelectWidth={false}

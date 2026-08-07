@@ -14,6 +14,34 @@ export class ModelService {
     return { status: 'ok', module: 'model' };
   }
 
+  /** 对话页可选模型（管理后台上线的启用模型，含积分单价；排除生成/向量模型） */
+  async listChatOptions(): Promise<
+    Array<{
+      id: string;
+      name: string;
+      provider: string;
+      modelType: string;
+      inputPricePer1k: number | null;
+      outputPricePer1k: number | null;
+    }>
+  > {
+    const models = await this.modelRepo.find({
+      where: { isActive: true },
+      order: { id: 'ASC' },
+    });
+    const excluded = new Set(['image', 'video', 'embedding']);
+    return models
+      .filter((m) => !excluded.has((m.modelType || 'chat').toLowerCase()))
+      .map((m) => ({
+        id: m.modelId,
+        name: m.name,
+        provider: m.provider,
+        modelType: m.modelType || 'chat',
+        inputPricePer1k: m.pricePer1kInput != null ? Number(m.pricePer1kInput) : null,
+        outputPricePer1k: m.pricePer1kOutput != null ? Number(m.pricePer1kOutput) : null,
+      }));
+  }
+
   /** 可用模型选项（创作者下拉，数据合同真源：desktop types/agent-creator CreatorModelOption） */
   async listOptions(): Promise<{ id: number; name: string; provider?: string }[]> {
     const models = await this.modelRepo.find({

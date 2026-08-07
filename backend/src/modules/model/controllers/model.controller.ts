@@ -16,6 +16,12 @@ export class ModelController {
     return this.modelService.health();
   }
 
+  @Get('chat-options')
+  @ApiOperation({ summary: '对话页可选模型列表（含积分单价）' })
+  listChatOptions() {
+    return this.modelService.listChatOptions();
+  }
+
   @Get()
   @ApiOperation({ summary: '可用模型列表（创作者选择用）' })
   listOptions() {

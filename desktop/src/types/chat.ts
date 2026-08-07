@@ -125,12 +125,19 @@ export interface UploadResult {
   mimeType: string
 }
 
-/** 模型选项（来自后端 ModelConfigEntity） */
+/** 模型选项（来自后端 GET /models/chat-options） */
 export interface ModelOption {
+  /** 模型 ID（model_id 字符串，会话与扣费均使用此值） */
   id: string
   name: string
   provider?: string
   icon?: string
+  /** 模型类型标签：chat / reasoning / agent 等（image/video 不在此列表） */
+  modelType?: string
+  /** 输入单价（积分/千token） */
+  inputPricePer1k?: number | null
+  /** 输出单价（积分/千token） */
+  outputPricePer1k?: number | null
 }
 
 /** Agent 选项 */

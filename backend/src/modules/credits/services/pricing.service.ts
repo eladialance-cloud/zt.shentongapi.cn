@@ -126,8 +126,8 @@ export class PricingService {
    * 根据模型表价格计算积分费用
    *
    * 公式：
-   *   inputCost = (inputTokens / 1000) × pricePer1kInput × CREDITS_RATE
-   *   outputCost = (outputTokens / 1000) × pricePer1kOutput × CREDITS_RATE
+   *   inputCost = (inputTokens / 1000) × pricePer1kInput
+   *   outputCost = (outputTokens / 1000) × pricePer1kOutput
    *   total = ceil(inputCost + outputCost)
    *
    * 如果模型不存在或价格为 null，回退到默认 5 积分
@@ -145,14 +145,9 @@ export class PricingService {
     const inputPrice = Number(model.pricePer1kInput);
     const outputPrice = Number(model.pricePer1kOutput);
 
-    const inputCost =
-      (tokens.input / 1000) *
-      inputPrice *
-      PricingService.CREDITS_RATE;
-    const outputCost =
-      (tokens.output / 1000) *
-      outputPrice *
-      PricingService.CREDITS_RATE;
+    // v0.7.0 后模型表价格已按「积分/千token」存储，不再乘汇率（CREDITS_RATE）
+    const inputCost = (tokens.input / 1000) * inputPrice;
+    const outputCost = (tokens.output / 1000) * outputPrice;
 
     return Math.ceil(inputCost + outputCost);
   }
