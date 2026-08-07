@@ -586,14 +586,14 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
     }
 
     // models 表补充模型管理列（实体新增，历史库缺列时自动补齐）
-    const modelCols: Array<[string, string]> = [
+    const legacyModelCols: Array<[string, string]> = [
       ['connection_status', "VARCHAR(16) NOT NULL DEFAULT 'untested' COMMENT '连接状态'"],
       ['last_tested_at', "DATETIME DEFAULT NULL COMMENT '最后测试时间'"],
       ['description', "VARCHAR(512) DEFAULT NULL COMMENT '模型描述'"],
       ['context_window', "INT DEFAULT NULL COMMENT '上下文窗口'"],
       ['max_tokens', "INT DEFAULT NULL COMMENT '最大输出'"],
     ];
-    for (const [colName, colDef] of modelCols) {
+    for (const [colName, colDef] of legacyModelCols) {
       await ensureColumn('models', colName, colDef);
     }
 
@@ -627,6 +627,124 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
     ];
     for (const [colName, colDef] of workflowCols) {
       await ensureColumn('workflows', colName, colDef);
+    }
+
+
+    // ===== 模型供应商体系 =====
+
+    // 7. model_providers 表
+    const [providersTable] = await queryRunner.query(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'model_providers'`
+    );
+    if (!providersTable) {
+      await queryRunner.query(`
+        CREATE TABLE IF NOT EXISTS model_providers (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          name VARCHAR(64) NOT NULL COMMENT '供应商显示名',
+          slug VARCHAR(64) NOT NULL COMMENT '唯一标识(=models.provider)',
+          base_url VARCHAR(512) NOT NULL COMMENT 'Base URL(OpenAI兼容)',
+          api_key VARCHAR(1024) DEFAULT NULL COMMENT 'AES加密的API Key',
+          config JSON DEFAULT NULL COMMENT '配置文件',
+          status ENUM('active','disabled') NOT NULL DEFAULT 'active',
+          connection_status ENUM('untested','connected','failed') NOT NULL DEFAULT 'untested',
+          last_tested_at DATETIME DEFAULT NULL,
+          is_builtin TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=老数据迁移生成',
+          model_count INT NOT NULL DEFAULT 0,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          UNIQUE KEY uk_model_providers_slug (slug)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='大模型供应商'
+      `);
+      logger.log('Created table: model_providers');
+    }
+
+    // 8. models 表补列
+    const modelCols = [
+      { name: 'provider_id', def: "BIGINT UNSIGNED DEFAULT NULL COMMENT '供应商ID'", after: 'provider' },
+      { name: 'upstream_model_id', def: "VARCHAR(128) DEFAULT NULL COMMENT '上游模型名(实际发送)'", after: 'provider_id' },
+      { name: 'model_type', def: "VARCHAR(32) NOT NULL DEFAULT 'chat' COMMENT '分类标签'", after: 'upstream_model_id' },
+    ];
+    for (const col of modelCols) {
+      const [exists] = await queryRunner.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'models' AND COLUMN_NAME = ?`,
+        [col.name]
+      );
+      if (!exists) {
+        await queryRunner.query(
+          'ALTER TABLE models ADD COLUMN ' + col.name + ' ' + col.def + ' AFTER ' + col.after
+        );
+        logger.log('Added column: models.' + col.name);
+      }
+    }
+
+    // 9. 价格单位迁移：元/千token -> 积分/千token（×100），以列注释为幂等标记
+    const [priceCol] = await queryRunner.query(
+      `SELECT COLUMN_COMMENT AS c FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'models' AND COLUMN_NAME = 'price_per_1k_input'`
+    );
+    if (priceCol && !String(priceCol.c).includes('积分/千token')) {
+      await queryRunner.query(
+        `UPDATE models SET price_per_1k_input = price_per_1k_input * 100,
+                price_per_1k_output = price_per_1k_output * 100
+         WHERE price_per_1k_input IS NOT NULL OR price_per_1k_output IS NOT NULL`
+      );
+      await queryRunner.query(
+        `ALTER TABLE models MODIFY COLUMN price_per_1k_input DECIMAL(10,4) DEFAULT NULL COMMENT '输入单价(积分/千token)'`
+      );
+      await queryRunner.query(
+        `ALTER TABLE models MODIFY COLUMN price_per_1k_output DECIMAL(10,4) DEFAULT NULL COMMENT '输出单价(积分/千token)'`
+      );
+      logger.log('Migrated models price unit to credits/1k (x100)');
+    }
+
+    // 10. 老模型按 provider 分组自动建内置供应商并关联
+    const [orphanModels] = await queryRunner.query(
+      `SELECT COUNT(*) AS c FROM models WHERE provider_id IS NULL AND provider IS NOT NULL`
+    );
+    if (Number(orphanModels?.c ?? 0) > 0) {
+      const groups = await queryRunner.query(
+        `SELECT provider,
+                MIN(api_endpoint) AS endpoint,
+                MIN(api_key) AS api_key
+         FROM models
+         WHERE provider_id IS NULL AND provider IS NOT NULL
+         GROUP BY provider`
+      );
+      for (const g of groups) {
+        await queryRunner.query(
+          `INSERT INTO model_providers (name, slug, base_url, api_key, status, connection_status, is_builtin, model_count, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'active', 'untested', 1, 0, NOW(), NOW())
+           ON DUPLICATE KEY UPDATE name = name`,
+          [g.provider, g.provider, g.endpoint || 'https://api.openai.com/v1', g.api_key || null]
+        );
+        const [prov] = await queryRunner.query(
+          `SELECT id FROM model_providers WHERE slug = ? AND is_builtin = 1 LIMIT 1`,
+          [g.provider]
+        );
+        if (prov) {
+          await queryRunner.query(
+            `UPDATE models SET provider_id = ?,
+                    upstream_model_id = COALESCE(upstream_model_id, model_id)
+             WHERE provider = ? AND provider_id IS NULL`,
+            [prov.id, g.provider]
+          );
+        }
+      }
+      // 凭据已归属供应商，清空模型表冗余凭据
+      await queryRunner.query(
+        `UPDATE models m JOIN model_providers p ON p.id = m.provider_id
+         SET m.api_endpoint = NULL, m.api_key = NULL`
+      );
+      // 刷新 model_count
+      await queryRunner.query(
+        `UPDATE model_providers p
+         SET model_count = (SELECT COUNT(*) FROM models m WHERE m.provider_id = p.id)
+         WHERE p.is_builtin = 1`
+      );
+      logger.log('Migrated legacy models to model_providers');
     }
 
     logger.log('Startup migrations completed');

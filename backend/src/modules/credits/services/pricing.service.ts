@@ -16,7 +16,7 @@ import { UserService } from '../../user/services/user.service';
  * - hybrid: 模型价格 + Agent 加价（Agent pricePerCall 作为附加费）
  *
  * 会员折扣：根据用户等级（MembershipPlan.level）给予消耗倍率优惠
- * 积分汇率：1 元 = CREDITS_RATE 积分（默认 100）
+ * 价格单位：模型表价格已按「积分/千token」存储（v0.7.0 迁移后不再乘汇率）
  */
 @Injectable()
 export class PricingService {

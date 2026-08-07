@@ -1,5 +1,5 @@
 import { Entity, Column, Index } from 'typeorm';
-import { BaseEntity } from '../../../common/entities/base.entity';
+import { BaseEntity, bigintTransformer } from '../../../common/entities/base.entity';
 
 export type ConnectionStatus = 'untested' | 'connected' | 'failed';
 
@@ -10,6 +10,18 @@ export class ModelEntity extends BaseEntity {
   @Index()
   @Column({ length: 64 })
   provider: string;
+
+  /** 所属供应商 ID（model_providers.id；老数据迁移后填充） */
+  @Column({ name: 'provider_id', type: 'bigint', nullable: true, transformer: bigintTransformer })
+  providerId?: number;
+
+  /** 真正发送给上游 API 的模型名（默认 = modelId） */
+  @Column({ name: 'upstream_model_id', length: 128, nullable: true })
+  upstreamModelId?: string;
+
+  /** 分类标签（可修改）：chat / reasoning / image / embedding 等 */
+  @Column({ name: 'model_type', length: 32, default: 'chat' })
+  modelType: string;
 
   @Index({ unique: true })
   @Column({ name: 'model_id', length: 64 })
@@ -53,6 +65,9 @@ export class ModelEntity extends BaseEntity {
 
   @Column({ name: 'supports_functions', type: 'boolean', default: false })
   supportsFunctions: boolean;
+
+  @Column({ name: 'min_user_level', type: 'int', default: 0 })
+  minUserLevel: number;
 
   @Column({
     name: 'price_per_1k_input',

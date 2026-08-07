@@ -4,6 +4,8 @@ import { ChatGroupEntity } from './entities/chat-group.entity';
 import { ChatMessageEntity } from './entities/chat-message.entity';
 import { ChatSessionEntity } from './entities/chat-session.entity';
 import { AgentEntity } from '../agent/entities/agent.entity';
+import { ModelEntity } from '../model/entities/model.entity';
+import { ModelProviderEntity } from '../admin-model/entities/model-provider.entity';
 import { UserEntity } from '../user/entities/user.entity';
 import { ChatController } from './controllers/chat.controller';
 import { LlmProxyController } from './controllers/llm-proxy.controller';
@@ -37,6 +39,8 @@ import { KnowledgeEngineModule } from '../knowledge-engine/knowledge-engine.modu
       ChatSessionEntity,
       UserEntity,
       AgentEntity,
+      ModelEntity,
+      ModelProviderEntity,
     ]),
     CommonModule,
     CreditsModule,

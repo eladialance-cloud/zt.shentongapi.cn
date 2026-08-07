@@ -13,6 +13,8 @@ import { LlmClientService } from './llm-client.service';
 import { PricingService } from '../../credits/services/pricing.service';
 import { CreditsService } from '../../credits/services/credits.service';
 import { UserEntity } from '../../user/entities/user.entity';
+import { ModelEntity } from '../../model/entities/model.entity';
+import { ModelProviderEntity } from '../../admin-model/entities/model-provider.entity';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -22,6 +24,8 @@ export class LlmProxyService {
 
   constructor(
     @InjectRepository(UserEntity) private readonly userRepository: Repository<UserEntity>,
+    @InjectRepository(ModelEntity) private readonly modelRepository: Repository<ModelEntity>,
+    @InjectRepository(ModelProviderEntity) private readonly providerRepository: Repository<ModelProviderEntity>,
     private readonly apiKeyPoolService: ApiKeyPoolService,
     private readonly encryptionService: EncryptionService,
     private readonly llmClient: LlmClientService,
@@ -83,15 +87,30 @@ export class LlmProxyService {
     const { userId } = await this.verifyApiKey(apiKey);
     const modelId = this.resolveModelId(body.model);
 
-    const provider = this.llmClient.getProviderFromModelId(modelId);
-    const apiKeyEntry = await this.apiKeyPoolService.getNextAvailableKey(provider);
-    if (!apiKeyEntry) throw new BadRequestException(`No available ${provider} API Key`);
-
+    // v0.7.0 供应商体系：优先使用模型所属供应商的 Base URL + API Key + upstreamModelId 直连上游，
+    // 费用在第三方 API 侧扣除；未配置供应商时回退到 API Key 池
+    const upstreamTarget = await this.resolveUpstreamTarget(modelId);
     let decryptedKey = '';
-    try {
-      decryptedKey = this.encryptionService.decryptAes(apiKeyEntry.apiKey);
-    } catch {
-      throw new BadRequestException('API Key decryption failed');
+    let upstreamModel = modelId;
+    let endpoint: string | undefined;
+    let entryId: number | null = null;
+    if (upstreamTarget) {
+      endpoint = upstreamTarget.endpoint;
+      upstreamModel = upstreamTarget.upstreamModelId;
+      decryptedKey = upstreamTarget.apiKey;
+      this.logger.log(
+        `供应商直连: model=${modelId} upstream=${upstreamModel} provider=${upstreamTarget.providerSlug}`,
+      );
+    } else {
+      const provider = this.llmClient.getProviderFromModelId(modelId);
+      const apiKeyEntry = await this.apiKeyPoolService.getNextAvailableKey(provider);
+      if (!apiKeyEntry) throw new BadRequestException(`No available ${provider} API Key`);
+      try {
+        decryptedKey = this.encryptionService.decryptAes(apiKeyEntry.apiKey);
+      } catch {
+        throw new BadRequestException('API Key decryption failed');
+      }
+      entryId = apiKeyEntry.id;
     }
 
     const userLevel = await this.pricingService.getUserLevel(userId);
@@ -118,7 +137,6 @@ export class LlmProxyService {
 
     const isStream = body.stream ?? false;
     const self = this;
-    const entryId = apiKeyEntry.id;
 
     async function* generate(): AsyncGenerator<string, void, unknown> {
       const queue: string[] = [];
@@ -132,8 +150,9 @@ export class LlmProxyService {
           let fullResponse = '';
           await self.llmClient.streamChat(
             {
-              model: modelId,
+              model: upstreamModel,
               apiKey: decryptedKey,
+              endpoint,
               systemPrompt: '',
               messages: body.messages as any,
               tools: body.tools as any,
@@ -161,7 +180,11 @@ export class LlmProxyService {
                 } else if (frozenTxnId) {
                   try { await self.creditsService.refundCredits(userId, frozenTxnId); } catch (_e) {}
                 }
-                try { await self.apiKeyPoolService.deductQuota(entryId, u.total); } catch (_e) {}
+                if (entryId) {
+                  if (entryId) {
+                  try { await self.apiKeyPoolService.deductQuota(entryId, u.total); } catch (_e) {}
+                }
+                }
 
                 if (isStream) {
                   push(`data: ${JSON.stringify({
@@ -209,6 +232,35 @@ export class LlmProxyService {
     }
 
     return { stream: isStream, iterator: generate() };
+  }
+
+  /** 解析模型所属供应商直连目标（model -> provider.baseUrl + apiKey + upstreamModelId） */
+  private async resolveUpstreamTarget(
+    modelId: string,
+  ): Promise<{ endpoint: string; apiKey: string; upstreamModelId: string; providerSlug: string } | null> {
+    try {
+      const model = await this.modelRepository.findOne({
+        where: { modelId, isActive: true },
+      });
+      if (!model || !model.providerId) return null;
+      const provider = await this.providerRepository.findOne({
+        where: { id: model.providerId, status: 'active' },
+      });
+      if (!provider || !provider.apiKey || !provider.baseUrl) return null;
+      const decrypted = this.encryptionService.decryptAes(provider.apiKey);
+      if (!decrypted) return null;
+      return {
+        endpoint: provider.baseUrl,
+        apiKey: decrypted,
+        upstreamModelId: model.upstreamModelId || model.modelId,
+        providerSlug: provider.slug,
+      };
+    } catch (err) {
+      this.logger.warn(
+        `解析供应商直连目标失败，回退 Key 池: ${(err as Error).message}`,
+      );
+      return null;
+    }
   }
 
   private resolveModelId(modelFromRequest: string): string {

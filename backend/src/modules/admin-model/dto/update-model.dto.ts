@@ -17,7 +17,8 @@ import {
  */
 export class UpdateModelDto {
   @IsOptional()
-  @IsEnum(['openai', 'doubao', 'qwen', 'deepseek', 'other'])
+  @IsString()
+  @MaxLength(64)
   provider?: string;
 
   @IsOptional()
@@ -74,4 +75,14 @@ export class UpdateModelDto {
   @Min(1)
   @Max(5)
   minUserLevel?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  modelType?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  upstreamModelId?: string;
 }

@@ -1,18 +1,33 @@
-﻿// 管理端大模型配置 API
+// 管理端大模型配置 API
 //
-// 端点契约：//   GET    /admin/models                        模型列表
-//   POST   /admin/models                        新增模型
-//   PATCH  /admin/models/:id                    编辑模型
-//   POST   /admin/models/:id/sync              手动同步 OpenClaw
-//   POST   /admin/models/proxy/fetch-models    拉取中转站上游模型列表
-//   POST   /admin/models/proxy/import          批量导入中转站模型
+// 端点契约：
+//   GET    /admin/models                            模型列表
+//   PATCH  /admin/models/:id                        编辑模型
+//   DELETE /admin/models/:id                        删除模型
+//   POST   /admin/models/:id/enable                 上架
+//   POST   /admin/models/:id/disable                下架
+//   POST   /admin/models/:id/test                   测试模型
+//   GET    /admin/models/providers                  供应商列表
+//   POST   /admin/models/providers                  新增供应商
+//   PATCH  /admin/models/providers/:id              编辑供应商
+//   DELETE /admin/models/providers/:id              删除供应商
+//   POST   /admin/models/providers/test             测试供应商连接
+//   POST   /admin/models/providers/:id/fetch-models 读取上游模型列表
+//   POST   /admin/models/providers/:id/import       勾选逐模型定价导入
 import { adminRequest } from './admin-auth-api'
 import type { AdminPaginatedResult } from '@/types/admin-auth'
 import type {
   AdminModelItem,
   AdminModelQuery,
-  CreateAdminModelDto,
-  UpdateAdminModelDto
+  AdminProviderItem,
+  CreateProviderDto,
+  FetchProviderModelsResult,
+  ImportProviderModelsDto,
+  ImportProviderModelsResult,
+  TestProviderDto,
+  TestProviderResult,
+  UpdateAdminModelDto,
+  UpdateProviderDto
 } from '@/types/admin-model'
 
 /** 模型列表 */
@@ -26,13 +41,6 @@ export async function listAdminModels(
   )
 }
 
-/** 新增模型 */
-export async function createAdminModel(
-  dto: CreateAdminModelDto
-): Promise<AdminModelItem> {
-  return adminRequest<AdminModelItem>('post', '/admin/models', { data: dto })
-}
-
 /** 编辑模型 */
 export async function updateAdminModel(
   id: number,
@@ -41,107 +49,25 @@ export async function updateAdminModel(
   await adminRequest<void>('patch', `/admin/models/${id}`, { data: dto })
 }
 
-/** 手动同步 OpenClaw */
-export async function syncAdminModel(id: number): Promise<void> {
-  await adminRequest<void>('post', `/admin/models/${id}/sync`)
+/** 删除模型 */
+export async function removeAdminModel(id: number): Promise<void> {
+  await adminRequest<void>('delete', `/admin/models/${id}`)
 }
 
-// ===== 中转站批量导入(Task 6) =====
-
-/** 中转站上游模型(拉取得到的模型项) */
-export interface UpstreamModel {
-  /** 模型 ID */
-  modelId: string
-  /** 所属(provider/owner) */
-  ownedBy?: string
-  /** 上游输入价格(积分/千token) */
-  upstreamInputPrice?: number
-  /** 上游输出价格(积分/千token) */
-  upstreamOutputPrice?: number
-  /** 是否已在系统中导入*/
-  alreadyExists: boolean
+/** 上架模型 */
+export async function enableAdminModel(id: number): Promise<void> {
+  await adminRequest<void>('post', `/admin/models/${id}/enable`)
 }
 
-/** 加价模式 */
-export type PricingMode = 'multiplier' | 'fixed' | 'flat'
-
-/** 加价配置(按模式取对应字段) */
-export interface PricingConfig {
-  /** 固定加价-输入(积分/千token) */
-  fixedInputAdd?: number
-  /** 固定加价-输出(积分/千token) */
-  fixedOutputAdd?: number
-  /** 倍率(如 1.5 表示加价 50%) */
-  multiplier?: number
-  /** 统一价格-输入(积分/千token) */
-  flatInputPrice?: number
-  /** 统一价格-输出(积分/千token) */
-  flatOutputPrice?: number
+/** 下架模型 */
+export async function disableAdminModel(id: number): Promise<void> {
+  await adminRequest<void>('post', `/admin/models/${id}/disable`)
 }
 
-/** 待导入的单个模型项*/
-export interface ImportModelItem {
-  modelId: string
-  displayName?: string
-  upstreamInputPrice?: number
-  upstreamOutputPrice?: number
-}
-
-/** 拉取上游模型请求 DTO */
-export interface FetchModelsDto {
-  apiEndpoint: string
-  apiKey: string
-}
-
-/** 批量导入模型请求 DTO */
-export interface ImportModelsDto {
-  apiEndpoint: string
-  apiKey: string
-  models: ImportModelItem[]
-  pricingMode: PricingMode
-  multiplier?: number
-  fixedInputAdd?: number
-  fixedOutputAdd?: number
-  flatInputPrice?: number
-  flatOutputPrice?: number
-}
-
-/** 拉取上游模型响应 */
-export interface FetchModelsResult {
-  success: boolean
-  models: UpstreamModel[]
-}
-
-/** 批量导入模型响应 */
-export interface ImportModelsResult {
-  imported: number
-  skipped: number
-  errors: Array<{ modelId: string; error: string }>
-}
-
-/**
- * 拉取中转站上游模型列表
- * POST /admin/models/proxy/fetch-models  body: { apiEndpoint, apiKey }
- */
-export async function fetchUpstreamModels(
-  dto: FetchModelsDto
-): Promise<FetchModelsResult> {
-  return adminRequest<FetchModelsResult>(
-    'post',
-    '/admin/models/proxy/fetch-models',
-    { data: dto }
-  )
-}
-
-/**
- * 批量导入中转站模型
- * POST /admin/models/proxy/import  body: ImportModelsDto
- */
-
-/** 测试模型连接 */
+/** 测试模型 */
 export async function testModel(
   id: number,
-  input: string = 'Hello'
+  input = 'Hello'
 ): Promise<{ success: boolean; response: string }> {
   return adminRequest<{ success: boolean; response: string }>(
     'post',
@@ -149,22 +75,83 @@ export async function testModel(
     { data: { input } }
   )
 }
-export async function importModels(
-  dto: ImportModelsDto
-): Promise<ImportModelsResult> {
-  return adminRequest<ImportModelsResult>(
+
+// ===== 供应商 =====  
+
+/** 供应商列表 */
+export async function listAdminProviders(): Promise<AdminProviderItem[]> {
+  return adminRequest<AdminProviderItem[]>('get', '/admin/models/providers')
+}
+
+/** 新增供应商 */
+export async function createAdminProvider(
+  dto: CreateProviderDto
+): Promise<AdminProviderItem> {
+  return adminRequest<AdminProviderItem>('post', '/admin/models/providers', {
+    data: dto
+  })
+}
+
+/** 编辑供应商 */
+export async function updateAdminProvider(
+  id: number,
+  dto: UpdateProviderDto
+): Promise<void> {
+  await adminRequest<void>('patch', `/admin/models/providers/${id}`, {
+    data: dto
+  })
+}
+
+/** 删除供应商 */
+export async function removeAdminProvider(id: number): Promise<void> {
+  await adminRequest<void>('delete', `/admin/models/providers/${id}`)
+}
+
+/** 测试供应商连接（可未保存直接测） */
+export async function testAdminProvider(
+  dto: TestProviderDto
+): Promise<TestProviderResult> {
+  return adminRequest<TestProviderResult>(
     'post',
-    '/admin/models/proxy/import',
+    '/admin/models/providers/test',
+    { data: dto }
+  )
+}
+
+/** 读取上游模型列表 */
+export async function fetchProviderModels(
+  providerId: number
+): Promise<FetchProviderModelsResult> {
+  return adminRequest<FetchProviderModelsResult>(
+    'post',
+    `/admin/models/providers/${providerId}/fetch-models`
+  )
+}
+
+/** 勾选逐模型定价导入 */
+export async function importProviderModels(
+  providerId: number,
+  dto: ImportProviderModelsDto
+): Promise<ImportProviderModelsResult> {
+  return adminRequest<ImportProviderModelsResult>(
+    'post',
+    `/admin/models/providers/${providerId}/import`,
     { data: dto }
   )
 }
 
 export default {
   listAdminModels,
-  createAdminModel,
   updateAdminModel,
-  syncAdminModel,
-  fetchUpstreamModels,
-  importModels,
-  testModel
+  removeAdminModel,
+  enableAdminModel,
+  disableAdminModel,
+  testModel,
+  listAdminProviders,
+  createAdminProvider,
+  updateAdminProvider,
+  removeAdminProvider,
+  testAdminProvider,
+  fetchProviderModels,
+  importProviderModels
 }
