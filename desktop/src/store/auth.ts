@@ -175,12 +175,6 @@ export const useAuthStore = create<AuthState>()(
         const { refreshToken, isLoading } = get();
         if (!refreshToken || isLoading) return;
 
-        // 演示模式 token 不需要刷新
-        if (refreshToken === 'demo-token-shentong-ai') {
-          set({ isAuthenticated: true, isLoading: false, accessToken: refreshToken });
-          return;
-        }
-
         set({ isLoading: true });
         await get().refreshAccessToken();
       },

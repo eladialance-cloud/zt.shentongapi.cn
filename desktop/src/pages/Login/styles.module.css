@@ -119,20 +119,6 @@
   box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45) !important;
 }
 
-/* 演示模式按钮 */
-.demoBtn {
-  height: 40px !important;
-  border-radius: 8px !important;
-  background: rgba(99, 102, 241, 0.1) !important;
-  border: 1px solid rgba(99, 102, 241, 0.3) !important;
-  color: var(--color-text-secondary) !important;
-}
-
-.demoBtn:hover {
-  background: rgba(99, 102, 241, 0.18) !important;
-  color: var(--color-text-secondary) !important;
-}
-
 /* 底部链接区域 */
 .footer {
   margin-top: 24px;
@@ -155,30 +141,4 @@
 
 .link:hover {
   color: var(--color-text-secondary);
-}
-
-.divider {
-  margin: 20px 0;
-  color: #475569;
-  font-size: 12px;
-  text-align: center;
-  position: relative;
-}
-
-.divider::before,
-.divider::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  width: 35%;
-  height: 1px;
-  background: var(--color-border-secondary);
-}
-
-.divider::before {
-  left: 0;
-}
-
-.divider::after {
-  right: 0;
 }

@@ -6,7 +6,6 @@
 // 3. 调用 POST /auth/login
 // 4. 成功：保存 token + secretKey → 初始化本地 DB → 跳转 dashboard
 // 5. 失败：antd message 错误提示（DEVICE_LIMIT_EXCEEDED 特殊提示）
-// 6. 演示模式：DEMO_TOKEN 直接进入 dashboard
 
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
@@ -16,9 +15,6 @@ import { httpClient } from "@/api/http-client";
 import { useAuthStore, type User } from "@/store/auth";
 import { BusinessError } from "@/utils/errors";
 import styles from "./styles.module.css";
-
-/** 演示模式 token（不调用后端 API，直接进入 dashboard） */
-const DEMO_TOKEN = "demo-token-shentong-ai";
 
 /** 设备类型错误码 */
 const DEVICE_LIMIT_EXCEEDED_CODE = 1011;
@@ -66,7 +62,7 @@ export default function Login() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
-  // 如果已认证（如演示模式 token 恢复后），自动跳转
+  // 如果已认证，自动跳转
   const redirectedRef = useRef(false);
   useEffect(() => {
     if (isAuthenticated && !redirectedRef.current) {
@@ -142,20 +138,6 @@ export default function Login() {
     }
   };
 
-  /** 演示模式登录 */
-  const handleDemoLogin = () => {
-    const demoUser: User = {
-      id: 0,
-      username: "演示用户",
-      email: "demo@shentong.ai",
-      level: 0,
-      roles: ["user"],
-    };
-    setAuth(DEMO_TOKEN, DEMO_TOKEN, DEMO_TOKEN, demoUser);
-    message.success("已进入演示模式");
-    navigate("/dashboard", { replace: true });
-  };
-
   return (
     <div className={styles.container}>
       <div className={styles.card}>
@@ -215,11 +197,6 @@ export default function Login() {
           </span>
         </div>
 
-        <div className={styles.divider}>或</div>
-
-        <Button block onClick={handleDemoLogin} className={styles.demoBtn}>
-          演示模式体验
-        </Button>
       </div>
     </div>
   );
