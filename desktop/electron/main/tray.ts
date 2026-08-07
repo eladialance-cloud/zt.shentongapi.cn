@@ -19,7 +19,7 @@ const STATUS_LABEL: Record<ServiceStatus, string> = {
 
 function resolveIconPath(): string {
   return app.isPackaged
-    ? join(process.resourcesPath, 'resources', 'icon.png')
+    ? join(process.resourcesPath, 'icon.png')
     : join(__dirname, '../../resources/icon.png')
 }
 

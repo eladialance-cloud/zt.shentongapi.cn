@@ -30,8 +30,11 @@ asar: true
 npmRebuild: false
 nodeGypRebuild: false
 extraResources:
-  - from: resources/
-    to: resources/
+  # 逐文件复制到 resources/ 顶层（目录复制会产生 resources/resources/ 嵌套）
+  - from: resources/icon.png
+    to: icon.png
+  - from: resources/mcp/mcp-gateway-server.js
+    to: mcp/mcp-gateway-server.js
   - from: runtime/manifest.json
     to: runtime/manifest.json
 win:
