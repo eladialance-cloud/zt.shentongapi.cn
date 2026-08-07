@@ -39,15 +39,39 @@ const SERVICE_DEFS: Record<ServiceName, ServiceDef> = {
   hermes: { displayName: 'Hermes Agent', port: 8642 }
 }
 
-/** N8N 子进程环境变量 */
-const N8N_ENV: NodeJS.ProcessEnv = {
-  ...process.env,
-  N8N_HOST: '127.0.0.1',
-  N8N_PORT: '5678',
-  N8N_PROTOCOL: 'http',
-  N8N_EDITOR_BASE_URL: 'http://127.0.0.1:5678',
-  N8N_DIAGNOSTICS_ENABLED: 'false',
-  GENERIC_TIMEZONE: 'Asia/Shanghai'
+/** N8N API Key（生成并持久化到 userData/n8n-api-key，供本地 REST API 导入工作流） */
+function getOrCreateN8nApiKey(): string {
+  try {
+    const keyFile = path.join(app.getPath('userData'), 'n8n-api-key')
+    if (fs.existsSync(keyFile)) {
+      const existing = fs.readFileSync(keyFile, 'utf-8').trim()
+      if (existing) return existing
+    }
+    const key = 'st-' + require('node:crypto').randomBytes(24).toString('hex')
+    fs.mkdirSync(path.dirname(keyFile), { recursive: true })
+    fs.writeFileSync(keyFile, key, 'utf-8')
+    return key
+  } catch (err) {
+    console.error('[service-manager] generate n8n api key failed:', err)
+    return 'st-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)
+  }
+}
+
+/** N8N 子进程环境变量（每次启动实时构建，注入 API Key 与数据目录） */
+function buildN8nEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    N8N_HOST: '127.0.0.1',
+    N8N_PORT: '5678',
+    N8N_PROTOCOL: 'http',
+    N8N_EDITOR_BASE_URL: 'http://127.0.0.1:5678',
+    N8N_DIAGNOSTICS_ENABLED: 'false',
+    GENERIC_TIMEZONE: 'Asia/Shanghai',
+    // 本地 REST API 鉴权（工作流导入）
+    N8N_API_KEY: getOrCreateN8nApiKey(),
+    // 工作流数据目录固定到 userData，避免默认 %USERPROFILE%\.n8n 残留
+    N8N_USER_FOLDER: path.join(app.getPath('userData'), 'n8n-data')
+  }
 }
 
 
@@ -639,7 +663,7 @@ export class ServiceManager extends EventEmitter {
 
       // 合并环境变量：各服务专用 ENV 优先于 resolved.env
       spawnEnv =
-        name === 'n8n' ? { ...resolved.env, ...N8N_ENV } :
+        name === 'n8n' ? { ...resolved.env, ...buildN8nEnv() } :
         name === 'hermes' ? { ...resolved.env, ...buildHermesEnv() } :
         name === 'openclaw' ? { ...resolved.env, ...buildOpenClawEnv() } :
         resolved.env

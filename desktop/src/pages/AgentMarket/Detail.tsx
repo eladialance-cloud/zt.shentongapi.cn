@@ -34,12 +34,12 @@ import {
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   getMarketDetail,
-  installAgent,
   getMarketReviews,
   createReview,
   favoriteAgent,
   unfavoriteAgent
 } from '@/api/agent-api'
+import * as marketApi from '@/api/market-api'
 import type { Agent, AgentReview } from '@/types/agent'
 import styles from './styles.module.css'
 
@@ -54,6 +54,7 @@ export default function AgentDetail() {
   const [reviewsLoading, setReviewsLoading] = useState(true)
   const [installing, setInstalling] = useState(false)
   const [installed, setInstalled] = useState(false)
+  const [installDir, setInstallDir] = useState('')
   const [reviewModalOpen, setReviewModalOpen] = useState(false)
 
   const loadDetail = useCallback(async () => {
@@ -109,9 +110,13 @@ export default function AgentDetail() {
     if (!agent) return
     setInstalling(true)
     try {
-      await installAgent(agent.id)
+      const res = await marketApi.install('agent', agent.id)
+      if (!res.ok) {
+        throw new Error(res.error || '本地安装失败')
+      }
       setInstalled(true)
-      message.success('Agent 已安装到本地')
+      setInstallDir(res.dir || '')
+      message.success('Agent 已下载安装到本地')
     } catch (err) {
       console.error('[AgentDetail] install failed:', err)
       message.error('安装失败，请检查网络后重试')
@@ -255,6 +260,11 @@ export default function AgentDetail() {
             >
               {installed ? '已安装' : '安装到本地'}
             </Button>
+            {installed && installDir && (
+              <div style={{ fontSize: 12, color: '#8b98a5', wordBreak: 'break-all' }}>
+                安装位置：{installDir}
+              </div>
+            )}
             <Button
               icon={
                 agent.isFavorited ? <HeartFilled /> : <HeartOutlined />

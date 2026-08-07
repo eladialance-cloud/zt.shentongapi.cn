@@ -12,7 +12,9 @@ import type {
   ElectronAPI,
   RuntimeAPI,
   RuntimeDownloadProgress,
-  InstallProgressPayload
+  InstallProgressPayload,
+  MarketItemType,
+  InstalledRecord
 } from '../shared/types'
 
 const electronAPI: ElectronAPI = {
@@ -98,6 +100,15 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.send('db:close')
     }
   },
+  market: {
+    install: (type: MarketItemType, id: number, name: string, version: string, pkg: Record<string, unknown>) =>
+      ipcRenderer.invoke('market:install', type, id, name, version, pkg) as Promise<{ ok: boolean; dir?: string; error?: string }>,
+    uninstall: (type: MarketItemType, id: number) =>
+      ipcRenderer.invoke('market:uninstall', type, id) as Promise<{ ok: boolean; error?: string }>,
+    list: () => ipcRenderer.invoke('market:list') as Promise<InstalledRecord[]>,
+    export: () => ipcRenderer.invoke('market:export') as Promise<{ ok: boolean; path?: string; error?: string }>,
+    import: () => ipcRenderer.invoke('market:import') as Promise<{ ok: boolean; imported?: number; error?: string }>
+  },
   syncQueue: {
     enqueue: (item) => ipcRenderer.invoke('syncQueue:enqueue', item) as Promise<number>,
     getPending: (limit) => ipcRenderer.invoke('syncQueue:getPending', limit) as Promise<SyncQueueRow[]>,
@@ -106,6 +117,7 @@ const electronAPI: ElectronAPI = {
     exists: (client_txn_id) => ipcRenderer.invoke('syncQueue:exists', client_txn_id) as Promise<boolean>
   }
 }
+
 
 const runtimeAPI: RuntimeAPI = {
   verify: () => ipcRenderer.invoke('runtime:verify'),

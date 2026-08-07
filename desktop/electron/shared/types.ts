@@ -197,6 +197,31 @@ export interface DeviceInfo extends DeviceFingerprint {
   totalMemory: number;
 }
 
+
+/** 市场内容类型 */
+export type MarketItemType = "skill" | "plugin" | "workflow" | "agent";
+
+/** 本地已安装记录（market/installed.json 条目） */
+export interface InstalledRecord {
+  type: MarketItemType;
+  id: number;
+  name: string;
+  version: string;
+  dir: string;
+  installedAt: string;
+}
+
+/** 下载安装包结果（后端 GET /api/market/items/:type/:id/download） */
+export interface MarketDownloadResult {
+  type: MarketItemType;
+  id: number;
+  version: string;
+  name: string;
+  sha256: string;
+  size: number;
+  pkg: Record<string, unknown>;
+}
+
 // 通过 contextBridge 暴露给渲染进程的 API 形状
 export interface ElectronAPI {
   service: {
@@ -256,6 +281,25 @@ export interface ElectronAPI {
     close(): void;
   };
   /** 同步队列操作（离线调用队列 + 上行同步） */
+  /** 本地内容市场（下载安装官方内容到本地） */
+  market: {
+    /** 安装：写入本地目录并更新 installed.json（pkg 来自后端下载接口） */
+    install(
+      type: MarketItemType,
+      id: number,
+      name: string,
+      version: string,
+      pkg: Record<string, unknown>,
+    ): Promise<{ ok: boolean; dir?: string; error?: string }>;
+    /** 卸载：删除本地目录并更新清单 */
+    uninstall(type: MarketItemType, id: number): Promise<{ ok: boolean; error?: string }>;
+    /** 本地已安装清单 */
+    list(): Promise<InstalledRecord[]>;
+    /** 导出个人内容（个人知识库 + 清单）为 .zip，返回保存路径或 null（取消） */
+    export(): Promise<{ ok: boolean; path?: string; error?: string }>;
+    /** 从 .zip 导入个人内容，返回导入记录数 */
+    import(): Promise<{ ok: boolean; imported?: number; error?: string }>;
+  };
   syncQueue: {
     /** 入队：写入 local_sync_queue，返回自增 id */
     enqueue(item: SyncQueueItem): Promise<number>;

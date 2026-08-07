@@ -65,6 +65,7 @@ import { SyncModule } from './modules/sync/sync.module';
 import { ApiKeyPoolModule } from './modules/api-key-pool/api-key-pool.module';
 import { VersionModule } from './modules/version/version.module';
 import { SearchModule } from './modules/search/search.module';
+import { MarketModule } from './modules/market/market.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 

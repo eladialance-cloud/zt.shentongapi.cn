@@ -747,6 +747,30 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       logger.log('Migrated legacy models to model_providers');
     }
 
+
+    // purchased_items 表（官方内容市场已购清单）
+    const [purchasedTable] = await queryRunner.query(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'purchased_items'`
+    );
+    if (!purchasedTable) {
+      await queryRunner.query(`
+        CREATE TABLE IF NOT EXISTS purchased_items (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          user_id BIGINT UNSIGNED NOT NULL,
+          item_type VARCHAR(16) NOT NULL COMMENT 'skill|plugin|workflow|agent',
+          item_id BIGINT UNSIGNED NOT NULL,
+          version VARCHAR(32) NOT NULL DEFAULT '1.0.0',
+          price INT NOT NULL DEFAULT 0,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          UNIQUE KEY uq_purchased_user_item (user_id, item_type, item_id),
+          KEY idx_purchased_created_at (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='官方内容已购清单'
+      `);
+      logger.log('Created table: purchased_items');
+    }
+
     logger.log('Startup migrations completed');
   } catch (err) {
     logger.error(`Startup migration failed: ${(err as Error).message}`);

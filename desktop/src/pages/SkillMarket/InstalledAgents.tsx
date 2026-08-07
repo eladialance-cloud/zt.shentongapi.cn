@@ -5,18 +5,49 @@ import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Empty, Popconfirm, Spin, message } from "antd";
 import { DeleteOutlined, RobotOutlined } from "@ant-design/icons";
 import { listInstalledAgents, uninstallAgent } from "@/api/agent-api";
+import * as marketApi from "@/api/market-api";
 import type { Agent } from "@/types/agent";
+import type { InstalledRecord } from "@/types/market";
 import styles from "./styles.module.css";
 
 export default function InstalledAgents() {
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [agents, setAgents] = useState<Array<Agent & { installDir?: string }>>([]);
   const [loading, setLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await listInstalledAgents();
-      setAgents(list || []);
+      const [cloudList, localList] = await Promise.all([
+        listInstalledAgents().catch(() => [] as Agent[]),
+        marketApi.listInstalled().catch(() => [] as InstalledRecord[]),
+      ]);
+      // 本地下载的 Agent 优先展示
+      const localAgents = localList
+        .filter((r) => r.type === "agent")
+        .map((r) => ({
+          id: r.id,
+          name: r.name,
+          displayName: r.name,
+          description: "",
+          avatar: "",
+          category: "other",
+          tags: [],
+          rating: 0,
+          ratingCount: 0,
+          callCount: 0,
+          pricePerCall: 0,
+          pricePerToken: { input: 0, output: 0 },
+          creatorType: "official" as const,
+          isOfficial: true,
+          installDir: r.dir,
+        }));
+      const merged: Array<Agent & { installDir?: string }> = [...localAgents];
+      for (const a of cloudList || []) {
+        if (!merged.some((m) => m.id === a.id)) {
+          merged.push({ ...a, installDir: undefined });
+        }
+      }
+      setAgents(merged);
     } catch (err) {
       console.error("[InstalledAgents] load failed:", err);
       message.error("加载已安装 Agent 失败");
@@ -30,9 +61,17 @@ export default function InstalledAgents() {
     void loadData();
   }, [loadData]);
 
-  const handleUninstall = async (agent: Agent) => {
+  const handleUninstall = async (agent: Agent & { installDir?: string }) => {
     try {
-      await uninstallAgent(agent.id);
+      // 本地安装的 Agent 走本地卸载；云端旧记录走云端卸载
+      if (agent.installDir) {
+        const res = await marketApi.uninstall("agent", agent.id);
+        if (!res.ok) {
+          throw new Error(res.error || "本地卸载失败");
+        }
+      } else {
+        await uninstallAgent(agent.id);
+      }
       message.success(`Agent ${agent.name} 已卸载`);
       setAgents((prev) => prev.filter((a) => a.id !== agent.id));
     } catch (err) {
@@ -73,6 +112,11 @@ export default function InstalledAgents() {
                 <div className={styles.agentDesc}>
                   {agent.description || "暂无描述"}
                 </div>
+                {(agent as Agent & { installDir?: string }).installDir && (
+                  <div style={{ fontSize: 12, color: "#8b98a5", wordBreak: "break-all" }}>
+                    安装位置：{(agent as Agent & { installDir?: string }).installDir}
+                  </div>
+                )}
                 <div className={styles.agentActions}>
                   <Popconfirm
                     title={`确定卸载 ${agent.name} 吗？`}

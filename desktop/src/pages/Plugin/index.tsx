@@ -16,7 +16,9 @@ import {
   DollarOutlined,
 } from "@ant-design/icons";
 import * as pluginApi from "@/api/plugin-api";
+import * as marketApi from "@/api/market-api";
 import type { Plugin, PluginType, PluginMarketQuery } from "@/types/plugin";
+import type { InstalledRecord } from "@/types/market";
 import { useSystemStore } from "@/store/system";
 import { NetworkError } from "@/utils/errors";
 import styles from "./styles.module.css";
@@ -76,8 +78,21 @@ export default function PluginMarket({ embedded = false }: { embedded?: boolean 
   const loadPlugins = useCallback(async (query: PluginMarketQuery = {}) => {
     setLoading(true);
     try {
-      const result = await pluginApi.listMarketPlugins(query);
-      setPlugins(result.list || []);
+      const [result, localList] = await Promise.all([
+        pluginApi.listMarketPlugins(query),
+        marketApi.listInstalled().catch(() => [] as InstalledRecord[]),
+      ]);
+      const localPluginIds = new Set(
+        localList
+          .filter((r: InstalledRecord) => r.type === "plugin")
+          .map((r: InstalledRecord) => r.id),
+      );
+      setPlugins(
+        (result.list || []).map((p: Plugin) => ({
+          ...p,
+          isInstalled: localPluginIds.has(p.id) || !!p.isInstalled,
+        })),
+      );
     } catch (err) {
       console.error("[PluginMarket] load failed:", err);
       if (!(err instanceof NetworkError) || backendAvailable) {
@@ -115,8 +130,11 @@ export default function PluginMarket({ embedded = false }: { embedded?: boolean 
   const handleInstall = async (plugin: Plugin) => {
     setInstallingIds((prev) => new Set(prev).add(plugin.id));
     try {
-      await pluginApi.installPlugin(plugin.id);
-      message.success(`插件 ${plugin.name} 安装成功`);
+      const res = await marketApi.install("plugin", plugin.id);
+      if (!res.ok) {
+        throw new Error(res.error || "本地安装失败");
+      }
+      message.success(`插件 ${plugin.name} 已下载安装到本地`);
       // 刷新列表（更新 isInstalled）
       void loadPlugins({
         category: (category as PluginType) || undefined,

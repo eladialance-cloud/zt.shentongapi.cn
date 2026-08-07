@@ -23,12 +23,15 @@ import {
   SettingOutlined,
 } from '@ant-design/icons'
 import * as pluginApi from '@/api/plugin-api'
+import * as marketApi from '@/api/market-api'
 import type { InstalledPluginRow } from '@/types/plugin'
+import type { InstalledRecord } from '@/types/market'
 import styles from './styles.module.css'
 
 export default function InstalledPlugins({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate()
-  const [plugins, setPlugins] = useState<InstalledPluginRow[]>([])
+  type PluginRow = InstalledPluginRow & { installDir?: string }
+  const [plugins, setPlugins] = useState<PluginRow[]>([])
   const [loading, setLoading] = useState(false)
   const [configOpen, setConfigOpen] = useState(false)
   const [configuring, setConfiguring] = useState<InstalledPluginRow | null>(null)
@@ -39,8 +42,30 @@ export default function InstalledPlugins({ embedded = false }: { embedded?: bool
   const loadPlugins = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await pluginApi.listInstalledPlugins()
-      setPlugins(res?.list || [])
+      const [res, localList] = await Promise.all([
+        pluginApi.listInstalledPlugins().catch(() => null),
+        marketApi.listInstalled().catch(() => [] as InstalledRecord[]),
+      ])
+      // 本地下载的插件优先展示
+      const localRows: PluginRow[] = localList
+        .filter((r) => r.type === 'plugin')
+        .map((r) => ({
+          id: -(r.id + 100000), // 负 id 避免与云端行冲突（仅作表格 key）
+          pluginId: r.id,
+          enabled: true,
+          isInstalled: true,
+          installedAt: r.installedAt,
+          installDir: r.dir,
+          plugin: {
+            id: r.id,
+            name: r.name,
+            description: '',
+            version: r.version,
+            isOfficial: true,
+          },
+        }))
+      const cloudRows = (res?.list || []) as PluginRow[]
+      setPlugins([...localRows, ...cloudRows])
     } catch (err) {
       console.error('[InstalledPlugins] load failed:', err)
       message.error('加载已安装插件失败')
@@ -75,9 +100,14 @@ export default function InstalledPlugins({ embedded = false }: { embedded?: bool
   }
 
   /** 卸载插件 */
-  const handleUninstall = async (plugin: InstalledPluginRow) => {
+  const handleUninstall = async (plugin: PluginRow) => {
     try {
-      await pluginApi.uninstallPlugin(plugin.pluginId)
+      if (plugin.installDir) {
+        const r = await marketApi.uninstall('plugin', plugin.pluginId)
+        if (!r.ok) throw new Error(r.error || '本地卸载失败')
+      } else {
+        await pluginApi.uninstallPlugin(plugin.pluginId)
+      }
       message.success(`插件 ${plugin.plugin.name} 已卸载`)
       setPlugins((prev) => prev.filter((p) => p.id !== plugin.id))
     } catch (err) {

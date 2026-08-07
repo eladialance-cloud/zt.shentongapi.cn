@@ -22,7 +22,9 @@ import {
   DownloadOutlined,
 } from "@ant-design/icons";
 import * as hermesApi from "@/api/hermes-api";
+import * as marketApi from "@/api/market-api";
 import type { HermesSkill, InstalledSkill } from "@/types/hermes";
+import type { InstalledRecord } from "@/types/market";
 import styles from "./styles.module.css";
 
 export default function HermesSkillMarket({ embedded = false }: { embedded?: boolean }) {
@@ -38,13 +40,17 @@ export default function HermesSkillMarket({ embedded = false }: { embedded?: boo
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [market, installed] = await Promise.all([
+      const [market, installed, localInstalled] = await Promise.all([
         hermesApi.listSkillMarket(),
         hermesApi.listInstalledSkills(),
+        marketApi.listInstalled().catch(() => [] as InstalledRecord[]),
       ]);
-      const installedIdSet = new Set(
-        installed.map((s: InstalledSkill) => s.id),
-      );
+      const installedIdSet = new Set([
+        ...installed.map((s: InstalledSkill) => s.id),
+        ...localInstalled
+          .filter((r: InstalledRecord) => r.type === "skill")
+          .map((r: InstalledRecord) => r.id),
+      ]);
       setInstalledIds(installedIdSet);
       // 标记已安装状态
       setSkills(
@@ -69,8 +75,11 @@ export default function HermesSkillMarket({ embedded = false }: { embedded?: boo
   const handleInstall = async (skill: HermesSkill) => {
     setInstalling((prev) => ({ ...prev, [skill.id]: true }));
     try {
-      await hermesApi.installSkill(skill.id);
-      message.success(`技能包 "${skill.name}" 安装成功`);
+      const res = await marketApi.install("skill", skill.id);
+      if (!res.ok) {
+        throw new Error(res.error || "本地安装失败");
+      }
+      message.success(`技能包 "${skill.name}" 已下载安装到本地`);
       setInstalledIds((prev) => new Set(prev).add(skill.id));
       setSkills((prev) =>
         prev.map((s) => (s.id === skill.id ? { ...s, isInstalled: true } : s)),

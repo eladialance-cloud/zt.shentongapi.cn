@@ -23,6 +23,14 @@ import { localDb } from './local-db'
 import { getOrCreateSalt, deriveDbKey } from './local-db/crypto'
 import { verifyAll, verifyIntegrity } from './runtime-resolver'
 import { download as downloadRuntime, cancelDownload, cleanupStaleTempFiles } from './runtime-downloader'
+import {
+  installMarketItem,
+  uninstallMarketItem,
+  listInstalled,
+  exportMarketBundle,
+  importMarketBundle,
+} from './local-market/local-content-manager'
+import type { MarketItemType } from '../shared/types'
 import type { ServiceName, SyncQueueItem, SyncQueueRow } from '../shared/types'
 
 // 日志落盘：主进程 console 输出同步写入 userData/logs/main.log，便于远程排查
@@ -327,4 +335,19 @@ function registerIpcHandlers(): void {
     cancelDownload(name)
     return true
   })
+
+  // ===== 本地内容市场（下载安装官方内容到本地） =====
+
+  ipcMain.handle('market:install', async (_event, type: MarketItemType, id: number, name: string, version: string, pkg: Record<string, unknown>) =>
+    installMarketItem(type, id, name, version, pkg))
+
+  ipcMain.handle('market:uninstall', async (_event, type: MarketItemType, id: number) =>
+    uninstallMarketItem(type, id))
+
+  ipcMain.handle('market:list', async () => listInstalled())
+
+  ipcMain.handle('market:export', async () => exportMarketBundle())
+
+  ipcMain.handle('market:import', async () => importMarketBundle())
+
 }

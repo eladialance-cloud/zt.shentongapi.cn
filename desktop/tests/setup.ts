@@ -98,7 +98,14 @@ export function createMockElectronAPI(): ElectronAPI {
       enqueue: jest.fn(),
       getPending: jest.fn(),
       updateStatus: jest.fn(),
-      exists: jest.fn()
+      exists: jest.fn(),
+    },
+    market: {
+      install: jest.fn(),
+      uninstall: jest.fn(),
+      list: jest.fn(),
+      export: jest.fn(),
+      import: jest.fn()
     }
   } as unknown as ElectronAPI
 }

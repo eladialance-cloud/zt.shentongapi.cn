@@ -13,8 +13,10 @@ import {
   PictureOutlined,
   ClockCircleOutlined,
   DollarOutlined,
+  DownloadOutlined,
 } from "@ant-design/icons";
 import * as workflowApi from "@/api/workflow-api";
+import * as marketApi from "@/api/market-api";
 import type {
   WorkflowTemplate,
   WorkflowExecution,
@@ -91,6 +93,9 @@ export default function WorkflowDetail() {
   const [executions, setExecutions] = useState<WorkflowExecution[]>([]);
   const [loading, setLoading] = useState(false);
   const [executing, setExecuting] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [installed, setInstalled] = useState(false);
+  const [installDir, setInstallDir] = useState("");
   const [inputText, setInputText] = useState("{}");
   const [lastResult, setLastResult] = useState<WorkflowExecution | null>(null);
 
@@ -140,6 +145,26 @@ export default function WorkflowDetail() {
       message.error("工作流执行失败: " + (err as Error).message);
     } finally {
       setExecuting(false);
+    }
+  };
+
+  /** 安装工作流到本地（下载 + 导入本地 N8N） */
+  const handleInstallLocal = async () => {
+    if (!template) return;
+    setInstalling(true);
+    try {
+      const res = await marketApi.install("workflow", template.id);
+      if (!res.ok) {
+        throw new Error(res.error || "本地安装失败");
+      }
+      setInstalled(true);
+      setInstallDir(res.dir || "");
+      message.success("工作流已下载安装到本地 N8N");
+    } catch (err) {
+      console.error("[WorkflowDetail] install failed:", err);
+      message.error("安装失败: " + (err as Error).message);
+    } finally {
+      setInstalling(false);
     }
   };
 
@@ -330,6 +355,20 @@ export default function WorkflowDetail() {
             >
               执行工作流
             </Button>
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={handleInstallLocal}
+              loading={installing}
+              disabled={installed}
+              style={{ marginLeft: 8 }}
+            >
+              {installed ? "已安装到本地" : "安装到本地"}
+            </Button>
+            {installed && installDir && (
+              <div style={{ fontSize: 12, color: "#8b98a5", marginTop: 8 }}>
+                安装位置：{installDir}
+              </div>
+            )}
           </div>
 
           {/* 最近一次执行结果 */}

@@ -9,19 +9,46 @@ import {
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import * as hermesApi from "@/api/hermes-api";
+import * as marketApi from "@/api/market-api";
 import type { InstalledSkill } from "@/types/hermes";
+import type { InstalledRecord } from "@/types/market";
 import styles from "./styles.module.css";
 
 export default function InstalledSkills() {
   const navigate = useNavigate();
-  const [skills, setSkills] = useState<InstalledSkill[]>([]);
+  const [skills, setSkills] = useState<Array<InstalledSkill & { installDir?: string }>>([]);
   const [loading, setLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await hermesApi.listInstalledSkills();
-      setSkills(list || []);
+      const [cloudList, localList] = await Promise.all([
+        hermesApi.listInstalledSkills().catch(() => [] as InstalledSkill[]),
+        marketApi.listInstalled().catch(() => [] as InstalledRecord[]),
+      ]);
+      // 本地已下载的技能优先展示（本地目录为主），云端挂载记录为辅
+      const localSkills = localList
+        .filter((r) => r.type === "skill")
+        .map((r) => ({
+          id: r.id,
+          name: r.name,
+          description: "",
+          author: "官方",
+          pricePerMinute: 0,
+          installCount: 0,
+          mounted: false,
+          version: r.version,
+          installDir: r.dir,
+        }));
+      const merged: Array<InstalledSkill & { installDir?: string }> = [
+        ...localSkills,
+      ];
+      for (const s of cloudList || []) {
+        if (!merged.some((m) => m.id === s.id)) {
+          merged.push({ ...s, installDir: undefined });
+        }
+      }
+      setSkills(merged);
     } catch (err) {
       console.error("[InstalledSkills] load failed:", err);
       message.error("加载已安装技能包失败");
@@ -61,6 +88,11 @@ export default function InstalledSkills() {
                 <div className={styles.skillDesc}>
                   {skill.description || "暂无描述"}
                 </div>
+                {skill.installDir && (
+                  <div style={{ fontSize: 12, color: "#8b98a5", wordBreak: "break-all" }}>
+                    安装位置：{skill.installDir}
+                  </div>
+                )}
                 <div className={styles.skillMeta}>
                   <span>作者：{skill.author}</span>
                   <span>

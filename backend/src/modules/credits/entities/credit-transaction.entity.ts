@@ -23,7 +23,8 @@ export type CreditTxnSource =
   | 'recharge'
   | 'admin_adjust'
   | 'signup_reward'
-  | 'llm_proxy';
+  | 'llm_proxy'
+  | 'market_purchase';
 
 /**
  * 积分流水实体（不可变，仅追加）
