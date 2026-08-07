@@ -28,6 +28,7 @@ import {
 } from 'antd'
 import type { TableColumnsType } from 'antd'
 import {
+  CloudDownloadOutlined,
   CloudSyncOutlined,
   EditOutlined,
   PlusOutlined,
@@ -42,6 +43,7 @@ import {
   testModel,
   updateAdminModel
 } from '@/api/admin-model-api'
+import ProxyImportModal from './ProxyImportModal'
 import type {
   AdminModelItem,
   ConnectionStatus,
@@ -129,8 +131,8 @@ interface ModelFormValues {
   displayName: string
   apiKey?: string
   apiEndpoint?: string
-  inputPricePerToken: number
-  outputPricePerToken: number
+  inputPricePerToken?: number
+  outputPricePerToken?: number
   capabilities: ModelCapability[]
   enabled: boolean
   concurrencyLimit?: number
@@ -151,6 +153,7 @@ export default function AdminModels() {
   const [form] = Form.useForm<ModelFormValues>()
   const [saving, setSaving] = useState(false)
   const [syncingId, setSyncingId] = useState<number | null>(null)
+  const [proxyOpen, setProxyOpen] = useState(false)
   const [testingId, setTestingId] = useState<number | null>(null)
 
   const loadList = useCallback(async () => {
@@ -485,6 +488,13 @@ export default function AdminModels() {
           >
             新增模型
           </Button>
+          <Button
+            icon={<CloudDownloadOutlined />}
+            onClick={() => setProxyOpen(true)}
+            className={styles.ghostBtn}
+          >
+            读取上游大模型
+          </Button>
         </div>
       </div>
 
@@ -588,15 +598,15 @@ export default function AdminModels() {
           </Form.Item>
           <Form.Item
             name="inputPricePerToken"
-            label="输入单价(每千 token,decimal)"
-            rules={[{ required: true, message: '请输入' }]}
+            label="输入单价(每千 token,decimal,选填)"
+            extra="留空默认为 0，可用「读取上游大模型」批量导入定价"
           >
             <InputNumber min={0} step={0.0001} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item
             name="outputPricePerToken"
-            label="输出单价(每千 token,decimal)"
-            rules={[{ required: true, message: '请输入' }]}
+            label="输出单价(每千 token,decimal,选填)"
+            extra="留空默认为 0，可用「读取上游大模型」批量导入定价"
           >
             <InputNumber min={0} step={0.0001} style={{ width: '100%' }} />
           </Form.Item>
@@ -625,6 +635,13 @@ export default function AdminModels() {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* 读取上游大模型 */}
+      <ProxyImportModal
+        open={proxyOpen}
+        onClose={() => setProxyOpen(false)}
+        onRefresh={() => void loadList()}
+      />
     </div>
   )
 }

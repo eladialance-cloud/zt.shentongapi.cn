@@ -358,9 +358,11 @@ export class AdminAgentService {
     await fs.mkdir(tmpDir, { recursive: true });
     try {
       extractZipFile(zipPath, tmpDir);
+      // 去重键使用 zip 原始文件名（不含时间戳），重复上传同一文件不会重复入库
+      const stableKey = (file.originalname || 'agent-local').replace(/\.zip$/i, '').replace(/[^\w.-]/g, '_');
       const dto: ImportGithubDto = {
-        repoUrl: `local://${path.basename(zipPath)}`,
-        targetStatus: 'published',
+        repoUrl: `local://${stableKey}`,
+        targetStatus: 'pending_review',
         defaultModelId: DEFAULT_MODEL_ID,
         defaultCreatorId: DEFAULT_CREATOR_ID,
         dryRun: false,

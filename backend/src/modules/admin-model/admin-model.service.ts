@@ -208,6 +208,14 @@ export class AdminModelService {
           continue;
         }
 
+        // 倍率模式必须依赖上游价格，缺失时跳过并报错（避免静默导入 0 价模型）
+        if (
+          dto.pricingMode === 'multiplier' &&
+          (item.upstreamInputPrice == null || item.upstreamOutputPrice == null)
+        ) {
+          errors.push({ modelId: item.modelId, error: '上游未返回该模型价格，倍率模式无法计算，请改用固定价(flat)模式或手动填写价格' });
+          continue;
+        }
         const inputPrice = this.calcPrice(
           item.upstreamInputPrice ?? 0,
           'input',
@@ -263,8 +271,8 @@ export class AdminModelService {
     entity.provider = dto.provider;
     entity.modelId = dto.modelId;
     entity.name = dto.displayName;
-    entity.pricePer1kInput = dto.inputPricePerToken;
-    entity.pricePer1kOutput = dto.outputPricePerToken;
+    entity.pricePer1kInput = dto.inputPricePerToken ?? 0;
+    entity.pricePer1kOutput = dto.outputPricePerToken ?? 0;
     entity.isActive = dto.enabled;
     entity.supportsVision = dto.capabilities?.includes('vision') ?? false;
     entity.supportsFunctions = dto.capabilities?.includes('function_calling') ?? false;
@@ -404,7 +412,7 @@ export class AdminModelService {
     return resp.json();
   }
 
-  /** 解析 /models 应答为标准列表 */
+  /** 解析 /models 应答为标准列表（尽力读取上游价格：OpenAI /models 通常不含价格，部分中转站返回 pricing/metadata 字段） */
   private parseModelList(raw: any): Array<{
     modelId: string;
     ownedBy?: string;
@@ -412,12 +420,22 @@ export class AdminModelService {
     upstreamOutputPrice?: number;
   }> {
     const dataArray = raw?.data ?? (Array.isArray(raw) ? raw : []);
-    return dataArray.map((m: any) => ({
-      modelId: m.id || m.modelId || '',
-      ownedBy: m.owned_by || m.ownedBy || undefined,
-      upstreamInputPrice: undefined,
-      upstreamOutputPrice: undefined,
-    }));
+    return dataArray.map((m: any) => {
+      const meta = m?.api?.metadata ?? m?.metadata ?? m?.pricing ?? {};
+      const priceOf = (v: unknown): number | undefined => {
+        const n = typeof v === 'string' ? Number(v) : typeof v === 'number' ? v : NaN;
+        return Number.isFinite(n) && n >= 0 ? n : undefined;
+      };
+      // 常见格式: { input: xx, output: xx } 或 { prompt: xx, completion: xx } 或单值
+      const input = priceOf(meta.input ?? meta.prompt ?? meta.input_price ?? meta.price);
+      const output = priceOf(meta.output ?? meta.completion ?? meta.output_price ?? meta.price);
+      return {
+        modelId: m.id || m.modelId || '',
+        ownedBy: m.owned_by || m.ownedBy || undefined,
+        upstreamInputPrice: input,
+        upstreamOutputPrice: output,
+      };
+    });
   }
 
   /** 去掉末尾 /v1 并加 /v1 */

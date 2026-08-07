@@ -33,6 +33,7 @@ interface ParsedWorkflowMeta {
   categories: string[];
   workflowId?: string;
   version?: string;
+  workflowJson?: string;
 }
 
 /**
@@ -163,6 +164,8 @@ export class AdminWorkflowService {
     if (!workflow) throw new NotFoundException(`工作流 ${id} 不存在`);
     workflow.reviewStatus = 'approved';
     workflow.publishStatus = 'approved';
+    workflow.isActive = true;
+    workflow.isPublished = true;
     workflow.rejectReason = undefined;
     await this.workflowRepo.save(workflow);
   }
@@ -259,7 +262,11 @@ export class AdminWorkflowService {
               repoUrl: `local://${path.basename(zipPath)}`,
               category: 'other',
             });
-            imported += count;
+            if (count === 0) {
+              errors.push(`${file.originalname}: zip 中未找到有效工作流 JSON`);
+            } else {
+              imported += count;
+            }
           } finally {
             try { await fs.rm(tmpDir, { recursive: true, force: true }); } catch {}
           }
@@ -326,16 +333,18 @@ export class AdminWorkflowService {
     if (jsonFiles.length === 0) throw new BadRequestException('未找到工作流 JSON 文件');
 
     let imported = 0;
+    let invalidCount = 0;
+    const invalidFiles: string[] = [];
     for (const relPath of jsonFiles) {
       try {
         const fullPath = path.join(scanRoot, relPath);
         const content = await fs.readFile(fullPath, 'utf-8');
 
         // 快速检查是否为 n8n workflow JSON（有 nodes 字段）
-        if (content.length < 100) continue;
+        if (content.length < 100) { invalidCount++; invalidFiles.push(relPath); continue; }
 
         const parsed = this.parseWorkflowJson(content, relPath);
-        if (!parsed) continue; // 非 n8n workflow JSON
+        if (!parsed) { invalidCount++; invalidFiles.push(relPath); continue; } // 非 n8n workflow JSON
 
         // 确定分类：n8n-workflows 仓库用目录名作为 category
         let category = dto.category;
@@ -359,6 +368,10 @@ export class AdminWorkflowService {
       }
     }
 
+    if (imported === 0) {
+      const sample = invalidFiles.slice(0, 5).join(', ');
+      throw new BadRequestException(`未找到有效工作流 JSON（无效/非工作流文件 ${invalidCount} 个: ${sample}）`);
+    }
     return imported;
   }
 
@@ -427,6 +440,7 @@ export class AdminWorkflowService {
       categories: Array.from(categories),
       workflowId: parsed.meta?.instanceId || parsed.id,
       version: parsed.meta?.versionId || parsed.version,
+      workflowJson: content,
     };
   }
 
@@ -439,6 +453,7 @@ export class AdminWorkflowService {
     categories: string[];
     workflowId?: string;
     version?: string;
+    workflowJson?: string;
     sourcePath: string;
     repoUrl: string;
     category: string;
@@ -456,6 +471,7 @@ export class AdminWorkflowService {
       existing.nodeCount = data.nodeCount;
       existing.n8nWorkflowId = data.workflowId;
       existing.version = data.version;
+      existing.workflowJson = data.workflowJson;
       existing.tags = tags;
       existing.category = data.category as WorkflowEntity['category'];
       await this.workflowRepo.save(existing);
@@ -470,6 +486,7 @@ export class AdminWorkflowService {
           nodeCount: data.nodeCount,
           n8nWorkflowId: data.workflowId,
           version: data.version,
+          workflowJson: data.workflowJson,
           tags,
           sourceRepo: data.repoUrl,
           sourcePath: data.sourcePath,

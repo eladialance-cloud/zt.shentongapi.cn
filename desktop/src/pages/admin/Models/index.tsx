@@ -4,8 +4,8 @@
 // 表格:模型 ID/Provider/显示名/输入单价/输出单价/最低等级/启用状态/同步状态/操作
 // 启用/禁用开关(antd Switch)
 // 模态框字段:provider/modelId(unique)/displayName/apiKey(密码)/apiEndpoint/
-//   inputPricePerToken/outputPricePerToken/capabilities(多选)/enabled/
-//   concurrencyLimit/rateLimitPerMinute/minUserLevel
+//   capabilities(多选)/enabled/concurrencyLimit/rateLimitPerMinute/minUserLevel
+//   (输入/输出单价已从新增编辑表单移除,价格由「读取上游大模型」批量导入定价)
 // 同步状态:颜色标签,操作:手动同步 POST /admin/models/:id/sync
 // API: GET/POST/PATCH /admin/models, POST /admin/models/:id/sync
 
@@ -28,6 +28,7 @@ import {
 } from 'antd'
 import type { TableColumnsType } from 'antd'
 import {
+  CloudDownloadOutlined,
   CloudSyncOutlined,
   EditOutlined,
   PlusOutlined,
@@ -50,6 +51,7 @@ import type {
   UpdateAdminModelDto
 } from '@/types/admin-model'
 import type { AdminPaginatedResult } from '@/types/admin-auth'
+import ProxyImportModal from './ProxyImportModal'
 import styles from './styles.module.css'
 
 const PAGE_SIZE = 20
@@ -120,8 +122,6 @@ interface ModelFormValues {
   displayName: string
   apiKey?: string
   apiEndpoint?: string
-  inputPricePerToken: number
-  outputPricePerToken: number
   capabilities: ModelCapability[]
   enabled: boolean
   concurrencyLimit?: number
@@ -142,6 +142,7 @@ export default function AdminModels() {
   const [form] = Form.useForm<ModelFormValues>()
   const [saving, setSaving] = useState(false)
   const [syncingId, setSyncingId] = useState<number | null>(null)
+  const [proxyOpen, setProxyOpen] = useState(false)
 
   const loadList = useCallback(async () => {
     setLoading(true)
@@ -181,8 +182,6 @@ export default function AdminModels() {
     form.resetFields()
     form.setFieldsValue({
       provider: 'openai',
-      inputPricePerToken: 0,
-      outputPricePerToken: 0,
       capabilities: [],
       enabled: true,
       minUserLevel: 1,
@@ -200,8 +199,6 @@ export default function AdminModels() {
       displayName: item.displayName,
       apiKey: '',
       apiEndpoint: item.apiEndpoint,
-      inputPricePerToken: item.inputPricePerToken,
-      outputPricePerToken: item.outputPricePerToken,
       capabilities: item.capabilities || [],
       enabled: item.enabled,
       concurrencyLimit: item.concurrencyLimit,
@@ -221,8 +218,6 @@ export default function AdminModels() {
           modelId: values.modelId,
           displayName: values.displayName,
           apiEndpoint: values.apiEndpoint,
-          inputPricePerToken: values.inputPricePerToken,
-          outputPricePerToken: values.outputPricePerToken,
           capabilities: values.capabilities,
           enabled: values.enabled,
           concurrencyLimit: values.concurrencyLimit,
@@ -241,8 +236,6 @@ export default function AdminModels() {
           displayName: values.displayName,
           apiKey: values.apiKey,
           apiEndpoint: values.apiEndpoint,
-          inputPricePerToken: values.inputPricePerToken,
-          outputPricePerToken: values.outputPricePerToken,
           capabilities: values.capabilities,
           enabled: values.enabled,
           concurrencyLimit: values.concurrencyLimit,
@@ -428,6 +421,13 @@ export default function AdminModels() {
             刷新
           </Button>
           <Button
+            icon={<CloudDownloadOutlined />}
+            onClick={() => setProxyOpen(true)}
+            className={styles.ghostBtn}
+          >
+            读取上游大模型
+          </Button>
+          <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={handleAdd}
@@ -537,20 +537,6 @@ export default function AdminModels() {
             <Input placeholder="https://api.openai.com/v1" />
           </Form.Item>
           <Form.Item
-            name="inputPricePerToken"
-            label="输入单价(每千 token,decimal)"
-            rules={[{ required: true, message: '请输入' }]}
-          >
-            <InputNumber min={0} step={0.0001} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item
-            name="outputPricePerToken"
-            label="输出单价(每千 token,decimal)"
-            rules={[{ required: true, message: '请输入' }]}
-          >
-            <InputNumber min={0} step={0.0001} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item
             name="capabilities"
             label="能力(多选)"
             rules={[{ required: true, message: '请至少选择一项能力' }]}
@@ -575,6 +561,13 @@ export default function AdminModels() {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* 读取上游大模型 */}
+      <ProxyImportModal
+        open={proxyOpen}
+        onClose={() => setProxyOpen(false)}
+        onRefresh={() => void loadList()}
+      />
     </div>
   )
 }

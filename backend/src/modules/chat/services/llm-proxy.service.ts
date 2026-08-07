@@ -78,6 +78,7 @@ export class LlmProxyService {
       max_tokens?: number;
       tools?: unknown[];
     },
+    onCost?: (finalCost: number) => void,
   ): Promise<{ stream: boolean; iterator: AsyncGenerator<string, void, unknown> }> {
     const { userId } = await this.verifyApiKey(apiKey);
     const modelId = this.resolveModelId(body.model);
@@ -94,10 +95,21 @@ export class LlmProxyService {
     }
 
     const userLevel = await this.pricingService.getUserLevel(userId);
+    // 预扣：按模型单价 × 默认预估 token(2000 in / 500 out) 估值冻结，至少冻结 1 积分
+    let estimatedCost = 10;
+    try {
+      estimatedCost = await this.pricingService.calculateModelCost(modelId, {
+        input: 2000,
+        output: 500,
+      });
+      estimatedCost = Math.max(estimatedCost, 1);
+    } catch (e) {
+      this.logger.warn(`模型定价查询失败，使用默认预扣 10: ${(e as Error).message}`);
+    }
     let frozenTxnId: number | null = null;
     try {
       const freezeTxn = await this.creditsService.freezeCredits(
-        userId, 10, 'llm_proxy', `proxy_${modelId}_${Date.now()}`,
+        userId, estimatedCost, 'llm_proxy', `proxy_${modelId}_${Date.now()}`,
       );
       frozenTxnId = freezeTxn.id;
     } catch {
@@ -138,8 +150,12 @@ export class LlmProxyService {
                 }
               },
               onDone: async (u: { input: number; output: number; total: number }, _resp: unknown) => {
-                const { cost } = await self.pricingService.calculateActualCost(null, u);
+                const cost = await self.pricingService.calculateModelCost(modelId, {
+                  input: u.input,
+                  output: u.output,
+                });
                 const finalCost = self.pricingService.applyDiscount(cost, userLevel);
+                if (onCost) { try { onCost(finalCost); } catch (_e) {} }
                 if (frozenTxnId && finalCost > 0) {
                   try { await self.creditsService.settleCredits(userId, frozenTxnId, finalCost); } catch (_e) {}
                 } else if (frozenTxnId) {

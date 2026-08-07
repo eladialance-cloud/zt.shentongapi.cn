@@ -99,7 +99,11 @@ export interface ImportModelsDto {
   apiKey: string
   models: ImportModelItem[]
   pricingMode: PricingMode
-  pricingConfig: PricingConfig
+  multiplier?: number
+  fixedInputAdd?: number
+  fixedOutputAdd?: number
+  flatInputPrice?: number
+  flatOutputPrice?: number
 }
 
 /** 拉取上游模型响应 */

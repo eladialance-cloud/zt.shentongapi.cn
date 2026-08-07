@@ -66,6 +66,13 @@ export class SkillAnalyzerService {
       localPath = await adapter.fetch(source.sourceUrl);
       // b. 分析目录结构
       const analysis = await adapter.analyze(localPath);
+      // b2. 格式前置校验：本地上传(zip)技能包必须包含 SKILL.md（避免生成空壳技能包）
+      if (source.sourceType === 'zip' && !analysis.hasSkillMd) {
+        BusinessException.throw(
+          ErrorCode.VALIDATION_FAILED,
+          '技能包格式不合法：未找到 SKILL.md（zip 技能包必须包含 SKILL.md 定义文件）',
+        );
+      }
       // c. 判定技能类型
       const skillType = this.determineSkillType(analysis);
       // d. 生成清单

@@ -77,8 +77,8 @@ export interface CreateAdminModelDto {
   /** 明文 apiKey(后端 AES 加密存储) */
   apiKey?: string
   apiEndpoint?: string
-  inputPricePerToken: number
-  outputPricePerToken: number
+  inputPricePerToken?: number
+  outputPricePerToken?: number
   capabilities: ModelCapability[]
   enabled: boolean
   concurrencyLimit?: number
@@ -104,3 +104,64 @@ export interface UpdateAdminModelDto {
 
 /** 复用通用分页结果 */
 export type { AdminPaginatedResult }
+
+/** 上游模型(拉取得到) */
+export interface UpstreamModel {
+  modelId: string
+  ownedBy?: string
+  upstreamInputPrice?: number
+  upstreamOutputPrice?: number
+  alreadyExists: boolean
+}
+
+/** 加价模式 */
+export type PricingMode = 'multiplier' | 'fixed' | 'flat'
+
+/** 加价配置(按模式取对应字段) */
+export interface PricingConfig {
+  fixedInputAdd?: number
+  fixedOutputAdd?: number
+  multiplier?: number
+  flatInputPrice?: number
+  flatOutputPrice?: number
+}
+
+/** 待导入的单个模型 */
+export interface ImportModelItem {
+  modelId: string
+  displayName?: string
+  upstreamInputPrice?: number
+  upstreamOutputPrice?: number
+}
+
+/** 拉取上游模型请求 DTO */
+export interface FetchModelsDto {
+  apiEndpoint: string
+  apiKey: string
+}
+
+/** 批量导入模型请求 DTO(加价字段平铺,与后端 ImportModelsDto 一致) */
+export interface ImportModelsDto {
+  apiEndpoint: string
+  apiKey: string
+  models: ImportModelItem[]
+  pricingMode: PricingMode
+  multiplier?: number
+  fixedInputAdd?: number
+  fixedOutputAdd?: number
+  flatInputPrice?: number
+  flatOutputPrice?: number
+}
+
+/** 拉取上游模型响应 */
+export interface FetchModelsResult {
+  success: boolean
+  models: UpstreamModel[]
+}
+
+/** 批量导入模型响应 */
+export interface ImportModelsResult {
+  imported: number
+  skipped: number
+  errors: Array<{ modelId: string; error: string }>
+}

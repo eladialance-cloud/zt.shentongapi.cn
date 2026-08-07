@@ -393,6 +393,7 @@ export class ChatController {
 
       // 4. 调用 LlmProxyService 进行真实 AI 调用
       const model = dto.model || session.modelId || 'deepseek-chat';
+      let settledCost = 0;
       const { stream: _isStream, iterator } = await this.llmProxyService.chatCompletions(
         apiKey,
         {
@@ -400,6 +401,7 @@ export class ChatController {
           messages,
           stream: true,
         },
+        (finalCost) => { settledCost = finalCost; },
       );
 
       // 5. 解析 OpenAI 格式 SSE 流，转换为桌面端期望的事件格式
@@ -500,7 +502,7 @@ export class ChatController {
       try {
         const account = await this.creditsService.getAccount(user.userId);
         send('credits', {
-          amount: usageInfo.totalTokens,
+          amount: settledCost,
           balance: account.balance,
           frozen: account.frozenBalance,
         });

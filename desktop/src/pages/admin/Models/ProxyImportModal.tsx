@@ -213,7 +213,7 @@ export default function ProxyImportModal({
       upstreamInputPrice: m.upstreamInputPrice,
       upstreamOutputPrice: m.upstreamOutputPrice
     }))
-    // 加价字段平铺(后端 forbidNonWhitelisted,嵌套 pricingConfig 会 400)
+    // 加价字段按后端 ImportModelsDto 平铺(不能嵌套 pricingConfig,否则 forbidNonWhitelisted 会 400)
     const dto: ImportModelsDto = {
       apiEndpoint: apiEndpoint.trim(),
       apiKey: apiKey.trim(),
@@ -221,10 +221,16 @@ export default function ProxyImportModal({
       pricingMode,
       ...(pricingMode === 'multiplier' ? { multiplier: pricingConfig.multiplier } : {}),
       ...(pricingMode === 'fixed'
-        ? { fixedInputAdd: pricingConfig.fixedInputAdd, fixedOutputAdd: pricingConfig.fixedOutputAdd }
+        ? {
+            fixedInputAdd: pricingConfig.fixedInputAdd,
+            fixedOutputAdd: pricingConfig.fixedOutputAdd
+          }
         : {}),
       ...(pricingMode === 'flat'
-        ? { flatInputPrice: pricingConfig.flatInputPrice, flatOutputPrice: pricingConfig.flatOutputPrice }
+        ? {
+            flatInputPrice: pricingConfig.flatInputPrice,
+            flatOutputPrice: pricingConfig.flatOutputPrice
+          }
         : {})
     }
     setImporting(true)

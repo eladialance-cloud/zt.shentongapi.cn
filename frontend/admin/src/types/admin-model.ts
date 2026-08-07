@@ -84,8 +84,10 @@ export interface CreateAdminModelDto {
   /** 明文 apiKey(后端 AES 加密存储) */
   apiKey?: string
   apiEndpoint?: string
-  inputPricePerToken: number
-  outputPricePerToken: number
+  /** 每千 token 输入价格(积分)，选填，留空为 0 */
+  inputPricePerToken?: number
+  /** 每千 token 输出价格(积分)，选填，留空为 0 */
+  outputPricePerToken?: number
   capabilities: ModelCapability[]
   enabled: boolean
   concurrencyLimit?: number
@@ -146,7 +148,11 @@ export interface ImportModelsDto {
   apiKey: string
   models: ImportModelItem[]
   pricingMode: PricingMode
-  pricingConfig: PricingConfig
+  multiplier?: number
+  fixedInputAdd?: number
+  fixedOutputAdd?: number
+  flatInputPrice?: number
+  flatOutputPrice?: number
 }
 
 /** 批量导入结果 */

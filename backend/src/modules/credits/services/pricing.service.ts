@@ -137,17 +137,21 @@ export class PricingService {
     tokens: { input: number; output: number },
   ): Promise<number> {
     const model = await this.getModelCached(modelId);
-    if (!model || !model.pricePer1kInput || !model.pricePer1kOutput) {
+    // 模型未配置价格(null/undefined)时回退默认 5 积分；0 是合法价格(免费模型)
+    if (!model || model.pricePer1kInput == null || model.pricePer1kOutput == null) {
       return 5; // 默认费用
     }
 
+    const inputPrice = Number(model.pricePer1kInput);
+    const outputPrice = Number(model.pricePer1kOutput);
+
     const inputCost =
       (tokens.input / 1000) *
-      Number(model.pricePer1kInput) *
+      inputPrice *
       PricingService.CREDITS_RATE;
     const outputCost =
       (tokens.output / 1000) *
-      Number(model.pricePer1kOutput) *
+      outputPrice *
       PricingService.CREDITS_RATE;
 
     return Math.ceil(inputCost + outputCost);

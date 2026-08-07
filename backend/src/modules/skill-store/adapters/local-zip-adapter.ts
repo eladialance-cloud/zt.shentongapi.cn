@@ -51,4 +51,15 @@ export class LocalZipAdapter extends GitHubAdapter {
     this.zipLogger.log(`本地技能包已解压: ${zipPath} -> ${targetDir}`);
     return targetDir;
   }
+
+  /**
+   * 本地 zip 技能包不自动安装依赖（pip/npm install 会执行包内任意脚本，
+   * 管理员上传的 zip 存在任意代码执行风险），依赖安装交给用户端/安装环节按需处理。
+   */
+  async installDependencies(
+    _localPath: string,
+    _deps: Record<string, unknown>,
+  ): Promise<void> {
+    this.zipLogger.warn('本地 zip 技能包跳过依赖自动安装（安全策略：上传包不执行 pip/npm install）');
+  }
 }

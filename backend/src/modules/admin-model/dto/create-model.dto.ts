@@ -37,13 +37,15 @@ export class CreateModelDto {
   @MaxLength(512)
   apiEndpoint?: string;
 
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  inputPricePerToken: number;
+  inputPricePerToken?: number;
 
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  outputPricePerToken: number;
+  outputPricePerToken?: number;
 
   @IsArray()
   capabilities: string[];

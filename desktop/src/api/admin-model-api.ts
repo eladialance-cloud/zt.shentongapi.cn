@@ -12,6 +12,10 @@ import type {
   AdminModelItem,
   AdminModelQuery,
   CreateAdminModelDto,
+  FetchModelsDto,
+  FetchModelsResult,
+  ImportModelsDto,
+  ImportModelsResult,
   UpdateAdminModelDto
 } from '@/types/admin-model'
 
@@ -46,9 +50,33 @@ export async function syncAdminModel(id: number): Promise<void> {
   await adminRequest<void>('post', `/admin/models/${id}/sync`)
 }
 
+
+/** 拉取上游模型列表 POST /admin/models/proxy/fetch-models */
+export async function fetchUpstreamModels(
+  dto: FetchModelsDto
+): Promise<FetchModelsResult> {
+  return adminRequest<FetchModelsResult>(
+    'post',
+    '/admin/models/proxy/fetch-models',
+    { data: dto }
+  )
+}
+
+/** 批量导入上游模型 POST /admin/models/proxy/import */
+export async function importModels(
+  dto: ImportModelsDto
+): Promise<ImportModelsResult> {
+  return adminRequest<ImportModelsResult>(
+    'post',
+    '/admin/models/proxy/import',
+    { data: dto }
+  )
+}
 export default {
   listAdminModels,
   createAdminModel,
   updateAdminModel,
-  syncAdminModel
+  syncAdminModel,
+  fetchUpstreamModels,
+  importModels
 }
