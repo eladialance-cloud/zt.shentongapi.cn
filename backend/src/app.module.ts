@@ -146,6 +146,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     ApiKeyPoolModule,
     VersionModule,
     SearchModule,
+    MarketModule,
   ],
   controllers: [AppController],
   providers: [
