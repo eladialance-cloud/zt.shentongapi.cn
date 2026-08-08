@@ -412,7 +412,7 @@ jobs:
       - name: 🚀 Deploy to Server
         if: ${{ github.event.inputs.deploy == 'true' || github.event_name == 'push' }}
         shell: bash
-        timeout-minutes: 5
+        timeout-minutes: 40
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
@@ -430,7 +430,7 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
 
           # SSH 连接选项：30秒超时，禁用严格主机检查
-          SSH_OPTS="-i ~/.ssh/deploy_key -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+          SSH_OPTS="-i ~/.ssh/deploy_key -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=8"
 
           echo "📡 Testing SSH connection to $SERVER_HOST..."
           ssh $SSH_OPTS "$SERVER_USER@$SERVER_HOST" "echo 'SSH connection OK'" || {
