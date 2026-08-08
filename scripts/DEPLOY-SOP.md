@@ -60,6 +60,15 @@ sudo grep -iE "ERROR|EADDRINUSE" /opt/shentong/backend/server.log | tail -5 || e
 & $git push https://github.com/eladialance-cloud/zt.shentongapi.cn.git main:upgrade/electron-41
 ```
 
+### 3.1.1 GitHub 网络不稳定（连接被重置/超时）时的重试
+- 症状：`git push` 报 `Failed to connect to github.com port 443` / `Recv failure: Connection was reset` / `GnuTLS recv error (-110)`。属间歇性网络问题，**重试即可**，不要改代码。
+- 一键重试脚本（最多 10 轮，main 成功后自动推 CI 分支）：
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\push-retry.ps1
+```
+- 服务器拉取失败同理：`sudo timeout 60 git pull origin main` 多试几次；仍不行可用 git bundle / patch 直传（见 §10 历史方案）。
+- 服务器上所有 git 命令必须带 `sudo`（.git 目录属 root，否则报 `cannot open '.git/FETCH_HEAD': Permission denied`）。
+
 ### 3.2 自动上传（推荐）
 - 条件：`.github/workflows/desktop-build.yml` 的 `🚀 Deploy to Server` 步骤（push 事件已启用）+ GitHub Secrets 已配置 `SERVER_HOST / SERVER_USER / SERVER_SSH_KEY`。
 - 效果：构建成功后自动 scp 到服务器 `/tmp/st_deploy`，备份 `latest.yml`、清理旧版本、`mv` 到 `/opt/shentong/updates/`、`chown www-data`、curl 验证。
