@@ -71,6 +71,12 @@ export default function Chat() {
   useEffect(() => {
     streamingToolCallsRef.current = streamingToolCalls
   }, [streamingToolCalls])
+  useEffect(() => {
+    activeSessionRef.current = activeSession
+  }, [activeSession])
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
 
   // ===== 顶部选择器 =====
   const [modelId, setModelId] = useState<string>('')
