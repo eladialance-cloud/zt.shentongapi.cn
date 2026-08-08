@@ -441,15 +441,21 @@ jobs:
           echo "📁 Preparing remote staging dir..."
           ssh $SSH_OPTS "$SERVER_USER@$SERVER_HOST" "rm -rf /tmp/st_deploy && mkdir -p /tmp/st_deploy"
 
-          echo "📤 Uploading installer files to /tmp/st_deploy ..."
+          echo "🔍 Locating installer exe..."
+          EXE_FILE=$(ls dist/installer/*.exe 2>/dev/null | head -1)
+          if [ -z "$EXE_FILE" ]; then
+            echo "❌ 未找到安装包 exe 产物"
+            exit 1
+          fi
+          EXE_NAME=$(basename "$EXE_FILE")
+          echo "📤 Uploading $EXE_NAME + latest.yml to /tmp/st_deploy ..."
           scp $SSH_OPTS \
-            dist/installer/*.exe \
-            dist/installer/*.exe.zip \
+            "$EXE_FILE" \
             dist/installer/latest.yml \
             "$SERVER_USER@$SERVER_HOST:/tmp/st_deploy/"
 
-          echo "🚚 Installing to /opt/shentong/updates (backup + cleanup old + mv + chown + verify) ..."
-          ssh $SSH_OPTS "$SERVER_USER@$SERVER_HOST" "set -e; cd /opt/shentong/updates && sudo cp -f latest.yml latest.yml.bak 2>/dev/null || true; sudo rm -f ShenTongAI-Setup-*.exe ShenTongAI-Setup-*.exe.zip; sudo mv /tmp/st_deploy/* /opt/shentong/updates/; sudo chown -R www-data:www-data /opt/shentong/updates; sudo rm -rf /tmp/st_deploy; echo '--- deployed files ---'; ls -lh; echo '--- latest.yml ---'; curl -s https://zt.shentongapi.cn/desktop/latest.yml | head -3"
+          echo "🚚 Installing to /opt/shentong/updates (backup + cleanup old + mv + zip + chown + verify) ..."
+          ssh $SSH_OPTS "$SERVER_USER@$SERVER_HOST" "set -e; cd /opt/shentong/updates && sudo cp -f latest.yml latest.yml.bak 2>/dev/null || true; sudo rm -f ShenTongAI-Setup-*.exe ShenTongAI-Setup-*.exe.zip; sudo mv /tmp/st_deploy/* /opt/shentong/updates/; sudo zip -j ${EXE_NAME}.zip ${EXE_NAME}; sudo chown -R www-data:www-data /opt/shentong/updates; sudo rm -rf /tmp/st_deploy; echo '--- deployed files ---'; ls -lh; echo '--- latest.yml ---'; curl -s https://zt.shentongapi.cn/desktop/latest.yml | head -3"
 
           echo "🧹 Cleaning up..."
           rm -f ~/.ssh/deploy_key
