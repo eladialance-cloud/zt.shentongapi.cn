@@ -403,62 +403,9 @@ jobs:
             desktop/dist/installer/latest.yml
           retention-days: 30
 
-                  # ===== 17. Deploy to Server =====
-      # 自动上传：push 到 upgrade/electron-41 构建成功后，自动部署安装包到 /opt/shentong/updates/
-      # 前置：GitHub Settings > Secrets and variables > Actions 配置
-      #   SERVER_HOST, SERVER_USER, SERVER_SSH_KEY
-      # 未配置 Secrets 时自动跳过（不影响构建结果），可改用手动上传（scripts/DEPLOY-SOP.md §3.3）
-      # 注意：appleboy/scp-action 不支持 Windows runner，改用原生 scp/ssh
-      - name: 🚀 Deploy to Server
-        if: ${{ github.event.inputs.deploy == 'true' || github.event_name == 'push' }}
-        shell: bash
-        timeout-minutes: 40
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
-        run: |
-          set -e
-          if [ -z "$SERVER_HOST" ] || [ -z "$SERVER_USER" ] || [ -z "$SERVER_SSH_KEY" ]; then
-            echo "⚠️ 未配置部署 Secrets（SERVER_HOST/SERVER_USER/SERVER_SSH_KEY），跳过自动上传"
-            echo "如需自动上传: GitHub Repo Settings → Secrets and variables → Actions 添加以上三个 Secret"
-            exit 0
-          fi
-          # 写入 SSH 私钥
-          mkdir -p ~/.ssh
-          echo "$SERVER_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-
-          # SSH 连接选项：30秒超时，禁用严格主机检查
-          SSH_OPTS="-i ~/.ssh/deploy_key -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=8"
-
-          echo "📡 Testing SSH connection to $SERVER_HOST..."
-          ssh $SSH_OPTS "$SERVER_USER@$SERVER_HOST" "echo 'SSH connection OK'" || {
-            echo "❌ SSH connection failed! Check SERVER_HOST/USER/KEY secrets"
-            exit 1
-          }
-
-          echo "📁 Preparing remote staging dir..."
-          ssh $SSH_OPTS "$SERVER_USER@$SERVER_HOST" "rm -rf /tmp/st_deploy && mkdir -p /tmp/st_deploy"
-
-          echo "🔍 Locating installer exe..."
-          EXE_FILE=$(ls dist/installer/*.exe 2>/dev/null | head -1)
-          if [ -z "$EXE_FILE" ]; then
-            echo "❌ 未找到安装包 exe 产物"
-            exit 1
-          fi
-          EXE_NAME=$(basename "$EXE_FILE")
-          echo "📤 Uploading $EXE_NAME + latest.yml to /tmp/st_deploy ..."
-          scp $SSH_OPTS \
-            "$EXE_FILE" \
-            dist/installer/latest.yml \
-            "$SERVER_USER@$SERVER_HOST:/tmp/st_deploy/"
-
-          echo "🚚 Installing to /opt/shentong/updates (backup + cleanup old + mv + zip + chown + verify) ..."
-          ssh $SSH_OPTS "$SERVER_USER@$SERVER_HOST" "set -e; cd /opt/shentong/updates && sudo cp -f latest.yml latest.yml.bak 2>/dev/null || true; sudo rm -f ShenTongAI-Setup-*.exe ShenTongAI-Setup-*.exe.zip; sudo mv /tmp/st_deploy/* /opt/shentong/updates/; sudo zip -j ${EXE_NAME}.zip ${EXE_NAME}; sudo chown -R www-data:www-data /opt/shentong/updates; sudo rm -rf /tmp/st_deploy; echo '--- deployed files ---'; ls -lh; echo '--- latest.yml ---'; curl -s https://zt.shentongapi.cn/desktop/latest.yml | head -3"
-
-          echo "🧹 Cleaning up..."
-          rm -f ~/.ssh/deploy_key
+                  # ===== 17. 部署步骤已移除（仅构建，安装包手动下载上传）=====
+      # 2026-08-08: 不再自动上传服务器。构建产物在运行页 Artifacts（desktop-windows-latest）中下载，
+      # 手动 scp 到服务器 /opt/shentong/updates/ 并 zip（见 scripts/DEPLOY-SOP.md）。
 
 # ---------------------------------------------------------------------------
   # Job 2: macOS 打包 (可选，需 Mac runner)

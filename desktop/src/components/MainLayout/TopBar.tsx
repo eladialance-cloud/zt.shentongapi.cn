@@ -9,7 +9,6 @@ import {
   GiftOutlined,
   LogoutOutlined,
   UserOutlined,
-  DashboardOutlined,
 } from "@ant-design/icons";
 import { useAuthStore } from "@/store/auth";
 import { useCreditsStore } from "@/store/credits";
@@ -46,12 +45,6 @@ export default function TopBar() {
       icon: <UserOutlined />,
       label: "个人设置",
       onClick: () => navigate("/settings"),
-    },
-    {
-      key: "admin",
-      icon: <DashboardOutlined />,
-      label: "管理后台",
-      onClick: () => navigate("/admin/login"),
     },
     { type: "divider" },
     {

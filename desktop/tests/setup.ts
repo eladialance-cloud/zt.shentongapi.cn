@@ -6,9 +6,7 @@
 import type { User } from '@/store/auth'
 import type { Agent } from '@/types/agent'
 import type { CreditTransaction, CreditAccount } from '@/types/credits'
-import type { ApiKeyPoolItem } from '@/types/admin-api-key-pool'
 import type { Device } from '@/types/settings'
-import type { AdminDevice } from '@/types/admin-user'
 import type { WorkflowExecution } from '@/types/workflow'
 import type { HermesInstance } from '@/types/hermes'
 import type { SyncQueueRow, SyncQueueItem, ElectronAPI } from '@shared/types'
@@ -197,30 +195,6 @@ export function generateCreditAccount(
 }
 
 /**
- * 生成 API Key 池条目测试数据
- */
-export function generateApiKeyPoolItem(
-  overrides: Partial<ApiKeyPoolItem> = {}
-): ApiKeyPoolItem {
-  return {
-    id: 1,
-    alias: 'test-key',
-    provider: 'openai',
-    priority: 1,
-    status: 'active',
-    totalQuota: 100000,
-    usedQuota: 0,
-    remainingQuota: 100000,
-    dailyQuota: 10000,
-    monthlyQuota: 300000,
-    errorCount: 0,
-    createdAt: '2025-01-01T00:00:00.000Z',
-    updatedAt: '2025-01-01T00:00:00.000Z',
-    ...overrides
-  }
-}
-
-/**
  * 生成设备测试数据（用户端）
  */
 export function generateDevice(overrides: Partial<Device> = {}): Device {
@@ -228,24 +202,6 @@ export function generateDevice(overrides: Partial<Device> = {}): Device {
     id: 1,
     deviceName: '测试设备',
     fingerprint: 'abc123def456',
-    lastLoginAt: '2025-01-01T00:00:00.000Z',
-    createdAt: '2025-01-01T00:00:00.000Z',
-    ...overrides
-  }
-}
-
-/**
- * 生成设备测试数据（管理端）
- */
-export function generateAdminDevice(
-  overrides: Partial<AdminDevice> = {}
-): AdminDevice {
-  return {
-    id: 1,
-    userId: 1,
-    username: 'testuser',
-    deviceName: '测试设备',
-    deviceFingerprint: 'abc123def456',
     lastLoginAt: '2025-01-01T00:00:00.000Z',
     createdAt: '2025-01-01T00:00:00.000Z',
     ...overrides
