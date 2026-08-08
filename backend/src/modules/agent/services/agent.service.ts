@@ -83,7 +83,7 @@ export class AgentService {
       qb.andWhere('a.category = :category', { category });
     }
     if (keyword) {
-      qb.andWhere('(a.name LIKE :kw OR a.description LIKE :kw)', {
+      qb.andWhere('(a.name LIKE :kw OR a.display_name LIKE :kw OR a.description LIKE :kw)', {
         kw: '%' + keyword + '%',
       });
     }
@@ -622,7 +622,7 @@ export class AgentService {
       qb.andWhere('a.category = :category', { category });
     }
     if (keyword) {
-      qb.andWhere('(a.name LIKE :kw OR a.description LIKE :kw)', {
+      qb.andWhere('(a.name LIKE :kw OR a.display_name LIKE :kw OR a.description LIKE :kw)', {
         kw: '%' + keyword + '%',
       });
     }
@@ -678,6 +678,7 @@ export class AgentService {
     return {
       id: a.id,
       name: a.name,
+      displayName: a.displayName || a.name,
       description: a.description || '',
       avatar: a.avatar,
       category: a.category,
@@ -696,6 +697,7 @@ export class AgentService {
     return {
       id: agent.id,
       name: agent.name,
+      displayName: agent.displayName || agent.name,
       description: agent.description || '',
       avatar: agent.avatar,
       systemPrompt: agent.systemPrompt,
@@ -784,6 +786,7 @@ export class AgentService {
     return {
       id: a.id,
       name: a.name,
+      displayName: a.displayName || a.name,
       description: a.description || '',
       avatar: a.avatar,
       category: a.category,

@@ -194,11 +194,11 @@ export default function AgentDetail() {
             {agent.avatar ? (
               <img
                 src={agent.avatar}
-                alt={agent.name}
+                alt={agent.displayName || agent.name}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
             ) : (
-              agent.name.charAt(0).toUpperCase()
+              (agent.displayName || agent.name).charAt(0).toUpperCase()
             )}
           </div>
           <div className={styles.detailInfo}>
@@ -208,7 +208,7 @@ export default function AgentDetail() {
                   <CrownOutlined /> 官方
                 </span>
               )}
-              <span>{agent.name}</span>
+              <span>{agent.displayName || agent.name}</span>
             </div>
             <div className={styles.detailDesc}>{agent.description || '暂无描述'}</div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>

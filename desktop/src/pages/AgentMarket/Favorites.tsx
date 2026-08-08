@@ -97,11 +97,11 @@ export default function Favorites() {
                       {agent.avatar ? (
                         <img
                           src={agent.avatar}
-                          alt={agent.name}
+                          alt={agent.displayName || agent.name}
                           className={styles.agentAvatarImg}
                         />
                       ) : (
-                        agent.name.charAt(0).toUpperCase()
+                        (agent.displayName || agent.name).charAt(0).toUpperCase()
                       )}
                     </div>
                     <div className={styles.agentTitleRow}>
@@ -116,7 +116,7 @@ export default function Favorites() {
                               <CrownOutlined /> 官方
                             </span>
                           )}
-                          <span>{agent.name}</span>
+                          <span>{agent.displayName || agent.name}</span>
                         </div>
                         <div className={styles.agentMeta}>
                           <span className={styles.agentRating}>

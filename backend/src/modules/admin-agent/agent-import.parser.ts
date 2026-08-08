@@ -6,6 +6,8 @@ import matter from 'gray-matter';
 export interface ParsedAgentMarkdown {
   /** Agent 名称（来自 frontmatter.name，无则取文件名） */
   name: string;
+  /** 显示名（frontmatter.display_name / displayName，可选，用于中文名） */
+  displayName?: string;
   /** 描述（frontmatter.description） */
   description: string;
   /** 头像（frontmatter.emoji） */
@@ -46,10 +48,13 @@ export function parseAgentMarkdown(
     (fm.name as string) ||
     filePath.split('/').pop()?.replace(/\.md$/i, '') ||
     filePath;
+  const displayName =
+    (fm.display_name as string) || (fm.displayName as string) || undefined;
 
   if (!body) {
     return {
       name,
+      displayName,
       description: (fm.description as string) || '',
       avatar: (fm.emoji as string) || '',
       systemPrompt: '',
@@ -59,6 +64,7 @@ export function parseAgentMarkdown(
 
   return {
     name,
+    displayName,
     description: (fm.description as string) || '',
     avatar: (fm.emoji as string) || '',
     systemPrompt: body,

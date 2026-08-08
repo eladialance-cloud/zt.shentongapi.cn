@@ -20,6 +20,7 @@ export interface PaginatedResult<T> {
 export interface Agent {
   id: number
   name: string
+  displayName?: string
   description: string
   avatar?: string
   category: string

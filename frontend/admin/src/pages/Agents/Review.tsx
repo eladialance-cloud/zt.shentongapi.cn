@@ -19,6 +19,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   message
 } from 'antd'
 import type { TableColumnsType } from 'antd'
@@ -168,13 +169,25 @@ export default function AdminAgentsReview() {
       key: 'name',
       render: (v: string, record) => (
         <span style={{ color: '#f1f5f9', fontWeight: 500 }}>
-          {v}
-          {record.displayName ? (
+          {record.displayName || v}
+          {record.displayName && record.displayName !== v ? (
             <span style={{ color: '#8b949e', marginLeft: 6, fontSize: 12 }}>
-              ({record.displayName})
+              ({v})
             </span>
           ) : null}
         </span>
+      )
+    },
+    {
+      title: '介绍',
+      dataIndex: 'description',
+      key: 'description',
+      width: 280,
+      ellipsis: true,
+      render: (v: string) => (
+        <Tooltip title={v || '-'} overlayStyle={{ maxWidth: 420 }}>
+          <span style={{ color: '#cbd5e1' }}>{v || '-'}</span>
+        </Tooltip>
       )
     },
     {

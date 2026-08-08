@@ -101,6 +101,12 @@ export class AdminAgentService {
     if (query.category) {
       qb.andWhere('a.category = :category', { category: query.category });
     }
+    if (query.keyword) {
+      qb.andWhere(
+        '(a.name LIKE :kw OR a.display_name LIKE :kw OR a.description LIKE :kw)',
+        { kw: `%${query.keyword}%` },
+      );
+    }
     qb.orderBy('a.created_at', 'DESC')
       .skip((page - 1) * pageSize)
       .take(pageSize);
@@ -131,6 +137,7 @@ export class AdminAgentService {
   async createAgent(dto: CreateAgentDto, adminUserId?: number) {
     const agent = this.agentRepo.create({
       name: dto.name,
+      displayName: dto.displayName,
       description: dto.description,
       systemPrompt: dto.systemPrompt || '',
       usageExample: dto.usageExamples?.join('\n') || undefined,
@@ -159,6 +166,7 @@ export class AdminAgentService {
       BusinessException.throw(ErrorCode.NOT_FOUND, 'Agent 不存在');
     }
     if (dto.name !== undefined) agent.name = dto.name;
+    if (dto.displayName !== undefined) agent.displayName = dto.displayName;
     if (dto.description !== undefined) agent.description = dto.description;
     if (dto.systemPrompt !== undefined) agent.systemPrompt = dto.systemPrompt;
     if (dto.usageExamples !== undefined) {
@@ -552,6 +560,7 @@ export class AdminAgentService {
           id: existing.id,
           fields: {
             name: item.data.name,
+            displayName: item.data.displayName || undefined,
             description: item.data.description,
             avatar: item.data.avatar || undefined,
             systemPrompt: item.data.systemPrompt,
@@ -564,6 +573,7 @@ export class AdminAgentService {
       } else {
         const entity = this.agentRepo.create({
           name: item.data.name,
+          displayName: item.data.displayName || undefined,
           description: item.data.description,
           avatar: item.data.avatar || undefined,
           systemPrompt: item.data.systemPrompt,
@@ -764,6 +774,7 @@ export class AdminAgentService {
       return {
         id: a.id,
         name: a.name,
+        displayName: a.displayName || a.name,
         description: a.description || '',
         systemPrompt: a.systemPrompt,
         category: a.category,
