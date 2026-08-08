@@ -113,6 +113,51 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       logger.log('Created table: skill_packages');
     }
 
+    // 5.5 hermes_skills 表（Hermes 技能市场；管理端技能包上架时同步生成记录）
+    const [hermesSkillsTable] = await queryRunner.query(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'hermes_skills'`
+    );
+    if (!hermesSkillsTable) {
+      await queryRunner.query(`
+        CREATE TABLE IF NOT EXISTS hermes_skills (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          name VARCHAR(128) NOT NULL,
+          description TEXT DEFAULT NULL,
+          author VARCHAR(64) DEFAULT NULL,
+          price_per_minute INT NOT NULL DEFAULT 0,
+          install_count INT NOT NULL DEFAULT 0,
+          icon VARCHAR(512) DEFAULT NULL,
+          version VARCHAR(64) NOT NULL DEFAULT '1.0.0',
+          is_active TINYINT(1) NOT NULL DEFAULT 1,
+          exec_config JSON DEFAULT NULL,
+          category VARCHAR(64) DEFAULT NULL,
+          avg_rating DECIMAL(3,2) NOT NULL DEFAULT 0.00,
+          rating_count INT NOT NULL DEFAULT 0,
+          tags JSON DEFAULT NULL,
+          changelog TEXT DEFAULT NULL,
+          source_package_id BIGINT UNSIGNED DEFAULT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          KEY idx_hermes_skills_source_package_id (source_package_id),
+          KEY idx_hermes_skills_is_active (is_active)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Hermes 技能包目录'
+      `);
+      logger.log('Created table: hermes_skills');
+    } else {
+      const [hsCol] = await queryRunner.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'hermes_skills' AND COLUMN_NAME = 'source_package_id'`
+      );
+      if (!hsCol) {
+        await queryRunner.query(
+          `ALTER TABLE hermes_skills ADD COLUMN \`source_package_id\` BIGINT UNSIGNED DEFAULT NULL COMMENT '关联管理端技能包 ID'`,
+        );
+        logger.log('Added column: hermes_skills.source_package_id');
+      }
+    }
+
     // 6. skill_sources 表
     const [skillSourcesTable] = await queryRunner.query(
       `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES

@@ -1,5 +1,12 @@
 // 管理端技能商店 API
 import { adminRequest } from './admin-auth-api'
+
+export interface SkillBatchDeleteResult {
+  total: number
+  deleted: number
+  failed: number
+  errors: string[]
+}
 import type { AdminPaginatedResult } from '@/types/admin-auth'
 import type {
   AdminSkillSource,
@@ -33,6 +40,27 @@ export async function removeSkillSource(id: number): Promise<void> {
   await adminRequest<void>('delete', `/admin/skill-store/sources/${id}`)
 }
 
+/** 本地上传 zip 技能源 */
+export async function uploadSkillSource(
+  file: File,
+  dto: { skillName: string; skillDesc: string; skillType: 'skill' | 'workflow' }
+): Promise<AdminSkillSource> {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('skillName', dto.skillName)
+  form.append('skillDesc', dto.skillDesc)
+  form.append('skillType', dto.skillType)
+  return adminRequest<AdminSkillSource>('post', '/admin/skill-store/sources/upload', { data: form })
+}
+
+/** 批量删除技能包 */
+export async function batchDeleteSkillPackages(
+  ids: number[]
+): Promise<SkillBatchDeleteResult> {
+  return adminRequest<SkillBatchDeleteResult>('post', '/admin/skill-store/packages/batch-delete', { data: { ids } })
+}
+
+/** 技能包列表 */
 /** 技能包列表 */
 export async function listSkillPackages(query: SkillPackageQuery = {}): Promise<AdminPaginatedResult<AdminSkillPackage>> {
   return adminRequest<AdminPaginatedResult<AdminSkillPackage>>('get', '/admin/skill-store/packages', { params: query as Record<string, unknown> })

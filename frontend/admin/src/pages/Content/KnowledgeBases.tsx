@@ -45,7 +45,8 @@ import {
   unpublishOfficialKnowledgeBase,
   updateIndustry,
   updateOfficialKnowledgeBase,
-  uploadOfficialKbDocument
+  uploadOfficialKbDocument,
+  importOfficialKbZip,
 } from '@/api/admin-knowledge-api'
 import type {
   CreateIndustryDto,
@@ -107,6 +108,7 @@ export default function KnowledgeBasesPage() {
   const [docs, setDocs] = useState<OfficialKbDocument[]>([])
   const [docsLoading, setDocsLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [zipUploading, setZipUploading] = useState(false)
 
   const loadIndustries = useCallback(async () => {
     setIndustryLoading(true)
@@ -236,6 +238,25 @@ export default function KnowledgeBasesPage() {
       console.error(err)
     } finally {
       setDocsLoading(false)
+    }
+  }
+
+  const handleZipUpload = async (file: File) => {
+    if (!docModal) return
+    setZipUploading(true)
+    try {
+      const res = await importOfficialKbZip(docModal.id, file)
+      message.success(res.message || `批量导入完成：成功 ${res.imported}，失败 ${res.failed}`)
+      if (res.failed > 0) {
+        console.warn('[KnowledgeBases] zip import partial errors:', res.errors)
+      }
+      openDocs(docModal)
+      loadList()
+    } catch (err) {
+      message.error((err as { message?: string })?.message || 'zip 导入失败')
+      console.error(err)
+    } finally {
+      setZipUploading(false)
     }
   }
 
@@ -600,7 +621,7 @@ export default function KnowledgeBasesPage() {
         width={760}
         destroyOnClose
       >
-        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <Upload
             showUploadList={false}
             beforeUpload={(file) => {
@@ -609,6 +630,16 @@ export default function KnowledgeBasesPage() {
             }}
           >
             <Button type="primary" icon={<UploadOutlined />} loading={uploading} disabled={!docModal?.engineKbId}>上传文档</Button>
+          </Upload>
+          <Upload
+            accept=".zip"
+            showUploadList={false}
+            beforeUpload={(file) => {
+              handleZipUpload(file)
+              return false
+            }}
+          >
+            <Button icon={<UploadOutlined />} loading={zipUploading}>zip 批量导入</Button>
           </Upload>
         </div>
         {!docModal?.engineKbId && (

@@ -50,7 +50,8 @@ const MENU_ENTRIES: MenuEntry[] = [
     children: [
       { key: 'agents', label: '智能体', path: '/agents' },
       { key: 'workflows', label: '工作流', path: '/workflows' },
-      { key: 'plugins', label: '插件与技能', path: '/plugins' },
+      { key: 'plugins', label: '插件', path: '/plugins' },
+      { key: 'skills', label: '技能', path: '/skills' },
       { key: 'knowledge-bases', label: '官方知识库', path: '/content/knowledge-bases' },
       { key: 'review', label: '审核中心', path: '/review' }
     ]

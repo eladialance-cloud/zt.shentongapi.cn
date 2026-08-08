@@ -14,6 +14,13 @@
 //   POST   /admin/plugins/:id/sync              手动同步
 
 import { adminRequest } from './admin-auth-api'
+
+export interface PluginBatchDeleteResult {
+  total: number
+  deleted: number
+  failed: number
+  errors: string[]
+}
 import type { AdminPaginatedResult } from '@/types/admin-auth'
 import type {
   AdminPluginItem,
@@ -57,6 +64,27 @@ export async function deleteAdminPlugin(id: number): Promise<void> {
   await adminRequest<void>('delete', `/admin/plugins/${id}`)
 }
 
+/** 本地上传 zip 批量导入插件 */
+export async function importLocalPlugins(
+  file: File
+): Promise<{ total: number; imported: number; failed: number; errors: string[]; message?: string }> {
+  const form = new FormData()
+  form.append('file', file)
+  return adminRequest<{ total: number; imported: number; failed: number; errors: string[]; message?: string }>(
+    'post',
+    '/admin/plugins/import-local',
+    { data: form }
+  )
+}
+
+/** 批量删除插件 */
+export async function batchDeleteAdminPlugins(
+  ids: number[]
+): Promise<PluginBatchDeleteResult> {
+  return adminRequest<PluginBatchDeleteResult>('post', '/admin/plugins/batch-delete', { data: { ids } })
+}
+
+/** 上架插件 */
 /** 上架插件 */
 export async function publishAdminPlugin(id: number): Promise<void> {
   await adminRequest<void>('post', `/admin/plugins/${id}/publish`)

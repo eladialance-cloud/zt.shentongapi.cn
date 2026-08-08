@@ -11,6 +11,7 @@ import {
   Empty,
   Form,
   Input,
+  InputNumber,
   Modal,
   Pagination,
   Select,
@@ -214,16 +215,17 @@ export default function AdminUsers() {
     if (!creditsTarget) return
     try {
       const values = await creditsForm.validateFields()
+      const amount = Number(values.amount)
       setCreditsLoading(true)
       await adjustUserCredits(creditsTarget.id, {
-        amount: values.amount,
+        amount,
         remark: values.remark || ''
       })
       message.success('积分调整成功')
       setUsers((prev) =>
         prev.map((u) =>
           u.id === creditsTarget.id
-            ? { ...u, creditsBalance: u.creditsBalance + values.amount }
+            ? { ...u, creditsBalance: u.creditsBalance + amount }
             : u
         )
       )
@@ -572,7 +574,11 @@ export default function AdminUsers() {
               }
             ]}
           >
-            <Input type="number" placeholder="如 1000 或 -500" />
+            <InputNumber
+              style={{ width: '100%' }}
+              placeholder="如 1000 或 -500"
+              step={1}
+            />
           </Form.Item>
           <Form.Item
             name="remark"

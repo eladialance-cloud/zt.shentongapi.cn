@@ -197,7 +197,23 @@ export class AdminAgentService {
     await this.agentRepo.delete(id);
   }
 
+  /** 批量删除 Agent */
+  async batchDelete(ids: number[]) {
+    const stats = { total: ids.length, deleted: 0, failed: 0, errors: [] as string[] };
+    for (const id of ids) {
+      try {
+        await this.deleteAgent(id);
+        stats.deleted++;
+      } catch (e) {
+        stats.failed++;
+        stats.errors.push(`Agent ${id}: ${(e as Error).message}`);
+      }
+    }
+    return stats;
+  }
+
   // ============ 上下架 ============
+
 
   /** 上架 Agent */
   async publishAgent(id: number) {

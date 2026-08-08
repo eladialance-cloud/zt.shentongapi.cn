@@ -35,6 +35,7 @@ const AdminAgents = lazy(() => import('@/pages/Agents'))
 const AdminWorkflows = lazy(() => import('@/pages/Workflows'))
 // AdminWorkflowsReview / AdminWorkflowsStats 已合并到 Workflows/index.tsx Tab 中
 const AdminPlugins = lazy(() => import('@/pages/Plugins'))
+const AdminSkills = lazy(() => import('@/pages/SkillStore'))
 const AdminPluginsReview = lazy(() => import('@/pages/Plugins/Review'))
 const AdminPluginsSync = lazy(() => import('@/pages/Plugins/Sync'))
 const AdminModels = lazy(() => import('@/pages/Models'))
@@ -123,6 +124,8 @@ const router = createBrowserRouter(
         { path: 'plugins', element: withSuspense(<AdminPlugins />) },
         { path: 'plugins/review', element: withSuspense(<AdminPluginsReview />) },
         { path: 'plugins/sync', element: withSuspense(<AdminPluginsSync />) },
+        // 技能商店管理
+        { path: 'skills', element: withSuspense(<AdminSkills />) },
         // 大模型配置
         { path: 'models', element: withSuspense(<AdminModels />) },
         // 积分财务管理

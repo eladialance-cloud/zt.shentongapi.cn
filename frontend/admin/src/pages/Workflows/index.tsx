@@ -17,6 +17,7 @@ import {
   Select,
   Spin,
   Switch,
+  Upload,
   Table,
   Tabs,
   Tag,
@@ -35,9 +36,12 @@ import {
   SearchOutlined,
   ThunderboltOutlined,
   StopOutlined,
+  UploadOutlined,
 } from '@ant-design/icons'
 import {
   approveWorkflow,
+  batchDeleteAdminWorkflows,
+  importLocalWorkflows,
   createAdminWorkflow,
   deleteAdminWorkflow,
   importGithubWorkflow,
@@ -131,6 +135,10 @@ export default function AdminWorkflows() {
   const [rejectTarget, setRejectTarget] = useState<AdminWorkflowItem | null>(null)
   const [rejectReason, setRejectReason] = useState('')
   const [rejecting, setRejecting] = useState(false)
+
+  // 本地上传 / 批量删除
+  const [uploading, setUploading] = useState(false)
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
 
   // GitHub 导入
   const [importOpen, setImportOpen] = useState(false)
@@ -266,6 +274,39 @@ export default function AdminWorkflows() {
       message.error('保存失败')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleLocalUpload = async (files: File[]) => {
+    if (files.length === 0) return
+    setUploading(true)
+    try {
+      const res = await importLocalWorkflows(files)
+      message.success(res.message || `导入完成：成功 ${res.imported}，失败 ${res.failed}`)
+      void loadList()
+    } catch (err) {
+      console.error('[AdminWorkflows] local upload failed:', err)
+      message.error((err as { message?: string })?.message || '导入失败')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleBatchDelete = async () => {
+    const ids = selectedRowKeys as number[]
+    if (ids.length === 0) return
+    try {
+      const res = await batchDeleteAdminWorkflows(ids)
+      if (res.failed > 0) {
+        message.warning(`删除完成：成功 ${res.deleted}，失败 ${res.failed}`)
+      } else {
+        message.success(`已删除 ${res.deleted} 个工作流`)
+      }
+      setSelectedRowKeys([])
+      void loadList()
+    } catch (err) {
+      console.error('[AdminWorkflows] batch delete failed:', err)
+      message.error('批量删除失败')
     }
   }
 
@@ -623,6 +664,27 @@ export default function AdminWorkflows() {
           <Button icon={<GithubOutlined />} onClick={() => setImportOpen(true)} className={styles.ghostBtn}>
             GitHub 导入
           </Button>
+          <Upload
+            accept=".json,.zip"
+            multiple
+            showUploadList={false}
+            beforeUpload={(_file, fileList) => { void handleLocalUpload(fileList as unknown as File[]); return false }}
+          >
+            <Button icon={<UploadOutlined />} loading={uploading} className={styles.ghostBtn}>
+              本地上传
+            </Button>
+          </Upload>
+          <Popconfirm
+            title={`确认删除选中的 ${selectedRowKeys.length} 个工作流?`}
+            onConfirm={() => void handleBatchDelete()}
+            okText="删除"
+            okButtonProps={{ danger: true }}
+            disabled={selectedRowKeys.length === 0}
+          >
+            <Button danger icon={<DeleteOutlined />} disabled={selectedRowKeys.length === 0} className={styles.ghostBtn}>
+              批量删除
+            </Button>
+          </Popconfirm>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} className={styles.primaryBtn}>
             新增
           </Button>
@@ -671,6 +733,10 @@ export default function AdminWorkflows() {
               rowKey="id"
               columns={columns}
               dataSource={items}
+              rowSelection={{
+                selectedRowKeys,
+                onChange: (keys) => setSelectedRowKeys(keys),
+              }}
               pagination={false}
               size="middle"
               scroll={{ x: 1400 }}

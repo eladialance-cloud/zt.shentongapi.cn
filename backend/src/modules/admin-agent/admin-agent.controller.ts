@@ -27,6 +27,7 @@ import { UpdateAgentDto } from './dto/update-agent.dto';
 import { RejectAgentDto } from './dto/reject-agent.dto';
 import { ImportGithubDto } from './dto/import-github.dto';
 import { UpdateCategoryDisplayDto } from './dto/update-category-display.dto';
+import { BatchDeleteDto } from '../../common/dto/batch-delete.dto';
 
 /**
  * 管理端 Agent 市场控制器
@@ -100,7 +101,12 @@ export class AdminAgentController {
     return this.service.importLocalZip(file);
   }
 
-  @Post('import-github')
+  @Post('batch-delete')
+  @ApiOperation({ summary: '批量删除 Agent' })
+  async batchDelete(@Body() dto: BatchDeleteDto) {
+    return this.service.batchDelete(dto.ids);
+  }
+
 
   @ApiOperation({ summary: 'GitHub 仓库异步导入' })
   async importGithub(@Body() dto: ImportGithubDto) {

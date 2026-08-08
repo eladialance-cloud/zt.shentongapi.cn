@@ -83,6 +83,20 @@ export async function uploadOfficialKbDocument(kbId: number, file: File): Promis
   return adminRequest<OfficialKbDocument>('post', `${KB_BASE}/${kbId}/documents`, { data: form })
 }
 
+/** 官方知识库 zip 批量导入文档 */
+export async function importOfficialKbZip(
+  kbId: number,
+  file: File
+): Promise<{ total: number; imported: number; failed: number; errors: string[]; message?: string }> {
+  const form = new FormData()
+  form.append('file', file)
+  return adminRequest<{ total: number; imported: number; failed: number; errors: string[]; message?: string }>(
+    'post',
+    `${KB_BASE}/${kbId}/documents/import-zip`,
+    { data: form }
+  )
+}
+
 export async function deleteOfficialKbDocument(kbId: number, docId: number): Promise<void> {
   await adminRequest('delete', `${KB_BASE}/${kbId}/documents/${docId}`)
 }

@@ -22,6 +22,7 @@ import {
   Tabs,
   Tag,
   Tooltip,
+  Upload,
   message
 } from 'antd'
 import type { TableColumnsType } from 'antd'
@@ -37,10 +38,13 @@ import {
   ArrowDownOutlined,
   CheckOutlined,
   CloseOutlined,
-  StopOutlined
+  StopOutlined,
+  UploadOutlined,
 } from '@ant-design/icons'
 import {
   createAdminAgent,
+  batchDeleteAdminAgents,
+  importAdminAgentLocal,
   deleteAdminAgent,
   listAdminAgents,
   publishAdminAgent,
@@ -136,6 +140,10 @@ export default function AdminAgents() {
   const [rejectReason, setRejectReason] = useState('')
   const [rejectKind, setRejectKind] = useState<'reject' | 'forceUnpublish'>('reject')
   const [rejecting, setRejecting] = useState(false)
+
+  // 本地上传 / 批量删除
+  const [uploading, setUploading] = useState(false)
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
 
   // GitHub 导入
   const [importOpen, setImportOpen] = useState(false)
@@ -308,6 +316,38 @@ export default function AdminAgents() {
     } catch (err) {
       console.error('[AdminAgents] delete failed:', err)
       message.error('删除失败')
+    }
+  }
+
+  const handleLocalUpload = async (file: File) => {
+    setUploading(true)
+    try {
+      const res = await importAdminAgentLocal(file)
+      message.success(res.message || `导入完成：新增 ${res.inserted}，失败 ${res.failed}`)
+      void loadList()
+    } catch (err) {
+      console.error('[AdminAgents] local upload failed:', err)
+      message.error((err as { message?: string })?.message || '导入失败')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleBatchDelete = async () => {
+    const ids = selectedRowKeys as number[]
+    if (ids.length === 0) return
+    try {
+      const res = await batchDeleteAdminAgents(ids)
+      if (res.failed > 0) {
+        message.warning(`删除完成：成功 ${res.deleted}，失败 ${res.failed}`)
+      } else {
+        message.success(`已删除 ${res.deleted} 个 Agent`)
+      }
+      setSelectedRowKeys([])
+      void loadList()
+    } catch (err) {
+      console.error('[AdminAgents] batch delete failed:', err)
+      message.error('批量删除失败')
     }
   }
 
@@ -565,6 +605,26 @@ export default function AdminAgents() {
           <Button icon={<GithubOutlined />} onClick={() => setImportOpen(true)} className={styles.ghostBtn}>
             GitHub 导入
           </Button>
+          <Upload
+            accept=".zip"
+            showUploadList={false}
+            beforeUpload={(file) => { void handleLocalUpload(file); return false }}
+          >
+            <Button icon={<UploadOutlined />} loading={uploading} className={styles.ghostBtn}>
+              本地上传
+            </Button>
+          </Upload>
+          <Popconfirm
+            title={`确认删除选中的 ${selectedRowKeys.length} 个 Agent?`}
+            onConfirm={() => void handleBatchDelete()}
+            okText="删除"
+            okButtonProps={{ danger: true }}
+            disabled={selectedRowKeys.length === 0}
+          >
+            <Button danger icon={<DeleteOutlined />} disabled={selectedRowKeys.length === 0} className={styles.ghostBtn}>
+              批量删除
+            </Button>
+          </Popconfirm>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} className={styles.primaryBtn}>
             新增 Agent
           </Button>
@@ -587,6 +647,10 @@ export default function AdminAgents() {
               rowKey="id"
               columns={columns}
               dataSource={items}
+              rowSelection={{
+                selectedRowKeys,
+                onChange: (keys) => setSelectedRowKeys(keys),
+              }}
               pagination={false}
               size="middle"
               scroll={{ x: 1200 }}

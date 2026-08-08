@@ -5,6 +5,7 @@ import * as fs from 'fs/promises';
 import { SkillSourceEntity } from '../skill-store/entities/skill-source.entity';
 import { SkillPackageEntity } from '../skill-store/entities/skill-package.entity';
 import { SkillInstallLogEntity } from '../skill-store/entities/skill-install-log.entity';
+import { HermesSkillEntity } from '../hermes/entities/hermes-skill.entity';
 import { SkillAnalyzerService } from '../skill-store/services/skill-analyzer.service';
 import { SkillRunnerService } from '../skill-store/services/skill-runner.service';
 import { BusinessException } from '../../common/exceptions/business.exception';
@@ -33,6 +34,8 @@ export class AdminSkillStoreService {
     private readonly sourceRepo: Repository<SkillSourceEntity>,
     @InjectRepository(SkillPackageEntity)
     private readonly packageRepo: Repository<SkillPackageEntity>,
+    @InjectRepository(HermesSkillEntity)
+    private readonly hermesSkillRepo: Repository<HermesSkillEntity>,
     @InjectRepository(SkillInstallLogEntity)
     private readonly installLogRepo: Repository<SkillInstallLogEntity>,
     private readonly analyzerService: SkillAnalyzerService,
@@ -229,6 +232,7 @@ export class AdminSkillStoreService {
     }
     pkg.status = 'published';
     await this.packageRepo.save(pkg);
+    await this.syncSkillToMarket(pkg);
   }
 
   /** 下架：仅已上架的技能包可下架 */
@@ -242,6 +246,7 @@ export class AdminSkillStoreService {
     }
     pkg.status = 'unpublished';
     await this.packageRepo.save(pkg);
+    await this.hermesSkillRepo.update({ sourcePackageId: id }, { isActive: false });
   }
 
   /** 删除技能包：删除关联日志、置空来源关联、删除安装目录 */
@@ -272,8 +277,58 @@ export class AdminSkillStoreService {
       }
     }
 
-    // 4. 删除技能包本身
+    // 4. 删除同步到 Hermes 技能市场的记录
+    await this.hermesSkillRepo.delete({ sourcePackageId: id });
+
+    // 5. 删除技能包本身
     await this.packageRepo.delete(id);
+  }
+
+  /** 批量删除技能包 */
+  async batchDeletePackages(ids: number[]) {
+    const stats = { total: ids.length, deleted: 0, failed: 0, errors: [] as string[] };
+    for (const id of ids) {
+      try {
+        await this.removePackage(id);
+        stats.deleted++;
+      } catch (e) {
+        stats.failed++;
+        stats.errors.push(`技能包 ${id}: ${(e as Error).message}`);
+      }
+    }
+    return stats;
+  }
+
+  /** 技能包上架时同步到用户端 Hermes 技能市场（hermes_skills） */
+  private async syncSkillToMarket(pkg: SkillPackageEntity) {
+    const existing = await this.hermesSkillRepo.findOne({
+      where: { sourcePackageId: pkg.id },
+    });
+    const execConfig = {
+      type: 'shell' as const,
+      command: pkg.entryPoint || '',
+      inputSchema: pkg.inputSchema || undefined,
+      outputSchema: pkg.outputSchema || undefined,
+      timeoutMs: 60_000,
+    };
+    const data = {
+      name: pkg.displayName || pkg.name,
+      description: pkg.description,
+      author: '深瞳官方',
+      pricePerMinute: 0,
+      version: pkg.version || '1.0.0',
+      isActive: true,
+      category: pkg.category || '其他',
+      tags: pkg.triggerKeywords || [],
+      execConfig: execConfig as any,
+      sourcePackageId: pkg.id,
+    };
+    if (existing) {
+      Object.assign(existing, data);
+      await this.hermesSkillRepo.save(existing);
+    } else {
+      await this.hermesSkillRepo.save(this.hermesSkillRepo.create(data as any));
+    }
   }
 
   /** 触发解析（异步）：检查 source 状态后立即返回，后台异步执行 */

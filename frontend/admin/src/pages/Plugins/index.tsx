@@ -20,6 +20,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Upload,
   message
 } from 'antd'
 import type { TableColumnsType } from 'antd'
@@ -30,10 +31,13 @@ import {
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
-  ReloadOutlined
+  ReloadOutlined,
+  UploadOutlined,
 } from '@ant-design/icons'
 import {
   createAdminPlugin,
+  batchDeleteAdminPlugins,
+  importLocalPlugins,
   deleteAdminPlugin,
   listAdminPlugins,
   publishAdminPlugin,
@@ -112,6 +116,8 @@ export default function AdminPlugins() {
   const [editing, setEditing] = useState<AdminPluginItem | null>(null)
   const [form] = Form.useForm<PluginFormValues>()
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
 
   const loadList = useCallback(async () => {
     setLoading(true)
@@ -242,6 +248,38 @@ export default function AdminPlugins() {
     }
   }
 
+  const handleLocalUpload = async (file: File) => {
+    setUploading(true)
+    try {
+      const res = await importLocalPlugins(file)
+      message.success(res.message || `导入完成：新增 ${res.imported}，失败 ${res.failed}`)
+      void loadList()
+    } catch (err) {
+      console.error('[AdminPlugins] local upload failed:', err)
+      message.error((err as { message?: string })?.message || '导入失败')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleBatchDelete = async () => {
+    const ids = selectedRowKeys as number[]
+    if (ids.length === 0) return
+    try {
+      const res = await batchDeleteAdminPlugins(ids)
+      if (res.failed > 0) {
+        message.warning(`删除完成：成功 ${res.deleted}，失败 ${res.failed}`)
+      } else {
+        message.success(`已删除 ${res.deleted} 个插件`)
+      }
+      setSelectedRowKeys([])
+      void loadList()
+    } catch (err) {
+      console.error('[AdminPlugins] batch delete failed:', err)
+      message.error('批量删除失败')
+    }
+  }
+
   const handleDelete = async (item: AdminPluginItem) => {
     try {
       await deleteAdminPlugin(item.id)
@@ -358,6 +396,26 @@ export default function AdminPlugins() {
           >
             刷新
           </Button>
+          <Upload
+            accept=".zip"
+            showUploadList={false}
+            beforeUpload={(file) => { void handleLocalUpload(file); return false }}
+          >
+            <Button icon={<UploadOutlined />} loading={uploading} className={styles.ghostBtn}>
+              本地上传
+            </Button>
+          </Upload>
+          <Popconfirm
+            title={`确认删除选中的 ${selectedRowKeys.length} 个插件?`}
+            onConfirm={() => void handleBatchDelete()}
+            okText="删除"
+            okButtonProps={{ danger: true }}
+            disabled={selectedRowKeys.length === 0}
+          >
+            <Button danger icon={<DeleteOutlined />} disabled={selectedRowKeys.length === 0} className={styles.ghostBtn}>
+              批量删除
+            </Button>
+          </Popconfirm>
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -400,6 +458,10 @@ export default function AdminPlugins() {
               rowKey="id"
               columns={columns}
               dataSource={items}
+              rowSelection={{
+                selectedRowKeys,
+                onChange: (keys) => setSelectedRowKeys(keys),
+              }}
               pagination={false}
               size="middle"
               scroll={{ x: 1200 }}

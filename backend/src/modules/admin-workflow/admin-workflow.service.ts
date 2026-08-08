@@ -150,7 +150,21 @@ export class AdminWorkflowService {
     await this.workflowRepo.delete(id);
   }
 
-  // ═══════════════════════════════════════════════════════════
+  /** 批量删除工作流 */
+  async batchDelete(ids: number[]) {
+    const stats = { total: ids.length, deleted: 0, failed: 0, errors: [] as string[] };
+    for (const id of ids) {
+      try {
+        await this.remove(id);
+        stats.deleted++;
+      } catch (e) {
+        stats.failed++;
+        stats.errors.push(`工作流 ${id}: ${(e as Error).message}`);
+      }
+    }
+    return stats;
+  }
+
   // 审核流
   // ═══════════════════════════════════════════════════════════
 

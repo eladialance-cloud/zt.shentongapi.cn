@@ -14,7 +14,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
+import { diskStorage, memoryStorage } from 'multer';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -183,6 +183,34 @@ export class AdminKnowledgeController {
     return this.service.uploadDocument(id, file);
   }
 
+  @Post(':id/documents/import-zip')
+  @ApiOperation({ summary: '官方知识库 zip 批量导入文档' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 100 * 1024 * 1024 },
+    }),
+  )
+  async importZip(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('请上传 zip 文件');
+    }
+    return this.service.importZipDocuments(id, file);
+  }
+
+  @Delete(':id/documents/:docId')
   @Delete(':id/documents/:docId')
   @ApiOperation({ summary: '删除文档' })
   async deleteDocument(

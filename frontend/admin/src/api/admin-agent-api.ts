@@ -16,6 +16,13 @@
 //   GET    /admin/agents/categories              分类列表
 
 import { adminRequest } from './admin-auth-api'
+
+export interface AgentBatchDeleteResult {
+  total: number
+  deleted: number
+  failed: number
+  errors: string[]
+}
 import type { AdminPaginatedResult } from '@/types/admin-auth'
 import type {
   AdminAgentItem,
@@ -123,6 +130,27 @@ export async function forceUnpublishAgent(
   })
 }
 
+/** 本地上传 zip 批量导入 Agent */
+export async function importAdminAgentLocal(
+  file: File
+): Promise<{ total: number; inserted: number; skipped: number; failed: number; errors: string[]; message?: string }> {
+  const form = new FormData()
+  form.append('file', file)
+  return adminRequest<{ total: number; inserted: number; skipped: number; failed: number; errors: string[]; message?: string }>(
+    'post',
+    '/admin/agents/import-local',
+    { data: form }
+  )
+}
+
+/** 批量删除 Agent */
+export async function batchDeleteAdminAgents(
+  ids: number[]
+): Promise<AgentBatchDeleteResult> {
+  return adminRequest<AgentBatchDeleteResult>('post', '/admin/agents/batch-delete', { data: { ids } })
+}
+
+/** 分类列表(含每分类 Agent 数量) */
 /** 分类列表(含每分类 Agent 数量) */
 export async function listAgentCategories(): Promise<AgentCategoryMeta[]> {
   return adminRequest<AgentCategoryMeta[]>('get', '/admin/agents/categories')

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -9,10 +10,14 @@ import {
   Post,
   Query,
   UseGuards,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { AdminGuard } from '../admin-auth/admin.guard';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { AdminPluginService } from './admin-plugin.service';
 import {
   AdminPluginQueryDto,
@@ -22,6 +27,7 @@ import {
   UpdateAdminPluginDto,
 } from './dto/plugin.dto';
 import { PluginRejectDto, PluginReviewDto } from './dto/review.dto';
+import { BatchDeleteDto } from '../../common/dto/batch-delete.dto';
 
 /**
  * 管理端插件控制器
@@ -63,6 +69,36 @@ export class AdminPluginController {
   @ApiOperation({ summary: '新增插件' })
   async create(@Body() dto: CreateAdminPluginDto) {
     return this.service.create(dto);
+  }
+
+  @Post('batch-delete')
+  @ApiOperation({ summary: '批量删除插件' })
+  async batchDelete(@Body() dto: BatchDeleteDto) {
+    return this.service.batchDelete(dto.ids);
+  }
+
+  @Post('import-local')
+  @ApiOperation({ summary: '本地上传 zip 批量导入插件' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 100 * 1024 * 1024 },
+    }),
+  )
+  async importLocal(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('请上传 zip 文件');
+    }
+    return this.service.importLocalZip(file);
   }
 
   @Get('review')

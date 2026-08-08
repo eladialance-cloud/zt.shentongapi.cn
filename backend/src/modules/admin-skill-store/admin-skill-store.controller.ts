@@ -22,6 +22,7 @@ import { BigIntParsePipe } from '../../common/pipes/bigint-parse.pipe';
 import { AdminSkillStoreService } from './admin-skill-store.service';
 import { CreateSkillSourceDto, SkillSourceQueryDto } from './dto/skill-source.dto';
 import { UploadSkillSourceDto } from './dto/upload-skill-source.dto';
+import { BatchDeleteDto } from '../../common/dto/batch-delete.dto';
 import { UpdateSkillPackageDto, SkillPackageQueryDto, RejectSkillPackageDto } from './dto/skill-package.dto';
 
 @ApiTags('管理端-技能商店')
@@ -99,7 +100,12 @@ export class AdminSkillStoreController {
     return this.service.listPackages(query);
   }
 
-  @Get('packages/:id')
+  @Post('packages/batch-delete')
+  @ApiOperation({ summary: '批量删除技能包' })
+  async batchDeletePackages(@Body() dto: BatchDeleteDto) {
+    return this.service.batchDeletePackages(dto.ids);
+  }
+
   @ApiOperation({ summary: '技能包详情' })
   async packageDetail(@Param('id', BigIntParsePipe) id: number) {
     return this.service.packageDetail(id);

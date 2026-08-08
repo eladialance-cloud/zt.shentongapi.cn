@@ -26,6 +26,7 @@ import {
   UpdateAdminWorkflowDto,
 } from './dto/workflow.dto';
 import { WorkflowRejectDto, WorkflowReviewDto } from './dto/review.dto';
+import { BatchDeleteDto } from '../../common/dto/batch-delete.dto';
 
 /**
  * 管理端工作流模板控制器（合并版）
@@ -92,7 +93,12 @@ export class AdminWorkflowController {
     return this.service.importLocalFiles(files);
   }
 
-  @Post('import-github')
+  @Post('batch-delete')
+  @ApiOperation({ summary: '批量删除工作流' })
+  async batchDelete(@Body() dto: BatchDeleteDto) {
+    return this.service.batchDelete(dto.ids);
+  }
+
 
   @ApiOperation({ summary: 'GitHub 导入工作流（支持单文件或批量）' })
   async importFromGithub(@Body() dto: ImportGithubWorkflowDto) {

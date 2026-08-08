@@ -15,6 +15,13 @@
 //   GET    /admin/workflows/:id/mcp-binds MCP 绑定
 
 import { adminRequest } from './admin-auth-api'
+
+export interface WorkflowBatchDeleteResult {
+  total: number
+  deleted: number
+  failed: number
+  errors: string[]
+}
 import type { AdminPaginatedResult } from '@/types/admin-auth'
 import type {
   AdminWorkflowItem,
@@ -58,6 +65,27 @@ export async function deleteAdminWorkflow(id: number): Promise<void> {
   await adminRequest<void>('delete', `/admin/workflows/${id}`)
 }
 
+/** 本地上传导入工作流（.json / .zip，支持多文件） */
+export async function importLocalWorkflows(
+  files: File[]
+): Promise<{ total?: number; imported: number; failed: number; errors?: string[]; message?: string }> {
+  const form = new FormData()
+  files.forEach((f) => form.append('files', f))
+  return adminRequest<{ total?: number; imported: number; failed: number; errors?: string[]; message?: string }>(
+    'post',
+    '/admin/workflows/import-local',
+    { data: form }
+  )
+}
+
+/** 批量删除工作流 */
+export async function batchDeleteAdminWorkflows(
+  ids: number[]
+): Promise<WorkflowBatchDeleteResult> {
+  return adminRequest<WorkflowBatchDeleteResult>('post', '/admin/workflows/batch-delete', { data: { ids } })
+}
+
+/** GitHub 导入 */
 /** GitHub 导入 */
 export async function importGithubWorkflow(
   dto: ImportGithubWorkflowDto

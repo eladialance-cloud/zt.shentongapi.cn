@@ -5,12 +5,13 @@ import { SkillStoreModule } from '../skill-store/skill-store.module';
 import { SkillSourceEntity } from '../skill-store/entities/skill-source.entity';
 import { SkillPackageEntity } from '../skill-store/entities/skill-package.entity';
 import { SkillInstallLogEntity } from '../skill-store/entities/skill-install-log.entity';
+import { HermesSkillEntity } from '../hermes/entities/hermes-skill.entity';
 import { AdminSkillStoreController } from './admin-skill-store.controller';
 import { AdminSkillStoreService } from './admin-skill-store.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([SkillSourceEntity, SkillPackageEntity, SkillInstallLogEntity]),
+    TypeOrmModule.forFeature([SkillSourceEntity, SkillPackageEntity, SkillInstallLogEntity, HermesSkillEntity]),
     AdminAuthModule,
     SkillStoreModule,
   ],

@@ -1,5 +1,9 @@
-﻿import { Injectable, NotFoundException } from '@nestjs/common';
+﻿import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import * as fs from 'fs';
+import * as fsPromises from 'fs/promises';
+import * as os from 'os';
+import * as path from 'path';
 import { Repository } from 'typeorm';
 import { PluginEntity } from '../plugin/entities/plugin.entity';
 import {
@@ -9,6 +13,7 @@ import {
   PluginSyncQueryDto,
   UpdateAdminPluginDto,
 } from './dto/plugin.dto';
+import { extractZipFile } from '../../common/utils/zip.util';
 
 /**
  * 管理端插件服务
@@ -93,6 +98,92 @@ export class AdminPluginService {
     await this.repo.delete(id);
   }
 
+  /** 批量删除插件 */
+  async batchDelete(ids: number[]) {
+    const stats = { total: ids.length, deleted: 0, failed: 0, errors: [] as string[] };
+    for (const id of ids) {
+      try {
+        await this.remove(id);
+        stats.deleted++;
+      } catch (e) {
+        stats.failed++;
+        stats.errors.push(`插件 ${id}: ${(e as Error).message}`);
+      }
+    }
+    return stats;
+  }
+
+
+  async importLocalZip(file: Express.Multer.File) {
+    const ext = path.extname(file?.originalname || '').toLowerCase();
+    if (!file?.buffer || file.buffer.length === 0 || ext !== '.zip') {
+      throw new BadRequestException('请上传 .zip 压缩包');
+    }
+    const stamp = Date.now();
+    const zipPath = path.join(os.tmpdir(), `plugin-local-${stamp}.zip`);
+    const tmpDir = path.join(os.tmpdir(), `plugin-local-${stamp}`);
+    await fsPromises.writeFile(zipPath, file.buffer);
+    await fsPromises.mkdir(tmpDir, { recursive: true });
+    try {
+      extractZipFile(zipPath, tmpDir);
+      const manifests = this.findManifests(tmpDir);
+      if (manifests.length === 0) {
+        throw new BadRequestException('压缩包内未找到 manifest.json / plugin.json 插件清单');
+      }
+      const stats = { total: manifests.length, imported: 0, failed: 0, errors: [] as string[] };
+      for (const m of manifests) {
+        try {
+          const manifest = JSON.parse(fs.readFileSync(m, 'utf8'));
+          const name = String(manifest.name || '').trim();
+          if (!name) throw new Error('清单缺少 name 字段');
+          const entity = this.repo.create({
+            name,
+            description: manifest.description || '',
+            version: manifest.version || '1.0.0',
+            mcpServerUrl: manifest.entryPoint || manifest.mcpServerUrl || manifest.entry_point || '',
+            isOfficial: false,
+            isActive: false,
+          });
+          await this.repo.save(entity);
+          stats.imported++;
+        } catch (e) {
+          stats.failed++;
+          stats.errors.push(`${path.relative(tmpDir, m)}: ${(e as Error).message}`);
+        }
+      }
+      return {
+        ...stats,
+        message: `导入完成：新增 ${stats.imported}，失败 ${stats.failed}`,
+      };
+    } finally {
+      try {
+        await fsPromises.rm(zipPath, { force: true });
+        await fsPromises.rm(tmpDir, { recursive: true, force: true });
+      } catch {
+        // 忽略临时文件清理错误
+      }
+    }
+  }
+
+  /** 递归查找插件清单文件 */
+  private findManifests(dir: string, depth = 0): string[] {
+    if (depth > 4) return [];
+    const out: string[] = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        out.push(...this.findManifests(p, depth + 1));
+      } else if (
+        entry.isFile() &&
+        (entry.name === 'manifest.json' || entry.name === 'plugin.json')
+      ) {
+        out.push(p);
+      }
+    }
+    return out;
+  }
+
+  /** 上架 */
   /** 上架 */
   async publish(id: number) {
     const plugin = await this.repo.findOne({ where: { id } });

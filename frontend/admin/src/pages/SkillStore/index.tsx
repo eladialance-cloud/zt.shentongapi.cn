@@ -22,6 +22,7 @@ import {
   Select,
   Spin,
   Steps,
+  Upload,
   Table,
   Tabs,
   Tag,
@@ -52,7 +53,9 @@ import {
   removeSkillSource,
   submitReviewSkillPackage,
   unpublishSkillPackage,
-  updateSkillPackage
+  updateSkillPackage,
+  uploadSkillSource,
+  batchDeleteSkillPackages,
 } from '@/api/admin-skill-store-api'
 import type {
   AdminSkillPackage,
@@ -141,6 +144,14 @@ export default function AdminSkillStore() {
   const [packageLoading, setPackageLoading] = useState(false)
   const [packagePage, setPackagePage] = useState(1)
   const [packageTotal, setPackageTotal] = useState(0)
+
+  // 本地上传技能源 Modal
+  const [uploadModalOpen, setUploadModalOpen] = useState(false)
+  const [uploadSubmitting, setUploadSubmitting] = useState(false)
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploadForm] = Form.useForm<{ skillName: string; skillDesc: string; skillType: 'skill' | 'workflow' }>()
+  // 技能包批量删除
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
 
   // 添加技能源 Modal
   const [sourceModalOpen, setSourceModalOpen] = useState(false)
@@ -247,6 +258,47 @@ export default function AdminSkillStore() {
   }
 
   // 提交技能源表单:创建 + 解析
+  const handleUploadSkill = async () => {
+    try {
+      const values = await uploadForm.validateFields()
+      if (!uploadFile) {
+        message.warning('请选择 zip 文件')
+        return
+      }
+      setUploadSubmitting(true)
+      const res = await uploadSkillSource(uploadFile, values)
+      message.success(`技能源已上传：${res.skillName}`)
+      setUploadModalOpen(false)
+      uploadForm.resetFields()
+      setUploadFile(null)
+      void loadSources()
+    } catch (err) {
+      if ((err as { errorFields?: unknown }).errorFields) return
+      console.error('[SkillStore] upload failed:', err)
+      message.error((err as { message?: string })?.message || '上传失败')
+    } finally {
+      setUploadSubmitting(false)
+    }
+  }
+
+  const handleBatchDeletePackages = async () => {
+    const ids = selectedRowKeys as number[]
+    if (ids.length === 0) return
+    try {
+      const res = await batchDeleteSkillPackages(ids)
+      if (res.failed > 0) {
+        message.warning(`删除完成：成功 ${res.deleted}，失败 ${res.failed}`)
+      } else {
+        message.success(`已删除 ${res.deleted} 个技能包`)
+      }
+      setSelectedRowKeys([])
+      void loadPackages()
+    } catch (err) {
+      console.error('[SkillStore] batch delete failed:', err)
+      message.error('批量删除失败')
+    }
+  }
+
   const handleCreateSource = async () => {
     try {
       const values = await sourceForm.validateFields()
@@ -658,6 +710,14 @@ export default function AdminSkillStore() {
         </div>
         <div className={styles.toolbarRight}>
           <Button
+            icon={<UploadOutlined />}
+            onClick={() => setUploadModalOpen(true)}
+            className={styles.ghostBtn}
+            style={{ marginRight: 8 }}
+          >
+            本地上传
+          </Button>
+          <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => setSourceModalOpen(true)}
@@ -714,10 +774,27 @@ export default function AdminSkillStore() {
                     <Empty description="暂无技能包" style={{ marginTop: 60 }} />
                   ) : (
                     <div className={styles.tableWrap}>
+                      <div style={{ marginBottom: 12 }}>
+                        <Popconfirm
+                          title={`确认删除选中的 ${selectedRowKeys.length} 个技能包?`}
+                          onConfirm={() => void handleBatchDeletePackages()}
+                          okText="删除"
+                          okButtonProps={{ danger: true }}
+                          disabled={selectedRowKeys.length === 0}
+                        >
+                          <Button danger icon={<DeleteOutlined />} disabled={selectedRowKeys.length === 0}>
+                            批量删除
+                          </Button>
+                        </Popconfirm>
+                      </div>
                       <Table<AdminSkillPackage>
                         rowKey="id"
                         columns={packageColumns}
                         dataSource={packages}
+                        rowSelection={{
+                          selectedRowKeys,
+                          onChange: (keys) => setSelectedRowKeys(keys),
+                        }}
                         pagination={false}
                         size="middle"
                         scroll={{ x: 1300 }}
@@ -740,6 +817,67 @@ export default function AdminSkillStore() {
           ]}
         />
       </div>
+
+      {/* 本地上传技能源 Modal */}
+      <Modal
+        title="本地上传技能源"
+        open={uploadModalOpen}
+        onCancel={() => {
+          setUploadModalOpen(false)
+          uploadForm.resetFields()
+          setUploadFile(null)
+        }}
+        onOk={() => void handleUploadSkill()}
+        confirmLoading={uploadSubmitting}
+        okText="上传并解析"
+        cancelText="取消"
+        destroyOnClose
+        width={640}
+      >
+        <Form<{ skillName: string; skillDesc: string; skillType: 'skill' | 'workflow' }>
+          form={uploadForm}
+          layout="vertical"
+          className={styles.sourceForm}
+          initialValues={{ skillType: 'skill' }}
+        >
+          <Form.Item label="zip 文件" required>
+            <Upload.Dragger
+              accept=".zip"
+              maxCount={1}
+              showUploadList={false}
+              beforeUpload={(file) => { setUploadFile(file); return false }}
+            >
+              <p className="ant-upload-drag-icon"><UploadOutlined /></p>
+              <p className="ant-upload-text">{uploadFile ? uploadFile.name : '点击或拖拽 zip 文件到此处'}</p>
+              <p className="ant-upload-hint">支持含 SKILL.md 的技能包压缩包</p>
+            </Upload.Dragger>
+          </Form.Item>
+          <Form.Item
+            name="skillName"
+            label="技能名称"
+            rules={[{ required: true, message: '请输入技能名称' }]}
+          >
+            <Input placeholder="如:web-search" maxLength={64} />
+          </Form.Item>
+          <Form.Item
+            name="skillDesc"
+            label="技能描述"
+            rules={[{ required: true, message: '请输入技能描述' }]}
+          >
+            <Input.TextArea rows={3} maxLength={500} showCount />
+          </Form.Item>
+          <Form.Item
+            name="skillType"
+            label="技能类型"
+            rules={[{ required: true, message: '请选择技能类型' }]}
+          >
+            <Radio.Group>
+              <Radio value="skill">单一技能包</Radio>
+              <Radio value="workflow">完整流程</Radio>
+            </Radio.Group>
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {/* 添加技能源 Modal */}
       <Modal

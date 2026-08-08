@@ -7,6 +7,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Like, Repository } from 'typeorm';
 import * as fs from 'fs';
+import * as fsPromises from 'fs/promises';
+import * as os from 'os';
 import * as path from 'path';
 import { KnowledgeBaseEntity } from '../knowledge/entities/knowledge-base.entity';
 import { KnowledgeBaseDocumentEntity } from '../knowledge/entities/knowledge-base-document.entity';
@@ -14,6 +16,8 @@ import { KnowledgeBaseChunkEntity } from '../knowledge/entities/knowledge-base-c
 import { IndustryCategoryEntity } from '../knowledge/entities/industry-category.entity';
 import { FileEntity } from '../file/entities/file.entity';
 import { KnowledgeEngineService } from '../knowledge-engine/knowledge-engine.service';
+import { extractZipFile } from '../../common/utils/zip.util';
+import { generateFileName } from '../../common/utils/file.util';
 
 export interface AdminKnowledgeListResult {
   list: Array<KnowledgeBaseEntity & { industryName?: string }>;
@@ -158,11 +162,16 @@ export class AdminKnowledgeService {
   /** 删除官方知识库（级联：引擎数据集 + 本地文档/分块/文件） */
   async remove(id: number): Promise<void> {
     const kb = await this.getOfficialBase(id);
-    await this.engineService.deleteEngineKb(kb.id);
+    try {
+      await this.engineService.deleteEngineKb(kb.id);
+    } catch (err) {
+      this.logger.warn(`删除官方知识库 ${id} 引擎数据集失败（本地继续删除）: ${(err as Error).message}`);
+    }
     const docs = await this.docRepo.find({ where: { knowledgeBaseId: kb.id } });
     await this.chunkRepo.delete({ knowledgeBaseId: kb.id });
     await this.docRepo.delete({ knowledgeBaseId: kb.id });
     await this.kbRepo.delete({ id: kb.id });
+    
     for (const doc of docs) {
       await this.removeStoredFile(doc.filePath);
     }
@@ -225,6 +234,143 @@ export class AdminKnowledgeService {
       mimetype: file.mimetype,
     });
     // 返回数据库最新实体（同步完成后带上 engineDocumentId / engineStatus）
+    const synced = await this.docRepo.findOne({ where: { id: doc.id } });
+    return synced ?? doc;
+  }
+
+  /** 官方知识库 zip 批量导入：解压后逐个保存文档并同步引擎 */
+  async importZipDocuments(kbId: number, file: Express.Multer.File) {
+    await this.getOfficialBase(kbId);
+    const ext = path.extname(file?.originalname || '').toLowerCase();
+    if (!file?.buffer || file.buffer.length === 0 || ext !== '.zip') {
+      throw new BadRequestException('请上传 .zip 压缩包');
+    }
+    const stamp = Date.now();
+    const zipPath = path.join(os.tmpdir(), `kb-zip-${stamp}.zip`);
+    const tmpDir = path.join(os.tmpdir(), `kb-zip-${stamp}`);
+    await fsPromises.writeFile(zipPath, file.buffer);
+    await fsPromises.mkdir(tmpDir, { recursive: true });
+    const stats = { total: 0, imported: 0, failed: 0, errors: [] as string[] };
+    try {
+      extractZipFile(zipPath, tmpDir);
+      const files = this.collectImportFiles(tmpDir);
+      stats.total = files.length;
+      for (const f of files) {
+        const rel = path.relative(tmpDir, f);
+        try {
+          const buf = fs.readFileSync(f);
+          if (buf.length === 0) {
+            stats.failed++;
+            stats.errors.push(`${rel}: 空文件`);
+            continue;
+          }
+          await this.persistDocument(kbId, {
+            originalname: path.basename(f),
+            buffer: buf,
+            mimetype: this.mimeFromExt(path.extname(f)),
+          });
+          stats.imported++;
+        } catch (e) {
+          stats.failed++;
+          stats.errors.push(`${rel}: ${(e as Error).message}`);
+        }
+      }
+    } finally {
+      try {
+        await fsPromises.rm(zipPath, { force: true });
+        await fsPromises.rm(tmpDir, { recursive: true, force: true });
+      } catch {
+        // 忽略临时文件清理错误
+      }
+    }
+    return {
+      ...stats,
+      message: `批量导入完成：成功 ${stats.imported}，失败 ${stats.failed}`,
+    };
+  }
+
+  /** 递归收集可导入的文档文件（跳过系统目录） */
+  private collectImportFiles(dir: string, depth = 0): string[] {
+    if (depth > 5) return [];
+    const allowedExts = [
+      '.pdf', '.txt', '.md', '.markdown',
+      '.doc', '.docx', '.xls', '.xlsx',
+      '.ppt', '.pptx', '.csv', '.json', '.xml',
+    ];
+    const out: string[] = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === '__MACOSX') continue;
+        out.push(...this.collectImportFiles(p, depth + 1));
+      } else if (entry.isFile()) {
+        if (entry.name === '.DS_Store') continue;
+        if (allowedExts.includes(path.extname(entry.name).toLowerCase())) {
+          out.push(p);
+        }
+      }
+    }
+    return out;
+  }
+
+  /** 根据扩展名推断 MIME（zip 导入用） */
+  private mimeFromExt(ext: string): string {
+    const map: Record<string, string> = {
+      '.pdf': 'application/pdf',
+      '.txt': 'text/plain',
+      '.md': 'text/markdown',
+      '.markdown': 'text/markdown',
+      '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.xls': 'application/vnd.ms-excel',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.ppt': 'application/vnd.ms-powerpoint',
+      '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      '.csv': 'text/csv',
+      '.json': 'application/json',
+      '.xml': 'application/xml',
+    };
+    return map[ext.toLowerCase()] || 'application/octet-stream';
+  }
+
+  /** 落盘 + 记录 + 引擎同步（zip 批量导入复用） */
+  private async persistDocument(
+    kbId: number,
+    file: { originalname: string; buffer: Buffer; mimetype: string },
+  ) {
+    const filename = generateFileName(file.originalname);
+    const absDir = path.resolve('.', 'uploads/knowledge');
+    fs.mkdirSync(absDir, { recursive: true });
+    fs.writeFileSync(path.join(absDir, filename), file.buffer);
+    const fileUrl = '/uploads/knowledge/' + filename;
+    await this.fileRepo.save(
+      this.fileRepo.create({
+        userId: 0,
+        name: file.originalname,
+        path: fileUrl,
+        size: file.buffer.length,
+        mimeType: file.mimetype,
+        storageType: 'minio',
+      }),
+    );
+    const doc = await this.docRepo.save(
+      this.docRepo.create({
+        knowledgeBaseId: kbId,
+        name: file.originalname,
+        filePath: fileUrl,
+        fileSize: file.buffer.length,
+        mimeType: file.mimetype,
+        chunkCount: 0,
+        tokenCount: 0,
+        status: 'pending',
+      }),
+    );
+    await this.kbRepo.increment({ id: kbId }, 'documentCount', 1);
+    await this.engineService.syncDocumentToEngine(kbId, doc.id, {
+      originalname: file.originalname,
+      buffer: file.buffer,
+      mimetype: file.mimetype,
+    });
     const synced = await this.docRepo.findOne({ where: { id: doc.id } });
     return synced ?? doc;
   }

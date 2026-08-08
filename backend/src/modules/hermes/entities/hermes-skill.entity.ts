@@ -87,4 +87,9 @@ export class HermesSkillEntity extends BaseEntity {
   /** 更新日志 */
   @Column({ name: 'changelog', type: 'text', nullable: true })
   changelog?: string;
+
+  /** 关联管理端技能包 ID（skill_packages.id），发布时同步生成 */
+  @Index()
+  @Column({ name: 'source_package_id', type: 'bigint', nullable: true })
+  sourcePackageId?: number;
 }
