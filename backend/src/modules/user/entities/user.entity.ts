@@ -108,4 +108,8 @@ export class UserEntity extends BaseEntity {
 
   @Column({ name: 'notification_settings', type: 'json', nullable: true })
   notificationSettings?: NotificationSettings | null;
+
+  /** 用户默认对话模型（OpenClaw 本地直达对话：llm-proxy 收到 openclaw 内部模型名时按此解析） */
+  @Column({ name: 'default_chat_model', length: 64, nullable: true })
+  defaultChatModel?: string | null;
 }

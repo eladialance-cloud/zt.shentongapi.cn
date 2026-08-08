@@ -491,53 +491,14 @@ export class HermesService {
     ]);
   }
 
-  /** 调用整个 OPC 团队：按成员顺序逐个交给 OpenClaw 执行 */
+  /** 调用整个 OPC 团队：OpenClaw 直调接口已下线（L0 探针确认 /api/chat、/api/agents 不存在），
+   * 对话统一走桌面端本地 OpenClaw（自动编排 Hermes/N8N/MCP） */
   private async invokeTeam(task: HermesTask): Promise<unknown> {
-    if (!task.teamId) {
-      throw new BadRequestException('团队调用需要 teamId');
-    }
-    const members = await this.teamService.listMembers(task.userId, task.teamId);
-    const active = members.filter((m) => m.isActive !== false);
-    if (active.length === 0) {
-      throw new BadRequestException('团队没有可用成员');
-    }
-    this.logger.log(
-      `invokeTeam via OpenClaw: teamId=${task.teamId}, members=${active.length}`,
-    );
-    const message = JSON.stringify(task.input);
-    const results: unknown[] = [];
-    for (const member of active) {
-      try {
-        const r = await this.openClawService.invokeAgentByAgentId(
-          task.userId,
-          member.agentId,
-          message,
-        );
-        results.push({ memberId: member.id, agentId: member.agentId, agentName: member.agentName, result: r });
-      } catch (err) {
-        results.push({
-          memberId: member.id,
-          agentId: member.agentId,
-          agentName: member.agentName,
-          error: (err as Error).message,
-        });
-      }
-    }
-    return { teamId: task.teamId, members: results };
+    throw new BadRequestException('团队调用暂不可用：OpenClaw 直调接口已下线，请使用桌面端对话（本地 OpenClaw 自动编排）');
   }
-
   private async invokeAgent(task: HermesTask): Promise<unknown> {
-    if (!task.agentId) {
-      throw new BadRequestException('Agent 调用需要 agentId');
-    }
-    this.logger.log(`invokeAgent via OpenClaw: agentId=${task.agentId}`);
-    return this.openClawService.invokeAgent(
-      task.userId,
-      String(task.agentId),
-      JSON.stringify(task.input),
-    );
+    throw new BadRequestException('Agent 调用暂不可用：OpenClaw 直调接口已下线，请使用桌面端对话（本地 OpenClaw 自动调用）');
   }
-
   private async runWorkflow(task: HermesTask): Promise<unknown> {
     if (!task.n8nInstanceId || !task.workflowId) {
       throw new BadRequestException('工作流调用需要 n8nInstanceId 和 workflowId');

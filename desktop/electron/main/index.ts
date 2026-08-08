@@ -3,6 +3,14 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import log from 'electron-log'
 import { getRuntimeDirInfo, setRuntimeRoot, defaultRuntimeRoot } from './runtime-config'
+import { join } from 'node:path'
+import {
+  OpenClawChatService,
+  createLocalOpenClawCaller,
+  waitForLocalPort,
+  OPENCLAW_LOCAL_PORT,
+} from './openclaw-chat'
+import type { OpenClawChatMessage } from './openclaw-chat'
 
 // GPU 白名单开关：解决部分显卡/驱动/远程桌面环境下 WebGL 被 Chromium 黑名单拦截的问题
 // 必须在 app.whenReady 之前设置
@@ -105,6 +113,62 @@ app.on('window-all-closed', () => {
 
 /** 注册 IPC 处理器 */
 function registerIpcHandlers(): void {
+  // ===== OpenClaw 本地直达对话（记账云端 + 对话本地） =====
+  const openClawChat = new OpenClawChatService({
+    callOpenClaw: createLocalOpenClawCaller(),
+    ensureOpenClaw: async () => {
+      const info = serviceManager.getInfo('openclaw')
+      if (info && info.status === 'running') return
+      console.log('[openclaw-chat] OpenClaw 未运行，自动启动...')
+      const ok = await serviceManager.start('openclaw')
+      if (!ok) throw new Error('OpenClaw 启动失败，请到服务管理页检查后再试')
+      const ready = await waitForLocalPort(OPENCLAW_LOCAL_PORT)
+      if (!ready) throw new Error('OpenClaw 启动超时，请稍后重试')
+    },
+    contextDir: join(app.getPath('userData'), 'openclaw-chat'),
+  })
+
+  ipcMain.handle(
+    'openclaw-chat:send',
+    async (
+      event,
+      payload: { text: string; token: string; history?: OpenClawChatMessage[] },
+    ) => {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      const push = (channel: string, data: unknown): void => {
+        if (win && !win.isDestroyed()) {
+          win.webContents.send(channel, data)
+        }
+      }
+      try {
+        const result = await openClawChat.send(
+          { text: payload.text, token: payload.token, history: payload.history },
+          (chunk) => push('openclaw-chat:message', { content: chunk }),
+          (e) => {
+            if (e.type === 'tool-call') push('openclaw-chat:tool-call', e.toolCall)
+            else if (e.type === 'done') push('openclaw-chat:done', { usage: e.usage })
+          },
+        )
+        push('openclaw-chat:done', { usage: result.usage })
+        return { ok: true, aborted: result.aborted }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error('[openclaw-chat] send failed:', message)
+        push('openclaw-chat:error', { message })
+        return { ok: false }
+      }
+    },
+  )
+
+  ipcMain.on('openclaw-chat:abort', () => {
+    openClawChat.abort()
+  })
+
+  // 注入用户 llm-proxy 静态 Key（登录后由渲染层调用；OpenClaw 的 openai provider 指向云端 llm-proxy）
+  ipcMain.on('openclaw-chat:set-proxy-key', (_event, key: string) => {
+    serviceManager.setOpenClawProxyKey(key || '')
+  })
+
   // 服务管理
   ipcMain.handle('service:getStatus', () => serviceManager.getAllStatus())
   ipcMain.handle('service:status', (_event, name: ServiceName) =>

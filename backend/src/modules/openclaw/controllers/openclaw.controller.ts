@@ -55,14 +55,6 @@ export class OpenClawController {
     return null;
   }
 
-  @Post('instances/:id/sync')
-  @ApiOperation({ summary: '同步 Agent 配置到 OpenClaw' })
-  syncAgent(
-    @CurrentUser() user: ICurrentUser,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
-    return this.service.syncAgent(user.userId, id);
-  }
 
   @Get('instances/:id/status')
   @ApiOperation({ summary: '查询 OpenClaw 运行时状态' })
@@ -83,12 +75,4 @@ export class OpenClawController {
     return this.service.updateConfig(user.userId, id, dto);
   }
 
-  @Post('instances/:id/pull-status')
-  @ApiOperation({ summary: '拉取 OpenClaw Agent 最新状态' })
-  pullAgentStatus(
-    @CurrentUser() user: ICurrentUser,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
-    return this.service.pullAgentStatus(user.userId, id);
-  }
 }

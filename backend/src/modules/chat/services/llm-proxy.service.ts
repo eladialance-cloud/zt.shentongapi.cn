@@ -85,7 +85,7 @@ export class LlmProxyService {
     onCost?: (finalCost: number) => void,
   ): Promise<{ stream: boolean; iterator: AsyncGenerator<string, void, unknown> }> {
     const { userId } = await this.verifyApiKey(apiKey);
-    const modelId = this.resolveModelId(body.model);
+    const modelId = await this.resolveModelId(body.model, userId);
 
     // v0.7.0 供应商体系：优先使用模型所属供应商的 Base URL + API Key + upstreamModelId 直连上游，
     // 费用在第三方 API 侧扣除；未配置供应商时回退到 API Key 池
@@ -263,12 +263,34 @@ export class LlmProxyService {
     }
   }
 
-  private resolveModelId(modelFromRequest: string): string {
+  /**
+   * 解析请求模型：
+   * - custom/<id> 或后台已上线的模型 → 原样使用（按后台供应商直连）
+   * - OpenClaw 内部模型名（openclaw/default、gpt-5.5 等）或未知模型 → 用户默认对话模型
+   * - 兜底 DEFAULT_LLM_MODEL / deepseek-chat
+   */
+  private async resolveModelId(modelFromRequest: string, userId: number): Promise<string> {
+    // custom/<id> 显式指定 → 直接使用
     if (modelFromRequest.startsWith('custom/')) {
       const extracted = modelFromRequest.slice(7);
       if (extracted && extracted !== 'deep-shentong') return extracted;
     }
-    if (modelFromRequest && !modelFromRequest.startsWith('custom/')) return modelFromRequest;
+
+    // 请求模型是后台已上线的模型 → 直接使用
+    if (modelFromRequest) {
+      const enabled = await this.modelRepository.findOne({
+        where: { modelId: modelFromRequest, isActive: true },
+        select: ['modelId'],
+      });
+      if (enabled) return modelFromRequest;
+    }
+
+    // 否则（OpenClaw 内部模型名 openclaw/default 等或未知模型）→ 用户默认对话模型 → 兜底
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'defaultChatModel'],
+    });
+    if (user?.defaultChatModel) return user.defaultChatModel;
     return process.env.DEFAULT_LLM_MODEL || 'deepseek-chat';
   }
 

@@ -541,3 +541,36 @@
   background: #000;
   flex-shrink: 0;
 }
+
+/* ===== OpenClaw 对话风格（消息区居中限宽、清爽浅色） ===== */
+.messageListInner {
+  max-width: 780px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.messageRow {
+  max-width: 780px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+
+.messageBubbleWrap {
+  max-width: 75%;
+}
+
+.emptyStateIcon {
+  font-size: 64px;
+  color: rgba(99, 102, 241, 0.45);
+}
+
+.emptyStateTip {
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  max-width: 420px;
+  text-align: center;
+  line-height: 1.7;
+}

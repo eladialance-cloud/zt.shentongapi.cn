@@ -179,3 +179,56 @@ SELECT 'active_models' t, id, model_id, provider_id, is_active, price_per_1k_inp
 - `scripts/deploy-cloud.ps1`：提交→推送→等 CI→下载产物→部署后端/管理后台→上传安装包 的一键脚本。
   - ⚠️ 脚本内置了**固定的文件清单和提交信息**，改业务前先确认/替换 `$files` 与 `$COMMIT_MSG`。
   - 依赖：Windows 凭据管理器有 GitHub 凭据；服务器 SSH 可交互输密码或已配置密钥。
+## 11. OpenClaw 本地直达对话（桌面端 Chat = OpenClaw，模型走云端 llm-proxy）
+
+> 逻辑：桌面端 Chat 页发送消息 = 本地 OpenClaw 流式对话（自动调用 Hermes/N8N/MCP）。
+> OpenClaw 的 openai provider 指向云端 llm-proxy（baseUrl + 用户静态 Key，登录后桌面端自动注入），
+> llm-proxy 按「后台供应商直连 + 后台定价 × 实际 token」扣费。用户只需在 Chat 页选择模型（保存为用户默认模型）。
+
+### 11.1 后端部署（服务器，一次）
+```bash
+cd /opt/shentong && sudo git pull origin main
+cd backend
+sudo rm -rf dist
+sudo npm run build 2>&1 | tail -3 && echo BUILD_OK
+sudo pkill -9 -f "node dist/main.js"; sleep 2
+sudo bash -c "cd /opt/shentong/backend && nohup node dist/main.js > server.log 2>&1 &"
+sleep 8
+curl -s http://127.0.0.1:3001/api/health; echo
+# 记账接口（未登录应 401）
+curl -s -o /dev/null -w "proxy-key:%{http_code}\n" http://127.0.0.1:3001/api/chat/accounting/proxy-key
+curl -s -o /dev/null -w "preferred-model:%{http_code}\n" -X POST http://127.0.0.1:3001/api/chat/accounting/preferred-model
+curl -s -o /dev/null -w "tool:%{http_code}\n" -X POST http://127.0.0.1:3001/api/chat/accounting/tool
+# llm-proxy（OpenClaw 模型出口，缺 Key 应 401）
+curl -s -o /dev/null -w "llm-proxy:%{http_code}\n" -X POST http://127.0.0.1:3001/api/llm-proxy/v1/chat/completions
+```
+
+### 11.2 OpenClaw 模型密钥配置（无需手动配置）
+- 每个用户登录桌面端后，App 自动调用 `GET /api/chat/accounting/proxy-key` 获取/生成用户静态 llm-proxy Key（`sk-shentong-*`），
+  并注入本地 OpenClaw 的 openai provider（baseUrl=`https://zt.shentongapi.cn/api/llm-proxy/v1`、api=`openai-completions`、apiKey=该 Key）。
+- 用户在 Chat 页选择模型时，桌面端调用 `POST /api/chat/accounting/preferred-model` 保存为用户默认模型；
+  OpenClaw 发送 `openclaw/default` → llm-proxy 解析为「后台已上线模型 / 用户默认模型 / 兜底 deepseek-chat」。
+- 不需要给 OpenClaw 配任何真实大模型 Key；供应商 Key 只在服务器（后台供应商体系）。
+- 若仍提示「本地 OpenClaw 未配置模型密钥」：重启桌面端重新登录一次（自动重新注入），或到「本地服务管理」重启 OpenClaw。
+
+### 11.3 探针（验证本地链路）
+```powershell
+cd D:\二次开发\desktop
+npx tsx scripts/openclaw-probe.ts
+```
+看这几行：
+- `openclaw.v1-chat-completions`：401=缺 Key（见 11.2）；200=已通；404=当前 OpenClaw 版本不支持，需升级运行时
+- `openclaw.v1-models`：200 且包含 `openclaw/default` = 模型名正确
+- `openclaw.ws-handshake`：能收到 connect.challenge / 状态帧 = Gateway 正常
+- `n8n.healthz`、`mcp.health`：200 = 工具服务正常
+- hermes 各项 404/405 属正常（Hermes serve 无 OpenAI 兼容端点，实际走 CLI，由 OpenClaw 调用）
+
+### 11.4 扣费规则
+- 对话本体：llm-proxy 按「后台定价 × 实际 token」冻结+结算（预扣 2000 token，结算多退少补）
+- Hermes 调用、N8N 调用本身不单独扣费
+- 工作流（N8N）若后台设置了 `pricePerExecution`，执行时按次额外扣费；定价 0 不扣
+- 断网 / 未登录：OpenClaw 401 → 提示「设备离线或未登录」，消息不发送
+
+### 11.5 版本与提交
+- desktop/package.json 升到 0.7.7（CI 自动 +1 构建 0.7.8 安装包）
+- 推送 main 后推 main:upgrade/electron-41 触发 CI（见第 2 / 3 节）

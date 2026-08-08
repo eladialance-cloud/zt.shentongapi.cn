@@ -283,6 +283,26 @@ export async function listChatModels(): Promise<ModelOption[]> {
   return httpClient.get<ModelOption[]>("/models/chat-options");
 }
 
+/**
+ * 获取/生成用户 llm-proxy 静态 Key（登录后注入 OpenClaw，供应商 Key 在服务器）
+ * GET /chat/accounting/proxy-key
+ */
+export async function fetchLlmProxyKey(): Promise<{ llmProxyKey: string }> {
+  return httpClient.get<{ llmProxyKey: string }>("/chat/accounting/proxy-key");
+}
+
+/**
+ * 保存用户默认对话模型（OpenClaw 本地直达对话：llm-proxy 收到 openclaw 内部模型名时按此解析）
+ * POST /chat/accounting/preferred-model
+ */
+export async function setPreferredChatModel(
+  modelId: string,
+): Promise<{ modelId: string }> {
+  return httpClient.post<{ modelId: string }>("/chat/accounting/preferred-model", {
+    modelId,
+  });
+}
+
 export default {
   createSession,
   listSessions,

@@ -149,11 +149,94 @@ function buildOpenClawEnv(): NodeJS.ProcessEnv {
   } catch (err) {
     console.warn('[service-manager] mkdir openclaw-home failed:', err)
   }
+  // 本地工具卡注入：Hermes 运行时路径 + N8N Key + 记账上下文文件路径
+  // （OpenClaw 的 hermes-agent / n8n-run-workflow skill 脚本读取这些环境变量）
+  const hermes = resolve('hermes')
+  const hermesRoot = hermes?.cmd ? path.dirname(hermes.cmd) : ''
+  const accountingDir = path.join(app.getPath('userData'), 'openclaw-chat')
+  try {
+    fs.mkdirSync(accountingDir, { recursive: true })
+  } catch (err) {
+    console.warn('[service-manager] mkdir openclaw-chat failed:', err)
+  }
   return {
     ...process.env,
-    OPENCLAW_HOME: home
+    OPENCLAW_HOME: home,
+    HERMES_NODE: hermesRoot ? path.join(hermesRoot, 'node', 'node.exe') : '',
+    HERMES_ENTRY: hermesRoot ? path.join(hermesRoot, 'node_modules', 'hermes-agent', 'bin', 'hermes.js') : '',
+    HERMES_PYTHON: hermesRoot ? path.join(hermesRoot, 'python', 'python.exe') : '',
+    HERMES_HOME: getHermesHome(),
+    N8N_API_KEY: getOrCreateN8nApiKey(),
+    ST_API_BASE: 'https://zt.shentongapi.cn/api',
+    ST_ACCOUNTING_FILE: path.join(accountingDir, 'current-accounting.json'),
+    ST_AUTH_FILE: path.join(accountingDir, 'auth.json'),
   }
 }
+
+/** 云端 llm-proxy OpenAI 兼容网关（OpenClaw 的 openai provider 指向这里；供应商 Key 在服务器，用户零配置） */
+const OPENCLAW_LLM_PROXY_BASE = 'https://zt.shentongapi.cn/api/llm-proxy/v1'
+
+/** 用户 llm-proxy 静态 Key（登录后由主进程注入；空则 OpenClaw 不写 apiKey，聊天被 401 拦截） */
+let openclawProxyKey = ''
+
+/**
+ * OpenClaw 启动前配置注入（写入 <OPENCLAW_HOME>/.openclaw/openclaw.json）：
+ * - gateway.http.endpoints.chatCompletions.enabled: 开启 OpenAI 兼容对话端点（L0 探针验证 404→401）
+ * - skills.load.extraDirs: 注入内置本地工具卡（hermes-agent / n8n-run-workflow）
+ * 合并写入，保留用户已有配置。
+ */
+function deepMergeConfig(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base }
+  for (const [k, v] of Object.entries(patch)) {
+    const b = out[k]
+    if (b && typeof b === 'object' && !Array.isArray(b) && v && typeof v === 'object' && !Array.isArray(v)) {
+      out[k] = deepMergeConfig(b as Record<string, unknown>, v as Record<string, unknown>)
+    } else {
+      out[k] = v
+    }
+  }
+  return out
+}
+
+function ensureOpenClawConfig(): void {
+  try {
+    const cfgPath = path.join(getOpenClawHome(), '.openclaw', 'openclaw.json')
+    const skillsDir = app.isPackaged
+      ? path.join(process.resourcesPath, 'openclaw', 'skills')
+      : path.join(process.cwd(), 'resources', 'openclaw', 'skills')
+    const patch: Record<string, unknown> = {
+      gateway: { http: { endpoints: { chatCompletions: { enabled: true } } } },
+      skills: { load: { extraDirs: [skillsDir] } },
+      // OpenClaw agent 的模型通道指向云端 llm-proxy（强制 openai-completions 协议；apiKey 为用户静态 Key）
+      models: {
+        providers: {
+          openai: {
+            baseUrl: OPENCLAW_LLM_PROXY_BASE,
+            api: 'openai-completions',
+            apiKey: openclawProxyKey,
+          },
+        },
+      },
+    }
+    let existing: Record<string, unknown> = {}
+    try {
+      existing = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'))
+    } catch {
+      existing = {}
+    }
+    const merged = deepMergeConfig(existing, patch)
+    if (!openclawProxyKey) {
+      const openai = (merged as any)?.models?.providers?.openai
+      if (openai && typeof openai === 'object') delete openai.apiKey
+    }
+    fs.mkdirSync(path.dirname(cfgPath), { recursive: true })
+    fs.writeFileSync(cfgPath, JSON.stringify(merged, null, 2), 'utf-8')
+    console.log('[service-manager] OpenClaw 配置已注入: ' + cfgPath)
+  } catch (err) {
+    console.warn('[service-manager] ensureOpenClawConfig failed:', err)
+  }
+}
+
 /** 自动重启配置 */
 const MAX_RESTART_RETRIES = 3
 const RESTART_INTERVAL_MS = 5000
@@ -309,6 +392,21 @@ export class ServiceManager extends EventEmitter {
       })
     }
     this.startMetricsSampler()
+  }
+
+  /**
+   * 设置用户 llm-proxy 静态 Key（登录后由主进程调用）：
+   * 1) 更新内存 + 立即重写 OpenClaw 配置（models.providers.openai.apiKey）
+   * 2) OpenClaw 运行中则重启，让新 Key 生效（避免下次对话 401）
+   */
+  setOpenClawProxyKey(key: string): void {
+    openclawProxyKey = key || ''
+    ensureOpenClawConfig()
+    const info = this.services.get('openclaw')
+    if (info && info.status === 'running') {
+      console.log('[service-manager] llm-proxy Key 已更新，重启 OpenClaw 使其生效...')
+      void this.restart('openclaw')
+    }
   }
 
   /** 追加子进程输出（滚动保留尾部，供失败时展示真实原因） */
@@ -671,6 +769,11 @@ export class ServiceManager extends EventEmitter {
       // 各服务启动参数：
       // - openclaw：WebSocket Gateway 前台运行（openclaw 顶层没有 --port，必须用 gateway run --port）
       // - hermes：headless backend server（serve），监听 127.0.0.1:<port>
+      // OpenClaw 启动前写入 openclaw.json（开启 OpenAI 兼容端点 + 注入本地工具卡）
+      if (name === 'openclaw') {
+        ensureOpenClawConfig()
+      }
+
       spawnArgs =
         name === 'openclaw'
           ? ['gateway', 'run', '--port', String(info.port), '--bind', 'loopback', '--auth', 'none', '--force', '--allow-unconfigured']

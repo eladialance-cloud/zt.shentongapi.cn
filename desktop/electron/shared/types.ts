@@ -223,6 +223,39 @@ export interface MarketDownloadResult {
 }
 
 // 通过 contextBridge 暴露给渲染进程的 API 形状
+/** OpenClaw 本地直达对话相关类型 */
+export interface OpenClawChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface OpenClawToolCall {
+  id: string;
+  name: string;
+  input: unknown;
+}
+
+export interface OpenClawUsage {
+  input: number;
+  output: number;
+  total: number;
+}
+
+/** openclaw-chat:message 推送 payload */
+export interface OpenClawChatMessagePayload {
+  content: string;
+}
+
+/** openclaw-chat:done 推送 payload */
+export interface OpenClawChatDonePayload {
+  usage?: OpenClawUsage;
+}
+
+/** openclaw-chat:error 推送 payload */
+export interface OpenClawChatErrorPayload {
+  message: string;
+}
+
 export interface ElectronAPI {
   service: {
     getStatus(): Promise<Record<ServiceName, ServiceStatus>>;
@@ -314,6 +347,27 @@ export interface ElectronAPI {
     ): Promise<void>;
     /** 根据 client_txn_id 查询是否已存在 */
     exists(client_txn_id: string): Promise<boolean>;
+  };
+  /** OpenClaw 本地直达对话（记账在云端，消息走本地 OpenClaw） */
+  openclawChat: {
+    /** 注入用户 llm-proxy 静态 Key（登录后调用；OpenClaw openai provider 指向云端 llm-proxy） */
+    setProxyKey(key: string): void;
+    /** 发送一条消息：本地 OpenClaw 流式对话（扣费由云端 llm-proxy 完成）。流式内容经 onMessage 推送 */
+    send(
+      text: string,
+      token: string,
+      history?: OpenClawChatMessage[],
+    ): Promise<{ ok: boolean; aborted?: boolean }>;
+    /** 中断当前对话（本地 abort） */
+    abort(): void;
+    /** 流式文本块（openclaw-chat:message） */
+    onMessage(cb: (payload: OpenClawChatMessagePayload) => void): () => void;
+    /** 工具调用（openclaw-chat:tool-call） */
+    onToolCall(cb: (toolCall: OpenClawToolCall) => void): () => void;
+    /** 完成（openclaw-chat:done） */
+    onDone(cb: (payload: OpenClawChatDonePayload) => void): () => void;
+    /** 错误（openclaw-chat:error） */
+    onError(cb: (payload: OpenClawChatErrorPayload) => void): () => void;
   };
 }
 

@@ -268,6 +268,7 @@ export class AuthService {
       phone: user.phone,
       avatar: user.avatar,
       status: user.status,
+      llmProxyKey: user.llmProxyKey ?? null,
       level: user.level,
       roles,
       createdAt: user.createdAt,

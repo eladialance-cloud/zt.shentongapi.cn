@@ -84,6 +84,7 @@ export function MessageList({
 
   return (
     <div className={styles.messageListContainer} ref={containerRef}>
+      <div className={styles.messageListInner}>
       {messages.map((msg) => {
         const isUser = msg.role === "user";
         return (
@@ -175,6 +176,7 @@ export function MessageList({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

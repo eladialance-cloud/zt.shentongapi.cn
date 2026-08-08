@@ -866,6 +866,19 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       logger.log('Created table: media_jobs');
     }
 
+
+    // users.default_chat_model 列（OpenClaw 本地直达对话：用户默认对话模型，llm-proxy 据此解析 openclaw 内部模型名）
+    const [defaultModelCol] = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'default_chat_model'`
+    );
+    if (!defaultModelCol) {
+      await queryRunner.query(
+        `ALTER TABLE users ADD COLUMN default_chat_model VARCHAR(64) DEFAULT NULL COMMENT '用户默认对话模型(OpenClaw llm-proxy 解析用)' AFTER notification_settings`
+      );
+      logger.log('Added column: users.default_chat_model');
+    }
+
     logger.log('Startup migrations completed');
   } catch (err) {
     logger.error(`Startup migration failed: ${(err as Error).message}`);

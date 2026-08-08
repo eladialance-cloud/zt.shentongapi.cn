@@ -17,7 +17,11 @@ import { CreditsModule } from '../credits/credits.module';
 import { ApiKeyPoolModule } from '../api-key-pool/api-key-pool.module';
 import { KnowledgeEngineModule } from '../knowledge-engine/knowledge-engine.module';
 import { FileEntity } from '../file/entities/file.entity';
+import { WorkflowEntity } from '../admin-workflow/entities/workflow.entity';
+import { CreditTransactionEntity } from '../credits/entities/credit-transaction.entity';
 import { MediaContentService } from './services/media-content.service';
+import { ChatAccountingController } from './controllers/chat-accounting.controller';
+import { ChatAccountingService } from './services/chat-accounting.service';
 
 /**
  * Chat 模块
@@ -44,14 +48,16 @@ import { MediaContentService } from './services/media-content.service';
       ModelEntity,
       ModelProviderEntity,
       FileEntity,
+      WorkflowEntity,
+      CreditTransactionEntity,
     ]),
     CommonModule,
     CreditsModule,
     ApiKeyPoolModule,
     KnowledgeEngineModule,
   ],
-  controllers: [ChatController, LlmProxyController],
-  providers: [ChatService, LlmProxyService, LlmClientService, MediaContentService],
+  controllers: [ChatController, LlmProxyController, ChatAccountingController],
+  providers: [ChatService, LlmProxyService, LlmClientService, MediaContentService, ChatAccountingService],
   exports: [ChatService, LlmProxyService, LlmClientService],
 })
 export class ChatModule {}

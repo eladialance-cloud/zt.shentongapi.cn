@@ -14,7 +14,12 @@ import type {
   RuntimeDownloadProgress,
   InstallProgressPayload,
   MarketItemType,
-  InstalledRecord
+  InstalledRecord,
+  OpenClawChatMessage,
+  OpenClawChatMessagePayload,
+  OpenClawToolCall,
+  OpenClawChatDonePayload,
+  OpenClawChatErrorPayload
 } from '../shared/types'
 
 const electronAPI: ElectronAPI = {
@@ -108,6 +113,45 @@ const electronAPI: ElectronAPI = {
     list: () => ipcRenderer.invoke('market:list') as Promise<InstalledRecord[]>,
     export: () => ipcRenderer.invoke('market:export') as Promise<{ ok: boolean; path?: string; error?: string }>,
     import: () => ipcRenderer.invoke('market:import') as Promise<{ ok: boolean; imported?: number; error?: string }>
+  },
+  openclawChat: {
+    /** 注入用户 llm-proxy 静态 Key（登录后调用；OpenClaw openai provider 指向云端 llm-proxy） */
+    setProxyKey: (key: string) => {
+      ipcRenderer.send('openclaw-chat:set-proxy-key', key)
+    },
+    send: (text: string, token: string, history?: OpenClawChatMessage[]) =>
+      ipcRenderer.invoke('openclaw-chat:send', { text, token, history }) as Promise<{ ok: boolean; aborted?: boolean }>,
+    abort: () => {
+      ipcRenderer.send('openclaw-chat:abort')
+    },
+    onMessage: (callback: (payload: OpenClawChatMessagePayload) => void) => {
+      const handler = (_event: IpcRendererEvent, payload: OpenClawChatMessagePayload): void => callback(payload)
+      ipcRenderer.on('openclaw-chat:message', handler)
+      return () => {
+        ipcRenderer.removeListener('openclaw-chat:message', handler)
+      }
+    },
+    onToolCall: (callback: (toolCall: OpenClawToolCall) => void) => {
+      const handler = (_event: IpcRendererEvent, toolCall: OpenClawToolCall): void => callback(toolCall)
+      ipcRenderer.on('openclaw-chat:tool-call', handler)
+      return () => {
+        ipcRenderer.removeListener('openclaw-chat:tool-call', handler)
+      }
+    },
+    onDone: (callback: (payload: OpenClawChatDonePayload) => void) => {
+      const handler = (_event: IpcRendererEvent, payload: OpenClawChatDonePayload): void => callback(payload)
+      ipcRenderer.on('openclaw-chat:done', handler)
+      return () => {
+        ipcRenderer.removeListener('openclaw-chat:done', handler)
+      }
+    },
+    onError: (callback: (payload: OpenClawChatErrorPayload) => void) => {
+      const handler = (_event: IpcRendererEvent, payload: OpenClawChatErrorPayload): void => callback(payload)
+      ipcRenderer.on('openclaw-chat:error', handler)
+      return () => {
+        ipcRenderer.removeListener('openclaw-chat:error', handler)
+      }
+    }
   },
   syncQueue: {
     enqueue: (item) => ipcRenderer.invoke('syncQueue:enqueue', item) as Promise<number>,

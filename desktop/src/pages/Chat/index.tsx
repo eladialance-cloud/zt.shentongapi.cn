@@ -19,6 +19,8 @@ import { MessageInput } from './components/MessageInput'
 import { MediaGenerationModal } from './components/MediaGenerationModal'
 import type { MediaJob } from '@/api/media-generation-api'
 import * as chatApi from '@/api/chat-api'
+import { createOpenClawChat, type OpenClawChatHandle } from '@/api/openclaw-chat-api'
+import type { OpenClawChatMessage } from '@shared/types'
 import { listMarketAgents } from '@/api/agent-api'
 import { listKnowledgeBases, listOfficialKnowledgeBases } from '@/api/knowledge-api'
 import { officeBridge, isRetrieveTool } from '@/pages/Office/services/officeBridge'
@@ -55,7 +57,12 @@ export default function Chat() {
   // 用 ref 保存流式期间的最新值，避免回调闭包 stale 问题
   const streamingContentRef = useRef('')
   const streamingToolCallsRef = useRef<ToolCallInfo[]>([])
-  const abortControllerRef = useRef<AbortController | null>(null)
+  // OpenClaw 本地直达对话句柄 + 中断标记（扣费由云端 llm-proxy 完成）
+  const openClawChatRef = useRef<OpenClawChatHandle | null>(null)
+  const abortRequestedRef = useRef(false)
+  const replyGeneratedRef = useRef(false)
+  const activeSessionRef = useRef<ChatSession | null>(null)
+  const messagesRef = useRef<ChatMessage[]>([])
 
   // 同步 ref 与 state
   useEffect(() => {
@@ -76,6 +83,124 @@ export default function Chat() {
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([])
   const [agentPriceMap, setAgentPriceMap] = useState<Record<number, Agent>>({})
   const [kbOptions, setKbOptions] = useState<KnowledgeBaseOption[]>([])
+
+  /** 挂载时创建 OpenClaw 对话通道（IPC），流式事件在此监听（渲染进程不直接碰本地/云端） */
+  useEffect(() => {
+    let handle: OpenClawChatHandle
+    try {
+      handle = createOpenClawChat()
+    } catch (err) {
+      console.error('[Chat] openclaw chat unavailable:', err)
+      return
+    }
+    openClawChatRef.current = handle
+
+    const offMessage = handle.onMessage((chunk) => {
+      streamingContentRef.current = streamingContentRef.current + chunk
+      setStreamingContent(streamingContentRef.current)
+      if (!replyGeneratedRef.current) {
+        replyGeneratedRef.current = true
+        officeBridge.onReplyGenerated()
+      }
+    })
+
+    const offToolCall = handle.onToolCall((toolCall) => {
+      const prev = streamingToolCallsRef.current
+      const idx = prev.findIndex((t) => t.id === toolCall.id)
+      if (idx >= 0) {
+        const next = [...prev]
+        next[idx] = toolCall as unknown as ToolCallInfo
+        streamingToolCallsRef.current = next
+      } else {
+        streamingToolCallsRef.current = [
+          ...prev,
+          toolCall as unknown as ToolCallInfo,
+        ]
+      }
+      setStreamingToolCalls(streamingToolCallsRef.current)
+      // officeBridge: 工具调用 → 市场员去技能墙
+      officeBridge.onToolCall(toolCall.name)
+      if (isRetrieveTool(toolCall.name)) {
+        officeBridge.onAgentRetrieve()
+      }
+    })
+
+    const offDone = handle.onDone(() => {
+      const session = activeSessionRef.current
+      const content =
+        streamingContentRef.current +
+        (abortRequestedRef.current ? '\n\n[已停止]' : '')
+      const toolCalls =
+        streamingToolCallsRef.current.length > 0
+          ? streamingToolCallsRef.current
+          : undefined
+      // 没有任何生成内容时不再追加空助手消息
+      if (session && (content.trim() || (toolCalls && toolCalls.length > 0))) {
+        const assistantMsg: ChatMessage = {
+          id: Date.now() + 1,
+          sessionId: session.id,
+          userId: 0,
+          role: 'assistant',
+          content,
+          toolCalls,
+          status: 'done',
+          createdAt: new Date(),
+        }
+        setMessages((prev) => [...prev, assistantMsg])
+      }
+      setStreaming(false)
+      setStreamingContent('')
+      setStreamingToolCalls([])
+      streamingContentRef.current = ''
+      streamingToolCallsRef.current = []
+      abortRequestedRef.current = false
+      // officeBridge: 回复完成 → 审核员审核 → 所有人切 IDLE
+      officeBridge.onReview()
+      setTimeout(() => officeBridge.onTaskComplete(), 1500)
+    })
+
+    const offError = handle.onError((err) => {
+      // 用户主动停止时忽略错误（等待 done 事件固化）
+      if (abortRequestedRef.current) return
+      console.error('[Chat] openclaw error:', err)
+      message.error('生成失败: ' + err.message)
+      // officeBridge: 系统错误 → 主管弹出错误气泡
+      officeBridge.onSystemError(err.message)
+      if (streamingContentRef.current) {
+        const session = activeSessionRef.current
+        if (session) {
+          const assistantMsg: ChatMessage = {
+            id: Date.now() + 1,
+            sessionId: session.id,
+            userId: 0,
+            role: 'assistant',
+            content: streamingContentRef.current + '\n\n[生成中断]',
+            toolCalls:
+              streamingToolCallsRef.current.length > 0
+                ? streamingToolCallsRef.current
+                : undefined,
+            status: 'error',
+            createdAt: new Date(),
+          }
+          setMessages((prev) => [...prev, assistantMsg])
+        }
+      }
+      setStreaming(false)
+      setStreamingContent('')
+      setStreamingToolCalls([])
+      streamingContentRef.current = ''
+      streamingToolCallsRef.current = []
+      abortRequestedRef.current = false
+    })
+
+    return () => {
+      offMessage()
+      offToolCall()
+      offDone()
+      offError()
+      openClawChatRef.current = null
+    }
+  }, [])
 
   /** 加载市场 Agent 列表（用于顶部 Agent 选择器 + 价格提示） */
   useEffect(() => {
@@ -187,19 +312,25 @@ export default function Chat() {
     }
   }, [])
 
-  /** 发送消息（流式） */
+  /** 发送消息（OpenClaw 本地直达：云端预扣 → 本地 OpenClaw 流式 → 云端结算） */
   const handleSend = useCallback(
     async (content: string, attachments: UploadResult[]) => {
-      if (!activeSession) {
+      const session = activeSessionRef.current
+      if (!session) {
         message.warning('请先选择或创建一个对话')
         return
       }
       if (!content.trim() && attachments.length === 0) return
+      const handle = openClawChatRef.current
+      if (!handle) {
+        message.error('OpenClaw 对话通道不可用，请升级桌面端版本')
+        return
+      }
 
       // 1. 立即追加用户消息到列表
       const userMsg: ChatMessage = {
         id: Date.now(),
-        sessionId: activeSession.id,
+        sessionId: session.id,
         userId: 0,
         role: 'user',
         content,
@@ -209,9 +340,9 @@ export default function Chat() {
           fileName: a.fileName,
           fileSize: a.fileSize,
           mimeType: a.mimeType,
-          url: a.url
+          url: a.url,
         })),
-        createdAt: new Date()
+        createdAt: new Date(),
       }
       setMessages((prev) => [...prev, userMsg])
 
@@ -221,107 +352,56 @@ export default function Chat() {
       setStreamingToolCalls([])
       streamingContentRef.current = ''
       streamingToolCallsRef.current = []
-
-      const dto = {
-        content,
-        attachments: attachments.map((a) => a.fileId)
-      }
+      abortRequestedRef.current = false
+      replyGeneratedRef.current = false
 
       // officeBridge: 用户发送消息 → 主管深度工作
       officeBridge.onChatMessageSent()
 
-      // 标记是否已触发 onReplyGenerated（仅首次 onMessage 触发）
-      let replyGenerated = false
+      // 3. 最近上下文（最近 10 条文本消息，消息不出本机）
+      const history: OpenClawChatMessage[] = messagesRef.current
+        .filter(
+          (m) =>
+            m.content &&
+            (m.role === 'user' || m.role === 'assistant'),
+        )
+        .slice(-10)
+        .map((m) => ({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content,
+        }))
 
-      const controller = chatApi.streamMessage(activeSession.id, dto, {
-        onMessage: (chunk) => {
-          streamingContentRef.current = streamingContentRef.current + chunk
-          setStreamingContent(streamingContentRef.current)
-          // officeBridge: 首次收到流式块 → 撰写员开始工作
-          if (!replyGenerated) {
-            replyGenerated = true
-            officeBridge.onReplyGenerated()
-          }
-        },
-        onToolCall: (toolCall) => {
-          const prev = streamingToolCallsRef.current
-          const idx = prev.findIndex((t) => t.id === toolCall.id)
-          if (idx >= 0) {
-            const next = [...prev]
-            next[idx] = toolCall
-            streamingToolCallsRef.current = next
-          } else {
-            streamingToolCallsRef.current = [...prev, toolCall]
-          }
-          setStreamingToolCalls(streamingToolCallsRef.current)
-          // officeBridge: 工具调用 → 市场员去技能墙
-          officeBridge.onToolCall(toolCall.name)
-          // 检索类工具同时触发检索员去资料室
-          if (isRetrieveTool(toolCall.name)) {
-            officeBridge.onAgentRetrieve()
-          }
-        },
-        onCreditsCost: (cost) => {
-          console.log('[Chat] credits cost:', cost)
-          // officeBridge: 积分扣减 → 所有人看大屏
-          officeBridge.onCreditsDeducted(cost.amount)
-        },
-        onComplete: (usage) => {
+      // 4. 发送（本地 OpenClaw 未配置/未登录 → 抛错并推 error 事件；扣费由云端 llm-proxy 完成）
+      try {
+        await handle.send(content, history)
+      } catch (err) {
+        const messageText = err instanceof Error ? err.message : String(err)
+        message.error('生成失败: ' + messageText)
+        officeBridge.onSystemError(messageText)
+        if (streamingContentRef.current) {
           const assistantMsg: ChatMessage = {
             id: Date.now() + 1,
-            sessionId: activeSession.id,
+            sessionId: session.id,
             userId: 0,
             role: 'assistant',
-            content: streamingContentRef.current,
+            content: streamingContentRef.current + '\n\n[生成中断]',
             toolCalls:
               streamingToolCallsRef.current.length > 0
                 ? streamingToolCallsRef.current
                 : undefined,
-            tokenUsage: usage,
-            status: 'done',
-            createdAt: new Date()
+            status: 'error',
+            createdAt: new Date(),
           }
           setMessages((prev) => [...prev, assistantMsg])
-          setStreaming(false)
-          setStreamingContent('')
-          setStreamingToolCalls([])
-          abortControllerRef.current = null
-          // officeBridge: 回复完成 → 审核员审核 → 所有人切 IDLE
-          officeBridge.onReview()
-          // 审核需要一点时间，延迟 1.5s 后标记任务完成
-          setTimeout(() => officeBridge.onTaskComplete(), 1500)
-        },
-        onError: (error) => {
-          console.error('[Chat] stream error:', error)
-          message.error(`生成失败: ${error.message}`)
-          // officeBridge: 系统错误 → 主管弹出错误气泡
-          officeBridge.onSystemError(error.message)
-          if (streamingContentRef.current) {
-            const assistantMsg: ChatMessage = {
-              id: Date.now() + 1,
-              sessionId: activeSession.id,
-              userId: 0,
-              role: 'assistant',
-              content: streamingContentRef.current + '\n\n[生成中断]',
-              toolCalls:
-                streamingToolCallsRef.current.length > 0
-                  ? streamingToolCallsRef.current
-                  : undefined,
-              status: 'error',
-              createdAt: new Date()
-            }
-            setMessages((prev) => [...prev, assistantMsg])
-          }
-          setStreaming(false)
-          setStreamingContent('')
-          setStreamingToolCalls([])
-          abortControllerRef.current = null
         }
-      })
-
-      abortControllerRef.current = controller
+        setStreaming(false)
+        setStreamingContent('')
+        setStreamingToolCalls([])
+        streamingContentRef.current = ''
+        streamingToolCallsRef.current = []
+      }
     },
-    [activeSession]
+    []
   )
 
   /** 生成完成：以助手媒体消息插入会话（含缩略图/播放器/积分消耗） */
@@ -353,33 +433,13 @@ export default function Chat() {
     [activeSession]
   )
 
-  /** 中断流式 */
+  /** 中断 OpenClaw 对话（本地 abort → 云端退款 → done 事件固化消息） */
   const handleAbort = useCallback(() => {
-    abortControllerRef.current?.abort()
-    abortControllerRef.current = null
-    // 固化已生成内容
-    if (streamingContentRef.current) {
-      const assistantMsg: ChatMessage = {
-        id: Date.now() + 1,
-        sessionId: activeSession?.id ?? 0,
-        userId: 0,
-        role: 'assistant',
-        content: streamingContentRef.current + '\n\n[已停止]',
-        toolCalls:
-          streamingToolCallsRef.current.length > 0
-            ? streamingToolCallsRef.current
-            : undefined,
-        status: 'stopped',
-        createdAt: new Date()
-      }
-      setMessages((prev) => [...prev, assistantMsg])
-    }
-    setStreaming(false)
-    setStreamingContent('')
-    setStreamingToolCalls([])
-  }, [activeSession])
+    abortRequestedRef.current = true
+    openClawChatRef.current?.abort()
+  }, [])
 
-  /** 修改模型时同步到会话 */
+  /** 修改模型时同步到会话 + 云端用户默认模型（OpenClaw llm-proxy 解析用） */
   const handleModelChange = async (newModelId: string) => {
     setModelId(newModelId)
     if (activeSession && activeSession.modelId !== newModelId) {
@@ -389,6 +449,11 @@ export default function Chat() {
       } catch (err) {
         console.error('[Chat] update model failed:', err)
       }
+    }
+    try {
+      await chatApi.setPreferredChatModel(newModelId)
+    } catch (err) {
+      console.error('[Chat] set preferred model failed:', err)
     }
   }
 
@@ -581,7 +646,12 @@ export default function Chat() {
           <div className={styles.messageListContainer}>
             <div className={styles.emptyState}>
               <RobotOutlined className={styles.emptyStateIcon} />
-              <div>选择左侧对话开始聊天，或点击「新建对话」</div>
+              <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                和 OpenClaw 对话
+              </div>
+              <div className={styles.emptyStateTip}>
+                对话由本地 OpenClaw 驱动，可自动调用 Hermes / N8N / MCP 帮你完成复杂任务。选择左侧对话开始聊天，或点击「新建对话」。
+              </div>
             </div>
           </div>
         )}
