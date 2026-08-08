@@ -12,6 +12,8 @@ import {
   SendOutlined,
   CloseOutlined,
   FileOutlined,
+  CheckCircleFilled,
+  CloseCircleFilled,
   PictureOutlined,
   VideoCameraOutlined
 } from '@ant-design/icons'
@@ -180,7 +182,7 @@ export function MessageInput({
               )}
               {!a.previewUrl && <FileOutlined />}
               <span>{a.file.name}</span>
-              <span style={{ color: '#6e7681', fontSize: 11 }}>
+              <span style={{ color: 'var(--color-text-tertiary)', fontSize: 11 }}>
                 {formatSize(a.file.size)}
               </span>
               {a.status === 'uploading' && (
@@ -191,8 +193,8 @@ export function MessageInput({
                   showInfo={false}
                 />
               )}
-              {a.status === 'done' && <span style={{ color: '#34d399' }}>✓</span>}
-              {a.status === 'error' && <span style={{ color: '#ef4444' }}>×</span>}
+              {a.status === 'done' && <CheckCircleFilled style={{ color: '#34d399' }} />}
+              {a.status === 'error' && <CloseCircleFilled style={{ color: '#ef4444' }} />}
               <CloseOutlined
                 className={styles.attachmentRemove}
                 onClick={() => handleRemoveAttachment(a.uid)}

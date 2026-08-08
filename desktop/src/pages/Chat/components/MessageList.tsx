@@ -7,7 +7,7 @@
 
 import { useEffect, useRef } from "react";
 import { Avatar, Image } from "antd";
-import { RobotOutlined, UserOutlined } from "@ant-design/icons";
+import { RobotOutlined, UserOutlined, PaperClipOutlined } from "@ant-design/icons";
 import type { ChatMessage } from "@/types/chat";
 import { MediaRenderer } from "@/components/MediaRenderer";
 import { resolveMediaUrl, isImageMime, isVideoMime } from "@/utils/media";
@@ -62,7 +62,7 @@ function AttachmentView({ att }: { att: NonNullable<ChatMessage["attachments"]>[
   }
   return (
     <span className={styles.attachmentChip}>
-      📎 {name}
+      <PaperClipOutlined style={{ fontSize: 11 }} /> {name}
     </span>
   )
 }

@@ -175,6 +175,9 @@
   background: rgba(99, 102, 241, 0.3);
   border-radius: 4px;
 }
+.messageListContainer::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.5);
+}
 
 /* ===== 消息气泡 ===== */
 .messageRow {

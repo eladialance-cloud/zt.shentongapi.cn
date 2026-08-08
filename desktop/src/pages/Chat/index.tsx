@@ -11,7 +11,7 @@ import {
   MenuUnfoldOutlined,
   RobotOutlined,
   ThunderboltOutlined,
-  BookOutlined
+  DatabaseOutlined
 } from '@ant-design/icons'
 import { SessionList } from './components/SessionList'
 import { MessageList } from './components/MessageList'
@@ -415,7 +415,7 @@ export default function Chat() {
             <ThunderboltOutlined style={{ color: 'var(--color-text-secondary)', marginRight: 6 }} />
             {m.name}
             {m.provider && (
-              <span style={{ color: '#6e7681', marginLeft: 6, fontSize: 11 }}>
+              <span style={{ color: 'var(--color-text-tertiary)', marginLeft: 6, fontSize: 11 }}>
                 ({m.provider})
               </span>
             )}
@@ -480,7 +480,7 @@ export default function Chat() {
       options: kbOptions.map((k) => ({
         label: (
           <span>
-            <BookOutlined style={{ color: 'var(--color-text-secondary)', marginRight: 6 }} />
+            <DatabaseOutlined style={{ color: 'var(--color-text-secondary)', marginRight: 6 }} />
             {k.name}
           </span>
         ),

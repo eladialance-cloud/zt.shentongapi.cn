@@ -142,3 +142,23 @@
 .link:hover {
   color: var(--color-text-secondary);
 }
+
+/* 记住账号密码复选框 */
+.rememberCheckbox {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  user-select: none;
+}
+
+.rememberCheckbox :global(.ant-checkbox-inner) {
+  border-color: var(--color-text-secondary);
+}
+
+.rememberCheckbox:hover :global(.ant-checkbox-inner),
+.rememberCheckbox :global(.ant-checkbox-checked .ant-checkbox-inner) {
+  border-color: #6366f1;
+}
+
+.rememberCheckbox :global(.ant-checkbox-checked .ant-checkbox-inner) {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+}

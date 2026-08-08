@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Form, Input, message } from "antd";
+import { Button, Checkbox, Form, Input, message } from "antd";
 import { LockOutlined, RobotOutlined, UserOutlined } from "@ant-design/icons";
 import { httpClient } from "@/api/http-client";
 import { useAuthStore, type User } from "@/store/auth";
@@ -22,6 +22,32 @@ const DEVICE_LIMIT_EXCEEDED_CODE = 1011;
 interface LoginFormValues {
   account: string;
   password: string;
+}
+
+/** 记住账号密码的 localStorage key */
+const REMEMBER_KEY = "shentong.login.remember";
+
+/** 读取已记住的账号密码 */
+function loadRemembered(): LoginFormValues | null {
+  try {
+    const raw = localStorage.getItem(REMEMBER_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as LoginFormValues;
+    if (data && data.account) return data;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** 保存/清除记住的账号密码 */
+function saveRemembered(data: LoginFormValues | null) {
+  try {
+    if (data) localStorage.setItem(REMEMBER_KEY, JSON.stringify(data));
+    else localStorage.removeItem(REMEMBER_KEY);
+  } catch {
+    // 本地存储失败不阻塞登录
+  }
 }
 
 /** 后端 login 响应 */
@@ -59,8 +85,18 @@ function getDeviceName(): string {
 export default function Login() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [remember, setRemember] = useState(true);
+  const [form] = Form.useForm<LoginFormValues>();
   const setAuth = useAuthStore((s) => s.setAuth);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  // 挂载时填充记住的账号密码
+  useEffect(() => {
+    const remembered = loadRemembered();
+    if (remembered) {
+      form.setFieldsValue(remembered);
+    }
+  }, [form]);
 
   // 如果已认证，自动跳转
   const redirectedRef = useRef(false);
@@ -121,6 +157,11 @@ export default function Login() {
     try {
       const data = await doLogin(values.account, values.password);
       await handleLoginSuccess(data);
+      if (remember) {
+        saveRemembered({ account: values.account, password: values.password });
+      } else {
+        saveRemembered(null);
+      }
     } catch (err) {
       // 设备超限特殊提示
       if (
@@ -148,6 +189,7 @@ export default function Login() {
         </div>
 
         <Form<LoginFormValues>
+          form={form}
           onFinish={handleFinish}
           size="large"
           layout="vertical"
@@ -171,6 +213,15 @@ export default function Login() {
               placeholder="密码"
               className={styles.input}
             />
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 4 }}>
+            <Checkbox
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              className={styles.rememberCheckbox}
+            >
+              记住账号密码
+            </Checkbox>
           </Form.Item>
           <Form.Item style={{ marginBottom: 12 }}>
             <Button

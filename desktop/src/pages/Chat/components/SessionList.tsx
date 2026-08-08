@@ -267,18 +267,18 @@ export function SessionList({
           allowClear
           size="small"
           placeholder="搜索对话..."
-          prefix={<SearchOutlined style={{ color: '#6e7681' }} />}
+          prefix={<SearchOutlined style={{ color: 'var(--color-text-tertiary)' }} />}
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
         />
       </div>
       <div className={styles.sessionListBody}>
         {loading && sessions.length === 0 ? (
-          <div style={{ padding: 16, textAlign: 'center', color: '#6e7681', fontSize: 12 }}>
+          <div style={{ padding: 16, textAlign: 'center', color: 'var(--color-text-tertiary)', fontSize: 12 }}>
             加载中...
           </div>
         ) : sessions.length === 0 ? (
-          <div style={{ padding: 16, textAlign: 'center', color: '#6e7681', fontSize: 12 }}>
+          <div style={{ padding: 16, textAlign: 'center', color: 'var(--color-text-tertiary)', fontSize: 12 }}>
             {keyword ? '未找到匹配的对话' : '点击上方按钮开始对话'}
           </div>
         ) : (

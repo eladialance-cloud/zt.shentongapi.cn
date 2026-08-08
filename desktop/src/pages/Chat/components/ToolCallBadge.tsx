@@ -1,5 +1,5 @@
 // 工具调用展示组件
-// 显示工具调用标签：[🔧 工具调用] 工具名称
+// 显示工具调用标签：工具名称
 // 展开后显示：输入参数、输出结果、执行耗时、积分消耗
 // 状态：running（转圈）/ success（绿色对勾）/ failed（红色叉）
 
@@ -12,6 +12,7 @@ import {
   ToolOutlined,
   DownOutlined,
   RightOutlined,
+  GoldOutlined,
 } from "@ant-design/icons";
 import type { ToolCallInfo } from "@/types/chat";
 import styles from "../styles.module.css";
@@ -81,10 +82,10 @@ export function ToolCallBadge({
         <ToolOutlined />
         <span className={styles.toolCallName}>{toolCall.name}</span>
         <StatusIcon status={toolCall.status} />
-        <span style={{ color: "#6e7681" }}>{statusText}</span>
+        <span style={{ color: 'var(--color-text-tertiary)' }}>{statusText}</span>
         {toolCall.status !== "running" && (
           <Tooltip title="执行耗时">
-            <span style={{ color: "#6e7681" }}>
+            <span style={{ color: 'var(--color-text-tertiary)' }}>
               · {formatDuration(toolCall.duration)}
             </span>
           </Tooltip>
@@ -92,7 +93,7 @@ export function ToolCallBadge({
         {toolCall.creditsCost > 0 && (
           <Tooltip title="积分消耗">
             <span style={{ color: "#34d399" }}>
-              · 💎 {toolCall.creditsCost}
+              · <GoldOutlined style={{ fontSize: 11 }} /> {toolCall.creditsCost}
             </span>
           </Tooltip>
         )}

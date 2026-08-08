@@ -1,10 +1,11 @@
 // 计费徽标组件
 // 显示积分消耗和余额：
-//   助手消息底部：💎 本次消耗: X 积分 · 余额: Y
+//   助手消息底部：本次消耗: X 积分 · 余额: Y
 //   工具调用后：✅ 执行完成 (0.8s · 2积分)
 // 流式过程中不显示，完成后显示
 
 import { useEffect, useState } from 'react'
+import { GoldOutlined } from '@ant-design/icons'
 import { wsClient } from '@/api/ws-client'
 import styles from '../styles.module.css'
 
@@ -54,7 +55,7 @@ export function CreditsBadge({ cost, balance, variant }: CreditsBadgeProps) {
       className={`${styles.creditsBadge} ${isLow ? styles.creditsBadgeLow : ''}`}
       title="本次对话积分消耗"
     >
-      💎 本次消耗: {cost} 积分
+      <GoldOutlined style={{ fontSize: 11 }} /> 本次消耗: {cost} 积分
       {liveBalance != null && <> · 余额: {liveBalance}</>}
     </span>
   )

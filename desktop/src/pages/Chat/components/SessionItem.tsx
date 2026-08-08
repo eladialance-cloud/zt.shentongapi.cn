@@ -86,7 +86,7 @@ function SessionItemBase({
       {preview && <div className={styles.sessionItemPreview}>{preview}</div>}
       <div className={styles.sessionItemMeta}>
         <span>{formatTime(session.lastMessageAt || session.updatedAt)}</span>
-        <span style={{ color: '#6e7681' }}>{session.modelId}</span>
+        <span style={{ color: 'var(--color-text-tertiary)' }}>{session.modelId}</span>
       </div>
     </div>
   )
