@@ -15,12 +15,14 @@ export class LlmProxyController {
   @Get('health')
   health() { return this.llmProxyService.health(); }
 
+  @Public()
   @Get('v1/models')
   async models(@Headers('authorization') auth: string) {
     const token = this.extractToken(auth);
     return { object: 'list', data: await this.llmProxyService.getModels(token) };
   }
 
+  @Public()
   @Post('v1/chat/completions')
   async chatCompletions(
     @Headers('authorization') auth: string,
