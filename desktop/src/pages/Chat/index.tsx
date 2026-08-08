@@ -153,6 +153,7 @@ export default function Chat() {
           createdAt: new Date(),
         }
         setMessages((prev) => [...prev, assistantMsg])
+        persistMessage(session.id, assistantMsg)
       }
       setStreaming(false)
       setStreamingContent('')
@@ -189,6 +190,7 @@ export default function Chat() {
             createdAt: new Date(),
           }
           setMessages((prev) => [...prev, assistantMsg])
+          persistMessage(session.id, assistantMsg)
         }
       }
       setStreaming(false)
@@ -352,6 +354,28 @@ export default function Chat() {
       }
       setMessages((prev) => [...prev, userMsg])
 
+      // 持久化用户消息到云端（切换会话/重启后历史仍可恢复）
+      void chatApi
+        .saveMessage(session.id, {
+          role: 'user',
+          content,
+          attachments: userMsg.attachments,
+        })
+        .catch((err) => console.error('[Chat] persist user message failed:', err))
+
+      // 标题仍为默认值时，用首条消息前 24 字更新（便于会话列表识别）
+      if (session.title === '新对话') {
+        const title = content.trim().slice(0, 24) || '新对话'
+        void chatApi
+          .updateSession(session.id, { title })
+          .then(() => {
+            const updated = { ...session, title }
+            activeSessionRef.current = updated
+            setActiveSession(updated)
+          })
+          .catch((err) => console.error('[Chat] update session title failed:', err))
+      }
+
       // 2. 重置流式状态
       setStreaming(true)
       setStreamingContent('')
@@ -399,6 +423,7 @@ export default function Chat() {
             createdAt: new Date(),
           }
           setMessages((prev) => [...prev, assistantMsg])
+          persistMessage(session.id, assistantMsg)
         }
         setStreaming(false)
         setStreamingContent('')
@@ -409,6 +434,19 @@ export default function Chat() {
     },
     []
   )
+
+  /** 持久化消息到云端（切换会话/重启后历史仍可恢复） */
+  const persistMessage = useCallback((sessionId: number, msg: ChatMessage) => {
+    void chatApi
+      .saveMessage(sessionId, {
+        role: msg.role,
+        content: msg.content,
+        attachments: msg.attachments,
+        toolCalls: msg.toolCalls,
+        creditsCost: msg.creditsCost,
+      })
+      .catch((err) => console.error('[Chat] persist message failed:', err))
+  }, [])
 
   /** 生成完成：以助手媒体消息插入会话（含缩略图/播放器/积分消耗） */
   const handleGenerationComplete = useCallback(
@@ -434,6 +472,7 @@ export default function Chat() {
         createdAt: new Date()
       }
       setMessages((prev) => [...prev, assistantMsg])
+      if (activeSession?.id) persistMessage(activeSession.id, assistantMsg)
       setGenerationOpen(false)
     },
     [activeSession]

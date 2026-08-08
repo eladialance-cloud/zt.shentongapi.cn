@@ -25,6 +25,7 @@ import type {
   ChatMessage,
   CreateSessionDto,
   SendMessageDto,
+  SaveMessageDto,
   SessionQuery,
   PaginationQuery,
   PaginatedResult,
@@ -113,6 +114,20 @@ export async function listMessages(
 export async function sendMessage(
   sessionId: number,
   dto: SendMessageDto,
+): Promise<ChatMessage> {
+  return httpClient.post<ChatMessage>(
+    `/chat/sessions/${sessionId}/messages`,
+    dto,
+  );
+}
+
+/**
+ * 保存消息（纯持久化，不触发 AI 调用）
+ * POST /chat/sessions/:id/messages
+ */
+export async function saveMessage(
+  sessionId: number,
+  dto: SaveMessageDto,
 ): Promise<ChatMessage> {
   return httpClient.post<ChatMessage>(
     `/chat/sessions/${sessionId}/messages`,

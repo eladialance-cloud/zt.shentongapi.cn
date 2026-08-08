@@ -64,10 +64,20 @@ export interface CreateSessionDto {
   knowledgeBaseId?: number
 }
 
-/** 发送消息 DTO */
+/** 发送消息 DTO（SSE 流式端点用，兼容旧契约） */
 export interface SendMessageDto {
   content: string
   attachments?: string[]
+}
+
+/** 保存消息 DTO（POST /chat/sessions/:id/messages，纯持久化用） */
+export interface SaveMessageDto {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  attachments?: Attachment[]
+  toolCalls?: ToolCallInfo[]
+  tokenUsage?: TokenUsage
+  creditsCost?: number
 }
 
 /** 附件 */
