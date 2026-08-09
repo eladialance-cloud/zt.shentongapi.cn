@@ -439,10 +439,10 @@
   color: var(--color-text-primary) !important;
   resize: none !important;
   box-shadow: none !important;
-  font-size: 15px;
-  line-height: 1.6;
-  padding: 10px 4px 8px 6px;
-  max-height: 200px;
+  font-size: 16px;
+  line-height: 1.7;
+  padding: 12px 8px 10px 10px;
+  max-height: 240px;
 }
 
 .textArea::placeholder {

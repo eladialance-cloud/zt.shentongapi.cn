@@ -66,13 +66,14 @@ export function uploadFile(
     xhr.onabort = () => reject(new Error('上传已取消'))
 
     // 异步注入 Authorization 后发送（JWT 鉴权，无需 HMAC 签名）
+    // 注意：setRequestHeader 必须在 xhr.open() 之后调用，否则抛 InvalidStateError
     void (async () => {
       const url = `${API_BASE}/files/upload`
       const { accessToken } = useAuthStore.getState()
+      xhr.open('POST', url, true)
       if (accessToken) {
         xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`)
       }
-      xhr.open('POST', url, true)
       // 注意：multipart boundary 由浏览器自动设置，不要手动设置 Content-Type
       xhr.send(formData)
     })()

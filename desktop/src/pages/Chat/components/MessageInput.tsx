@@ -4,18 +4,19 @@
 // - 上传完成后在输入框上方显示文件列表
 // - 发送消息时附带附件信息
 
-import { useState, useRef, type KeyboardEvent } from 'react'
-import { Button, Input, message, Progress, Tooltip, Upload } from 'antd'
-import type { UploadProps } from 'antd'
+import { useState, useRef, type ChangeEvent, type KeyboardEvent } from 'react'
+import { Button, Dropdown, Input, message, Progress, Tooltip } from 'antd'
+import type { MenuProps } from 'antd'
 import {
-  PaperClipOutlined,
   SendOutlined,
   CloseOutlined,
   FileOutlined,
   CheckCircleFilled,
   CloseCircleFilled,
   PictureOutlined,
-  VideoCameraOutlined
+  VideoCameraOutlined,
+  PlusOutlined,
+  ExperimentOutlined
 } from '@ant-design/icons'
 import { uploadFile } from '@/api/file-api'
 import type { UploadResult } from '@/types/chat'
@@ -56,6 +57,9 @@ export function MessageInput({
   const [content, setContent] = useState('')
   const [attachments, setAttachments] = useState<AttachmentItem[]>([])
   const uidCounter = useRef(0)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const videoInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   /** 自定义上传逻辑（不使用 antd 的 action） */
   const handleUpload = async (file: File) => {
@@ -103,15 +107,22 @@ export function MessageInput({
     }
   }
 
-  /** Upload 组件配置（手动控制，不自动上传） */
-  const uploadProps: UploadProps = {
-    multiple: true,
-    showUploadList: false,
-    beforeUpload: (file) => {
-      void handleUpload(file)
-      // 返回 false 阻止 antd 自动上传
-      return false
+  /** 隐藏 input 选择文件后统一走 handleUpload */
+  const handleFilesPicked = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (files) {
+      Array.from(files).forEach((file) => void handleUpload(file))
     }
+    e.target.value = ''
+  }
+
+  /** + 号菜单：上传图片/视频/文件 + 文生图/文生视频 */
+  const handlePlusMenuClick: MenuProps['onClick'] = ({ key }) => {
+    if (key === 'upload-image') imageInputRef.current?.click()
+    else if (key === 'upload-video') videoInputRef.current?.click()
+    else if (key === 'upload-file') fileInputRef.current?.click()
+    else if (key === 'gen-image') onOpenGeneration?.('image')
+    else if (key === 'gen-video') onOpenGeneration?.('video')
   }
 
   /** 移除附件 */
@@ -204,45 +215,63 @@ export function MessageInput({
         </div>
       )}
       <div className={styles.inputRow}>
-        {onOpenGeneration && (
-          <>
-            <Tooltip title="文生图（扣除积分）">
-              <Button
-                type="default"
-                icon={<PictureOutlined />}
-                className={styles.uploadBtn}
-                disabled={sending}
-                onClick={() => onOpenGeneration('image')}
-              />
-            </Tooltip>
-            <Tooltip title="文生视频（扣除积分）">
-              <Button
-                type="default"
-                icon={<VideoCameraOutlined />}
-                className={styles.uploadBtn}
-                disabled={sending}
-                onClick={() => onOpenGeneration('video')}
-              />
-            </Tooltip>
-          </>
-        )}
-        <Upload {...uploadProps}>
-          <Tooltip title="添加附件">
+        <Dropdown
+          trigger={['click']}
+          menu={{
+            items: [
+              { key: 'upload-image', icon: <PictureOutlined />, label: '上传图片' },
+              { key: 'upload-video', icon: <VideoCameraOutlined />, label: '上传视频' },
+              { key: 'upload-file', icon: <FileOutlined />, label: '上传文件' },
+              ...(onOpenGeneration
+                ? [
+                    { type: 'divider' as const },
+                    { key: 'gen-image', icon: <ExperimentOutlined />, label: '文生图（扣除积分）' },
+                    { key: 'gen-video', icon: <ExperimentOutlined />, label: '文生视频（扣除积分）' },
+                  ]
+                : []),
+            ],
+            onClick: handlePlusMenuClick,
+          }}
+        >
+          <Tooltip title="添加附件 / 生成媒体">
             <Button
               type="default"
-              icon={<PaperClipOutlined />}
+              icon={<PlusOutlined />}
               className={styles.uploadBtn}
               disabled={sending}
             />
           </Tooltip>
-        </Upload>
+        </Dropdown>
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          style={{ display: 'none' }}
+          onChange={handleFilesPicked}
+        />
+        <input
+          ref={videoInputRef}
+          type="file"
+          accept="video/*"
+          multiple
+          style={{ display: 'none' }}
+          onChange={handleFilesPicked}
+        />
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          style={{ display: 'none' }}
+          onChange={handleFilesPicked}
+        />
         <Input.TextArea
           className={styles.textArea}
           value={content}
           onChange={(e) => setContent(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          autoSize={{ minRows: 1, maxRows: 6 }}
+          autoSize={{ minRows: 2, maxRows: 8 }}
           disabled={sending}
           bordered={false}
         />
