@@ -186,9 +186,13 @@ export async function adminRequest<T = unknown>(
   } = {}
 ): Promise<T> {
   const token = useAdminAuthStore.getState().token
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string | undefined> = {}
   if (token) {
     headers.Authorization = `Bearer ${token}`
+  }
+  // FormData（文件上传）：清空默认 Content-Type，让 axios/浏览器自动生成 multipart boundary
+  if (typeof FormData !== 'undefined' && options.data instanceof FormData) {
+    headers['Content-Type'] = undefined
   }
   const config: AxiosRequestConfig = {
     method,
