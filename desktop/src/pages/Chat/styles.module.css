@@ -299,6 +299,29 @@
   font-size: 11px;
 }
 
+/* ===== Agent 运行阶段条（过程面板） ===== */
+.agentPhaseBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  padding: 6px 10px;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(56, 189, 248, 0.10), rgba(99, 102, 241, 0.06));
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.agentPhaseIcon {
+  font-size: 14px;
+}
+
+.agentPhaseText {
+  flex: 1;
+}
+
+
 /* ===== 工具调用标签 ===== */
 .toolCallBadge {
   margin: 6px 0;

@@ -24,7 +24,29 @@ interface MessageListProps {
   streaming?: boolean;
   /** 流式期间收到的工具调用 */
   streamingToolCalls?: ChatMessage["toolCalls"];
+  /** OpenClaw Agent 生命周期阶段（过程面板） */
+  agentPhase?: "idle" | "start" | "finishing" | "end" | "error";
 }
+
+/** Agent 运行阶段描述（过程面板） */
+const AGENT_PHASE_TEXT: Record<string, { text: string; icon: string }> = {
+  start: { text: "Agent 正在思考，判断自行回答还是调度工具...", icon: "🤔" },
+  finishing: { text: "Agent 正在整理最终回答...", icon: "✨" },
+  end: { text: "Agent 已完成", icon: "✅" },
+  error: { text: "Agent 执行失败", icon: "❌" },
+};
+
+function AgentPhaseBar({ phase }: { phase: string }) {
+  const info = AGENT_PHASE_TEXT[phase];
+  if (!info) return null;
+  return (
+    <div className={styles.agentPhaseBar}>
+      <span className={styles.agentPhaseIcon}>{info.icon}</span>
+      <span className={styles.agentPhaseText}>{info.text}</span>
+    </div>
+  );
+}
+
 
 /** 格式化时间 */
 function formatTime(date: Date): string {
@@ -72,6 +94,7 @@ export function MessageList({
   streamingContent,
   streaming = false,
   streamingToolCalls,
+  agentPhase = "idle",
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -154,6 +177,7 @@ export function MessageList({
             className={`${styles.messageAvatar} ${styles.messageAvatarAssistant}`}
           />
           <div className={styles.messageBubbleWrap}>
+            {agentPhase !== "idle" && <AgentPhaseBar phase={agentPhase} />}
             {streamingToolCalls && streamingToolCalls.length > 0 && (
               <>
                 {streamingToolCalls.map((tc) => (

@@ -23,6 +23,7 @@ import { join } from 'node:path';
 import {
   OpenClawChatService,
   createLocalOpenClawCaller,
+  createLocalOpenClawWsCaller,
   parseSseFrame,
   type OpenClawChatEvent,
   type OpenClawSendParams,
@@ -228,4 +229,70 @@ function waitForPortLine(child: ReturnType<typeof spawn>, timeoutMs = 8000): Pro
     });
   });
 }
+describe('createLocalOpenClawWsCaller WS 网关集成', () => {
+  let serverChild: ReturnType<typeof spawn> | null = null;
+
+  function startWsMock(code: string): Promise<string> {
+    if (serverChild && serverChild.pid) {
+      try { serverChild.kill(); } catch {}
+    }
+    const child = spawn(process.execPath, ['-e', code], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    serverChild = child;
+    return waitForPortLine(child);
+  }
+
+  after(async () => {
+    if (serverChild && serverChild.pid) {
+      try { serverChild.kill(); } catch {}
+    }
+    serverChild = null;
+  });
+
+  it('WS 网关：assistant 增量文本 + lifecycle 事件 + chat final 结束', async () => {
+    const base = await startWsMock(WS_MOCK);
+    const caller = createLocalOpenClawWsCaller('http://127.0.0.1:' + base);
+    const events: OpenClawChatEvent[] = [];
+    const chunks: string[] = [];
+    for await (const c of caller(
+      { text: 'hi', token: 'x', sessionId: 7 },
+      (e) => events.push(e),
+      new AbortController().signal,
+    )) {
+      chunks.push(c);
+    }
+    assert.deepEqual(chunks, ['你', '好']);
+    const phases = events
+      .filter((e) => e.type === 'lifecycle' && e.lifecycle)
+      .map((e) => e.lifecycle?.phase);
+    assert.ok(phases.includes('start'));
+    assert.ok(phases.includes('finishing'));
+    assert.ok(phases.includes('end'));
+  });
+
+  it('WS 网关：工具调用事件 → onEvent tool-call（含状态与输出）', async () => {
+    const base = await startWsMock(WS_MOCK_TOOL);
+    const caller = createLocalOpenClawWsCaller('http://127.0.0.1:' + base);
+    const events: OpenClawChatEvent[] = [];
+    const chunks: string[] = [];
+    for await (const c of caller(
+      { text: 'read a file', token: 'x', sessionId: 8 },
+      (e) => events.push(e),
+      new AbortController().signal,
+    )) {
+      chunks.push(c);
+    }
+    const toolEvt = events.find((e) => e.type === 'tool-call');
+    assert.ok(toolEvt && toolEvt.type === 'tool-call');
+    assert.equal(toolEvt.toolCall?.name, 'read');
+    assert.equal(toolEvt.toolCall?.state, 'done');
+    assert.equal(toolEvt.toolCall?.output, 'file content');
+  });
+});
+
+const WS_MOCK = "const http = require('node:http');\nconst { WebSocketServer } = require('ws');\nconst srv = http.createServer();\nconst wss = new WebSocketServer({ server: srv });\nlet sessionKey = 'agent:main:dashboard:test';\nfunction push(ws, frame) { ws.send(JSON.stringify(frame)); }\nwss.on('connection', (ws) => {\n  ws.on('message', (raw) => {\n    const msg = JSON.parse(raw.toString());\n    if (msg.method === 'connect') {\n      ws.send(JSON.stringify({ type: 'res', id: msg.id, ok: true, payload: { type: 'hello-ok', protocol: 4 } }));\n    } else if (msg.method === 'sessions.create') {\n      ws.send(JSON.stringify({ type: 'res', id: msg.id, ok: true, payload: { key: sessionKey } }));\n    } else if (msg.method === 'chat.send') {\n      ws.send(JSON.stringify({ type: 'res', id: msg.id, ok: true, payload: { runId: msg.params.idempotencyKey, status: 'started' } }));\n      const rid = msg.params.idempotencyKey;\n      push(ws, { type: 'event', event: 'agent', payload: { runId: rid, stream: 'assistant', data: { text: '你', delta: '你' } } });\n      push(ws, { type: 'event', event: 'agent', payload: { runId: rid, stream: 'lifecycle', data: { phase: 'start' } } });\n      push(ws, { type: 'event', event: 'agent', payload: { runId: rid, stream: 'assistant', data: { text: '你好', delta: '好' } } });\n      push(ws, { type: 'event', event: 'agent', payload: { runId: rid, stream: 'lifecycle', data: { phase: 'finishing', stopReason: 'stop' } } });\n      push(ws, { type: 'event', event: 'chat', payload: { runId: rid, state: 'final', stopReason: 'stop', message: { role: 'assistant', content: [{ type: 'text', text: '你好' }] } } });\n      push(ws, { type: 'event', event: 'agent', payload: { runId: rid, stream: 'lifecycle', data: { phase: 'end', stopReason: 'stop' } } });\n    }\n  });\n});\nsrv.listen(0, '127.0.0.1', () => console.log('PORT=' + srv.address().port));";
+
+const WS_MOCK_TOOL = "const http = require('node:http');\nconst { WebSocketServer } = require('ws');\nconst srv = http.createServer();\nconst wss = new WebSocketServer({ server: srv });\nfunction push(ws, frame) { ws.send(JSON.stringify(frame)); }\nwss.on('connection', (ws) => {\n  ws.on('message', (raw) => {\n    const msg = JSON.parse(raw.toString());\n    if (msg.method === 'connect') {\n      ws.send(JSON.stringify({ type: 'res', id: msg.id, ok: true, payload: { type: 'hello-ok', protocol: 4 } }));\n    } else if (msg.method === 'sessions.create') {\n      ws.send(JSON.stringify({ type: 'res', id: msg.id, ok: true, payload: { key: 'agent:main:dashboard:tool' } }));\n    } else if (msg.method === 'chat.send') {\n      ws.send(JSON.stringify({ type: 'res', id: msg.id, ok: true, payload: { runId: msg.params.idempotencyKey, status: 'started' } }));\n      const rid = msg.params.idempotencyKey;\n      push(ws, { type: 'event', event: 'agent', payload: { runId: rid, stream: 'tool', data: { id: 't1', name: 'read', args: 'a.txt', status: 'done', output: 'file content' } } });\n      push(ws, { type: 'event', event: 'chat', payload: { runId: rid, state: 'final', stopReason: 'stop', message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] } } });\n      push(ws, { type: 'event', event: 'agent', payload: { runId: rid, stream: 'lifecycle', data: { phase: 'end', stopReason: 'stop' } } });\n    }\n  });\n});\nsrv.listen(0, '127.0.0.1', () => console.log('PORT=' + srv.address().port));";
 

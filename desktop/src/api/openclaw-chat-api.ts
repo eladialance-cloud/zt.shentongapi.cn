@@ -1,9 +1,13 @@
 // OpenClaw 本地直达对话 - 渲染侧封装（IPC）
-// 链路：主进程 → 本地 OpenClaw 流式对话 → OpenClaw 内部经 llm-proxy 调用后台模型并扣费。
+// 链路：主进程 → 本地 OpenClaw WS 网关（富事件）→ OpenClaw 内部经 llm-proxy 调用后台模型并扣费。
 // 消息内容全程本地，云端只做模型调用与扣费。
 
 import { useAuthStore } from '@/store/auth'
-import type { OpenClawToolCall, OpenClawChatMessage } from '@shared/types'
+import type {
+  OpenClawToolCall,
+  OpenClawChatMessage,
+  OpenClawLifecycleInfo,
+} from '@shared/types'
 
 export interface OpenClawChatHandle {
   /** 发送一条消息：本地 OpenClaw 流式对话（扣费由云端 llm-proxy 完成）。
@@ -13,6 +17,7 @@ export interface OpenClawChatHandle {
     text: string,
     history?: OpenClawChatMessage[],
     knowledgeBaseId?: number,
+    sessionId?: number,
   ) => Promise<{ ok: boolean; aborted?: boolean }>
   /** 中断当前对话（本地 abort，云端退款） */
   abort: () => void
@@ -20,8 +25,10 @@ export interface OpenClawChatHandle {
   onMessage: (cb: (content: string) => void) => () => void
   /** 终审/来源标注后的最终文本；返回取消监听函数 */
   onFinalize: (cb: (content: string) => void) => () => void
-  /** 工具调用；返回取消监听函数 */
+  /** 工具调用（含状态 start/done/error 与输出）；返回取消监听函数 */
   onToolCall: (cb: (toolCall: OpenClawToolCall) => void) => () => void
+  /** Agent 生命周期（start → finishing → end/error）；返回取消监听函数 */
+  onLifecycle: (cb: (info: OpenClawLifecycleInfo) => void) => () => void
   /** 对话完成；返回取消监听函数 */
   onDone: (cb: () => void) => () => void
   /** 错误（离线/余额不足/未配置模型等）；返回取消监听函数 */
@@ -33,15 +40,16 @@ export function createOpenClawChat(): OpenClawChatHandle {
   const api = window.electronAPI?.openclawChat
   if (!api) throw new Error('electronAPI.openclawChat 不可用（请升级桌面端版本）')
   return {
-    send: async (text, history, knowledgeBaseId) => {
+    send: async (text, history, knowledgeBaseId, sessionId) => {
       const { accessToken } = useAuthStore.getState()
       if (!accessToken) throw new Error('未登录')
-      return api.send(text, accessToken, history, knowledgeBaseId)
+      return api.send(text, accessToken, history, knowledgeBaseId, sessionId)
     },
     abort: () => api.abort(),
     onMessage: (cb) => api.onMessage((d) => cb(d.content)),
     onFinalize: (cb) => api.onFinalize((d) => cb(d.content)),
     onToolCall: (cb) => api.onToolCall((d) => cb(d)),
+    onLifecycle: (cb) => api.onLifecycle((d) => cb(d.lifecycle)),
     onDone: (cb) => api.onDone(() => cb()),
     onError: (cb) => api.onError((d) => cb(new Error(d.message))),
   }

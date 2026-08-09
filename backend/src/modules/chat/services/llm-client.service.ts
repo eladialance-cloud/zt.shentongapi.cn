@@ -25,6 +25,13 @@ export interface StreamChatOptions {
 export interface StreamChatCallbacks {
   onMessage: (chunk: string) => void;
   onToolCall?: (toolCall: { id: string; name: string; args: string }) => void;
+  /** 流式透传上游 tool_calls delta（供代理网关原样转发，不执行） */
+  onToolCallDelta?: (toolCalls: unknown[]) => void;
+  /** 无 toolExecutor 且上游返回 tool_calls 时回调（替代 onDone，由调用方决定结束方式） */
+  onToolCallsDone?: (
+    toolCalls: Array<{ id: string; name: string; args: string }>,
+    usage: { input: number; output: number; total: number },
+  ) => void;
   onDone: (
     usage: { input: number; output: number; total: number },
     fullResponse: string,
@@ -236,6 +243,10 @@ export class LlmClientService {
             if (tc.id) pendingToolCalls[idx].id = tc.id;
             if (tc.function?.name) pendingToolCalls[idx].name += tc.function.name;
             if (tc.function?.arguments) pendingToolCalls[idx].args += tc.function.arguments;
+            // 透传原始 tool_calls delta（调用方网关原样转发给客户端，如 OpenClaw）
+            if (callbacks.onToolCallDelta) {
+              callbacks.onToolCallDelta(delta.tool_calls);
+            }
           }
         }
         if (parsed.usage) {
@@ -269,6 +280,10 @@ export class LlmClientService {
 
     // 如果有 tool_calls 且提供了 toolExecutor，执行工具并重新调用 LLM
     const validToolCalls = pendingToolCalls.filter((tc) => tc.name);
+    if (validToolCalls.length > 0 && !options.toolExecutor && callbacks.onToolCallsDone) {
+      callbacks.onToolCallsDone(validToolCalls, usage);
+      return { fullResponse, usage };
+    }
     if (validToolCalls.length > 0 && options.toolExecutor) {
       this.logger.debug(`检测到 ${validToolCalls.length} 个 tool_calls，开始执行`);
 

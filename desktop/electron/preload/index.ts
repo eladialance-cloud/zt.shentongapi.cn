@@ -19,6 +19,7 @@ import type {
   OpenClawChatMessagePayload,
   OpenClawToolCall,
   OpenClawChatDonePayload,
+  OpenClawChatLifecyclePayload,
   OpenClawChatErrorPayload
 } from '../shared/types'
 
@@ -119,8 +120,8 @@ const electronAPI: ElectronAPI = {
     setProxyKey: (key: string) => {
       ipcRenderer.send('openclaw-chat:set-proxy-key', key)
     },
-    send: (text: string, token: string, history?: OpenClawChatMessage[], knowledgeBaseId?: number) =>
-      ipcRenderer.invoke('openclaw-chat:send', { text, token, history, knowledgeBaseId }) as Promise<{ ok: boolean; aborted?: boolean }>,
+    send: (text: string, token: string, history?: OpenClawChatMessage[], knowledgeBaseId?: number, sessionId?: number) =>
+      ipcRenderer.invoke('openclaw-chat:send', { text, token, history, knowledgeBaseId, sessionId }) as Promise<{ ok: boolean; aborted?: boolean }>,
     abort: () => {
       ipcRenderer.send('openclaw-chat:abort')
     },
@@ -144,6 +145,14 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.on('openclaw-chat:tool-call', handler)
       return () => {
         ipcRenderer.removeListener('openclaw-chat:tool-call', handler)
+      }
+    },
+    /** Agent 生命周期（openclaw-chat:lifecycle）：start → finishing → end/error */
+    onLifecycle: (callback: (payload: OpenClawChatLifecyclePayload) => void) => {
+      const handler = (_event: IpcRendererEvent, payload: OpenClawChatLifecyclePayload): void => callback(payload)
+      ipcRenderer.on('openclaw-chat:lifecycle', handler)
+      return () => {
+        ipcRenderer.removeListener('openclaw-chat:lifecycle', handler)
       }
     },
     onDone: (callback: (payload: OpenClawChatDonePayload) => void) => {

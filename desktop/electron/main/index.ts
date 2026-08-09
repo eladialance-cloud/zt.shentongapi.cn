@@ -6,7 +6,7 @@ import { getRuntimeDirInfo, setRuntimeRoot, defaultRuntimeRoot } from './runtime
 import { join } from 'node:path'
 import {
   OpenClawChatService,
-  createLocalOpenClawCaller,
+  createLocalOpenClawWsCaller,
   waitForLocalPort,
   OPENCLAW_LOCAL_PORT,
 } from './openclaw-chat'
@@ -115,7 +115,7 @@ app.on('window-all-closed', () => {
 function registerIpcHandlers(): void {
   // ===== OpenClaw 本地直达对话（记账云端 + 对话本地） =====
   const openClawChat = new OpenClawChatService({
-    callOpenClaw: createLocalOpenClawCaller(),
+    callOpenClaw: createLocalOpenClawWsCaller(),
     ensureOpenClaw: async () => {
       const info = serviceManager.getInfo('openclaw')
       // 状态机防御：status='running' 但端口未监听（进程残留/假活）时也强制重启，
@@ -149,6 +149,7 @@ function registerIpcHandlers(): void {
         token: string
         history?: OpenClawChatMessage[]
         knowledgeBaseId?: number
+        sessionId?: number
       },
     ) => {
       const win = BrowserWindow.fromWebContents(event.sender)
@@ -164,11 +165,13 @@ function registerIpcHandlers(): void {
             token: payload.token,
             history: payload.history,
             knowledgeBaseId: payload.knowledgeBaseId,
+            sessionId: payload.sessionId,
           },
           (chunk) => push('openclaw-chat:message', { content: chunk }),
           (e) => {
             if (e.type === 'tool-call') push('openclaw-chat:tool-call', e.toolCall)
             else if (e.type === 'done') push('openclaw-chat:done', { usage: e.usage })
+            else if (e.type === 'lifecycle') push('openclaw-chat:lifecycle', { lifecycle: e.lifecycle })
           },
           (finalContent) => push('openclaw-chat:finalize', { content: finalContent }),
         )

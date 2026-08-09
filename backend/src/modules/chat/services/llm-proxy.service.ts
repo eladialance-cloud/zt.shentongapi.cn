@@ -144,10 +144,59 @@ export class LlmProxyService {
       let error: Error | null = null;
       let resolveWait: (() => void) | null = null;
       const push = (data: string) => { queue.push(data); if (resolveWait) { const r = resolveWait; resolveWait = null; r(); } };
+      let fullResponse = '';
+
+      // 统一结算：按后台定价 × 实际 token 扣费（streamChat callbacks 共用）
+      const settle = async (u: { input: number; output: number; total: number }) => {
+        const cost = await self.pricingService.calculateModelCost(modelId, {
+          input: u.input,
+          output: u.output,
+        });
+        const finalCost = self.pricingService.applyDiscount(cost, userLevel);
+        if (onCost) { try { onCost(finalCost); } catch (_e) {} }
+        if (frozenTxnId && finalCost > 0) {
+          try { await self.creditsService.settleCredits(userId, frozenTxnId, finalCost); } catch (_e) {}
+        } else if (frozenTxnId) {
+          try { await self.creditsService.refundCredits(userId, frozenTxnId); } catch (_e) {}
+        }
+        if (entryId) {
+          try { await self.apiKeyPoolService.deductQuota(entryId, u.total); } catch (_e) {}
+        }
+      };
+      // 结束帧：文本完成 stop / 工具调用完成 tool_calls（工具由客户端本地执行）
+      const emitFinish = (
+        u: { input: number; output: number; total: number },
+        finishReason: string,
+        toolCalls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>,
+      ) => {
+        if (isStream) {
+          push(`data: ${JSON.stringify({
+            id: `chatcmpl-${Date.now()}`, object: 'chat.completion.chunk',
+            model: body.model,
+            choices: [{ delta: toolCalls ? { tool_calls: toolCalls } : {}, index: 0, finish_reason: finishReason }],
+          })}\n\n`);
+          push('data: [DONE]\n\n');
+        } else {
+          push(`data: ${JSON.stringify({
+            id: `chatcmpl-${Date.now()}`, object: 'chat.completion',
+            model: body.model,
+            choices: [{
+              message: toolCalls
+                ? { role: 'assistant', content: fullResponse || null, tool_calls: toolCalls }
+                : { role: 'assistant', content: fullResponse },
+              finish_reason: finishReason, index: 0,
+            }],
+            usage: { prompt_tokens: u.input, completion_tokens: u.output, total_tokens: u.total },
+          })}\n\n`);
+          push('data: [DONE]\n\n');
+        }
+        done = true;
+        if (resolveWait) { const r = resolveWait; resolveWait = null; r(); }
+      };
 
       void (async () => {
         try {
-          let fullResponse = '';
+
           await self.llmClient.streamChat(
             {
               model: upstreamModel,
@@ -168,42 +217,30 @@ export class LlmProxyService {
                   })}\n\n`);
                 }
               },
-              onDone: async (u: { input: number; output: number; total: number }, _resp: unknown) => {
-                const cost = await self.pricingService.calculateModelCost(modelId, {
-                  input: u.input,
-                  output: u.output,
-                });
-                const finalCost = self.pricingService.applyDiscount(cost, userLevel);
-                if (onCost) { try { onCost(finalCost); } catch (_e) {} }
-                if (frozenTxnId && finalCost > 0) {
-                  try { await self.creditsService.settleCredits(userId, frozenTxnId, finalCost); } catch (_e) {}
-                } else if (frozenTxnId) {
-                  try { await self.creditsService.refundCredits(userId, frozenTxnId); } catch (_e) {}
-                }
-                if (entryId) {
-                  if (entryId) {
-                  try { await self.apiKeyPoolService.deductQuota(entryId, u.total); } catch (_e) {}
-                }
-                }
-
+              // 流式透传上游 tool_calls delta（OpenClaw 等网关客户端原样接收并本地执行工具）
+              onToolCallDelta: (toolCalls: unknown[]) => {
                 if (isStream) {
                   push(`data: ${JSON.stringify({
                     id: `chatcmpl-${Date.now()}`, object: 'chat.completion.chunk',
                     model: body.model,
-                    choices: [{ delta: {}, index: 0, finish_reason: 'stop' }],
+                    choices: [{ delta: { tool_calls: toolCalls }, index: 0, finish_reason: null }],
                   })}\n\n`);
-                  push('data: [DONE]\n\n');
-                } else {
-                  push(`data: ${JSON.stringify({
-                    id: `chatcmpl-${Date.now()}`, object: 'chat.completion',
-                    model: body.model,
-                    choices: [{ message: { role: 'assistant', content: fullResponse }, finish_reason: 'stop', index: 0 }],
-                    usage: { prompt_tokens: u.input, completion_tokens: u.output, total_tokens: u.total },
-                  })}\n\n`);
-                  push('data: [DONE]\n\n');
                 }
-                done = true;
-                if (resolveWait) { const r = resolveWait; resolveWait = null; r(); }
+              },
+
+              onDone: async (u: { input: number; output: number; total: number }, _resp: unknown) => {
+                await settle(u);
+                emitFinish(u, 'stop');
+              },
+              onToolCallsDone: async (
+                calls: Array<{ id: string; name: string; args: string }>,
+                u: { input: number; output: number; total: number },
+              ) => {
+                await settle(u);
+                emitFinish(u, 'tool_calls', calls.map((tc) => ({
+                  id: tc.id, type: 'function' as const,
+                  function: { name: tc.name, arguments: tc.args },
+                })));
               },
               onError: (err: Error) => {
                 error = err;

@@ -233,6 +233,10 @@ export interface OpenClawToolCall {
   id: string;
   name: string;
   input: unknown;
+  /** 工具调用状态：start 开始 / done 完成 / error 失败 */
+  state?: 'start' | 'done' | 'error';
+  /** 工具执行结果摘要（done/error 时） */
+  output?: string;
 }
 
 export interface OpenClawUsage {
@@ -252,6 +256,18 @@ export interface OpenClawChatDonePayload {
 }
 
 /** openclaw-chat:error 推送 payload */
+/** OpenClaw Agent 生命周期信息 */
+export interface OpenClawLifecycleInfo {
+  phase: 'start' | 'finishing' | 'end' | 'error';
+  stopReason?: string;
+  error?: string;
+}
+
+/** openclaw-chat:lifecycle 推送 payload */
+export interface OpenClawChatLifecyclePayload {
+  lifecycle: OpenClawLifecycleInfo;
+}
+
 export interface OpenClawChatErrorPayload {
   message: string;
 }
@@ -358,6 +374,7 @@ export interface ElectronAPI {
       token: string,
       history?: OpenClawChatMessage[],
       knowledgeBaseId?: number,
+      sessionId?: number,
     ): Promise<{ ok: boolean; aborted?: boolean }>;
     /** 中断当前对话（本地 abort） */
     abort(): void;
@@ -367,6 +384,8 @@ export interface ElectronAPI {
     onFinalize(cb: (payload: OpenClawChatMessagePayload) => void): () => void;
     /** 工具调用（openclaw-chat:tool-call） */
     onToolCall(cb: (toolCall: OpenClawToolCall) => void): () => void;
+    /** Agent 生命周期（openclaw-chat:lifecycle） */
+    onLifecycle(cb: (payload: OpenClawChatLifecyclePayload) => void): () => void;
     /** 完成（openclaw-chat:done） */
     onDone(cb: (payload: OpenClawChatDonePayload) => void): () => void;
     /** 错误（openclaw-chat:error） */

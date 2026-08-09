@@ -21,7 +21,7 @@ import { MediaGenerationModal } from './components/MediaGenerationModal'
 import type { MediaJob } from '@/api/media-generation-api'
 import * as chatApi from '@/api/chat-api'
 import { createOpenClawChat, type OpenClawChatHandle } from '@/api/openclaw-chat-api'
-import type { OpenClawChatMessage } from '@shared/types'
+import type { OpenClawChatMessage, OpenClawToolCall } from '@shared/types'
 import { listMarketAgents } from '@/api/agent-api'
 import { listKnowledgeBases, listOfficialKnowledgeBases } from '@/api/knowledge-api'
 import { officeBridge, isRetrieveTool } from '@/pages/Office/services/officeBridge'
@@ -40,6 +40,19 @@ import styles from './styles.module.css'
 
 /** 知识库选择器「全局搜索」的固定 value */
 const GLOBAL_KB_VALUE = '__global__'
+
+/** WS 网关工具调用 → 前端工具卡状态映射（老 SSE 链路无 state，默认 running） */
+function toToolCallInfo(tc: OpenClawToolCall): ToolCallInfo {
+  return {
+    id: tc.id,
+    name: tc.name,
+    input: tc.input,
+    output: tc.output ?? undefined,
+    duration: 0,
+    creditsCost: 0,
+    status: tc.state === 'done' ? 'success' : tc.state === 'error' ? 'failed' : 'running'
+  }
+}
 
 export default function Chat() {
   // ===== 侧边栏折叠状态 =====
@@ -61,6 +74,13 @@ export default function Chat() {
   // 用 ref 保存流式期间的最新值，避免回调闭包 stale 问题
   const streamingContentRef = useRef('')
   const streamingToolCallsRef = useRef<ToolCallInfo[]>([])
+
+  // ===== Agent 生命周期（OpenClaw WS 网关事件：start → finishing → end/error） =====
+  const [agentPhase, setAgentPhase] = useState<'idle' | 'start' | 'finishing' | 'end' | 'error'>('idle')
+  const agentPhaseRef = useRef<'idle' | 'start' | 'finishing' | 'end' | 'error'>('idle')
+  useEffect(() => {
+    agentPhaseRef.current = agentPhase
+  }, [agentPhase])
   // OpenClaw 本地直达对话句柄 + 中断标记（扣费由云端 llm-proxy 完成）
   const openClawChatRef = useRef<OpenClawChatHandle | null>(null)
   const abortRequestedRef = useRef(false)
@@ -124,18 +144,30 @@ export default function Chat() {
       setStreamingContent(finalContent)
     })
 
+    const offLifecycle = handle.onLifecycle((info) => {
+      agentPhaseRef.current = info.phase
+      setAgentPhase(info.phase)
+      if (info.phase === 'error' && info.error) {
+        console.warn('[Chat] OpenClaw Agent 执行失败:', info.error)
+      }
+    })
+
     const offToolCall = handle.onToolCall((toolCall) => {
       const prev = streamingToolCallsRef.current
       const idx = prev.findIndex((t) => t.id === toolCall.id)
+      const mapped = toToolCallInfo(toolCall)
       if (idx >= 0) {
         const next = [...prev]
-        next[idx] = toolCall as unknown as ToolCallInfo
+        // 保留首帧的耗时/积分，仅更新状态与输出（start → done/error 多次推送）
+        next[idx] = {
+          ...prev[idx],
+          ...mapped,
+          duration: prev[idx].duration || mapped.duration,
+          creditsCost: prev[idx].creditsCost || mapped.creditsCost,
+        }
         streamingToolCallsRef.current = next
       } else {
-        streamingToolCallsRef.current = [
-          ...prev,
-          toolCall as unknown as ToolCallInfo,
-        ]
+        streamingToolCallsRef.current = [...prev, mapped]
       }
       setStreamingToolCalls(streamingToolCallsRef.current)
       // officeBridge: 工具调用 → 市场员去技能墙
@@ -175,6 +207,8 @@ export default function Chat() {
       streamingContentRef.current = ''
       streamingToolCallsRef.current = []
       abortRequestedRef.current = false
+      setAgentPhase('idle')
+      agentPhaseRef.current = 'idle'
       // officeBridge: 回复完成 → 审核员审核 → 所有人切 IDLE
       officeBridge.onReview()
       setTimeout(() => officeBridge.onTaskComplete(), 1500)
@@ -210,6 +244,8 @@ export default function Chat() {
       setStreaming(false)
       setStreamingContent('')
       setStreamingToolCalls([])
+      setAgentPhase('idle')
+      agentPhaseRef.current = 'idle'
       streamingContentRef.current = ''
       streamingToolCallsRef.current = []
       abortRequestedRef.current = false
@@ -218,6 +254,7 @@ export default function Chat() {
     return () => {
       offMessage()
       offFinalize()
+      offLifecycle()
       offToolCall()
       offDone()
       offError()
@@ -395,6 +432,8 @@ export default function Chat() {
       setStreaming(true)
       setStreamingContent('')
       setStreamingToolCalls([])
+      setAgentPhase('start')
+      agentPhaseRef.current = 'start'
       streamingContentRef.current = ''
       streamingToolCallsRef.current = []
       abortRequestedRef.current = false
@@ -418,7 +457,7 @@ export default function Chat() {
 
       // 4. 发送（本地 OpenClaw 未配置/未登录 → 抛错并推 error 事件；扣费由云端 llm-proxy 完成）
       try {
-        await handle.send(content, history, knowledgeBaseIdRef.current)
+        await handle.send(content, history, knowledgeBaseIdRef.current, session.id)
       } catch (err) {
         const messageText = err instanceof Error ? err.message : String(err)
         message.error('生成失败: ' + messageText)
@@ -716,6 +755,7 @@ export default function Chat() {
             streaming={streaming}
             streamingContent={streamingContent}
             streamingToolCalls={streamingToolCalls}
+            agentPhase={agentPhase}
           />
         ) : (
           <div className={styles.messageListContainer}>

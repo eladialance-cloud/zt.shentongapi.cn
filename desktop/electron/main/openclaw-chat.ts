@@ -16,6 +16,7 @@ import { EventEmitter } from 'node:events'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createConnection } from 'node:net'
+import { WebSocket } from 'ws'
 
 // ===== 常量 =====
 
@@ -37,6 +38,10 @@ export interface OpenClawToolCall {
   id: string
   name: string
   input: unknown
+  /** 工具调用状态：start 开始 / done 完成 / error 失败（WS 网关事件链路） */
+  state?: 'start' | 'done' | 'error'
+  /** 工具执行结果摘要（done/error 时） */
+  output?: unknown
 }
 
 export interface OpenClawChatMessage {
@@ -45,11 +50,18 @@ export interface OpenClawChatMessage {
 }
 
 /** 主进程 → 渲染进程事件（IPC openclaw-chat:*） */
+export interface OpenClawLifecycleInfo {
+  phase: 'start' | 'finishing' | 'end' | 'error'
+  stopReason?: string
+  error?: string
+}
+
 export interface OpenClawChatEvent {
-  type: 'message' | 'tool-call' | 'done'
+  type: 'message' | 'tool-call' | 'done' | 'lifecycle'
   content?: string
   toolCall?: OpenClawToolCall
   usage?: OpenClawUsage
+  lifecycle?: OpenClawLifecycleInfo
 }
 
 export interface OpenClawSendParams {
@@ -62,6 +74,8 @@ export interface OpenClawSendParams {
   history?: OpenClawChatMessage[]
   /** 知识库检索范围：指定库 ID（undefined=全局搜索） */
   knowledgeBaseId?: number
+  /** 桌面端会话 ID：映射到本地 OpenClaw 会话 key（同会话连续上下文，切换会话自动新建） */
+  sessionId?: number
 }
 
 export interface OpenClawChatDeps {
@@ -260,6 +274,375 @@ export class OpenClawChatService extends EventEmitter {
 
 function isAbortError(err: Error): boolean {
   return err?.name === 'AbortError' || err?.message?.includes('aborted')
+}
+
+// ===== OpenClaw Gateway WebSocket 客户端（富事件链路） =====
+// 替代 OpenAI 兼容 SSE：WS 网关提供 agent lifecycle / assistant delta / chat final 事件，
+// 用于渲染「思考 → 派发 → 工具执行 → 完成」的完整过程面板（探针实测协议 v4）。
+
+interface WsGatewayFrame {
+  type?: string
+  id?: string
+  ok?: boolean
+  event?: string
+  payload?: Record<string, any>
+  error?: unknown
+}
+
+type WsGatewayListener = (frame: WsGatewayFrame) => void
+
+/**
+ * OpenClaw Gateway WS 连接（连接复用、按需重连）。
+ * 握手：connect(role=operator, client.id=gateway-client) → hello-ok；事件帧 { type:'event', event, payload }。
+ */
+export class OpenClawWsGateway {
+  private ws: WebSocket | null = null
+  private connectPromise: Promise<void> | null = null
+  private readonly pending = new Map<string, (frame: WsGatewayFrame) => void>()
+  private readonly listeners = new Set<WsGatewayListener>()
+  private seq = 0
+  private readonly sessionKeys = new Map<number, string>()
+
+  constructor(private readonly baseUrl = OPENCLAW_LOCAL_BASE) {}
+
+  /** 确保已连接（已连接直接返回；断线自动重连） */
+  async connect(): Promise<void> {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) return
+    if (this.connectPromise) return this.connectPromise
+    this.connectPromise = this.doConnect().finally(() => {
+      this.connectPromise = null
+    })
+    return this.connectPromise
+  }
+
+  private doConnect(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const url = this.baseUrl.replace(/^http/, 'ws')
+      const ws = new WebSocket(url)
+      this.ws = ws
+      const timer = setTimeout(() => {
+        ws.terminate()
+        reject(new Error('本地 OpenClaw 网关连接超时'))
+      }, 10_000)
+      ws.on('open', () => {
+        clearTimeout(timer)
+        this.sendReq('connect', {
+          minProtocol: 4,
+          maxProtocol: 4,
+          client: {
+            id: 'gateway-client',
+            displayName: 'shentong-desktop',
+            version: '1.0.0',
+            platform: process.platform,
+            mode: 'backend',
+          },
+          role: 'operator',
+          scopes: ['operator.read', 'operator.write'],
+          caps: [],
+          commands: [],
+          permissions: {},
+          auth: {},
+          locale: 'zh-CN',
+          userAgent: 'shentong-desktop/1.0.0',
+        })
+          .then((res) => {
+            if (res && res.ok === false) {
+              reject(new Error('OpenClaw 网关连接被拒绝: ' + JSON.stringify(res.error)))
+              return
+            }
+            resolve()
+          })
+          .catch((err) => reject(err))
+      })
+      ws.on('message', (data) => {
+        let frame: WsGatewayFrame
+        try {
+          frame = JSON.parse(data.toString())
+        } catch {
+          return
+        }
+        if (frame.type === 'res' && frame.id && this.pending.has(frame.id)) {
+          const cb = this.pending.get(frame.id)!
+          this.pending.delete(frame.id)
+          cb(frame)
+          return
+        }
+        if (frame.type === 'event') {
+          for (const fn of this.listeners) {
+            try {
+              fn(frame)
+            } catch {
+              /* 单个监听器异常不影响其他监听器 */
+            }
+          }
+        }
+      })
+      ws.on('error', (err) => {
+        clearTimeout(timer)
+        reject(err)
+      })
+      ws.on('close', () => {
+        this.ws = null
+        const stale = [...this.pending.values()]
+        this.pending.clear()
+        for (const cb of stale) cb({ type: 'res', ok: false, error: 'connection closed' })
+      })
+    })
+  }
+
+  private sendReq(method: string, params: unknown): Promise<WsGatewayFrame> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error('OpenClaw 网关未连接'))
+    }
+    const id = 'st-' + ++this.seq
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, (frame) => {
+        if (frame.ok === false) {
+          reject(new Error('OpenClaw ' + method + ' 失败: ' + JSON.stringify(frame.error)))
+        } else {
+          resolve(frame)
+        }
+      })
+      this.ws!.send(JSON.stringify({ type: 'req', id, method, params }))
+      setTimeout(() => {
+        if (this.pending.has(id)) {
+          this.pending.delete(id)
+          reject(new Error('OpenClaw ' + method + ' 超时'))
+        }
+      }, 10_000)
+    })
+  }
+
+  /** 调用网关 RPC，返回 payload */
+  async call(method: string, params: unknown = {}): Promise<unknown> {
+    await this.connect()
+    const frame = await this.sendReq(method, params)
+    return frame.payload
+  }
+
+  /** 订阅网关事件；返回取消函数 */
+  subscribe(listener: WsGatewayListener): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+
+  /** 桌面会话 → OpenClaw 会话 key（首次创建并缓存；同桌面会话上下文连续） */
+  async getSessionKey(desktopSessionId: number): Promise<string> {
+    const cached = this.sessionKeys.get(desktopSessionId)
+    if (cached) return cached
+    const payload = (await this.call('sessions.create', { agentId: 'main' })) as { key?: string }
+    if (!payload?.key) throw new Error('OpenClaw 会话创建失败')
+    this.sessionKeys.set(desktopSessionId, payload.key)
+    return payload.key
+  }
+
+  /** 中断某次对话（失败不阻塞，本地连接关闭兜底） */
+  async abortChat(sessionKey: string, runId: string): Promise<void> {
+    try {
+      await this.call('chat.abort', { sessionKey, runId })
+    } catch {
+      // ignore
+    }
+  }
+
+  close(): void {
+    this.ws?.terminate()
+    this.ws = null
+  }
+}
+
+/** 工具状态归一化（WS 事件里的 state/status → 前端状态机） */
+function normalizeToolState(state: unknown): 'start' | 'done' | 'error' | undefined {
+  const s = String(state ?? '').toLowerCase()
+  if (s === 'done' || s === 'complete' || s === 'completed' || s === 'success' || s === 'ok' || s === 'finished') {
+    return 'done'
+  }
+  if (s === 'error' || s === 'failed' || s === 'fail' || s === 'rejected') {
+    return 'error'
+  }
+  return 'start'
+}
+
+function normalizeToolCall(tc: Record<string, any>, data: Record<string, any>): OpenClawToolCall {
+  const name =
+    tc.name ?? tc.tool ?? tc.toolName ?? (tc.function && tc.function.name) ?? data.name ?? data.toolName ?? 'tool'
+  return {
+    id: String(tc.id ?? tc.toolId ?? data.id ?? data.toolId ?? 'tool_' + String(name)),
+    name: String(name),
+    input: tc.args ?? tc.arguments ?? tc.input ?? (tc.function && tc.function.arguments) ?? data.args ?? data.input,
+    state: normalizeToolState(tc.state ?? tc.status ?? data.state ?? data.status),
+    output: tc.output ?? tc.result ?? data.output ?? data.result,
+  }
+}
+
+/** 尽力解析 WS 事件帧里的工具调用（OpenClaw 工具事件格式随版本演进，做多种兼容） */
+function tryParseToolPayload(payload: Record<string, any>): OpenClawToolCall | null {
+  const data = payload.data ?? {}
+  const direct = data.toolCall ?? data.tool ?? payload.toolCall
+  if (direct && typeof direct === 'object' && (direct.id || direct.name || direct.tool)) {
+    return normalizeToolCall(direct, data)
+  }
+  const stream = payload.stream as string
+  if (stream === 'tool' || stream === 'tools' || stream === 'toolCall' || stream === 'function' || stream === 'tool_execution') {
+    const name = data.name ?? data.tool ?? data.toolName ?? (data.function && data.function.name)
+    if (name) {
+      return normalizeToolCall({}, data)
+    }
+  }
+  const toolCalls = data.toolCalls ?? payload.toolCalls
+  if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+    return normalizeToolCall(toolCalls[0], data)
+  }
+  return null
+}
+
+/**
+ * 本地 OpenClaw 对话调用（WS 网关富事件链路）。
+ * yield 文本增量；Agent 生命周期 / 工具调用通过 onEvent 上报。
+ * 事件流（实测）：agent(assistant delta / lifecycle) + chat(delta/final)。
+ */
+export function createLocalOpenClawWsCaller(
+  baseUrl = OPENCLAW_LOCAL_BASE,
+  gateway = new OpenClawWsGateway(baseUrl),
+): OpenClawChatDeps['callOpenClaw'] {
+  return async function* callOpenClaw(
+    params: OpenClawSendParams,
+    onEvent: (e: OpenClawChatEvent) => void,
+    signal: AbortSignal,
+  ): AsyncGenerator<string, void, unknown> {
+    await gateway.connect()
+    const sessionKey = await gateway.getSessionKey(params.sessionId ?? 0)
+
+    // 历史已由 OpenClaw 会话自身维护（同 sessionKey 连续上下文）；
+    // 跨重启/新建会话时 OpenClaw 从当前消息开始，渲染层仍展示完整历史。
+    const runId = 'st-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
+    const sendRes = (await gateway.call('chat.send', {
+      sessionKey,
+      message: params.text,
+      idempotencyKey: runId,
+    })) as { runId?: string; status?: string }
+    if (!sendRes || sendRes.status !== 'started') {
+      throw new Error('OpenClaw 对话启动失败: ' + JSON.stringify(sendRes))
+    }
+    const actualRunId = sendRes.runId || runId
+
+    const queue: string[] = []
+    let fullText = ''
+    let ended = false
+    let runError: Error | null = null
+    let endTimer: NodeJS.Timeout | null = null
+    let wake: (() => void) | null = null
+
+    const notify = (): void => {
+      if (wake) {
+        const w = wake
+        wake = null
+        w()
+      }
+    }
+    // end 后 OpenClaw 仍可能推送迟到 delta，延迟收集尾声再结束
+    const requestEnd = (delayMs: number): void => {
+      if (endTimer) return
+      endTimer = setTimeout(() => {
+        ended = true
+        notify()
+      }, delayMs)
+    }
+
+    const onFrame = (frame: WsGatewayFrame): void => {
+      if (ended) return
+      const payload = (frame.payload ?? {}) as Record<string, any>
+      if (payload.runId && payload.runId !== actualRunId) return
+      const eventName = frame.event ?? ''
+
+      if (eventName === 'agent') {
+        const stream = payload.stream as string
+        const data = payload.data ?? {}
+        if (stream === 'assistant') {
+          const text = data.text
+          if (typeof text === 'string' && text.length > fullText.length) {
+            queue.push(text.slice(fullText.length))
+            fullText = text
+            notify()
+          } else if (typeof data.delta === 'string' && data.delta) {
+            fullText += data.delta
+            queue.push(data.delta)
+            notify()
+          }
+        } else if (stream === 'lifecycle') {
+          const phase = data.phase as string
+          onEvent({
+            type: 'lifecycle',
+            lifecycle: {
+              phase: phase === 'error' ? 'error' : phase === 'finishing' ? 'finishing' : phase === 'end' ? 'end' : 'start',
+              stopReason: data.stopReason as string | undefined,
+              error: typeof data.error === 'string' ? data.error : undefined,
+            },
+          })
+          if (phase === 'end') {
+            requestEnd(2000)
+          } else if (phase === 'error') {
+            runError = new Error(
+              (typeof data.error === 'string' && data.error) || 'OpenClaw Agent 执行失败',
+            )
+            requestEnd(0)
+          }
+        } else {
+          const tool = tryParseToolPayload(payload)
+          if (tool) {
+            onEvent({ type: 'tool-call', toolCall: tool })
+          }
+        }
+      } else if (eventName === 'chat') {
+        const state = payload.state as string
+        if (state === 'delta') {
+          const msg = payload.message as { content?: Array<{ type?: string; text?: string }> } | undefined
+          const text = msg?.content?.map((c) => c.text ?? '').join('') ?? ''
+          if (typeof text === 'string' && text.length > fullText.length) {
+            queue.push(text.slice(fullText.length))
+            fullText = text
+            notify()
+          }
+        } else if (state === 'final') {
+          const msg = payload.message as { content?: Array<{ type?: string; text?: string }> } | undefined
+          const text = msg?.content?.map((c) => c.text ?? '').join('') ?? ''
+          if (typeof text === 'string' && text.length > fullText.length) {
+            queue.push(text.slice(fullText.length))
+            fullText = text
+            notify()
+          }
+          requestEnd(1500)
+        }
+      }
+    }
+    const unsub = gateway.subscribe(onFrame)
+
+    const onAbort = (): void => {
+      void gateway.abortChat(sessionKey, actualRunId)
+      ended = true
+      notify()
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+
+    try {
+      while (!ended) {
+        if (queue.length > 0) {
+          yield queue.shift() as string
+          continue
+        }
+        if (runError) throw runError
+        if (signal.aborted) throw new DOMException('aborted', 'AbortError')
+        await new Promise<void>((r) => {
+          wake = r
+        })
+      }
+      if (runError) throw runError
+    } finally {
+      unsub()
+      signal.removeEventListener('abort', onAbort)
+      if (endTimer) clearTimeout(endTimer)
+    }
+  }
 }
 
 /** 本地 OpenClaw OpenAI 兼容端点调用（SSE 流式解析）；baseUrl 可注入便于测试 */
