@@ -10,6 +10,8 @@
 //   GET    /admin/plugins/review                 审核队列
 //   POST   /admin/plugins/:id/approve           通过审核
 //   POST   /admin/plugins/:id/reject            驳回审核 body: { reason }
+//   POST   /admin/plugins/batch-approve         批量通过审核
+//   POST   /admin/plugins/batch-reject          批量驳回审核 body: { reason }
 //   GET    /admin/plugins/sync-status            MCP 同步状态列表
 //   POST   /admin/plugins/:id/sync              手动同步
 
@@ -18,6 +20,20 @@ import { adminRequest } from './admin-auth-api'
 export interface PluginBatchDeleteResult {
   total: number
   deleted: number
+  failed: number
+  errors: string[]
+}
+
+export interface PluginBatchApproveResult {
+  total: number
+  approved: number
+  failed: number
+  errors: string[]
+}
+
+export interface PluginBatchRejectResult {
+  total: number
+  rejected: number
   failed: number
   errors: string[]
 }
@@ -83,6 +99,20 @@ export async function batchDeleteAdminPlugins(
 ): Promise<PluginBatchDeleteResult> {
   return adminRequest<PluginBatchDeleteResult>('post', '/admin/plugins/batch-delete', { data: { ids } })
 }
+/** 批量通过审核 */
+export async function batchApprovePlugins(
+  ids: number[]
+): Promise<PluginBatchApproveResult> {
+  return adminRequest<PluginBatchApproveResult>('post', '/admin/plugins/batch-approve', { data: { ids } })
+}
+
+/** 批量驳回审核 */
+export async function batchRejectPlugins(
+  ids: number[],
+  reason: string
+): Promise<PluginBatchRejectResult> {
+  return adminRequest<PluginBatchRejectResult>('post', '/admin/plugins/batch-reject', { data: { ids, reason } })
+}
 
 /** 上架插件 */
 /** 上架插件 */
@@ -145,6 +175,8 @@ export default {
   listPluginReview,
   approvePlugin,
   rejectPlugin,
+  batchApprovePlugins,
+  batchRejectPlugins,
   listPluginSyncStatus,
   syncPlugin
 }

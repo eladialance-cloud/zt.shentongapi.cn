@@ -28,6 +28,7 @@ import { RejectAgentDto } from './dto/reject-agent.dto';
 import { ImportGithubDto } from './dto/import-github.dto';
 import { UpdateCategoryDisplayDto } from './dto/update-category-display.dto';
 import { BatchDeleteDto } from '../../common/dto/batch-delete.dto';
+import { BatchReviewDto } from '../../common/dto/batch-review.dto';
 
 /**
  * 管理端 Agent 市场控制器
@@ -105,6 +106,18 @@ export class AdminAgentController {
   @ApiOperation({ summary: '批量删除 Agent' })
   async batchDelete(@Body() dto: BatchDeleteDto) {
     return this.service.batchDelete(dto.ids);
+  }
+
+  @Post('batch-approve')
+  @ApiOperation({ summary: '批量通过审核' })
+  async batchApprove(@Body() dto: BatchReviewDto, @Req() req: any) {
+    return this.service.batchApprove(dto.ids, req.adminUser.id);
+  }
+
+  @Post('batch-reject')
+  @ApiOperation({ summary: '批量驳回审核' })
+  async batchReject(@Body() dto: BatchReviewDto, @Req() req: any) {
+    return this.service.batchReject(dto.ids, dto.reason || '', req.adminUser.id);
   }
 
 

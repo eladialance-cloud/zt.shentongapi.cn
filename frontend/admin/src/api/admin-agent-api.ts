@@ -12,6 +12,8 @@
 //   GET    /admin/agents/review                   审核队列
 //   POST   /admin/agents/:id/approve             通过审核
 //   POST   /admin/agents/:id/reject              驳回审核 body: { reason }
+//   POST   /admin/agents/batch-approve           批量通过审核
+//   POST   /admin/agents/batch-reject            批量驳回审核 body: { reason }
 //   POST   /admin/agents/:id/force-unpublish     强制下架 body: { reason }
 //   GET    /admin/agents/categories              分类列表
 
@@ -20,6 +22,20 @@ import { adminRequest } from './admin-auth-api'
 export interface AgentBatchDeleteResult {
   total: number
   deleted: number
+  failed: number
+  errors: string[]
+}
+
+export interface AgentBatchApproveResult {
+  total: number
+  approved: number
+  failed: number
+  errors: string[]
+}
+
+export interface AgentBatchRejectResult {
+  total: number
+  rejected: number
   failed: number
   errors: string[]
 }
@@ -150,6 +166,21 @@ export async function batchDeleteAdminAgents(
   return adminRequest<AgentBatchDeleteResult>('post', '/admin/agents/batch-delete', { data: { ids } })
 }
 
+/** 批量通过审核 */
+export async function batchApproveAgents(
+  ids: number[]
+): Promise<AgentBatchApproveResult> {
+  return adminRequest<AgentBatchApproveResult>('post', '/admin/agents/batch-approve', { data: { ids } })
+}
+
+/** 批量驳回审核 */
+export async function batchRejectAgents(
+  ids: number[],
+  reason: string
+): Promise<AgentBatchRejectResult> {
+  return adminRequest<AgentBatchRejectResult>('post', '/admin/agents/batch-reject', { data: { ids, reason } })
+}
+
 /** 分类列表(含每分类 Agent 数量) */
 /** 分类列表(含每分类 Agent 数量) */
 export async function listAgentCategories(): Promise<AgentCategoryMeta[]> {
@@ -179,6 +210,8 @@ export default {
   approveAgent,
   rejectAgent,
   forceUnpublishAgent,
+  batchApproveAgents,
+  batchRejectAgents,
   listAgentCategories,
   updateAgentCategoryDisplay
 }

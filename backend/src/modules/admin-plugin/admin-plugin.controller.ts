@@ -28,6 +28,7 @@ import {
 } from './dto/plugin.dto';
 import { PluginRejectDto, PluginReviewDto } from './dto/review.dto';
 import { BatchDeleteDto } from '../../common/dto/batch-delete.dto';
+import { BatchReviewDto } from '../../common/dto/batch-review.dto';
 
 /**
  * 管理端插件控制器
@@ -75,6 +76,16 @@ export class AdminPluginController {
   @ApiOperation({ summary: '批量删除插件' })
   async batchDelete(@Body() dto: BatchDeleteDto) {
     return this.service.batchDelete(dto.ids);
+  }
+  @Post('batch-approve')
+  @ApiOperation({ summary: '批量通过审核' })
+  async batchApprove(@Body() dto: BatchReviewDto) {
+    return this.service.batchApprove(dto.ids);
+  }
+  @Post('batch-reject')
+  @ApiOperation({ summary: '批量驳回审核' })
+  async batchReject(@Body() dto: BatchReviewDto) {
+    return this.service.batchReject(dto.ids, dto.reason || '');
   }
 
   @Post('import-local')

@@ -15,6 +15,7 @@ import {
   Input,
   Modal,
   Pagination,
+  Popconfirm,
   Spin,
   Table,
   Tabs,
@@ -25,6 +26,7 @@ import {
 import type { TableColumnsType } from 'antd'
 import {
   CheckCircleOutlined,
+  DeleteOutlined,
   EyeOutlined,
   ReloadOutlined,
   StopOutlined,
@@ -32,6 +34,9 @@ import {
 } from '@ant-design/icons'
 import {
   approveAgent,
+  batchApproveAgents,
+  batchDeleteAdminAgents,
+  batchRejectAgents,
   forceUnpublishAgent,
   listAgentReview,
   rejectAgent
@@ -79,6 +84,9 @@ export default function AdminAgentsReview() {
   const [rejectTarget, setRejectTarget] = useState<AdminAgentItem | null>(null)
   const [rejectForm] = Form.useForm<RejectFormValues>()
   const [rejectLoading, setRejectLoading] = useState(false)
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+  const [batchRejectOpen, setBatchRejectOpen] = useState(false)
+  const [batchLoading, setBatchLoading] = useState(false)
 
   // 强制下架 Modal
   const [forceTarget, setForceTarget] = useState<AdminAgentItem | null>(null)
@@ -108,6 +116,7 @@ export default function AdminAgentsReview() {
   const handleTabChange = (key: string) => {
     setActiveTab(key as AgentReviewStatus)
     setPage(1)
+    setSelectedRowKeys([])
   }
 
   const handleApprove = async (item: AdminAgentItem) => {
@@ -159,6 +168,73 @@ export default function AdminAgentsReview() {
       message.error('强制下架失败')
     } finally {
       setForceLoading(false)
+    }
+  }
+
+  const handleBatchApprove = async () => {
+    const ids = selectedRowKeys as number[]
+    if (ids.length === 0) return
+    setBatchLoading(true)
+    try {
+      const res = await batchApproveAgents(ids)
+      if (res.failed > 0) {
+        message.warning(`通过完成：成功 ${res.approved}，失败 ${res.failed}`)
+      } else {
+        message.success(`已通过 ${res.approved} 个 Agent`)
+      }
+      setSelectedRowKeys([])
+      void loadList()
+    } catch (err) {
+      console.error('[AgentReview] batch approve failed:', err)
+      message.error('批量通过失败')
+    } finally {
+      setBatchLoading(false)
+    }
+  }
+
+  const handleBatchDelete = async () => {
+    const ids = selectedRowKeys as number[]
+    if (ids.length === 0) return
+    setBatchLoading(true)
+    try {
+      const res = await batchDeleteAdminAgents(ids)
+      if (res.failed > 0) {
+        message.warning(`删除完成：成功 ${res.deleted}，失败 ${res.failed}`)
+      } else {
+        message.success(`已删除 ${res.deleted} 个 Agent`)
+      }
+      setSelectedRowKeys([])
+      void loadList()
+    } catch (err) {
+      console.error('[AgentReview] batch delete failed:', err)
+      message.error('批量删除失败')
+    } finally {
+      setBatchLoading(false)
+    }
+  }
+
+  const handleConfirmBatchReject = async () => {
+    const ids = selectedRowKeys as number[]
+    if (ids.length === 0) return
+    try {
+      const values = await rejectForm.validateFields()
+      setRejectLoading(true)
+      const res = await batchRejectAgents(ids, values.reason)
+      if (res.failed > 0) {
+        message.warning(`驳回完成：成功 ${res.rejected}，失败 ${res.failed}`)
+      } else {
+        message.success(`已驳回 ${res.rejected} 个 Agent`)
+      }
+      setBatchRejectOpen(false)
+      rejectForm.resetFields()
+      setSelectedRowKeys([])
+      void loadList()
+    } catch (err) {
+      if (err && typeof err === 'object' && 'errorFields' in err) return
+      console.error('[AgentReview] batch reject failed:', err)
+      message.error('批量驳回失败')
+    } finally {
+      setRejectLoading(false)
     }
   }
 
@@ -317,6 +393,54 @@ export default function AdminAgentsReview() {
         </Button>
       </div>
 
+      <div className={styles.toolbar}>
+        <div className={styles.toolbarLeft}>
+          <span style={{ color: '#8b949e', marginRight: 12 }}>已选 {selectedRowKeys.length} 项</span>
+          {activeTab === 'pending_review' ? (
+            <>
+              <Button
+                icon={<CheckCircleOutlined />}
+                disabled={selectedRowKeys.length === 0 || batchLoading}
+                loading={batchLoading}
+                onClick={() => void handleBatchApprove()}
+                className={styles.ghostBtn}
+              >
+                批量通过
+              </Button>
+              <Button
+                danger
+                icon={<StopOutlined />}
+                disabled={selectedRowKeys.length === 0}
+                onClick={() => {
+                  rejectForm.resetFields()
+                  setBatchRejectOpen(true)
+                }}
+                className={styles.ghostBtn}
+              >
+                批量驳回
+              </Button>
+            </>
+          ) : null}
+          <Popconfirm
+            title={`确认删除选中的 ${selectedRowKeys.length} 项?`}
+            onConfirm={() => void handleBatchDelete()}
+            okText="删除"
+            okButtonProps={{ danger: true }}
+            disabled={selectedRowKeys.length === 0}
+          >
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              disabled={selectedRowKeys.length === 0 || batchLoading}
+              loading={batchLoading}
+              className={styles.ghostBtn}
+            >
+              批量删除
+            </Button>
+          </Popconfirm>
+        </div>
+      </div>
+
       <Tabs
         activeKey={activeTab}
         onChange={handleTabChange}
@@ -337,6 +461,10 @@ export default function AdminAgentsReview() {
               rowKey="id"
               columns={columns}
               dataSource={items}
+              rowSelection={{
+                selectedRowKeys,
+                onChange: (keys) => setSelectedRowKeys(keys)
+              }}
               pagination={false}
               size="middle"
               scroll={{ x: 1300 }}
@@ -450,6 +578,29 @@ export default function AdminAgentsReview() {
             name="reason"
             label="下架原因"
             rules={[{ required: true, message: '请输入下架原因' }]}
+          >
+            <Input.TextArea rows={3} maxLength={200} showCount />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 批量驳回 Modal */}
+      <Modal
+        title={`批量驳回（${selectedRowKeys.length} 项）`}
+        open={batchRejectOpen}
+        onCancel={() => setBatchRejectOpen(false)}
+        onOk={handleConfirmBatchReject}
+        confirmLoading={rejectLoading}
+        okText="确认驳回"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+        destroyOnClose
+      >
+        <Form<RejectFormValues> form={rejectForm} layout="vertical">
+          <Form.Item
+            name="reason"
+            label="统一驳回原因"
+            rules={[{ required: true, message: '请输入驳回原因' }]}
           >
             <Input.TextArea rows={3} maxLength={200} showCount />
           </Form.Item>

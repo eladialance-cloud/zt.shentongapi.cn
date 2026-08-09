@@ -10,6 +10,8 @@
 //   POST   /admin/workflows/:id/review     审核（approve|reject）
 //   POST   /admin/workflows/:id/approve   通过
 //   POST   /admin/workflows/:id/reject    驳回
+//   POST   /admin/workflows/batch-approve 批量通过
+//   POST   /admin/workflows/batch-reject  批量驳回
 //   GET    /admin/workflows/stats         统计
 //   GET    /admin/workflows/:id/exec-logs 执行日志
 //   GET    /admin/workflows/:id/mcp-binds MCP 绑定
@@ -19,6 +21,20 @@ import { adminRequest } from './admin-auth-api'
 export interface WorkflowBatchDeleteResult {
   total: number
   deleted: number
+  failed: number
+  errors: string[]
+}
+
+export interface WorkflowBatchApproveResult {
+  total: number
+  approved: number
+  failed: number
+  errors: string[]
+}
+
+export interface WorkflowBatchRejectResult {
+  total: number
+  rejected: number
   failed: number
   errors: string[]
 }
@@ -83,6 +99,21 @@ export async function batchDeleteAdminWorkflows(
   ids: number[]
 ): Promise<WorkflowBatchDeleteResult> {
   return adminRequest<WorkflowBatchDeleteResult>('post', '/admin/workflows/batch-delete', { data: { ids } })
+}
+
+/** 批量通过审核 */
+export async function batchApproveWorkflows(
+  ids: number[]
+): Promise<WorkflowBatchApproveResult> {
+  return adminRequest<WorkflowBatchApproveResult>('post', '/admin/workflows/batch-approve', { data: { ids } })
+}
+
+/** 批量驳回审核 */
+export async function batchRejectWorkflows(
+  ids: number[],
+  reason: string
+): Promise<WorkflowBatchRejectResult> {
+  return adminRequest<WorkflowBatchRejectResult>('post', '/admin/workflows/batch-reject', { data: { ids, reason } })
 }
 
 /** GitHub 导入 */
@@ -175,5 +206,7 @@ export default {
   reviewWorkflow,
   approveWorkflow,
   rejectWorkflow,
+  batchApproveWorkflows,
+  batchRejectWorkflows,
   getWorkflowStats,
 }

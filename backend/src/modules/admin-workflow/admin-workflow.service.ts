@@ -165,6 +165,36 @@ export class AdminWorkflowService {
     return stats;
   }
 
+  /** 批量通过审核 */
+  async batchApprove(ids: number[]) {
+    const stats = { total: ids.length, approved: 0, failed: 0, errors: [] as string[] };
+    for (const id of ids) {
+      try {
+        await this.approve(id);
+        stats.approved++;
+      } catch (e) {
+        stats.failed++;
+        stats.errors.push(`工作流 ${id}: ${(e as Error).message}`);
+      }
+    }
+    return stats;
+  }
+
+  /** 批量驳回审核 */
+  async batchReject(ids: number[], reason: string) {
+    const stats = { total: ids.length, rejected: 0, failed: 0, errors: [] as string[] };
+    for (const id of ids) {
+      try {
+        await this.reject(id, reason);
+        stats.rejected++;
+      } catch (e) {
+        stats.failed++;
+        stats.errors.push(`工作流 ${id}: ${(e as Error).message}`);
+      }
+    }
+    return stats;
+  }
+
   // 审核流
   // ═══════════════════════════════════════════════════════════
 
