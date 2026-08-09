@@ -60,6 +60,8 @@ export interface OpenClawSendParams {
   modelId?: string
   /** 最近会话上下文（可选，最近 N 条，消息不出本机） */
   history?: OpenClawChatMessage[]
+  /** 知识库检索范围：指定库 ID（undefined=全局搜索） */
+  knowledgeBaseId?: number
 }
 
 export interface OpenClawChatDeps {
@@ -106,6 +108,7 @@ export class OpenClawChatService extends EventEmitter {
     params: OpenClawSendParams,
     onChunk: (chunk: string) => void,
     onEvent: (e: OpenClawChatEvent) => void,
+    onFinalize?: (content: string) => void,
   ): Promise<OpenClawSendResult> {
     if (!params.token) throw new Error('未登录')
     const text = params.text?.trim()
@@ -122,6 +125,8 @@ export class OpenClawChatService extends EventEmitter {
     this.emit('busy', true)
     let usage: OpenClawUsage | undefined
     let error: Error | null = null
+    let fullText = ''
+    const events: OpenClawChatEvent[] = []
 
     try {
       // 1) 本地 OpenClaw 对话（SSE 流式；OpenClaw 内部经 llm-proxy 调后台模型并扣费）
@@ -129,11 +134,22 @@ export class OpenClawChatService extends EventEmitter {
         { ...params, text },
         (e) => {
           if (e.type === 'done') usage = e.usage
+          events.push(e)
           onEvent(e)
         },
         abort.signal,
       )) {
+        fullText += chunk
         onChunk(chunk)
+      }
+
+      // 2) 终审（脱敏/空结果）+ 产物来源标注（流结束后一次性应用）
+      if (onFinalize && !error) {
+        const reviewed = this.terminalReview(fullText, events)
+        const finalText = this.formatResult(reviewed, events)
+        if (finalText && finalText !== fullText) {
+          onFinalize(finalText)
+        }
       }
     } catch (e) {
       error = e instanceof Error ? e : new Error(String(e))
@@ -168,9 +184,64 @@ export class OpenClawChatService extends EventEmitter {
         JSON.stringify({ modelId: params.modelId ?? null }),
         'utf-8',
       )
+      // 知识库检索范围（knowledge-query 工具卡读取）：空 = 全局搜索；有值 = 指定库
+      writeFileSync(
+        join(this.deps.contextDir, 'knowledge-scope.json'),
+        JSON.stringify(
+          params.knowledgeBaseId
+            ? { mode: 'kb', kbId: params.knowledgeBaseId }
+            : { mode: 'global' },
+        ),
+        'utf-8',
+      )
     } catch (err) {
       console.error('[openclaw-chat] write context failed:', err)
     }
+  }
+
+  /** 终审：敏感信息脱敏 + 空结果兜底 + 工具调用无解释时补充说明 */
+  private terminalReview(content: string, events: OpenClawChatEvent[]): string {
+    // 安全检查：银行卡 16-19 位 / 身份证 15/18 位脱敏
+    let sanitized = content
+      .replace(/\b\d{16,19}\b/g, '****')
+      .replace(/\b\d{17}[\dXx]\b/g, '****')
+
+    // 完整性检查：空结果兜底
+    if (!sanitized.trim()) {
+      return '(结果为空，请检查输入或重试)'
+    }
+
+    // 有工具调用但无解释时，补充来源说明
+    const hasToolCall = events.some((e) => e.type === 'tool-call')
+    const hasExplanation = sanitized.length > 20
+    if (hasToolCall && !hasExplanation) {
+      sanitized = sanitized + '\n\n*(以上结果由工具自动生成)*'
+    }
+    return sanitized
+  }
+
+  /** 产物来源标注：根据工具调用追加 📊 数据来源 */
+  private formatResult(content: string, events: OpenClawChatEvent[]): string {
+    const toolCalls = events.filter((e) => e.type === 'tool-call' && e.toolCall)
+    if (toolCalls.length === 0) return content
+    const sources = [
+      ...new Set(
+        toolCalls.map((tc) => {
+          const name = tc.toolCall!.name
+          switch (name) {
+            case 'hermes-agent':
+              return 'Hermes 编排引擎'
+            case 'n8n-run-workflow':
+              return 'N8N 工作流'
+            case 'knowledge-query':
+              return '知识库'
+            default:
+              return name
+          }
+        }),
+      ),
+    ]
+    return content + '\n\n---\n📊 数据来源: ' + sources.join('、')
   }
 
   private clearContext(): void {

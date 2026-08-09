@@ -47,13 +47,21 @@ async function main() {
   child.stdout.on('data', (d) => { stdout += d; });
   child.stderr.on('data', (d) => { stderr += d; });
 
-  // 长任务保护：5 分钟超时
+  // 长任务保护：5 分钟超时 → kill 子进程 + 降级提示（不静默失败）
+  let timedOut = false;
   const timer = setTimeout(() => {
+    timedOut = true;
     try { child.kill(); } catch {}
   }, 5 * 60 * 1000);
 
   const code = await new Promise((resolve) => child.on('exit', resolve));
   clearTimeout(timer);
+
+  if (timedOut) {
+    // 超时降级：返回可读提示，让上层 Agent 自行拆分重试
+    console.log('Hermes 编排超时（5 分钟），建议将任务拆分为更小的子任务后重试。');
+    process.exit(124);
+  }
 
   if (code !== 0) {
     const detail = (stderr || stdout).trim().slice(-600);

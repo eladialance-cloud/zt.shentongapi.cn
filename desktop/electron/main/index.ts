@@ -144,7 +144,12 @@ function registerIpcHandlers(): void {
     'openclaw-chat:send',
     async (
       event,
-      payload: { text: string; token: string; history?: OpenClawChatMessage[] },
+      payload: {
+        text: string
+        token: string
+        history?: OpenClawChatMessage[]
+        knowledgeBaseId?: number
+      },
     ) => {
       const win = BrowserWindow.fromWebContents(event.sender)
       const push = (channel: string, data: unknown): void => {
@@ -154,12 +159,18 @@ function registerIpcHandlers(): void {
       }
       try {
         const result = await openClawChat.send(
-          { text: payload.text, token: payload.token, history: payload.history },
+          {
+            text: payload.text,
+            token: payload.token,
+            history: payload.history,
+            knowledgeBaseId: payload.knowledgeBaseId,
+          },
           (chunk) => push('openclaw-chat:message', { content: chunk }),
           (e) => {
             if (e.type === 'tool-call') push('openclaw-chat:tool-call', e.toolCall)
             else if (e.type === 'done') push('openclaw-chat:done', { usage: e.usage })
           },
+          (finalContent) => push('openclaw-chat:finalize', { content: finalContent }),
         )
         push('openclaw-chat:done', { usage: result.usage })
         return { ok: true, aborted: result.aborted }

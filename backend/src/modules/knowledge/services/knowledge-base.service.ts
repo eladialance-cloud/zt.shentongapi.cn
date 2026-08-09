@@ -408,6 +408,49 @@ export class KnowledgeBaseService {
       .sort((a, b) => b.score - a.score);
   }
 
+
+  /** 跨库搜索（全局模式）：本人私有库 + 已发布官方库，结果附库名/库ID */
+  async searchAll(
+    userId: number,
+    dto: { query: string; topK?: number },
+  ): Promise<Array<SearchResultDto & { kbId: number; kbName: string }>> {
+    const query = dto.query?.trim();
+    if (!query) {
+      throw new BadRequestException('搜索内容不能为空');
+    }
+
+    // 本人库 或 已发布官方库，最多扫 10 个
+    const bases = await this.kbRepo.find({
+      where: [{ userId }, { isOfficial: true, publishStatus: 'published' }],
+      take: 10,
+      order: { createdAt: 'DESC' },
+    });
+
+    const topK = Math.min(dto.topK ?? 5, 50);
+    const merged: Array<SearchResultDto & { kbId: number; kbName: string }> = [];
+
+    for (const kb of bases) {
+      try {
+        const results = await this.search(userId, kb.id, {
+          query,
+          topK,
+        });
+        for (const r of results) {
+          merged.push({ ...r, kbId: kb.id, kbName: kb.name });
+        }
+      } catch (err) {
+        // 单个库失败不阻塞全局搜索
+        this.logger.warn(
+          `知识库 ${kb.id} 全局搜索失败: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    return merged
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topK);
+  }
+
   // ============ 内部工具 ============
 
   private toBaseDto(base: KnowledgeBaseEntity): KnowledgeBaseDto {

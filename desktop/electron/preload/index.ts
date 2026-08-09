@@ -119,8 +119,8 @@ const electronAPI: ElectronAPI = {
     setProxyKey: (key: string) => {
       ipcRenderer.send('openclaw-chat:set-proxy-key', key)
     },
-    send: (text: string, token: string, history?: OpenClawChatMessage[]) =>
-      ipcRenderer.invoke('openclaw-chat:send', { text, token, history }) as Promise<{ ok: boolean; aborted?: boolean }>,
+    send: (text: string, token: string, history?: OpenClawChatMessage[], knowledgeBaseId?: number) =>
+      ipcRenderer.invoke('openclaw-chat:send', { text, token, history, knowledgeBaseId }) as Promise<{ ok: boolean; aborted?: boolean }>,
     abort: () => {
       ipcRenderer.send('openclaw-chat:abort')
     },
@@ -129,6 +129,14 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.on('openclaw-chat:message', handler)
       return () => {
         ipcRenderer.removeListener('openclaw-chat:message', handler)
+      }
+    },
+    /** 终审/来源标注后的最终文本（openclaw-chat:finalize；渲染层用其覆盖流式内容） */
+    onFinalize: (callback: (payload: OpenClawChatMessagePayload) => void) => {
+      const handler = (_event: IpcRendererEvent, payload: OpenClawChatMessagePayload): void => callback(payload)
+      ipcRenderer.on('openclaw-chat:finalize', handler)
+      return () => {
+        ipcRenderer.removeListener('openclaw-chat:finalize', handler)
       }
     },
     onToolCall: (callback: (toolCall: OpenClawToolCall) => void) => {

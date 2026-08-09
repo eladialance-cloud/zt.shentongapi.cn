@@ -9,11 +9,17 @@ export interface OpenClawChatHandle {
   /** 发送一条消息：本地 OpenClaw 流式对话（扣费由云端 llm-proxy 完成）。
    * 失败（离线/未登录/OpenClaw 未配置）时抛错或返回 ok=false，
    * 流式文本经 onMessage、错误经 onError 推送。 */
-  send: (text: string, history?: OpenClawChatMessage[]) => Promise<{ ok: boolean; aborted?: boolean }>
+  send: (
+    text: string,
+    history?: OpenClawChatMessage[],
+    knowledgeBaseId?: number,
+  ) => Promise<{ ok: boolean; aborted?: boolean }>
   /** 中断当前对话（本地 abort，云端退款） */
   abort: () => void
   /** 流式文本块；返回取消监听函数 */
   onMessage: (cb: (content: string) => void) => () => void
+  /** 终审/来源标注后的最终文本；返回取消监听函数 */
+  onFinalize: (cb: (content: string) => void) => () => void
   /** 工具调用；返回取消监听函数 */
   onToolCall: (cb: (toolCall: OpenClawToolCall) => void) => () => void
   /** 对话完成；返回取消监听函数 */
@@ -27,13 +33,14 @@ export function createOpenClawChat(): OpenClawChatHandle {
   const api = window.electronAPI?.openclawChat
   if (!api) throw new Error('electronAPI.openclawChat 不可用（请升级桌面端版本）')
   return {
-    send: async (text, history) => {
+    send: async (text, history, knowledgeBaseId) => {
       const { accessToken } = useAuthStore.getState()
       if (!accessToken) throw new Error('未登录')
-      return api.send(text, accessToken, history)
+      return api.send(text, accessToken, history, knowledgeBaseId)
     },
     abort: () => api.abort(),
     onMessage: (cb) => api.onMessage((d) => cb(d.content)),
+    onFinalize: (cb) => api.onFinalize((d) => cb(d.content)),
     onToolCall: (cb) => api.onToolCall((d) => cb(d)),
     onDone: (cb) => api.onDone(() => cb()),
     onError: (cb) => api.onError((d) => cb(new Error(d.message))),

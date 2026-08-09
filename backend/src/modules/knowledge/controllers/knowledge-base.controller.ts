@@ -201,6 +201,15 @@ export class KnowledgeBasesController {
     return { success: true };
   }
 
+  @Post('search-all')
+  @ApiOperation({ summary: '跨库检索（全局模式：本人库+已发布官方库）' })
+  searchAll(
+    @CurrentUser() user: ICurrentUser,
+    @Body() dto: SearchKnowledgeDto,
+  ) {
+    return this.knowledgeBaseService.searchAll(user.userId, dto);
+  }
+
   @Post(':id/search')
   @ApiOperation({ summary: '知识库检索' })
   search(

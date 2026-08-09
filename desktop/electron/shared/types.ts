@@ -357,11 +357,14 @@ export interface ElectronAPI {
       text: string,
       token: string,
       history?: OpenClawChatMessage[],
+      knowledgeBaseId?: number,
     ): Promise<{ ok: boolean; aborted?: boolean }>;
     /** 中断当前对话（本地 abort） */
     abort(): void;
     /** 流式文本块（openclaw-chat:message） */
     onMessage(cb: (payload: OpenClawChatMessagePayload) => void): () => void;
+    /** 终审/来源标注后的最终文本（openclaw-chat:finalize；渲染层用其覆盖流式内容） */
+    onFinalize(cb: (payload: OpenClawChatMessagePayload) => void): () => void;
     /** 工具调用（openclaw-chat:tool-call） */
     onToolCall(cb: (toolCall: OpenClawToolCall) => void): () => void;
     /** 完成（openclaw-chat:done） */

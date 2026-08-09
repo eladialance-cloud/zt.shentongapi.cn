@@ -11,7 +11,8 @@ import {
   MenuUnfoldOutlined,
   RobotOutlined,
   ThunderboltOutlined,
-  DatabaseOutlined
+  DatabaseOutlined,
+  GlobalOutlined
 } from '@ant-design/icons'
 import { SessionList } from './components/SessionList'
 import { MessageList } from './components/MessageList'
@@ -36,6 +37,9 @@ import type {
 import type { Agent } from '@/types/agent'
 import styles from './styles.module.css'
 
+
+/** 知识库选择器「全局搜索」的固定 value */
+const GLOBAL_KB_VALUE = '__global__'
 
 export default function Chat() {
   // ===== 侧边栏折叠状态 =====
@@ -63,6 +67,7 @@ export default function Chat() {
   const replyGeneratedRef = useRef(false)
   const activeSessionRef = useRef<ChatSession | null>(null)
   const messagesRef = useRef<ChatMessage[]>([])
+  const knowledgeBaseIdRef = useRef<number | undefined>(undefined)
 
   // 同步 ref 与 state
   useEffect(() => {
@@ -82,6 +87,9 @@ export default function Chat() {
   const [modelId, setModelId] = useState<string>('')
   const [agentId, setAgentId] = useState<number | undefined>(undefined)
   const [knowledgeBaseId, setKnowledgeBaseId] = useState<number | undefined>(undefined)
+  useEffect(() => {
+    knowledgeBaseIdRef.current = knowledgeBaseId
+  }, [knowledgeBaseId])
 
   // ===== 选项数据 =====
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
@@ -108,6 +116,12 @@ export default function Chat() {
         replyGeneratedRef.current = true
         officeBridge.onReplyGenerated()
       }
+    })
+
+    // 终审/来源标注完成：用最终文本覆盖流式内容（工具结果与数据来源由主进程聚合）
+    const offFinalize = handle.onFinalize((finalContent) => {
+      streamingContentRef.current = finalContent
+      setStreamingContent(finalContent)
     })
 
     const offToolCall = handle.onToolCall((toolCall) => {
@@ -203,6 +217,7 @@ export default function Chat() {
 
     return () => {
       offMessage()
+      offFinalize()
       offToolCall()
       offDone()
       offError()
@@ -403,7 +418,7 @@ export default function Chat() {
 
       // 4. 发送（本地 OpenClaw 未配置/未登录 → 抛错并推 error 事件；扣费由云端 llm-proxy 完成）
       try {
-        await handle.send(content, history)
+        await handle.send(content, history, knowledgeBaseIdRef.current)
       } catch (err) {
         const messageText = err instanceof Error ? err.message : String(err)
         message.error('生成失败: ' + messageText)
@@ -587,15 +602,26 @@ export default function Chat() {
 
   const kbSelectProps: SelectProps = useMemo(
     () => ({
-      options: kbOptions.map((k) => ({
-        label: (
-          <span>
-            <DatabaseOutlined style={{ color: 'var(--color-text-secondary)', marginRight: 6 }} />
-            {k.name}
-          </span>
-        ),
-        value: k.id
-      }))
+      options: [
+        {
+          label: (
+            <span>
+              <GlobalOutlined style={{ color: 'var(--color-text-secondary)', marginRight: 6 }} />
+              全局搜索（默认）
+            </span>
+          ),
+          value: GLOBAL_KB_VALUE
+        },
+        ...kbOptions.map((k) => ({
+          label: (
+            <span>
+              <DatabaseOutlined style={{ color: 'var(--color-text-secondary)', marginRight: 6 }} />
+              {k.name}
+            </span>
+          ),
+          value: k.id
+        })),
+      ],
     }),
     [kbOptions]
   )
@@ -669,9 +695,13 @@ export default function Chat() {
           <span className={styles.selectorLabel}>知识库:</span>
           <Select
             {...kbSelectProps}
-            value={knowledgeBaseId}
-            onChange={(v) => handleKnowledgeBaseChange(v)}
-            placeholder="选择知识库（可选）"
+            value={knowledgeBaseId ?? GLOBAL_KB_VALUE}
+            onChange={(v) =>
+              handleKnowledgeBaseChange(
+                v === GLOBAL_KB_VALUE ? undefined : (v as number),
+              )
+            }
+            placeholder="全局搜索（默认）"
             allowClear
             className={styles.selectorItem}
             size="small"

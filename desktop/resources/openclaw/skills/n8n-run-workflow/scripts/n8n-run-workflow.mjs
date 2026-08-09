@@ -62,7 +62,18 @@ async function main() {
     throw new Error('N8N API ' + r2.status + ': ' + (await r2.text()).slice(0, 300));
   }
   const data = await r2.json().catch(() => null);
-  console.log(JSON.stringify(data ?? {}));
+
+  // === 一级审核：执行层自检 ===
+  if (data === null || data === undefined) {
+    throw new Error('N8N 工作流返回空结果，执行自检失败');
+  }
+  if (typeof data === 'object' && data.error) {
+    const errMsg =
+      (typeof data.error === 'object' && data.error.message) ||
+      String(data.error);
+    throw new Error('N8N 工作流执行错误: ' + errMsg);
+  }
+  console.log(JSON.stringify(data));
 }
 
 main().catch((e) => {
