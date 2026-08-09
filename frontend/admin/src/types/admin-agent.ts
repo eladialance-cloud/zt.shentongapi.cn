@@ -134,6 +134,8 @@ export interface ImportGithubDto {
   targetStatus?: ImportTargetStatus
   /** 默认模型 ID，默认 gpt-4o-mini */
   defaultModelId?: string
+  /** 名称/介绍自动翻译为中文使用的模型（models.model_id，留空自动选择） */
+  translateModel?: string
   /** 默认创建者 ID，默认 1 */
   defaultCreatorId?: number
   /** dry-run 模式：仅解析不入库 */

@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ModelProviderEntity } from '../../admin-model/entities/model-provider.entity';
 import { EncryptionService } from '../../../common/services/encryption.service';
+import { ApiKeyPoolService } from '../../api-key-pool/services/api-key-pool.service';
+import { ModelEntity } from '../../model/entities/model.entity';
 
 /** 文本是否已包含中文字符 */
 function hasCjk(text: string): boolean {
@@ -15,6 +17,13 @@ export interface AgentTranslateResult {
 }
 
 const PROVIDER_PREFERENCE = ['deepseek', 'openai', 'qwen', 'doubao'];
+
+const DEFAULT_ENDPOINTS: Record<string, string> = {
+  openai: 'https://api.openai.com/v1',
+  deepseek: 'https://api.deepseek.com/v1',
+  qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  doubao: 'https://ark.cn-beijing.volces.com/api/v3',
+};
 
 const DEFAULT_MODEL_BY_SLUG: Record<string, string> = {
   deepseek: 'deepseek-chat',
@@ -36,10 +45,88 @@ export class AgentTranslateService {
     @InjectRepository(ModelProviderEntity)
     private readonly providerRepo: Repository<ModelProviderEntity>,
     private readonly encryptionService: EncryptionService,
+    private readonly apiKeyPoolService: ApiKeyPoolService,
+    @InjectRepository(ModelEntity)
+    private readonly modelRepo: Repository<ModelEntity>,
   ) {}
 
-  /** 选择第一个可用的供应商（优先 deepseek/openai，需 active 且有 key） */
-  private async resolveTarget(): Promise<{ endpoint: string; apiKey: string; model: string } | null> {
+  /** 解析用户指定的翻译模型（后台模型 → 供应商直连 / 模型直连 / Key 池兜底） */
+  private async resolvePreferredModel(
+    preferredModel: string,
+  ): Promise<{ endpoint: string; apiKey: string; model: string } | null> {
+    try {
+      const model = await this.modelRepo.findOne({
+        where: { modelId: preferredModel, isActive: true },
+      });
+      if (!model) {
+        this.logger.warn(`翻译模型不存在或未启用: ${preferredModel}`);
+        return null;
+      }
+      const upstream = model.upstreamModelId || model.modelId;
+      // 1) 模型所属供应商直连
+      if (model.providerId) {
+        const provider = await this.providerRepo.findOne({
+          where: { id: model.providerId, status: 'active' },
+        });
+        if (provider?.apiKey && provider.baseUrl) {
+          try {
+            return {
+              endpoint: provider.baseUrl.replace(/\/+$/, ''),
+              apiKey: this.encryptionService.decryptAes(provider.apiKey),
+              model: upstream,
+            };
+          } catch (e) {
+            this.logger.warn(`解密供应商 ${provider.slug} 的 API Key 失败: ${(e as Error).message}`);
+          }
+        }
+      }
+      // 2) 模型自身直连配置（老数据）
+      if (model.apiEndpoint && model.apiKey) {
+        try {
+          return {
+            endpoint: model.apiEndpoint.replace(/\/+$/, ''),
+            apiKey: this.encryptionService.decryptAes(model.apiKey),
+            model: upstream,
+          };
+        } catch (e) {
+          this.logger.warn(`解密模型 ${model.modelId} 的 API Key 失败: ${(e as Error).message}`);
+        }
+      }
+      // 3) 模型所属供应商 Key 池兜底
+      const poolKey = await this.apiKeyPoolService.getNextAvailableKey(model.provider);
+      if (poolKey) {
+        try {
+          const providerRow = await this.providerRepo.findOne({
+            where: { id: model.providerId || 0 } as any,
+          });
+          const endpoint = providerRow?.baseUrl || DEFAULT_ENDPOINTS[model.provider];
+          if (endpoint) {
+            return {
+              endpoint: endpoint.replace(/\/+$/, ''),
+              apiKey: this.encryptionService.decryptAes(poolKey.apiKey),
+              model: upstream,
+            };
+          }
+        } catch (e) {
+          this.logger.warn(`模型 ${model.modelId} 的 Key 池 Key 解密失败: ${(e as Error).message}`);
+        }
+      }
+      this.logger.warn(`翻译模型 ${preferredModel} 无法解析到可用 Key，回退自动选择`);
+      return null;
+    } catch (e) {
+      this.logger.warn(`解析翻译模型失败: ${(e as Error).message}`);
+      return null;
+    }
+  }
+
+  /** 选择翻译目标：优先用户指定的模型，否则自动挑选可用供应商（优先 deepseek/openai） */
+  private async resolveTarget(
+    preferredModel?: string,
+  ): Promise<{ endpoint: string; apiKey: string; model: string } | null> {
+    if (preferredModel) {
+      const resolved = await this.resolvePreferredModel(preferredModel);
+      if (resolved) return resolved;
+    }
     const providers = await this.providerRepo.find({ where: { status: 'active' } });
     providers.sort((a, b) => {
       const ia = PROVIDER_PREFERENCE.indexOf(a.slug);
@@ -58,6 +145,24 @@ export class AgentTranslateService {
         this.logger.warn(`解密供应商 ${p.slug} 的 API Key 失败: ${(e as Error).message}`);
       }
     }
+
+    // 兜底：从 API Key 池取可用 key（与 llm-proxy 同一套 key）
+    for (const slug of PROVIDER_PREFERENCE) {
+      const poolKey = await this.apiKeyPoolService.getNextAvailableKey(slug);
+      if (!poolKey) continue;
+      const providerRow = providers.find((p) => p.slug === slug);
+      const endpoint = providerRow?.baseUrl || DEFAULT_ENDPOINTS[slug];
+      if (!endpoint) continue;
+      try {
+        return {
+          endpoint: endpoint.replace(/\/+$/, ''),
+          apiKey: this.encryptionService.decryptAes(poolKey.apiKey),
+          model: process.env.AI_TRANSLATE_MODEL || DEFAULT_MODEL_BY_SLUG[slug] || 'gpt-4o-mini',
+        };
+      } catch (e) {
+        this.logger.warn(`解密 API Key 池 ${slug} 的 Key 失败: ${(e as Error).message}`);
+      }
+    }
     return null;
   }
 
@@ -69,12 +174,13 @@ export class AgentTranslateService {
     name: string,
     description: string,
     existingDisplayName?: string,
+    preferredModel?: string,
   ): Promise<AgentTranslateResult | null> {
     const needName = !existingDisplayName && !hasCjk(name);
     const needDesc = !!description && !hasCjk(description);
     if (!needName && !needDesc) return null;
 
-    const target = await this.resolveTarget();
+    const target = await this.resolveTarget(preferredModel);
     if (!target) {
       this.logger.warn('未找到可用的大模型供应商用于翻译，跳过中文化');
       return null;

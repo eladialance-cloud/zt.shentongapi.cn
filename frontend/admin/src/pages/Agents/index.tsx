@@ -52,8 +52,9 @@ import {
   updateAdminAgent,
   approveAgent,
   rejectAgent,
-  forceUnpublishAgent
+  forceUnpublishAgent,
 } from '@/api/admin-agent-api'
+import { listAdminModels } from '@/api/admin-model-api'
 import type {
   AdminAgentItem,
   AgentCategory,
@@ -62,6 +63,7 @@ import type {
   CreateAdminAgentDto,
   UpdateAdminAgentDto
 } from '@/types/admin-agent'
+import type { AdminModelItem } from '@/types/admin-model'
 import type { AdminPaginatedResult } from '@/types/admin-auth'
 import ImportGithubModal from './ImportGithubModal'
 import styles from './styles.module.css'
@@ -147,6 +149,11 @@ export default function AdminAgents() {
 
   // GitHub 导入
   const [importOpen, setImportOpen] = useState(false)
+  const [models, setModels] = useState<AdminModelItem[]>([])
+  const [translateModel, setTranslateModel] = useState<string>()
+  const modelOptions = models
+    .filter((m) => m.enabled && !['image', 'embedding', 'audio'].includes(m.modelType))
+    .map((m) => ({ label: `${m.displayName || m.modelId} (${m.modelId})`, value: m.modelId }))
 
   const loadList = useCallback(async () => {
     setLoading(true)
@@ -319,10 +326,20 @@ export default function AdminAgents() {
     }
   }
 
+  // 加载模型列表（供翻译模型选择）
+  useEffect(() => {
+    void listAdminModels({ enabled: true, pageSize: 100 })
+      .then((r) => {
+        const res = r as AdminPaginatedResult<AdminModelItem>
+        setModels(res.list || [])
+      })
+      .catch((err) => console.error('[AdminAgents] load models failed:', err))
+  }, [])
+
   const handleLocalUpload = async (file: File) => {
     setUploading(true)
     try {
-      const res = await importAdminAgentLocal(file)
+      const res = await importAdminAgentLocal(file, translateModel)
       message.success(res.message || `导入完成：新增 ${res.inserted}，失败 ${res.failed}`)
       void loadList()
     } catch (err) {
@@ -605,6 +622,16 @@ export default function AdminAgents() {
           <Button icon={<GithubOutlined />} onClick={() => setImportOpen(true)} className={styles.ghostBtn}>
             GitHub 导入
           </Button>
+          <Select
+            allowClear
+            showSearch
+            placeholder="翻译模型(可选)"
+            optionFilterProp="label"
+            style={{ width: 180, marginRight: 8 }}
+            value={translateModel}
+            onChange={(v) => setTranslateModel(v)}
+            options={modelOptions}
+          />
           <Upload
             accept=".zip"
             showUploadList={false}
@@ -806,6 +833,7 @@ export default function AdminAgents() {
         open={importOpen}
         onClose={() => setImportOpen(false)}
         onSuccess={loadList}
+        modelOptions={modelOptions}
       />
     </div>
   )

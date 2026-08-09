@@ -10,7 +10,9 @@ import { AdminAgentController } from './admin-agent.controller';
 import { AdminAgentService } from './admin-agent.service';
 import { AgentTranslateService } from '../agent/services/agent-translate.service';
 import { ModelProviderEntity } from '../admin-model/entities/model-provider.entity';
+import { ModelEntity } from '../model/entities/model.entity';
 import { CommonModule } from '../../common/common.module';
+import { ApiKeyPoolModule } from '../api-key-pool/api-key-pool.module';
 
 /**
  * 管理端 Agent 市场模块
@@ -32,9 +34,11 @@ import { CommonModule } from '../../common/common.module';
       AgentCategoryEntity,
       AgentImportTaskEntity,
       ModelProviderEntity,
+      ModelEntity,
     ]),
     AdminAuthModule,
     CommonModule,
+    ApiKeyPoolModule,
   ],
   controllers: [AdminAgentController],
   providers: [AdminAgentService, AgentTranslateService],

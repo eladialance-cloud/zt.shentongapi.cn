@@ -148,10 +148,12 @@ export async function forceUnpublishAgent(
 
 /** 本地上传 zip 批量导入 Agent */
 export async function importAdminAgentLocal(
-  file: File
+  file: File,
+  translateModel?: string
 ): Promise<{ total: number; inserted: number; skipped: number; failed: number; errors: string[]; message?: string }> {
   const form = new FormData()
   form.append('file', file)
+  if (translateModel) form.append('translateModel', translateModel)
   return adminRequest<{ total: number; inserted: number; skipped: number; failed: number; errors: string[]; message?: string }>(
     'post',
     '/admin/agents/import-local',

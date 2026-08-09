@@ -369,6 +369,7 @@ export class AdminAgentService {
       defaultCreatorId: dto.defaultCreatorId || DEFAULT_CREATOR_ID,
       dryRun: dto.dryRun ?? false,
       overwriteExisting: dto.overwriteExisting ?? false,
+      translateModel: dto.translateModel || undefined,
     };
 
     const stats: ImportTaskStats = {
@@ -400,7 +401,10 @@ export class AdminAgentService {
   }
 
   /** 本地上传 zip 批量导入（同步返回统计） */
-  async importLocalZip(file: Express.Multer.File): Promise<ImportTaskStats & { message: string }> {
+  async importLocalZip(
+    file: Express.Multer.File,
+    translateModel?: string,
+  ): Promise<ImportTaskStats & { message: string }> {
     const ext = path.extname(file?.originalname || '').toLowerCase();
     if (!file?.buffer || file.buffer.length === 0 || ext !== '.zip') {
       BusinessException.throw(ErrorCode.VALIDATION_FAILED, '请上传 .zip 压缩包');
@@ -424,6 +428,7 @@ export class AdminAgentService {
         defaultCreatorId: DEFAULT_CREATOR_ID,
         dryRun: false,
         overwriteExisting: false,
+        translateModel: translateModel || undefined,
       };
       const defaults = {
         targetStatus: dto.targetStatus || 'published',
@@ -431,6 +436,7 @@ export class AdminAgentService {
         defaultCreatorId: dto.defaultCreatorId || DEFAULT_CREATOR_ID,
         dryRun: dto.dryRun ?? false,
         overwriteExisting: dto.overwriteExisting ?? false,
+        translateModel: dto.translateModel || undefined,
       };
       const stats = await this.processDirectoryImport(tmpDir, dto, defaults, undefined);
       return {
@@ -456,6 +462,7 @@ export class AdminAgentService {
       defaultCreatorId: number;
       dryRun: boolean;
       overwriteExisting: boolean;
+      translateModel?: string;
     },
   ): Promise<void> {
     const startTime = Date.now();
@@ -522,6 +529,7 @@ export class AdminAgentService {
       defaultCreatorId: number;
       dryRun: boolean;
       overwriteExisting: boolean;
+      translateModel?: string;
     },
     commitSha: string | undefined,
     taskId?: string,
@@ -589,6 +597,7 @@ export class AdminAgentService {
               item.data.name,
               item.data.description,
               item.data.displayName,
+              defaults.translateModel,
             );
             if (zh) {
               if (zh.displayName) item.data.displayName = zh.displayName;

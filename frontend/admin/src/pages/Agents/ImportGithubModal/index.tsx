@@ -35,6 +35,7 @@ interface ImportFormValues {
   repoUrl: string
   targetStatus: ImportTargetStatus
   defaultModelId: string
+  translateModel: string
   dryRun: boolean
   overwriteExisting: boolean
 }
@@ -44,6 +45,8 @@ interface ImportGithubModalProps {
   onClose: () => void
   /** 任务成功后调用，父组件刷新列表 */
   onSuccess?: () => void
+  /** 翻译模型选项（后台模型列表），为空时回退为自由输入 */
+  modelOptions?: Array<{ label: string; value: string }>
 }
 
 const TARGET_STATUS_OPTIONS: Array<{ label: string; value: ImportTargetStatus }> = [
@@ -60,7 +63,8 @@ type ImportErrorRow = { filePath: string; error: string }
 export default function ImportGithubModal({
   open,
   onClose,
-  onSuccess
+  onSuccess,
+  modelOptions,
 }: ImportGithubModalProps) {
   const [form] = Form.useForm<ImportFormValues>()
   const [submitting, setSubmitting] = useState(false)
@@ -131,7 +135,8 @@ export default function ImportGithubModal({
         targetStatus: values.targetStatus,
         defaultModelId: values.defaultModelId.trim() || undefined,
         dryRun: values.dryRun,
-        overwriteExisting: values.overwriteExisting
+        overwriteExisting: values.overwriteExisting,
+        translateModel: values.translateModel?.trim() || undefined,
       }
       const res = await importGithubAgent(dto)
       message.success('已提交导入任务')
@@ -220,6 +225,7 @@ export default function ImportGithubModal({
         initialValues={{
           targetStatus: 'published',
           defaultModelId: 'gpt-4o-mini',
+          translateModel: '',
           dryRun: false,
           overwriteExisting: false
         }}
@@ -255,6 +261,21 @@ export default function ImportGithubModal({
           extra={<span className={styles.formHint}>仓库内未声明 modelId 时使用此默认值</span>}
         >
           <Input placeholder="gpt-4o-mini" disabled={isRunning} />
+        </Form.Item>
+
+        <Form.Item
+          name="translateModel"
+          label="翻译模型"
+          extra={<span className={styles.formHint}>Agent 名称/介绍自动翻译为中文所用的模型，留空自动选择</span>}
+        >
+          <Select
+            allowClear
+            showSearch
+            placeholder="自动选择"
+            optionFilterProp="label"
+            disabled={isRunning}
+            options={modelOptions}
+          />
         </Form.Item>
 
         <Form.Item name="dryRun" valuePropName="checked">

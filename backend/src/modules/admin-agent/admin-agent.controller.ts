@@ -95,11 +95,14 @@ export class AdminAgentController {
       limits: { fileSize: 100 * 1024 * 1024 },
     }),
   )
-  async importLocal(@UploadedFile() file: Express.Multer.File) {
+  async importLocal(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body?: { translateModel?: string },
+  ) {
     if (!file) {
       throw new BadRequestException('请上传 zip 文件');
     }
-    return this.service.importLocalZip(file);
+    return this.service.importLocalZip(file, body?.translateModel);
   }
 
   @Post('batch-delete')
@@ -121,6 +124,7 @@ export class AdminAgentController {
   }
 
 
+  @Post('import-github')
   @ApiOperation({ summary: 'GitHub 仓库异步导入' })
   async importGithub(@Body() dto: ImportGithubDto) {
     return this.service.importGithub(dto);
