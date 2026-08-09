@@ -7,6 +7,7 @@ export interface ImportTaskStats {
   skipped: number;
   failed: number;
   durationMs: number;
+  translated?: number;
   errors?: Array<{ filePath: string; error: string }>;
 }
 

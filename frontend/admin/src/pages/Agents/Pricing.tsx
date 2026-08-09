@@ -131,7 +131,14 @@ export default function AdminAgentsPricing() {
       title: 'Agent 名',
       dataIndex: 'name',
       key: 'name',
-      render: (v: string) => <span style={{ color: '#f1f5f9', fontWeight: 500 }}>{v}</span>
+      render: (v: string, record: AdminAgentItem) => (
+        <span style={{ color: '#f1f5f9', fontWeight: 500 }}>
+          {record.displayName || v}
+          {record.displayName && record.displayName !== v ? (
+            <span style={{ color: '#8b949e', marginLeft: 6, fontSize: 12 }}>({v})</span>
+          ) : null}
+        </span>
+      )
     },
     {
       title: '分类',

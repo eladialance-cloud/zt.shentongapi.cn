@@ -18,6 +18,8 @@ import {
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/constants/error.constant';
 import { AgentQueryDto } from './dto/agent-query.dto';
+import { resolveAgentZh } from '../agent/agent-zh.util';
+import { AgentTranslateService } from '../agent/services/agent-translate.service';
 import { AgentReviewQueryDto } from './dto/agent-review-query.dto';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
@@ -82,6 +84,7 @@ export class AdminAgentService {
     private userRepo: Repository<UserEntity>,
     @InjectRepository(AgentImportTaskEntity)
     private agentImportTaskRepo: Repository<AgentImportTaskEntity>,
+    private readonly agentTranslateService: AgentTranslateService,
   ) {}
 
   // ============ Agent CRUD ============
@@ -432,7 +435,7 @@ export class AdminAgentService {
       const stats = await this.processDirectoryImport(tmpDir, dto, defaults, undefined);
       return {
         ...stats,
-        message: `导入完成：新增 ${stats.inserted}，跳过 ${stats.skipped}，失败 ${stats.failed}`,
+        message: `导入完成：新增 ${stats.inserted}，跳过 ${stats.skipped}，失败 ${stats.failed}${stats.translated ? `，翻译中文 ${stats.translated}` : ''}`,
       };
     } finally {
       try {
@@ -571,7 +574,38 @@ export class AdminAgentService {
       }
     }
 
+    // 名称/介绍自动翻译为简体中文（LLM，失败保留原文，不中断导入）
+    let translatedCount = 0;
+    {
+      const CONCURRENCY = 4;
+      let cursor = 0;
+      const workerCount = Math.min(CONCURRENCY, parsed.length);
+      const workers = Array.from({ length: workerCount }, async () => {
+        while (cursor < parsed.length) {
+          const item = parsed[cursor];
+          cursor++;
+          try {
+            const zh = await this.agentTranslateService.translateNameAndDescription(
+              item.data.name,
+              item.data.description,
+              item.data.displayName,
+            );
+            if (zh) {
+              if (zh.displayName) item.data.displayName = zh.displayName;
+              if (zh.description) item.data.description = zh.description;
+              translatedCount++;
+            }
+          } catch (e) {
+            this.logger.warn(`Agent 中文化失败 ${item.relPath}: ${(e as Error).message}`);
+          }
+        }
+      });
+      await Promise.all(workers);
+    }
+    stats.translated = translatedCount;
+
     // h. 按 sourceRepoUrl + sourceFilePath 去重
+    
     const existingMap = new Map<string, { id: number }>();
     if (parsed.length > 0) {
       const existing = await this.agentRepo.find({
@@ -817,11 +851,12 @@ export class AdminAgentService {
 
     return agents.map((a) => {
       const pricingMode = a.pricePerToken ? 'perToken' : 'perCall';
+      const zh = resolveAgentZh(a.name, a.displayName);
       return {
         id: a.id,
         name: a.name,
-        displayName: a.displayName || a.name,
-        description: a.description || '',
+        displayName: zh?.displayName || a.displayName || a.name,
+        description: zh?.description || a.description || '',
         systemPrompt: a.systemPrompt,
         category: a.category,
         usageExamples: a.usageExample ? a.usageExample.split('\n').filter(Boolean) : undefined,

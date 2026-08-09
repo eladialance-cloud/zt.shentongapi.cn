@@ -8,6 +8,9 @@ import { AgentImportTaskEntity } from './entities/agent-import-task.entity';
 import { AdminAuthModule } from '../admin-auth/admin-auth.module';
 import { AdminAgentController } from './admin-agent.controller';
 import { AdminAgentService } from './admin-agent.service';
+import { AgentTranslateService } from '../agent/services/agent-translate.service';
+import { ModelProviderEntity } from '../admin-model/entities/model-provider.entity';
+import { CommonModule } from '../../common/common.module';
 
 /**
  * 管理端 Agent 市场模块
@@ -28,11 +31,13 @@ import { AdminAgentService } from './admin-agent.service';
       UserEntity,
       AgentCategoryEntity,
       AgentImportTaskEntity,
+      ModelProviderEntity,
     ]),
     AdminAuthModule,
+    CommonModule,
   ],
   controllers: [AdminAgentController],
-  providers: [AdminAgentService],
+  providers: [AdminAgentService, AgentTranslateService],
   exports: [AdminAgentService],
 })
 export class AdminAgentModule {}

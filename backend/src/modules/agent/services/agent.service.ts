@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { resolveAgentZh } from '../agent-zh.util';
 import { AgentEntity } from '../entities/agent.entity';
 import { AgentCallLogEntity } from '../entities/agent-call-log.entity';
 import { AgentFavoriteEntity } from '../entities/agent-favorite.entity';
@@ -26,33 +27,8 @@ const DISPLAY_NAMES: Record<string, string> = {
   other: '其他',
 };
 
-/**
- * 官方常见 Agent 中文化对照表（英文名 → 中文显示名/描述）
- * 命中后自动覆盖 displayName/description，未命中保持后台录入原样。
- * 新增英文 Agent 只需在此表加一行。
- */
-const AGENT_ZH_MAP: Record<string, { displayName: string; description?: string }> = {
-  'DeepSeek Chat': {
-    displayName: 'DeepSeek 对话',
-    description: 'DeepSeek 通用大语言模型，支持多轮对话、代码与文本生成。',
-  },
-  'DeepSeek-V3': {
-    displayName: 'DeepSeek V3',
-    description: 'DeepSeek V3 大语言模型，擅长推理、代码与长文本处理。',
-  },
-  'DeepSeek-R1': {
-    displayName: 'DeepSeek R1',
-    description: 'DeepSeek R1 推理模型，擅长逻辑推理与复杂问题求解。',
-  },
-  'Web Search': {
-    displayName: '联网搜索',
-    description: '联网搜索工具 Agent，可实时检索互联网信息并整理回答。',
-  },
-  'Image Generator': {
-    displayName: '图片生成',
-    description: 'AI 图片生成 Agent，根据文字描述生成图片。',
-  },
-};
+
+
 
 const REVIEW_STATUSES = ['approved', 'paid', 'completed'];
 
@@ -703,7 +679,7 @@ export class AgentService {
   }
 
   private toListItem(a: AgentEntity) {
-    const zh = AGENT_ZH_MAP[a.name] || AGENT_ZH_MAP[a.displayName || ''];
+    const zh = resolveAgentZh(a.name, a.displayName);
     return {
       id: a.id,
       name: a.name,
@@ -812,7 +788,7 @@ export class AgentService {
     creatorName?: string,
     isFavorited = false,
   ) {
-    const zh = AGENT_ZH_MAP[a.name] || AGENT_ZH_MAP[a.displayName || ''];
+    const zh = resolveAgentZh(a.name, a.displayName);
     return {
       id: a.id,
       name: a.name,
