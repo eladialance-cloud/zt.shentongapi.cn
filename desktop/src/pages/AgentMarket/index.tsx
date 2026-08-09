@@ -42,6 +42,7 @@ import type {
 import { useSystemStore } from "@/store/system";
 import { NetworkError } from "@/utils/errors";
 import styles from "./styles.module.css";
+import Favorites from "./Favorites";
 
 const CATEGORY_OPTIONS: Array<{ label: string; value: AgentCategory | "" }> = [
   { label: "全部分类", value: "" },
@@ -53,13 +54,14 @@ const CATEGORY_OPTIONS: Array<{ label: string; value: AgentCategory | "" }> = [
 ];
 
 const TAB_ITEMS: Array<{
-  key: MarketTab;
+  key: MarketTab | "favorites";
   label: string;
   icon: React.ReactNode;
 }> = [
   { key: "all", label: "全部", icon: <AppstoreOutlined /> },
   { key: "official", label: "官方推荐", icon: <CrownOutlined /> },
   { key: "community", label: "社区", icon: <RobotOutlined /> },
+  { key: "favorites", label: "我的", icon: <HeartFilled /> },
 ];
 
 const PAGE_SIZE = 12;
@@ -71,11 +73,15 @@ export default function AgentMarket({ embedded = false }: { embedded?: boolean }
   const [agents, setAgents] = useState<Agent[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [tab, setTab] = useState<MarketTab>("all");
+  const [tab, setTab] = useState<MarketTab | "favorites">("all");
   const [category, setCategory] = useState<string>("");
   const [keyword, setKeyword] = useState("");
 
   const loadData = useCallback(async () => {
+    if (tab === "favorites") {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const query: MarketQuery = {
       tab,
@@ -103,7 +109,7 @@ export default function AgentMarket({ embedded = false }: { embedded?: boolean }
   }, [loadData]);
 
   const handleTabChange = (key: string) => {
-    setTab(key as MarketTab);
+    setTab(key as MarketTab | "favorites");
     setPage(1);
   };
 
@@ -128,7 +134,7 @@ export default function AgentMarket({ embedded = false }: { embedded?: boolean }
         message.success("已取消收藏");
       } else {
         await favoriteAgent(agent.id);
-        message.success("已收藏");
+        message.success("已收藏，可在「我的」查看");
       }
     } catch (err) {
       // 回滚
@@ -183,6 +189,8 @@ export default function AgentMarket({ embedded = false }: { embedded?: boolean }
           style={{ marginBottom: 0 }}
         />
         <div className={styles.toolbarLeft}>
+          {tab !== "favorites" && (
+            <>
           <Select
             value={category}
             onChange={(v) => {
@@ -200,12 +208,17 @@ export default function AgentMarket({ embedded = false }: { embedded?: boolean }
             prefix={<SearchOutlined style={{ color: "#64748b" }} />}
             className={styles.searchBox}
             allowClear
-          />
+            />
+            </>
+          )}
         </div>
       </div>
 
-      {/* Agent 列表 */}
-      <Spin spinning={loading}>
+      {/* Agent 列表 / 我的收藏 */}
+      {tab === "favorites" ? (
+        <Favorites embedded />
+      ) : (
+        <Spin spinning={loading}>
         {agents.length === 0 && !loading ? (
           <Empty description="暂无 Agent" style={{ marginTop: 80 }} />
         ) : (
@@ -233,7 +246,8 @@ export default function AgentMarket({ embedded = false }: { embedded?: boolean }
             />
           </div>
         )}
-      </Spin>
+        </Spin>
+      )}
     </div>
   );
 }

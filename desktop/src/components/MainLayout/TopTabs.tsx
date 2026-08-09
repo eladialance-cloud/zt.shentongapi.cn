@@ -43,8 +43,8 @@ const CORE_TABS: TabItem[] = [
 const MORE_TABS: TabItem[] = [
   { key: 'plugins', label: '插件', icon: <ApiOutlined />, path: '/plugins' },
   { key: 'knowledge', label: '知识库', icon: <BookOutlined />, path: '/knowledge' },
-  { key: 'agents', label: 'Agent市场', icon: <AppstoreOutlined />, path: '/agents' },
-  { key: 'mcp-config', label: 'MCP配置', icon: <ToolOutlined />, path: '/mcp-config' },
+  { key: 'agents', label: 'Agent市场', icon: <AppstoreOutlined />, path: '/agent-market' },
+  { key: 'mcp-config', label: 'MCP配置', icon: <ToolOutlined />, path: '/mcp-market' },
   { key: 'publish', label: '发布', icon: <SendOutlined />, path: '/publish' },
   { key: 'settings', label: '设置', icon: <SettingOutlined />, path: '/settings' },
 ]

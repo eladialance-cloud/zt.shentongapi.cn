@@ -28,6 +28,7 @@ import AgentCreatorCreate from "@/pages/AgentCreator/Create";
 import AgentCreatorRevenue from "@/pages/AgentCreator/Revenue";
 import AgentMarket from "@/pages/AgentMarket";
 import AgentDetail from "@/pages/AgentMarket/Detail";
+import AgentFavorites from "@/pages/AgentMarket/Favorites";
 import SkillMarket from "@/pages/SkillMarket";
 import HermesList from "@/pages/Hermes";
 import HermesDetail from "@/pages/Hermes/Detail";
@@ -111,6 +112,7 @@ const router = createHashRouter([
       { path: "/publish", element: <PublishList /> },
       // ===== Agent 市场 / MCP 市场 / 自动化 =====
       { path: "/agent-market", element: <AgentMarket /> },
+      { path: "/agent-market/favorites", element: <AgentFavorites /> },
       { path: "/agent-market/:id", element: <AgentDetail /> },
       { path: "/mcp-market", element: <McpConfig /> },
       { path: "/skill-market", element: <SkillMarket /> },

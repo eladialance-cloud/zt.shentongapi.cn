@@ -24,7 +24,7 @@ import { listMyFavorites, unfavoriteAgent } from '@/api/agent-api'
 import type { Agent } from '@/types/agent'
 import styles from './styles.module.css'
 
-export default function Favorites() {
+export default function Favorites({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [favorites, setFavorites] = useState<Agent[]>([])
@@ -62,28 +62,32 @@ export default function Favorites() {
 
   return (
     <div className={styles.page}>
-      {/* 顶部标题 */}
-      <div className={styles.header}>
-        <div className={styles.titleArea}>
-          <HeartFilled className={styles.titleIcon} style={{ color: '#f87171' }} />
-          <div>
-            <h1 className={styles.title}>我的收藏</h1>
-            <div className={styles.subtitle}>共 {favorites.length} 个收藏 Agent</div>
+      {!embedded && (
+        <>
+          {/* 顶部标题 */}
+          <div className={styles.header}>
+            <div className={styles.titleArea}>
+              <HeartFilled className={styles.titleIcon} style={{ color: '#f87171' }} />
+              <div>
+                <h1 className={styles.title}>我的收藏</h1>
+                <div className={styles.subtitle}>共 {favorites.length} 个收藏 Agent</div>
+              </div>
+            </div>
+            <Button
+              icon={<RollbackOutlined />}
+              onClick={() => navigate('/agent-market')}
+              className={styles.backBtn}
+            >
+              返回市场
+            </Button>
           </div>
-        </div>
-        <Button
-          icon={<RollbackOutlined />}
-          onClick={() => navigate('/agents')}
-          className={styles.backBtn}
-        >
-          返回市场
-        </Button>
-      </div>
+        </>
+      )}
 
       <Spin spinning={loading}>
         {favorites.length === 0 && !loading ? (
           <Empty description="还没有收藏任何 Agent" style={{ marginTop: 80 }}>
-            <Button type="primary" onClick={() => navigate('/agents')}>
+            <Button type="primary" onClick={() => navigate('/agent-market')}>
               去市场逛逛
             </Button>
           </Empty>
@@ -109,7 +113,7 @@ export default function Favorites() {
                         <div
                           className={styles.agentName}
                           style={{ cursor: 'pointer' }}
-                          onClick={() => navigate(`/agents/${agent.id}`)}
+                          onClick={() => navigate(`/agent-market/${agent.id}`)}
                         >
                           {agent.isOfficial && (
                             <span className={styles.officialBadge}>

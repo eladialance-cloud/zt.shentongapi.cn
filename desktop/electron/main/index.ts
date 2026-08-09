@@ -118,10 +118,22 @@ function registerIpcHandlers(): void {
     callOpenClaw: createLocalOpenClawCaller(),
     ensureOpenClaw: async () => {
       const info = serviceManager.getInfo('openclaw')
-      if (info && info.status === 'running') return
-      console.log('[openclaw-chat] OpenClaw 未运行，自动启动...')
-      const ok = await serviceManager.start('openclaw')
-      if (!ok) throw new Error('OpenClaw 启动失败，请到服务管理页检查后再试')
+      // 状态机防御：status='running' 但端口未监听（进程残留/假活）时也强制重启，
+      // 避免直接 fetch 127.0.0.1:8080 报 "fetch failed" 且永不自愈
+      const alive =
+        info &&
+        info.status === 'running' &&
+        (await waitForLocalPort(OPENCLAW_LOCAL_PORT, 2000, 500))
+      if (alive) return
+      if (info && info.status === 'running') {
+        console.log('[openclaw-chat] OpenClaw 状态异常（端口未监听），自动重启...')
+        const ok = await serviceManager.restart('openclaw')
+        if (!ok) throw new Error('OpenClaw 重启失败，请到服务管理页检查后再试')
+      } else {
+        console.log('[openclaw-chat] OpenClaw 未运行，自动启动...')
+        const ok = await serviceManager.start('openclaw')
+        if (!ok) throw new Error('OpenClaw 启动失败，请到服务管理页检查后再试')
+      }
       const ready = await waitForLocalPort(OPENCLAW_LOCAL_PORT)
       if (!ready) throw new Error('OpenClaw 启动超时，请稍后重试')
     },

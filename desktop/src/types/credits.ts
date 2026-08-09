@@ -63,6 +63,7 @@ export interface RechargeResult {
 export interface TransactionQuery {
   page?: number
   pageSize?: number
+  type?: CreditTransactionType
   startDate?: string
   endDate?: string
   source?: string

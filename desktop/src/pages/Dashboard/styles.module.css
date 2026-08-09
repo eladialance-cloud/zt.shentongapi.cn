@@ -379,3 +379,36 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+/* ===== 仪表盘增强（真实数据版） ===== */
+.welcomeRight {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.loadingWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+}
+
+.agentAvatarImg {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* 响应式补强 */
+@media (max-width: 768px) {
+  .welcome {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .welcomeRight {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
