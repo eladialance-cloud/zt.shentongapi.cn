@@ -844,7 +844,7 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
     );
     if (Number(globalIdx?.c ?? 0) === 0) {
       await queryRunner.query(
-        `ALTER TABLE model_providers ADD UNIQUE INDEX uk_model_providers_global (is_global)`
+        `ALTER TABLE model_providers ADD UNIQUE INDEX uk_model_providers_global ((IF(is_global = 1, is_global, NULL)))`
       );
       logger.log('Created index: model_providers.uk_model_providers_global');
     }
