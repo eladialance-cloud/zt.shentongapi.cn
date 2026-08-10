@@ -60,7 +60,7 @@ export default function Recharge() {
   // 支付结果轮询：支付成功后刷新余额并返回积分中心
   useEffect(() => {
     if (!payResult || paid) return
-    let timer: ReturnType<typeof setInterval> | undefined
+    let timer: number | undefined
     const startedAt = Date.now()
 
     const poll = async () => {

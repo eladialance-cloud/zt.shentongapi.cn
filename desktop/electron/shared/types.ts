@@ -326,6 +326,8 @@ export interface ElectronAPI {
     checkUpdate(): Promise<void>;
     quitAndInstall(): Promise<void>;
     disableHardwareAcceleration?(): Promise<void>;
+    /** 使用系统默认浏览器打开外部链接（真实支付跳转用） */
+    openExternal(url: string): Promise<void>;
   };
   /** 自动更新（electron-updater 封装） */
   updater: {
