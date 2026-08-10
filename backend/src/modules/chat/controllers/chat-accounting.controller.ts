@@ -32,6 +32,21 @@ export class ChatAccountingController {
     return this.svc.setPreferredModel(u.userId, b.modelId);
   }
 
+  @Get('default-models')
+  @ApiOperation({ summary: '读取用户每类默认模型（chat/vision/image/video/tts）' })
+  getDefaultModels(@CurrentUser() u: ICurrentUser) {
+    return this.svc.getDefaultModels(u.userId);
+  }
+
+  @Post('default-models')
+  @ApiOperation({ summary: '保存用户每类默认模型（空串=清除该分类）' })
+  setDefaultModels(
+    @CurrentUser() u: ICurrentUser,
+    @Body() b: { chat?: string | null; vision?: string | null; image?: string | null; video?: string | null; tts?: string | null },
+  ) {
+    return this.svc.setDefaultModels(u.userId, b);
+  }
+
   @Post('tool')
   @ApiOperation({ summary: '有定价工作流额外扣费' })
   tool(@CurrentUser() u: ICurrentUser, @Body() b: { workflowId: number }) {

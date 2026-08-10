@@ -49,11 +49,12 @@ import type {
 const STEPS = [{ title: '连接信息' }, { title: '读取模型' }, { title: '逐模型定价' }]
 
 const MODEL_TYPE_OPTIONS: Array<{ label: string; value: string }> = [
-  { label: '对话 chat', value: 'chat' },
-  { label: '推理 reasoning', value: 'reasoning' },
-  { label: '图像 image', value: 'image' },
-  { label: '向量 embedding', value: 'embedding' },
-  { label: '音频 audio', value: 'audio' },
+  { label: '文本对话 chat', value: 'chat' },
+  { label: '图片识图 vision', value: 'vision' },
+  { label: '文生图 image', value: 'image' },
+  { label: '图生图 image_edit', value: 'image_edit' },
+  { label: '视频生成 video', value: 'video' },
+  { label: '语音合成 tts', value: 'tts' },
 ]
 
 /** 每个勾选模型的定价配置 */
@@ -84,6 +85,7 @@ export default function ProviderImportModal({
   const [name, setName] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
+  const [isGlobal, setIsGlobal] = useState(false)
   const [testModel, setTestModel] = useState('')
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
@@ -115,6 +117,7 @@ export default function ProviderImportModal({
     setName('')
     setBaseUrl('')
     setApiKey('')
+    setIsGlobal(false)
     setTestModel('')
     setTestResult(null)
     setFetchError('')
@@ -175,6 +178,7 @@ export default function ProviderImportModal({
         name: name.trim(),
         baseUrl: baseUrl.trim(),
         apiKey: apiKey.trim() || undefined,
+        isGlobal,
       })
       createdInFlow.current = true
       setProviderId(p.id)
@@ -442,6 +446,18 @@ export default function ProviderImportModal({
             </Space.Compact>
           </div>
           <div style={{ marginBottom: 14 }}>
+            <div style={{ marginBottom: 6, color: '#c7d2fe' }}>设为全局中转（可选）</div>
+            <Switch
+              checked={isGlobal}
+              onChange={setIsGlobal}
+              checkedChildren="全局"
+              unCheckedChildren="普通"
+            />
+            <div style={{ fontSize: 12, color: '#8b949e', marginTop: 6 }}>
+              全站唯一：所有模型默认使用该供应商的 BaseURL+Key 调用；置为全局后，其他供应商的全局标记会被自动取消
+            </div>
+          </div>
+          <div style={{ marginBottom: 14 }}>
             <div style={{ marginBottom: 6, color: '#c7d2fe' }}>测试模型（可选，用于连接测试）</div>
             <Input
               value={testModel}
@@ -460,7 +476,7 @@ export default function ProviderImportModal({
             />
           )}
           <div style={{ color: '#8b949e', fontSize: 12 }}>
-            下一步将保存供应商并读取其上游模型列表；保存后可随时在「供应商管理」中编辑或删除。
+            下一步将保存供应商并读取其上游模型列表；保存后可随时在「供应商管理」中编辑或删除；设为全局中转后，全站模型将默认使用该供应商的 BaseURL+Key 调用。
           </div>
         </div>
       )}

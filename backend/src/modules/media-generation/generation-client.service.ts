@@ -175,7 +175,9 @@ export class GenerationClientService {
     taskId: string;
   }): Promise<{ status: 'processing' | 'done' | 'failed'; url?: string; message?: string }> {
     const { endpoint, apiKey, adapter } = cfg;
-    const taskPath = (adapter.taskPath || '/videos/generations/{id}').replace('{id}', encodeURIComponent(cfg.taskId));
+    const taskPath = (adapter.taskPath || '/videos/generations/{id}')
+      .replace('{id}', encodeURIComponent(cfg.taskId))
+      .replace('{task_id}', encodeURIComponent(cfg.taskId));
     const url = this.buildUrl(endpoint, taskPath);
     const json = await this.getJson(url, apiKey, adapter.extraHeaders);
     const status = this.getByPath(json, adapter.statusPath || 'data.task_status') as string;

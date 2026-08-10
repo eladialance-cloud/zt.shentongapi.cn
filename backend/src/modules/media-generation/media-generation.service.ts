@@ -13,6 +13,7 @@ import { FileEntity } from '../file/entities/file.entity';
 import { EncryptionService } from '../../common/services/encryption.service';
 import { CreditsService } from '../credits/services/credits.service';
 import { PricingService } from '../credits/services/pricing.service';
+import { resolveRelay } from '../admin-model/utils/relay-resolver';
 
 const DEFAULT_IMAGE_PRICE = 10; // 积分/张（模型未配置时）
 const GENERATED_DIR = './uploads/files/generated';
@@ -77,7 +78,7 @@ export class MediaGenerationService implements OnModuleInit {
     const models = await this.modelRepo.find({ where: { isActive: true }, order: { createdAt: 'DESC' } });
     const out: GenerationModelItem[] = [];
     for (const m of models) {
-      if (m.modelType !== 'image' && m.modelType !== 'video') continue;
+      if (m.modelType !== 'image' && m.modelType !== 'image_edit' && m.modelType !== 'video') continue;
       const provider = m.providerId
         ? await this.providerRepo.findOne({ where: { id: m.providerId, status: 'active' } })
         : null;
@@ -85,7 +86,7 @@ export class MediaGenerationService implements OnModuleInit {
       out.push({
         id: m.modelId,
         name: m.name,
-        type: m.modelType as 'image' | 'video',
+        type: (m.modelType === 'image_edit' ? 'image' : m.modelType) as 'image' | 'video',
         provider: provider.slug,
         generationParams: m.generationParams ?? {},
         pricePerImage: m.pricePerImage,
@@ -105,16 +106,28 @@ export class MediaGenerationService implements OnModuleInit {
     if (model.modelType !== type) {
       throw new BadRequestException(`模型类型不匹配：${model.modelType}`);
     }
-    const provider = model.providerId
+    // 1) 模型绑定供应商优先；2) 无绑定/停用 → 全局中转（严格单全局，老数据回退第一个 active 供应商）
+    let provider = model.providerId
       ? await this.providerRepo.findOne({ where: { id: model.providerId, status: 'active' } })
       : null;
+    if (!provider) {
+      provider = await resolveRelay(this.providerRepo);
+    }
     if (!provider?.apiKey || !provider?.baseUrl) {
       throw new BadRequestException('模型未关联可用供应商凭据（Base URL / API Key）');
     }
     let decrypted = '';
     try { decrypted = this.encryptionService.decryptAes(provider.apiKey as string); } catch { /* ignore */ }
     if (!decrypted) throw new BadRequestException('供应商 API Key 解密失败');
-    const adapter = (provider.config?.generation ?? {}) as GenerationAdapterConfig;
+    // 视频：模型级提交/查询后缀优先（generation_params.video_submit_path / video_query_path），
+    // 未配置时兼容老供应商 config.generation 适配模板
+    const baseAdapter = (provider.config?.generation ?? {}) as GenerationAdapterConfig;
+    const gen = (model.generationParams ?? {}) as Record<string, unknown>;
+    const adapter: GenerationAdapterConfig = {
+      ...baseAdapter,
+      ...(gen.video_submit_path ? { videosPath: String(gen.video_submit_path) } : {}),
+      ...(gen.video_query_path ? { taskPath: String(gen.video_query_path) } : {}),
+    };
     return { model, provider, adapter, decryptedKey: decrypted };
   }
 

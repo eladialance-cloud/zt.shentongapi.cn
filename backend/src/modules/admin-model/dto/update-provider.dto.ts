@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEnum,
   IsObject,
   IsOptional,
@@ -38,4 +39,9 @@ export class UpdateProviderDto {
   @IsOptional()
   @IsEnum(['active', 'disabled'])
   status?: 'active' | 'disabled';
+
+  @ApiPropertyOptional({ description: '是否全局中转（置 true 时自动取消其他供应商）' })
+  @IsOptional()
+  @IsBoolean()
+  isGlobal?: boolean;
 }

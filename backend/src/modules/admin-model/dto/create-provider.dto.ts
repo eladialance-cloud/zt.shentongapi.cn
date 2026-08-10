@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsNotEmpty,
   IsObject,
   IsOptional,
@@ -36,4 +37,9 @@ export class CreateProviderDto {
   @IsOptional()
   @IsObject()
   config?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ description: '是否全局中转（全站至多 1 条 = true）' })
+  @IsOptional()
+  @IsBoolean()
+  isGlobal?: boolean;
 }

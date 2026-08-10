@@ -26,6 +26,7 @@ interface ModelQuery {
   provider?: string;
   enabled?: boolean | string;
   keyword?: string;
+  modelType?: string;
   page?: number;
   pageSize?: number;
 }
@@ -71,8 +72,11 @@ export class AdminModelService {
         kw: `%${query.keyword}%`,
       });
     }
+    if (query.modelType) {
+      qb.andWhere('m.model_type = :mt', { mt: String(query.modelType) });
+    }
 
-    qb.orderBy('m.created_at', 'DESC')
+    qb.orderBy('m.sort_order', 'ASC').addOrderBy('m.created_at', 'DESC')
       .skip((page - 1) * pageSize)
       .take(pageSize);
 
@@ -229,9 +233,13 @@ export class AdminModelService {
       status: 'active',
       connectionStatus: 'untested',
       isBuiltin: false,
+      isGlobal: dto.isGlobal ?? false,
       modelCount: 0,
     });
     const saved = await this.providerRepo.save(entity);
+    if (dto.isGlobal) {
+      await this.clearOtherGlobal(saved.id);
+    }
     return this.toProviderItem(saved);
   }
 
@@ -248,7 +256,11 @@ export class AdminModelService {
     }
     if (dto.config !== undefined) provider.config = dto.config;
     if (dto.status !== undefined) provider.status = dto.status;
+    if (dto.isGlobal !== undefined) provider.isGlobal = dto.isGlobal;
     await this.providerRepo.save(provider);
+    if (dto.isGlobal) {
+      await this.clearOtherGlobal(provider.id);
+    }
   }
 
   /** 删除供应商（需先删除其下模型） */
@@ -469,6 +481,16 @@ export class AdminModelService {
 
   // ============ 私有辅助 ============
 
+  /** 单全局互斥：仅保留指定供应商为全局，其余全部取消 */
+  private async clearOtherGlobal(keepId: number) {
+    await this.providerRepo
+      .createQueryBuilder()
+      .update()
+      .set({ isGlobal: false })
+      .where('is_global = 1 AND id != :id', { id: keepId })
+      .execute();
+  }
+
   /** 将 DTO 应用到新建实体 */
   private applyCreateDto(entity: ModelEntity, dto: CreateModelDto) {
     entity.provider = dto.provider;
@@ -495,6 +517,8 @@ export class AdminModelService {
     if (dto.pricePerImage !== undefined) entity.pricePerImage = dto.pricePerImage;
     if (dto.videoPrices !== undefined) entity.videoPrices = dto.videoPrices ?? null;
     if (dto.generationParams !== undefined) entity.generationParams = dto.generationParams ?? null;
+    if (dto.sortOrder !== undefined) entity.sortOrder = dto.sortOrder;
+    if (dto.pricePerCall !== undefined) entity.pricePerCall = dto.pricePerCall;
     if (dto.displayName !== undefined) entity.name = dto.displayName;
     if (dto.inputPricePerToken !== undefined) entity.pricePer1kInput = dto.inputPricePerToken;
     if (dto.outputPricePerToken !== undefined) entity.pricePer1kOutput = dto.outputPricePerToken;
@@ -525,6 +549,8 @@ export class AdminModelService {
       pricePerImage: m.pricePerImage ?? null,
       videoPrices: m.videoPrices ?? {},
       generationParams: m.generationParams ?? {},
+      sortOrder: m.sortOrder ?? 0,
+      pricePerCall: m.pricePerCall ?? null,
       displayName: m.name,
       apiKeyMasked: m.apiKey ? this.encryption.maskKey(m.apiKey) : undefined,
       apiEndpoint: m.apiEndpoint,
@@ -559,6 +585,7 @@ export class AdminModelService {
       connectionStatus: p.connectionStatus || 'untested',
       lastTestedAt: p.lastTestedAt,
       isBuiltin: p.isBuiltin,
+      isGlobal: Boolean(p.isGlobal),
       modelCount: p.modelCount ?? 0,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,

@@ -152,7 +152,7 @@ export default function AdminAgents() {
   const [models, setModels] = useState<AdminModelItem[]>([])
   const [translateModel, setTranslateModel] = useState<string>()
   const modelOptions = models
-    .filter((m) => m.enabled && !['image', 'embedding', 'audio'].includes(m.modelType))
+    .filter((m) => m.enabled && !['image', 'image_edit', 'video', 'tts', 'embedding', 'audio'].includes(m.modelType))
     .map((m) => ({ label: `${m.displayName || m.modelId} (${m.modelId})`, value: m.modelId }))
 
   const loadList = useCallback(async () => {

@@ -112,4 +112,20 @@ export class UserEntity extends BaseEntity {
   /** 用户默认对话模型（OpenClaw 本地直达对话：llm-proxy 收到 openclaw 内部模型名时按此解析） */
   @Column({ name: 'default_chat_model', type: 'varchar', length: 64, nullable: true })
   defaultChatModel?: string | null;
+
+  /** 用户默认识图模型（多模态网关 vision 分类兜底） */
+  @Column({ name: 'default_model_vision', type: 'varchar', length: 64, nullable: true })
+  defaultModelVision?: string | null;
+
+  /** 用户默认文生图模型（image/image_edit 共用，多模态网关按此兜底） */
+  @Column({ name: 'default_model_image', type: 'varchar', length: 64, nullable: true })
+  defaultModelImage?: string | null;
+
+  /** 用户默认视频生成模型（多模态网关按此兜底） */
+  @Column({ name: 'default_model_video', type: 'varchar', length: 64, nullable: true })
+  defaultModelVideo?: string | null;
+
+  /** 用户默认语音合成模型（多模态网关按此兜底） */
+  @Column({ name: 'default_model_tts', type: 'varchar', length: 64, nullable: true })
+  defaultModelTts?: string | null;
 }

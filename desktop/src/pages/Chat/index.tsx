@@ -39,6 +39,15 @@ import type { Agent } from '@/types/agent'
 import styles from './styles.module.css'
 
 
+/** 模型分类分组标签（对话模型下拉） */
+const MODEL_TYPE_GROUP_LABEL: Record<string, string> = {
+  chat: '文本对话',
+  vision: '图片识图',
+  reasoning: '推理',
+  embedding: '向量',
+  audio: '音频'
+}
+
 /** 知识库选择器「全局搜索」的固定 value */
 const GLOBAL_KB_VALUE = '__global__'
 
@@ -577,8 +586,8 @@ export default function Chat() {
   /** 选项数据构造 */
   const modelSelectProps: SelectProps = useMemo(
 
-    () => ({
-      options: modelOptions.map((m) => ({
+    () => {
+      const renderOption = (m: ModelOption) => ({
         label: (
           <span>
             <ThunderboltOutlined style={{ color: 'var(--color-text-secondary)', marginRight: 6 }} />
@@ -601,11 +610,25 @@ export default function Chat() {
           </span>
         ),
         value: m.id
-      })),
-      notFoundContent: modelLoading
-        ? '加载中...'
-        : '管理后台暂未上线模型，请联系管理员',
-    }),
+      })
+      // 按模型分类分组（chat/vision/reasoning/...），保持后台 sortOrder 顺序
+      const groupMap = new Map<string, ReturnType<typeof renderOption>[]>()
+      for (const m of modelOptions) {
+        const key = m.modelType && m.modelType !== 'chat' ? m.modelType : 'chat'
+        if (!groupMap.has(key)) groupMap.set(key, [])
+        groupMap.get(key)!.push(renderOption(m))
+      }
+      const options = Array.from(groupMap.entries()).map(([key, items]) => ({
+        label: MODEL_TYPE_GROUP_LABEL[key] || key,
+        options: items
+      }))
+      return {
+        options,
+        notFoundContent: modelLoading
+          ? '加载中...'
+          : '管理后台暂未上线模型，请联系管理员',
+      }
+    },
     [modelOptions, modelLoading]
   )
 

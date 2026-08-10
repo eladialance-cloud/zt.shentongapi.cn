@@ -1,7 +1,8 @@
 // 文生图/文生视频生成弹窗
 // - 模型选择（后端 /media-generation/models，含价格展示）
 // - 图片：尺寸；视频：分辨率 + 时长 + 帧率（按模型 generation_params）
-// - 提交后：图片同步返回；视频轮询任务直到完成/失败
+// - 提交走 llm-proxy 多模态网关（统一静态 Key + 按后台分类模型定价扣费）：
+//   图片 POST /llm-proxy/v1/images/generations（同步）；视频 POST /llm-proxy/v1/videos/generations（异步轮询）
 // - 完成后回调 onComplete(job)，父组件以助手媒体消息插入会话
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -9,13 +10,14 @@ import { Modal, Select, Input, Button, Form, Alert, Progress, Tag, Tooltip, mess
 import { PictureOutlined, VideoCameraOutlined, ThunderboltOutlined, ReloadOutlined } from '@ant-design/icons'
 import {
   listGenerationModels,
-  generateImage,
-  generateVideo,
-  getMediaJob,
+  generateImageViaGateway,
+  generateVideoViaGateway,
+  getVideoJobViaGateway,
   type GenerationModelItem,
   type GenerationModelType,
   type MediaJob,
 } from '@/api/media-generation-api'
+import { fetchLlmProxyKey } from '@/api/chat-api'
 import styles from '../styles.module.css'
 
 interface MediaGenerationModalProps {
@@ -54,6 +56,7 @@ function formatCost(type: GenerationModelType, model: GenerationModelItem | unde
 
 export function MediaGenerationModal({ open, onClose, onComplete, defaultType = 'image' }: MediaGenerationModalProps) {
   const [models, setModels] = useState<GenerationModelItem[]>([])
+  const [proxyKey, setProxyKey] = useState('')
   const [loadingModels, setLoadingModels] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [job, setJob] = useState<MediaJob | null>(null)
@@ -76,6 +79,15 @@ export function MediaGenerationModal({ open, onClose, onComplete, defaultType = 
   useEffect(() => {
     if (!open) return
     void loadModels()
+    void (async () => {
+      try {
+        const r = await fetchLlmProxyKey()
+        setProxyKey(r.llmProxyKey)
+      } catch (err) {
+        console.error('[MediaGeneration] fetch proxy key failed:', err)
+        message.error('获取网关密钥失败，请重新登录')
+      }
+    })()
     return () => {
       if (pollTimer.current) clearInterval(pollTimer.current)
       pollTimer.current = null
@@ -119,7 +131,7 @@ export function MediaGenerationModal({ open, onClose, onComplete, defaultType = 
     pollStart.current = Date.now()
     pollTimer.current = setInterval(async () => {
       try {
-        const latest = await getMediaJob(jobId)
+        const latest = await getVideoJobViaGateway(proxyKey, jobId)
         setJob(latest)
         if (latest.status === 'done' || latest.status === 'failed') {
           stopPolling()
@@ -150,19 +162,33 @@ export function MediaGenerationModal({ open, onClose, onComplete, defaultType = 
     setJob(null)
     try {
       if (values.type === 'image') {
-        const imgJob = await generateImage({
-          modelId: values.modelId,
+        const result = await generateImageViaGateway(proxyKey, {
+          model: values.modelId,
           prompt: values.prompt,
           size: values.size,
         })
-        setJob(imgJob)
-        if (imgJob.status === 'done') {
-          onComplete(imgJob)
-          handleClose()
-        }
-      } else {
-        const vidJob = await generateVideo({
+        const first = result?.data?.[0]
+        const url = first?.url || (first?.b64_json ? 'data:image/png;base64,' + first.b64_json : '')
+        // 网关返回 OpenAI 兼容结果（无任务记录），构造伪 MediaJob 供会话插入
+        const pseudoJob: MediaJob = {
+          id: Date.now(),
           modelId: values.modelId,
+          type: 'image',
+          prompt: values.prompt,
+          params: { size: values.size },
+          status: 'done',
+          resultUrls: url ? [url] : [],
+          creditsCost: selectedModel?.pricePerImage ?? 10,
+          error: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }
+        setJob(pseudoJob)
+        onComplete(pseudoJob)
+        handleClose()
+      } else {
+        const vidJob = await generateVideoViaGateway(proxyKey, {
+          model: values.modelId,
           prompt: values.prompt,
           resolution: values.resolution,
           duration: values.duration,

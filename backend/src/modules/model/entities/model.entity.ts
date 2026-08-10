@@ -99,6 +99,14 @@ export class ModelEntity extends BaseEntity {
   @Column({ name: 'generation_params', type: 'json', nullable: true })
   generationParams?: Record<string, unknown> | null;
 
+  /** 排序权重（前端下拉顺序；同类型默认模型取最小排序值） */
+  @Column({ name: 'sort_order', type: 'int', default: 0 })
+  sortOrder: number;
+
+  /** 按次计费积分（tts 等单次调用消耗点数，0 表示免费） */
+  @Column({ name: 'price_per_call', type: 'decimal', precision: 10, scale: 4, nullable: true })
+  pricePerCall?: number;
+
   @Index()
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;

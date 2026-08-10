@@ -10,7 +10,7 @@
     "build": "nest build",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "seed:admin": "mysql -u root -p$MYSQL_ROOT_PASSWORD $MYSQL_DATABASE < sql/admin-seed.sql",
-    "test": "node -r ts-node/register --test test/unit/maxkb.client.spec.ts test/unit/chat-accounting.spec.ts test/unit/llm-client.spec.ts test/unit/market-purchase.spec.ts test/unit/provider-utils.spec.ts test/unit/media-generation.spec.ts test/unit/media-content.spec.ts"
+    "test": "node -r ts-node/register --test test/unit/maxkb.client.spec.ts test/unit/chat-accounting.spec.ts test/unit/llm-client.spec.ts test/unit/market-purchase.spec.ts test/unit/provider-utils.spec.ts test/unit/media-generation.spec.ts test/unit/media-content.spec.ts test/unit/llm-proxy-gateway.spec.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",

@@ -22,6 +22,7 @@ import { CreditTransactionEntity } from '../credits/entities/credit-transaction.
 import { MediaContentService } from './services/media-content.service';
 import { ChatAccountingController } from './controllers/chat-accounting.controller';
 import { ChatAccountingService } from './services/chat-accounting.service';
+import { MediaGenerationModule } from '../media-generation/media-generation.module';
 
 /**
  * Chat 模块
@@ -55,6 +56,7 @@ import { ChatAccountingService } from './services/chat-accounting.service';
     CreditsModule,
     ApiKeyPoolModule,
     KnowledgeEngineModule,
+    MediaGenerationModule,
   ],
   controllers: [ChatController, LlmProxyController, ChatAccountingController],
   providers: [ChatService, LlmProxyService, LlmClientService, MediaContentService, ChatAccountingService],

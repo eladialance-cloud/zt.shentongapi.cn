@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Body, Headers, Res, BadRequestException,
+  Controller, Get, Post, Body, Headers, Param, Res, BadRequestException,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiTags } from '@nestjs/swagger';
@@ -60,6 +60,49 @@ export class LlmProxyController {
     } finally {
       if (!closed) { closed = true; res.end(); }
     }
+  }
+
+  @Public()
+  @Post('v1/images/generations')
+  async imagesGenerations(
+    @Headers('authorization') auth: string,
+    @Body() body: { model?: string; prompt: string; size?: string; n?: number },
+  ) {
+    const token = this.extractToken(auth);
+    return this.llmProxyService.imagesGeneration(token, body);
+  }
+
+  @Public()
+  @Post('v1/audio/speech')
+  async audioSpeech(
+    @Headers('authorization') auth: string,
+    @Body() body: { model?: string; input: string; voice?: string; speed?: number },
+    @Res() res: Response,
+  ) {
+    const token = this.extractToken(auth);
+    const { buffer, contentType } = await this.llmProxyService.audioSpeech(token, body);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', buffer.length);
+    res.end(buffer);
+  }
+
+  @Public()
+  @Post('v1/videos/generations')
+  async videoGenerations(
+    @Headers('authorization') auth: string,
+    @Body() body: { model?: string; prompt: string; resolution?: string; duration?: number; fps?: number },
+  ) {
+    const token = this.extractToken(auth);
+    return this.llmProxyService.videoGeneration(token, body);
+  }
+
+  @Public()
+  @Get('v1/videos/generations/:id')
+  async videoJob(@Headers('authorization') auth: string, @Param('id') id: string) {
+    const token = this.extractToken(auth);
+    const jobId = Number(id);
+    if (!Number.isInteger(jobId) || jobId <= 0) throw new BadRequestException('无效的任务 ID');
+    return this.llmProxyService.videoJob(token, jobId);
   }
 
   private extractToken(auth: string): string {

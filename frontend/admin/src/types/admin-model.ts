@@ -14,8 +14,8 @@ export type ModelCapability =
   | 'reasoning'
   | 'json_mode'
 
-/** 模型类型标签（可修改） */
-export type ModelType = 'chat' | 'reasoning' | 'image' | 'embedding' | 'audio' | string
+/** 模型类型标签（可修改）：chat 文本对话 / vision 图片识图 / image 文生图 / image_edit 图生图 / video 视频生成 / tts 语音合成 */
+export type ModelType = 'chat' | 'vision' | 'image' | 'image_edit' | 'video' | 'tts' | string
 
 /** 用户等级 */
 export type MinUserLevel = 1 | 2 | 3 | 4 | 5
@@ -37,6 +37,10 @@ export interface AdminModelItem {
   modelType: ModelType
   /** 图片生成积分/张 */
   pricePerImage?: number | null
+  /** 排序权重（越小越靠前） */
+  sortOrder?: number
+  /** 按次计费积分（TTS 等按次调用模型） */
+  pricePerCall?: number | null
   /** 视频生成价格矩阵 */
   videoPrices?: Record<string, Record<string, number>>
   /** 生成参数选项 */
@@ -68,6 +72,7 @@ export interface AdminModelQuery {
   provider?: string | ''
   enabled?: boolean | ''
   keyword?: string
+  modelType?: string
   page?: number
   pageSize?: number
 }
@@ -88,6 +93,8 @@ export interface AdminProviderItem {
   connectionStatus: ConnectionStatus
   lastTestedAt?: string
   isBuiltin: boolean
+  /** 是否全局中转（全站唯一，优先用于所有模型的 BaseURL+Key） */
+  isGlobal?: boolean
   modelCount: number
   createdAt: string
   updatedAt: string
@@ -99,6 +106,8 @@ export interface CreateProviderDto {
   baseUrl: string
   apiKey?: string
   config?: Record<string, unknown>
+  /** 是否设为全局中转（置 true 会取消其他供应商的全局标记） */
+  isGlobal?: boolean
 }
 
 /** 更新供应商 DTO */
@@ -108,6 +117,7 @@ export interface UpdateProviderDto {
   apiKey?: string
   config?: Record<string, unknown>
   status?: ProviderStatus
+  isGlobal?: boolean
 }
 
 /** 测试供应商 DTO */
@@ -184,6 +194,8 @@ export interface CreateAdminModelDto {
   modelType?: ModelType
   upstreamModelId?: string
   pricePerImage?: number
+  sortOrder?: number
+  pricePerCall?: number | null
   videoPrices?: Record<string, Record<string, number>>
   generationParams?: Record<string, unknown>
 }
@@ -205,6 +217,8 @@ export interface UpdateAdminModelDto {
   modelType?: ModelType
   upstreamModelId?: string
   pricePerImage?: number | null
+  sortOrder?: number
+  pricePerCall?: number | null
   videoPrices?: Record<string, Record<string, number>>
   generationParams?: Record<string, unknown>
 }

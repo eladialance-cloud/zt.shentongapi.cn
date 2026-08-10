@@ -4,6 +4,7 @@ import {
   IsEnum,
   IsInt,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   Max,
@@ -84,4 +85,18 @@ export class CreateModelDto {
   @IsString()
   @MaxLength(128)
   upstreamModelId?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  pricePerCall?: number;
+
+  @IsOptional()
+  @IsObject()
+  generationParams?: Record<string, unknown>;
 }

@@ -27,9 +27,9 @@ export class ModelService {
   > {
     const models = await this.modelRepo.find({
       where: { isActive: true },
-      order: { id: 'ASC' },
+      order: { sortOrder: 'ASC', id: 'ASC' },
     });
-    const excluded = new Set(['image', 'video', 'embedding']);
+    const excluded = new Set(['image', 'image_edit', 'video', 'tts', 'embedding', 'audio']);
     return models
       .filter((m) => !excluded.has((m.modelType || 'chat').toLowerCase()))
       .map((m) => ({
@@ -43,15 +43,19 @@ export class ModelService {
   }
 
   /** 可用模型选项（创作者下拉，数据合同真源：desktop types/agent-creator CreatorModelOption） */
-  async listOptions(): Promise<{ id: number; name: string; provider?: string }[]> {
+  async listOptions(): Promise<
+    Array<{ id: number; name: string; provider?: string; modelType?: string; modelId?: string }>
+  > {
     const models = await this.modelRepo.find({
       where: { isActive: true },
-      order: { id: 'ASC' },
+      order: { sortOrder: 'ASC', id: 'ASC' },
     });
     return models.map((m) => ({
       id: m.id,
       name: m.name,
       provider: m.provider,
+      modelType: m.modelType || 'chat',
+      modelId: m.modelId,
     }));
   }
 

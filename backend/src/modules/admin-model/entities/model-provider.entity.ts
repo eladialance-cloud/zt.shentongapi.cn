@@ -34,6 +34,11 @@ export class ModelProviderEntity extends BaseEntity {
   @Column({ name: 'last_tested_at', type: 'datetime', nullable: true })
   lastTestedAt?: Date;
 
+  /** 是否全局中转（全站仅 1 条 = 1 生效，唯一索引约束） */
+  @Index({ unique: true })
+  @Column({ name: 'is_global', type: 'tinyint', default: 0 })
+  isGlobal: boolean;
+
   @Column({ name: 'is_builtin', type: 'boolean', default: false })
   isBuiltin: boolean;
 

@@ -4,6 +4,7 @@ import {
   IsEnum,
   IsInt,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   Max,
@@ -96,4 +97,14 @@ export class UpdateModelDto {
 
   @IsOptional()
   generationParams?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  pricePerCall?: number;
 }

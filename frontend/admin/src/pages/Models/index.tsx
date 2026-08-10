@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  Alert,
   Button,
   Empty,
   Form,
@@ -64,11 +65,12 @@ import styles from './styles.module.css'
 const PAGE_SIZE = 20
 
 const MODEL_TYPE_OPTIONS: Array<{ label: string; value: string }> = [
-  { label: '对话 chat', value: 'chat' },
-  { label: '推理 reasoning', value: 'reasoning' },
-  { label: '图像 image', value: 'image' },
-  { label: '向量 embedding', value: 'embedding' },
-  { label: '音频 audio', value: 'audio' }
+  { label: '文本对话 chat', value: 'chat' },
+  { label: '图片识图 vision', value: 'vision' },
+  { label: '文生图 image', value: 'image' },
+  { label: '图生图 image_edit', value: 'image_edit' },
+  { label: '视频生成 video', value: 'video' },
+  { label: '语音合成 tts', value: 'tts' }
 ]
 
 const CAPABILITY_OPTIONS: Array<{ label: string; value: ModelCapability }> = [
@@ -95,10 +97,26 @@ const CONNECTION_TAG: Record<string, { color: string; text: string }> = {
 
 const MODEL_TYPE_COLOR: Record<string, string> = {
   chat: 'geekblue',
-  reasoning: 'purple',
+  vision: 'cyan',
   image: 'green',
+  image_edit: 'lime',
+  video: 'purple',
+  tts: 'orange',
+  reasoning: 'magenta',
   embedding: 'cyan',
-  audio: 'orange'
+  audio: 'gold'
+}
+
+const MODEL_TYPE_LABEL: Record<string, string> = {
+  chat: '文本对话',
+  vision: '图片识图',
+  image: '文生图',
+  image_edit: '图生图',
+  video: '视频生成',
+  tts: '语音合成',
+  reasoning: '推理',
+  embedding: '向量',
+  audio: '音频'
 }
 
 const ENABLED_OPTIONS = [
@@ -114,9 +132,20 @@ interface ModelFormValues {
   outputPricePerToken?: number
   capabilities: ModelCapability[]
   enabled: boolean
+  sortOrder?: number
   pricePerImage?: number
+  pricePerCall?: number
   videoPrices?: Record<string, Record<string, number>>
   generationParamsText?: string
+  imageSizesText?: string
+  imageCount?: number
+  negativePrompt?: string
+  videoSubmitPath?: string
+  videoQueryPath?: string
+  ttsVoice?: string
+  ttsSpeed?: number
+  ttsVolume?: number
+  ttsFormat?: string
 }
 
 export default function AdminModels() {
@@ -126,6 +155,7 @@ export default function AdminModels() {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [providerFilter, setProviderFilter] = useState<string | ''>('')
+  const [typeFilter, setTypeFilter] = useState<string | ''>('')
   const [enabledFilter, setEnabledFilter] = useState<'' | 'true' | 'false'>('')
   const [keyword, setKeyword] = useState('')
   const [searchKeyword, setSearchKeyword] = useState('')
@@ -165,6 +195,7 @@ export default function AdminModels() {
     try {
       const query: Record<string, unknown> = { page, pageSize: PAGE_SIZE }
       if (providerFilter) query.provider = providerFilter
+      if (typeFilter) query.modelType = typeFilter
       if (enabledFilter) query.enabled = enabledFilter === 'true'
       if (searchKeyword) query.keyword = searchKeyword
       const result = await listAdminModels(query)
@@ -177,7 +208,7 @@ export default function AdminModels() {
     } finally {
       setLoading(false)
     }
-  }, [page, providerFilter, enabledFilter, searchKeyword])
+  }, [page, providerFilter, typeFilter, enabledFilter, searchKeyword])
 
   useEffect(() => {
     void loadList()
@@ -189,6 +220,7 @@ export default function AdminModels() {
 
   const handleReset = () => {
     setProviderFilter('')
+    setTypeFilter('')
     setEnabledFilter('')
     setKeyword('')
     setSearchKeyword('')
@@ -198,6 +230,7 @@ export default function AdminModels() {
   // ----- 模型编辑 -----
   const openEdit = (item: AdminModelItem) => {
     setEditing(item)
+    const gen = item.generationParams || {}
     form.setFieldsValue({
       displayName: item.displayName,
       modelType: item.modelType || 'chat',
@@ -205,9 +238,20 @@ export default function AdminModels() {
       outputPricePerToken: item.outputPricePerToken ?? 0,
       capabilities: item.capabilities || [],
       enabled: item.enabled,
+      sortOrder: item.sortOrder ?? 0,
       pricePerImage: item.pricePerImage ?? undefined,
+      pricePerCall: item.pricePerCall ?? undefined,
       videoPrices: item.videoPrices || undefined,
-      generationParamsText: item.generationParams ? JSON.stringify(item.generationParams, null, 2) : undefined
+      imageSizesText: Array.isArray(gen.image_sizes) ? gen.image_sizes.join(', ') : undefined,
+      imageCount: typeof gen.image_count === 'number' ? gen.image_count : undefined,
+      negativePrompt: typeof gen.negative_prompt === 'string' ? gen.negative_prompt : undefined,
+      videoSubmitPath: typeof gen.video_submit_path === 'string' ? gen.video_submit_path : undefined,
+      videoQueryPath: typeof gen.video_query_path === 'string' ? gen.video_query_path : undefined,
+      ttsVoice: typeof gen.voice === 'string' ? gen.voice : undefined,
+      ttsSpeed: typeof gen.speed === 'number' ? gen.speed : undefined,
+      ttsVolume: typeof gen.volume === 'number' ? gen.volume : undefined,
+      ttsFormat: typeof gen.format === 'string' ? gen.format : undefined,
+      generationParamsText: Object.keys(gen).length ? JSON.stringify(gen, null, 2) : undefined
     })
     setEditOpen(true)
   }
@@ -217,30 +261,69 @@ export default function AdminModels() {
       const values = await form.validateFields()
       if (!editing) return
       setSaving(true)
+      const mt = values.modelType || 'chat'
       const dto: UpdateAdminModelDto = {
         displayName: values.displayName,
-        modelType: values.modelType || 'chat',
+        modelType: mt,
         inputPricePerToken: values.inputPricePerToken ?? 0,
         outputPricePerToken: values.outputPricePerToken ?? 0,
         capabilities: values.capabilities,
-        enabled: values.enabled
+        enabled: values.enabled,
+        sortOrder: values.sortOrder ?? 0
       }
-      if (values.modelType === 'image' && values.pricePerImage != null) {
-        dto.pricePerImage = values.pricePerImage
+      // 分类专属计费字段
+      if (mt === 'image' || mt === 'image_edit') {
+        if (values.pricePerImage != null) dto.pricePerImage = values.pricePerImage
       }
-      if (values.modelType === 'image' || values.modelType === 'video') {
-        if (values.modelType === 'video') {
-          dto.videoPrices = values.videoPrices
+      if (mt === 'video') {
+        dto.videoPrices = values.videoPrices
+      }
+      if (mt === 'tts') {
+        if (values.pricePerCall != null) dto.pricePerCall = values.pricePerCall
+      }
+      // 分类专属生成参数（动态字段覆盖 JSON 中同名 key）
+      const managedKeys = [
+        'image_sizes',
+        'image_count',
+        'negative_prompt',
+        'video_submit_path',
+        'video_query_path',
+        'voice',
+        'speed',
+        'volume',
+        'format'
+      ]
+      let gen: Record<string, unknown> = {}
+      if (values.generationParamsText) {
+        try {
+          gen = JSON.parse(values.generationParamsText) as Record<string, unknown>
+        } catch (e) {
+          message.error('生成参数 JSON 格式错误')
+          return
         }
-        if (values.generationParamsText) {
-          try {
-            dto.generationParams = JSON.parse(values.generationParamsText) as Record<string, unknown>
-          } catch (e) {
-            message.error('生成参数 JSON 格式错误')
-            return
-          }
-        }
       }
+      for (const k of managedKeys) delete gen[k]
+      if (mt === 'image' || mt === 'image_edit') {
+        if (values.imageSizesText) {
+          gen.image_sizes = values.imageSizesText
+            .split(/[,，]/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+        }
+        if (values.imageCount != null) gen.image_count = values.imageCount
+        if (values.negativePrompt) gen.negative_prompt = values.negativePrompt
+      }
+      if (mt === 'video') {
+        if (values.videoSubmitPath) gen.video_submit_path = values.videoSubmitPath.trim()
+        if (values.videoQueryPath) gen.video_query_path = values.videoQueryPath.trim()
+      }
+      if (mt === 'tts') {
+        if (values.ttsVoice) gen.voice = values.ttsVoice.trim()
+        if (values.ttsSpeed != null) gen.speed = values.ttsSpeed
+        if (values.ttsVolume != null) gen.volume = values.ttsVolume
+        if (values.ttsFormat) gen.format = values.ttsFormat.trim()
+      }
+      if (Object.keys(gen).length > 0) dto.generationParams = gen
       await updateAdminModel(editing.id, dto)
       message.success('模型已更新')
       setEditOpen(false)
@@ -339,18 +422,37 @@ export default function AdminModels() {
       key: 'modelType',
       width: 120,
       render: (t: string) => (
-        <Tag color={MODEL_TYPE_COLOR[t] || 'default'}>{t || 'chat'}</Tag>
+        <Tag color={MODEL_TYPE_COLOR[t] || 'default'}>{MODEL_TYPE_LABEL[t] || t || 'chat'}</Tag>
       )
     },
     {
-      title: '积分(输入/输出, 千token)',
+      title: '排序',
+      dataIndex: 'sortOrder',
+      key: 'sortOrder',
+      width: 70,
+      render: (v: number) => <Tag>{v ?? 0}</Tag>
+    },
+    {
+      title: '计费',
       key: 'price',
-      width: 170,
-      render: (_, m) => (
-        <span style={{ color: '#c7d2fe' }}>
-          {m.inputPricePerToken ?? 0} / {m.outputPricePerToken ?? 0}
-        </span>
-      )
+      width: 190,
+      render: (_, m) => {
+        const t = m.modelType || 'chat'
+        if (t === 'image' || t === 'image_edit') {
+          return <span style={{ color: '#c7d2fe' }}>{m.pricePerImage ?? 10} 积分/张</span>
+        }
+        if (t === 'video') {
+          return <Tag color="purple">视频矩阵</Tag>
+        }
+        if (t === 'tts') {
+          return <span style={{ color: '#c7d2fe' }}>{m.pricePerCall ?? 1} 积分/次</span>
+        }
+        return (
+          <span style={{ color: '#c7d2fe' }}>
+            {m.inputPricePerToken ?? 0} / {m.outputPricePerToken ?? 0}
+          </span>
+        )
+      }
     },
     {
       title: '能力',
@@ -454,6 +556,7 @@ export default function AdminModels() {
       name: p.name,
       baseUrl: p.baseUrl,
       status: p.status,
+      isGlobal: p.isGlobal === true,
       generationTemplate: p.config?.generation ? JSON.stringify(p.config.generation, null, 2) : undefined
     })
   }
@@ -475,7 +578,8 @@ export default function AdminModels() {
       const dto: UpdateProviderDto = {
         name: values.name,
         baseUrl: values.baseUrl,
-        status: values.status
+        status: values.status,
+        isGlobal: values.isGlobal === true
       }
       if (values.apiKey && String(values.apiKey).trim()) dto.apiKey = String(values.apiKey).trim()
       if (templateText) {
@@ -537,6 +641,13 @@ export default function AdminModels() {
         const c = CONNECTION_TAG[p.connectionStatus || 'untested'] || CONNECTION_TAG.untested
         return <Tag color={c.color}>{c.text}</Tag>
       }
+    },
+    {
+      title: '全局中转',
+      key: 'isGlobal',
+      width: 100,
+      render: (_, p) =>
+        p.isGlobal ? <Tag color="gold">全局</Tag> : <Tag>—</Tag>
     },
     {
       title: '模型数',
@@ -601,6 +712,7 @@ export default function AdminModels() {
     () => providers.map((p) => ({ label: p.name, value: p.slug })),
     [providers]
   )
+  const globalProvider = providers.find((p) => p.isGlobal)
 
   return (
     <div className={styles.page}>
@@ -610,7 +722,7 @@ export default function AdminModels() {
           <div>
             <h1 className={styles.title}>模型管理</h1>
             <p className={styles.subtitle}>
-              添加第三方供应商 -&gt; 读取模型 -&gt; 勾选 -&gt; 逐模型定价导入；模型列表可直接编辑/上下架/删除
+              添加第三方供应商 -&gt; 读取模型 -&gt; 勾选 -&gt; 逐模型定价导入；全站 1 套全局中转（BaseURL+Key），6 大分类模型上架（文本/识图/文生图/图生图/视频/语音）
             </p>
           </div>
         </div>
@@ -642,6 +754,14 @@ export default function AdminModels() {
             className={styles.filterSelect}
             allowClear
             options={providerFilterOptions}
+          />
+          <Select
+            placeholder="模型分类"
+            value={typeFilter}
+            onChange={(v) => setTypeFilter(v as string | '')}
+            className={styles.filterSelect}
+            allowClear
+            options={MODEL_TYPE_OPTIONS}
           />
           <Select
             placeholder="上架状态"
@@ -717,40 +837,83 @@ export default function AdminModels() {
           >
             <Input maxLength={128} />
           </Form.Item>
-          <Form.Item name="modelType" label="模型类型标签" extra="文生图/文生视频需选对应类型">
+          <Form.Item name="modelType" label="模型类型" extra="分类决定调用路径与计费方式，选对应分类自动显示专属配置">
             <Select options={MODEL_TYPE_OPTIONS} allowClear placeholder="选择类型" />
           </Form.Item>
-          {modelType === 'image' && (
-            <Form.Item name="pricePerImage" label="图片生成积分/张" extra="用户生成一张图扣除的积分">
-              <InputNumber min={0} step={0.1} style={{ width: '100%' }} placeholder="如 10" />
-            </Form.Item>
-          )}
-          {(modelType === 'image' || modelType === 'video') && (
+          <Form.Item name="sortOrder" label="排序权重" extra="越小越靠前（用户端默认模型与下拉排序）">
+            <InputNumber min={0} step={1} style={{ width: '100%' }} placeholder="如 0" />
+          </Form.Item>
+          {(modelType === 'chat' || modelType === 'vision') && (
             <>
-              {modelType === 'video' && (
-                <Form.Item key={editing?.modelId ?? 'new-model'} name="videoPrices" label="视频价格矩阵（分辨率 × 时长）" extra="每个格子 = 该规格生成一条视频扣除的积分，留空表示不提供">
-                  <VideoPriceMatrixEditor />
-                </Form.Item>
-              )}
-              <Form.Item name="generationParamsText" label="生成参数(JSON)" extra='{"image_sizes":["1024x1024"],"video_resolutions":["720p","1080p"],"video_durations":[5,10],"video_fps":[24,30]}'>
-                <Input.TextArea rows={3} placeholder='{"image_sizes":["1024x1024"]}' />
+              <Form.Item
+                name="inputPricePerToken"
+                label="输入单价(积分/千token)"
+                extra="用户使用该模型时按此价格扣除积分"
+              >
+                <InputNumber min={0} step={0.01} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item
+                name="outputPricePerToken"
+                label="输出单价(积分/千token)"
+                extra="用户使用该模型时按此价格扣除积分"
+              >
+                <InputNumber min={0} step={0.01} style={{ width: '100%' }} />
               </Form.Item>
             </>
           )}
-          <Form.Item
-            name="inputPricePerToken"
-            label="输入单价(积分/千token)"
-            extra="用户使用该模型时按此价格扣除积分"
-          >
-            <InputNumber min={0} step={0.01} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item
-            name="outputPricePerToken"
-            label="输出单价(积分/千token)"
-            extra="用户使用该模型时按此价格扣除积分"
-          >
-            <InputNumber min={0} step={0.01} style={{ width: '100%' }} />
-          </Form.Item>
+          {(modelType === 'image' || modelType === 'image_edit') && (
+            <>
+              <Form.Item name="pricePerImage" label="图片生成积分/张" extra="用户生成一张图扣除的积分">
+                <InputNumber min={0} step={0.1} style={{ width: '100%' }} placeholder="如 10" />
+              </Form.Item>
+              <Form.Item name="imageSizesText" label="默认尺寸" extra="多个用逗号分隔，如 1024x1024, 512x512（用户端默认尺寸/下拉选项）">
+                <Input placeholder="1024x1024, 512x512" />
+              </Form.Item>
+              <Form.Item name="imageCount" label="单次生成数量" extra="用户一次调用默认生成的图片数">
+                <InputNumber min={1} max={10} step={1} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item name="negativePrompt" label="默认负面提示词" extra="可选，追加到生成请求的负面约束">
+                <Input.TextArea rows={2} placeholder="如: 低质量, 模糊, 畸形" />
+              </Form.Item>
+            </>
+          )}
+          {modelType === 'video' && (
+            <>
+              <Form.Item key={editing?.modelId ?? 'new-model'} name="videoPrices" label="视频价格矩阵（分辨率 × 时长）" extra="每个格子 = 该规格生成一条视频扣除的积分，留空表示不提供">
+                <VideoPriceMatrixEditor />
+              </Form.Item>
+              <Form.Item name="videoSubmitPath" label="视频任务提交后缀" extra="异步任务提交路径，如 /api/v1/services/aigc/video-generation/video-synthesis">
+                <Input placeholder="/api/v1/services/aigc/video-generation/video-synthesis" />
+              </Form.Item>
+              <Form.Item name="videoQueryPath" label="视频任务查询后缀" extra="支持 {task_id} 或 {id} 占位符，如 /api/v1/tasks/{task_id}">
+                <Input placeholder="/api/v1/tasks/{task_id}" />
+              </Form.Item>
+            </>
+          )}
+          {modelType === 'tts' && (
+            <>
+              <Form.Item name="pricePerCall" label="按次计费积分" extra="用户每次语音合成调用扣除的积分">
+                <InputNumber min={0} step={0.1} style={{ width: '100%' }} placeholder="如 1" />
+              </Form.Item>
+              <Form.Item name="ttsVoice" label="默认音色" extra="如 alloy / echo / 自定义音色 ID">
+                <Input placeholder="alloy" />
+              </Form.Item>
+              <Form.Item name="ttsSpeed" label="语速" extra="0.5 ~ 2.0，默认 1.0">
+                <InputNumber min={0.5} max={2} step={0.1} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item name="ttsVolume" label="音量" extra="0.0 ~ 1.0，默认 1.0">
+                <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item name="ttsFormat" label="音频格式" extra="如 mp3 / wav / opus">
+                <Input placeholder="mp3" />
+              </Form.Item>
+            </>
+          )}
+          {(modelType === 'image' || modelType === 'image_edit' || modelType === 'video' || modelType === 'tts') && (
+            <Form.Item name="generationParamsText" label="高级参数(JSON, 可选)" extra='其他接口参数，如 {"video_resolutions":["720p","1080p"],"video_durations":[5,10]}'>
+              <Input.TextArea rows={3} placeholder='{"video_resolutions":["720p","1080p"]}' />
+            </Form.Item>
+          )}
           <Form.Item name="capabilities" label="能力(多选)">
             <Select mode="multiple" options={CAPABILITY_OPTIONS} placeholder="选择模型支持的能力" />
           </Form.Item>
@@ -773,6 +936,15 @@ export default function AdminModels() {
             添加供应商
           </Button>
         </div>
+        {globalProvider && (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message={`全局中转：${globalProvider.name}（${globalProvider.baseUrl}）`}
+            description="全站唯一：所有模型默认使用该供应商的 BaseURL+Key 调用；可在下方编辑或新增供应商时调整"
+          />
+        )}
         <Spin spinning={providerLoading}>
           <Table<AdminProviderItem>
             rowKey="id"
@@ -826,6 +998,14 @@ export default function AdminModels() {
                 { label: '停用', value: 'disabled' }
               ]}
             />
+          </Form.Item>
+          <Form.Item
+            name="isGlobal"
+            label="设为全局中转"
+            valuePropName="checked"
+            extra="全站唯一：所有模型（文本/识图/绘画/语音/视频）默认使用该供应商的 BaseURL+Key 调用；置 true 会自动取消其他供应商的全局标记"
+          >
+            <Switch />
           </Form.Item>
 
           <Form.Item

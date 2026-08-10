@@ -836,6 +836,28 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       }
     }
 
+    // model_providers 表：全局中转标志（严格单全局，唯一索引；幂等）
+    await ensureColumn('model_providers', 'is_global', "TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否全局中转(全站至多1条=1)'");
+    const [globalIdx] = await queryRunner.query(
+      `SELECT COUNT(*) AS c FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'model_providers' AND INDEX_NAME = 'uk_model_providers_global'`
+    );
+    if (Number(globalIdx?.c ?? 0) === 0) {
+      await queryRunner.query(
+        `ALTER TABLE model_providers ADD UNIQUE INDEX uk_model_providers_global (is_global)`
+      );
+      logger.log('Created index: model_providers.uk_model_providers_global');
+    }
+
+    // models 表：排序权重 + 按次计费（幂等）
+    const relayModelCols: Array<[string, string]> = [
+      ['sort_order', "INT NOT NULL DEFAULT 0 COMMENT '排序权重(越小越靠前)'"],
+      ['price_per_call', "DECIMAL(10,4) DEFAULT NULL COMMENT '按次计费积分(tts等单次调用)'"],
+    ];
+    for (const [colName, colDef] of relayModelCols) {
+      await ensureColumn('models', colName, colDef);
+    }
+
     // media_jobs 表（文生图/文生视频任务）
     const [mediaJobsTable] = await queryRunner.query(
       `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
@@ -877,6 +899,17 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
         `ALTER TABLE users ADD COLUMN default_chat_model VARCHAR(64) DEFAULT NULL COMMENT '用户默认对话模型(OpenClaw llm-proxy 解析用)' AFTER notification_settings`
       );
       logger.log('Added column: users.default_chat_model');
+    }
+
+    // users 表：每类默认模型（多模态网关分类兜底，幂等）
+    const userDefaultModelCols: Array<[string, string]> = [
+      ['default_model_vision', "VARCHAR(64) DEFAULT NULL COMMENT '用户默认识图模型'"],
+      ['default_model_image', "VARCHAR(64) DEFAULT NULL COMMENT '用户默认文生图模型(image/image_edit共用)'"],
+      ['default_model_video', "VARCHAR(64) DEFAULT NULL COMMENT '用户默认视频生成模型'"],
+      ['default_model_tts', "VARCHAR(64) DEFAULT NULL COMMENT '用户默认语音合成模型'"],
+    ];
+    for (const [colName, colDef] of userDefaultModelCols) {
+      await ensureColumn('users', colName, colDef);
     }
 
     logger.log('Startup migrations completed');

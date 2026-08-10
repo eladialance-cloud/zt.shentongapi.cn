@@ -318,6 +318,50 @@ export async function setPreferredChatModel(
   });
 }
 
+/** 用户每类默认模型（chat/vision/image/video/tts） */
+export interface UserDefaultModels {
+  chat: string | null;
+  vision: string | null;
+  image: string | null;
+  video: string | null;
+  tts: string | null;
+}
+
+/** 全量模型选项（设置页分类默认模型用；GET /models 返回带 modelType/modelId） */
+export interface AllModelOption {
+  id: number;
+  name: string;
+  provider?: string;
+  modelType?: string;
+  modelId?: string;
+}
+
+/**
+ * 全量模型列表（含分类）
+ * GET /models
+ */
+export async function listAllModels(): Promise<AllModelOption[]> {
+  return httpClient.get<AllModelOption[]>("/models");
+}
+
+/**
+ * 读取用户每类默认模型
+ * GET /chat/accounting/default-models
+ */
+export async function getDefaultModels(): Promise<UserDefaultModels> {
+  return httpClient.get<UserDefaultModels>("/chat/accounting/default-models");
+}
+
+/**
+ * 保存用户每类默认模型（null/空串=清除该分类）
+ * POST /chat/accounting/default-models
+ */
+export async function setDefaultModels(
+  dto: Partial<UserDefaultModels>,
+): Promise<UserDefaultModels> {
+  return httpClient.post<UserDefaultModels>("/chat/accounting/default-models", dto);
+}
+
 export default {
   createSession,
   listSessions,
@@ -328,4 +372,9 @@ export default {
   sendMessage,
   streamMessage,
   listChatModels,
+  fetchLlmProxyKey,
+  setPreferredChatModel,
+  listAllModels,
+  getDefaultModels,
+  setDefaultModels,
 };
