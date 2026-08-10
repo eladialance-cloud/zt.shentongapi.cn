@@ -1,6 +1,6 @@
 // Electron 主进程入口
 
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import log from 'electron-log'
 import { getRuntimeDirInfo, setRuntimeRoot, defaultRuntimeRoot } from './runtime-config'
 import { join } from 'node:path'
@@ -201,6 +201,11 @@ function registerIpcHandlers(): void {
   })
 
   // 服务管理
+  ipcMain.handle('shell:openExternal', async (_event, url: string) => {
+    if (typeof url === 'string' && /^https?:\/\//.test(url)) {
+      await shell.openExternal(url)
+    }
+  })
   ipcMain.handle('service:getStatus', () => serviceManager.getAllStatus())
   ipcMain.handle('service:status', (_event, name: ServiceName) =>
     serviceManager.getInfo(name)

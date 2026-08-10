@@ -33,7 +33,12 @@ export interface PaymentChannelConfig {
   appId?: string
   mchId?: string
   apiV3Key?: string
+  serialNo?: string
+  privateKey?: string
+  platformPublicKey?: string
   notifyUrl?: string
+  successUrl?: string
+  cancelUrl?: string
   merchantPrivateKey?: string
   alipayPublicKey?: string
   secretKey?: string

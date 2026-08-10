@@ -59,6 +59,15 @@ export interface RechargeResult {
   qrCode?: string
 }
 
+/** 充值订单状态（支付结果轮询） */
+export interface RechargeStatus {
+  orderNo: string
+  status: 'pending' | 'paid' | 'failed' | 'refunded'
+  credits: number
+  amount: number
+  paidAt: string | null
+}
+
 /** 流水查询参数 */
 export interface TransactionQuery {
   page?: number

@@ -72,6 +72,7 @@ const electronAPI: ElectronAPI = {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     checkUpdate: () => ipcRenderer.invoke('app:checkUpdate'),
     quitAndInstall: () => ipcRenderer.invoke('app:quitAndInstall'),
+    openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
     disableHardwareAcceleration: () => ipcRenderer.invoke('office:disable-hardware-acceleration')
   },
   updater: {

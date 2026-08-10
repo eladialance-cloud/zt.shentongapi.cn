@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CreditAccountEntity } from './entities/credit-account.entity';
 import { CreditTransactionEntity } from './entities/credit-transaction.entity';
@@ -12,6 +12,7 @@ import { PricingService } from './services/pricing.service';
 import { RechargeService } from './services/recharge.service';
 import { CommonModule } from '../../common/common.module';
 import { UserModule } from '../user/user.module';
+import { PaymentModule } from '../payment/payment.module';
 import { ModelEntity } from '../model/entities/model.entity';
 import { AgentEntity } from '../agent/entities/agent.entity';
 
@@ -21,6 +22,7 @@ import { AgentEntity } from '../agent/entities/agent.entity';
  */
 @Module({
   imports: [
+    forwardRef(() => PaymentModule),
     TypeOrmModule.forFeature([
       CreditAccountEntity,
       CreditTransactionEntity,

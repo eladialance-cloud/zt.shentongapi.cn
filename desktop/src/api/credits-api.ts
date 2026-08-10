@@ -13,6 +13,7 @@ import type {
   RechargePlan,
   CreateRechargeDto,
   RechargeResult,
+  RechargeStatus,
   TransactionQuery,
   PaginatedResult
 } from '@/types/credits'
@@ -54,9 +55,18 @@ export async function createRecharge(dto: CreateRechargeDto): Promise<RechargeRe
   return httpClient.post<RechargeResult>('/credits/recharge', dto)
 }
 
+/**
+ * 查询充值订单状态（支付结果轮询）
+ * GET /credits/recharge/:orderNo/status
+ */
+export async function getRechargeStatus(orderNo: string): Promise<RechargeStatus> {
+  return httpClient.get<RechargeStatus>(`/credits/recharge/${orderNo}/status`)
+}
+
 export default {
   getBalance,
   getTransactions,
   getRechargePlans,
-  createRecharge
+  createRecharge,
+  getRechargeStatus
 }

@@ -8,6 +8,7 @@ import { PaymentConfigEntity } from '../../payment/entities/payment-config.entit
 import { BusinessException } from '../../../common/exceptions/business.exception';
 import { ErrorCode } from '../../../common/constants/error.constant';
 import { CreateRechargeDto } from '../dto/create-recharge.dto';
+import { PaymentGatewayService } from '../../payment/services/payment-gateway.service';
 
 /**
  * 充值服务：档位列表（读 DB）+ 创建充值订单
@@ -17,7 +18,10 @@ import { CreateRechargeDto } from '../dto/create-recharge.dto';
  */
 @Injectable()
 export class RechargeService {
-  constructor(@InjectDataSource() private dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private dataSource: DataSource,
+    private readonly gateway: PaymentGatewayService,
+  ) {}
 
   /** 获取启用中的充值档位列表 */
   async getRechargePlans() {
@@ -47,16 +51,29 @@ export class RechargeService {
       BusinessException.throw(ErrorCode.NOT_FOUND, '充值档位不存在或已停用');
     }
 
-    // 校验支付渠道已启用
+    // 校验支付渠道已启用且为真实支付配置
     const channelCfg = await this.dataSource
       .getRepository(PaymentConfigEntity)
       .findOne({ where: { channel: dto.paymentMethod } });
     if (!channelCfg || !channelCfg.enabled) {
       BusinessException.throw(ErrorCode.FORBIDDEN, '该支付方式未启用，请选择其他支付方式');
     }
+    if (channelCfg.isMock) {
+      BusinessException.throw(
+        ErrorCode.FORBIDDEN,
+        '该支付方式仍为模拟配置，请在管理后台关闭模拟并配置商户参数后使用',
+      );
+    }
 
     const orderNo = this.generateOrderNo();
-    const payInfo = this.buildPayInfo(orderNo, dto.paymentMethod, plan);
+    // 调真实支付网关下单（微信 Native / 支付宝当面付 / Stripe Checkout）
+    const payInfo = await this.gateway.createOrder(dto.paymentMethod, {
+      orderNo,
+      amount: Number(plan.price),
+      currency: plan.currency || 'CNY',
+      description: `积分充值：${plan.name}`,
+      config: (channelCfg.config || {}) as Record<string, unknown>,
+    });
     const totalCredits = plan.credits + plan.bonusCredits;
 
     // 支付记录 + 充值订单在同一事务内落库（订单与支付记录通过 order_no 关联）
@@ -68,7 +85,7 @@ export class RechargeService {
         amount: Number(plan.price),
         currency: plan.currency,
         status: 'pending',
-        payParams: { payUrl: payInfo.payUrl, qrCode: payInfo.qrCode },
+        payParams: { qrCode: payInfo.qrCode, payUrl: payInfo.payUrl },
         description: `积分充值：${plan.name}`,
       });
       const savedPayment = await manager
@@ -95,6 +112,30 @@ export class RechargeService {
     };
   }
 
+  /** 查询充值订单状态（桌面端轮询支付结果） */
+  async getRechargeStatus(orderNo: string, userId: number) {
+    const order = await this.dataSource
+      .getRepository(RechargeOrderEntity)
+      .findOne({ where: { orderNo, userId } });
+    if (!order) {
+      BusinessException.throw(ErrorCode.NOT_FOUND, '充值订单不存在');
+    }
+    let paidAt: Date | undefined;
+    if (order.paymentRecordId) {
+      const payment = await this.dataSource
+        .getRepository(PaymentRecordEntity)
+        .findOne({ where: { id: order.paymentRecordId } });
+      paidAt = payment?.paidAt;
+    }
+    return {
+      orderNo: order.orderNo,
+      status: order.status,
+      credits: order.credits,
+      amount: Number(order.amount),
+      paidAt: paidAt || null,
+    };
+  }
+
   /** 生成订单号：RC + 时间戳 + 随机后缀 */
   private generateOrderNo(): string {
     const now = new Date();
@@ -106,35 +147,4 @@ export class RechargeService {
     return `RC${datePart}${randomPart}`;
   }
 
-  /**
-   * 生成支付信息
-   * 说明：当前为模拟支付，返回占位链接/二维码；
-   * 真实网关（微信 V3 / 支付宝 / Stripe）接入时仅需替换此方法实现。
-   */
-  private buildPayInfo(
-    orderNo: string,
-    channel: CreateRechargeDto['paymentMethod'],
-    plan: RechargePlanEntity,
-  ): { payUrl: string; qrCode?: string } {
-    const nonce = Math.random().toString(36).slice(2, 14);
-    const amount = Number(plan.price).toFixed(2);
-
-    switch (channel) {
-      case 'wechat':
-        return {
-          payUrl: `weixin://wxpay/bizpayurl?pr=${nonce}`,
-          qrCode: `weixin://wxpay/bizpayurl?pr=${nonce}`,
-        };
-      case 'alipay':
-        return {
-          payUrl: `https://qr.alipay.com/${nonce}`,
-          qrCode: `https://qr.alipay.com/${nonce}`,
-        };
-      case 'stripe':
-      default:
-        return {
-          payUrl: `https://checkout.stripe.com/pay/${nonce}?orderNo=${orderNo}&amount=${amount}`,
-        };
-    }
-  }
 }

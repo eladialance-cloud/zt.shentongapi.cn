@@ -1,4 +1,4 @@
-﻿import { Module } from '@nestjs/common';
+﻿import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MembershipPlanEntity } from './entities/membership-plan.entity';
 import { PaymentConfigEntity } from './entities/payment-config.entity';
@@ -8,11 +8,15 @@ import { RechargePlanEntity } from './entities/recharge-plan.entity';
 import { RevenueRecordEntity } from './entities/revenue-record.entity';
 import { WithdrawalRecordEntity } from './entities/withdrawal-record.entity';
 import { PaymentController } from './controllers/payment.controller';
+import { PaymentCallbackController } from './controllers/payment-callback.controller';
 import { AdminRechargePlanController } from './controllers/admin-recharge-plan.controller';
 import { AdminPaymentConfigController } from './controllers/admin-payment-config.controller';
+import { CreditsModule } from '../credits/credits.module';
 import { PaymentService } from './services/payment.service';
 import { RechargePlanService } from './services/recharge-plan.service';
 import { PaymentConfigService } from './services/payment-config.service';
+import { PaymentGatewayService } from './services/payment-gateway.service';
+import { PaymentCallbackService } from './services/payment-callback.service';
 
 @Module({
   imports: [

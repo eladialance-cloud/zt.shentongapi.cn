@@ -52,7 +52,10 @@ const CHANNEL_META: Record<
     fields: [
       { key: 'appId', label: 'AppID', placeholder: 'wx 开头的应用 ID' },
       { key: 'mchId', label: '商户号', placeholder: '微信支付商户号 MCHID' },
+      { key: 'serialNo', label: '商户证书序列号', placeholder: 'API 证书序列号（apiclient_cert 序列号）' },
       { key: 'apiV3Key', label: 'APIv3 密钥', placeholder: '32 位 APIv3 密钥' },
+      { key: 'privateKey', label: '商户 API 私钥', textarea: true, placeholder: 'apiclient_key.pem 内容（PKCS8）' },
+      { key: 'platformPublicKey', label: '微信支付平台公钥', textarea: true, placeholder: '用于回调验签的微信支付平台公钥（PEM）' },
       { key: 'notifyUrl', label: '支付回调地址', placeholder: 'https://zt.shentongapi.cn/api/payments/wechat/notify' }
     ]
   },
@@ -76,7 +79,9 @@ const CHANNEL_META: Record<
     fields: [
       { key: 'secretKey', label: 'Secret Key', placeholder: 'sk_ 开头' },
       { key: 'publishableKey', label: 'Publishable Key', placeholder: 'pk_ 开头' },
-      { key: 'webhookSecret', label: 'Webhook Secret', placeholder: 'whsec_ 开头' }
+      { key: 'webhookSecret', label: 'Webhook Secret', placeholder: 'whsec_ 开头' },
+      { key: 'successUrl', label: '成功跳转地址', placeholder: 'https://zt.shentongapi.cn/landing/pay-success' },
+      { key: 'cancelUrl', label: '取消跳转地址', placeholder: 'https://zt.shentongapi.cn/landing/pay-cancel' }
     ]
   }
 }
@@ -95,6 +100,14 @@ export default function PaymentConfigPage() {
     })
     return map
   }, [configs])
+
+  const realEnabled = useMemo(
+    () =>
+      (Object.keys(configMap) as PaymentChannel[]).some(
+        (c) => configMap[c]?.enabled && !configMap[c]?.isMock
+      ),
+    [configMap]
+  )
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -120,6 +133,23 @@ export default function PaymentConfigPage() {
       message.success(enabled ? `${CHANNEL_META[cfg.channel].label}已启用` : `${CHANNEL_META[cfg.channel].label}已停用`)
     } catch (err) {
       message.error('更新状态失败')
+      console.error(err)
+    }
+  }
+
+  const handleMockToggle = async (cfg: PaymentConfig, real: boolean) => {
+    try {
+      await updatePaymentConfig(cfg.channel, { isMock: !real })
+      setConfigs((prev) =>
+        prev.map((c) => (c.channel === cfg.channel ? { ...c, isMock: !real } : c))
+      )
+      message.success(
+        real
+          ? `${CHANNEL_META[cfg.channel].label}已切换为真实支付`
+          : `${CHANNEL_META[cfg.channel].label}已切换为模拟支付`
+      )
+    } catch (err) {
+      message.error('更新模拟状态失败')
       console.error(err)
     }
   }
@@ -180,11 +210,15 @@ export default function PaymentConfigPage() {
       </div>
 
       <Alert
-        type="info"
+        type={realEnabled ? 'success' : 'info'}
         showIcon
         style={{ marginBottom: 16 }}
-        message="当前为模拟支付阶段"
-        description="填入商户参数后，用户下单仍返回模拟二维码，流程可先跑通；接入真实微信/支付宝网关后，这些配置将直接生效。"
+        message={realEnabled ? '真实支付已启用' : '当前为模拟支付配置'}
+        description={
+          realEnabled
+            ? '已启用真实支付渠道：用户下单将调用微信 / 支付宝 / Stripe 真实网关，支付成功回调后积分自动到账。'
+            : '配置商户参数后，在渠道卡片上关闭「模拟支付」开关并启用渠道，用户下单即走真实支付。'
+        }
       />
 
       <Spin spinning={loading}>
@@ -215,6 +249,16 @@ export default function PaymentConfigPage() {
                     checked={enabled}
                     onChange={(v) => cfg && handleToggle(cfg, v)}
                     disabled={!cfg}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <span style={{ color: '#cbd5e1' }}>模拟支付</span>
+                  <Switch
+                    checked={!cfg?.isMock}
+                    onChange={(v) => cfg && handleMockToggle(cfg, v)}
+                    disabled={!cfg}
+                    checkedChildren="真实"
+                    unCheckedChildren="模拟"
                   />
                 </div>
                 {cfgKeys.length > 0 ? (

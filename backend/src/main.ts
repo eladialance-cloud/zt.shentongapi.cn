@@ -22,7 +22,7 @@ async function bootstrap() {
   // ===== 启动前校验环境变量（在任何 NestJS 初始化之前执行）=====
   validateJwtSecrets();
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
 
   // 放宽 JSON 请求体限制（OpenClaw 会话上下文 + 工具 schema 可能超过默认 100kb，导致 llm-proxy 413）
   app.useBodyParser('json', { limit: '20mb' });

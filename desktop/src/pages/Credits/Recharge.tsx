@@ -1,6 +1,5 @@
 // 积分中心 - 充值页
-// SubTask 6.2
-// 套餐选择 + 支付渠道（微信/支付宝/Stripe）+ 确认充值 → 返回支付链接/二维码
+// 真实支付：选档位 → 下单 → 展示真实二维码/支付链接 → 轮询支付结果 → 到账刷新余额
 
 import { useEffect, useState } from 'react'
 import {
@@ -21,10 +20,13 @@ import {
   AlipayOutlined,
   ThunderboltOutlined,
   QrcodeOutlined,
-  LinkOutlined
+  LinkOutlined,
+  CheckCircleOutlined
 } from '@ant-design/icons'
+import { QRCodeSVG } from 'qrcode.react'
 import { useNavigate } from 'react-router-dom'
-import { getRechargePlans, createRecharge } from '@/api/credits-api'
+import { getRechargePlans, createRecharge, getRechargeStatus } from '@/api/credits-api'
+import { useCreditsStore } from '@/store/credits'
 import { BusinessError } from '@/utils/errors'
 import type {
   RechargePlan,
@@ -35,25 +37,63 @@ import styles from './styles.module.css'
 
 const { Text } = Typography
 
+/** 轮询间隔（毫秒） */
+const POLL_INTERVAL = 2000
+/** 最长轮询时长（5 分钟） */
+const POLL_TIMEOUT = 5 * 60 * 1000
+
 export default function Recharge() {
   const navigate = useNavigate()
+  const fetchBalance = useCreditsStore((s) => s.fetchBalance)
   const [plans, setPlans] = useState<RechargePlan[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('wechat')
   const [payResult, setPayResult] = useState<RechargeResult | null>(null)
+  const [paid, setPaid] = useState(false)
 
   useEffect(() => {
     void loadPlans()
   }, [])
+
+  // 支付结果轮询：支付成功后刷新余额并返回积分中心
+  useEffect(() => {
+    if (!payResult || paid) return
+    let timer: ReturnType<typeof setInterval> | undefined
+    const startedAt = Date.now()
+
+    const poll = async () => {
+      try {
+        const st = await getRechargeStatus(payResult.orderId)
+        if (st.status === 'paid') {
+          if (timer) window.clearInterval(timer)
+          setPaid(true)
+          message.success('支付成功，积分已到账')
+          await fetchBalance()
+          setTimeout(() => navigate('/credits'), 1200)
+        } else if (Date.now() - startedAt > POLL_TIMEOUT) {
+          if (timer) window.clearInterval(timer)
+          message.info('支付确认超时，可点击「重新查询」')
+        }
+      } catch (err) {
+        // 轮询失败静默，下一轮继续
+        console.error('[Recharge] poll status failed:', err)
+      }
+    }
+
+    timer = window.setInterval(() => void poll(), POLL_INTERVAL)
+    void poll()
+    return () => {
+      if (timer) window.clearInterval(timer)
+    }
+  }, [payResult, paid, fetchBalance, navigate])
 
   const loadPlans = async () => {
     setLoading(true)
     try {
       const data = await getRechargePlans()
       setPlans(data || [])
-      // 默认选中推荐套餐
       const recommended = data.find((p) => p.isRecommended)
       if (recommended) {
         setSelectedPlanId(recommended.id)
@@ -80,6 +120,7 @@ export default function Recharge() {
         paymentMethod
       })
       setPayResult(result)
+      setPaid(false)
       message.success('订单已创建，请完成支付')
     } catch (err) {
       console.error('[Recharge] create order failed:', err)
@@ -92,6 +133,7 @@ export default function Recharge() {
   const handleBack = () => {
     if (payResult) {
       setPayResult(null)
+      setPaid(false)
       return
     }
     navigate('/credits')
@@ -118,7 +160,7 @@ export default function Recharge() {
       </div>
 
       {payResult ? (
-        <PayResultView result={payResult} method={paymentMethod} />
+        <PayResultView result={payResult} method={paymentMethod} paid={paid} />
       ) : (
         <Spin spinning={loading}>
           {/* 套餐列表 */}
@@ -213,21 +255,40 @@ export default function Recharge() {
   )
 }
 
-/** 支付结果展示（二维码 / 链接占位） */
+/** 支付结果展示（真实二维码 / 支付链接 + 状态轮询提示） */
 function PayResultView({
   result,
-  method
+  method,
+  paid
 }: {
   result: RechargeResult
   method: PaymentMethod
+  paid: boolean
 }) {
   const methodLabel =
     method === 'wechat' ? '微信支付' : method === 'alipay' ? '支付宝' : 'Stripe'
+
+  const openPayUrl = () => {
+    const api = (window as unknown as { electronAPI?: { openExternal?: (url: string) => Promise<void> } })
+      .electronAPI
+    if (api?.openExternal) {
+      void api.openExternal(result.payUrl).catch(() => {
+        window.open(result.payUrl, '_blank')
+      })
+    } else {
+      window.open(result.payUrl, '_blank')
+    }
+  }
+
   return (
     <div className={styles.payResult}>
       <Result
-        status="info"
-        title={<span style={{ color: '#e6edf3' }}>订单已创建</span>}
+        status={paid ? 'success' : 'info'}
+        title={
+          <span style={{ color: '#e6edf3' }}>
+            {paid ? '支付成功，积分已到账' : '订单已创建，请完成支付'}
+          </span>
+        }
         subTitle={
           <span style={{ color: 'var(--color-text-tertiary)' }}>
             订单号：{result.orderId} · 支付方式：{methodLabel}
@@ -236,37 +297,61 @@ function PayResultView({
       />
       <div style={{ marginTop: 8 }}>
         {result.qrCode ? (
-          <div>
-            <div className={styles.qrPlaceholder}>
-              <QrcodeOutlined style={{ fontSize: 64 }} />
-              <br />
-              二维码占位
-            </div>
-            <Text className={styles.payUrl}>
-              <Tag color="purple">二维码内容</Tag>
-              {result.qrCode}
-            </Text>
-          </div>
-        ) : (
-          <Tooltip title="点击复制支付链接">
-            <Button
-              type="dashed"
-              icon={<LinkOutlined />}
-              onClick={() => {
-                if (result.payUrl) {
-                  void navigator.clipboard?.writeText?.(result.payUrl)
-                  message.success('支付链接已复制')
-                }
+          <div style={{ textAlign: 'center' }}>
+            <div
+              style={{
+                display: 'inline-block',
+                padding: 12,
+                background: '#fff',
+                borderRadius: 8
               }}
             >
-              复制支付链接
-            </Button>
-          </Tooltip>
+              <QRCodeSVG value={result.qrCode} size={200} />
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }}>
+                请使用{methodLabel}扫码完成支付
+              </Text>
+            </div>
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', marginTop: 8 }}>
+            <Tooltip title="点击复制支付链接">
+              <Button
+                type="dashed"
+                icon={<LinkOutlined />}
+                onClick={() => {
+                  if (result.payUrl) {
+                    void navigator.clipboard?.writeText?.(result.payUrl)
+                    message.success('支付链接已复制')
+                  }
+                }}
+              >
+                复制支付链接
+              </Button>
+            </Tooltip>
+            <div style={{ marginTop: 12 }}>
+              <Button
+                type="primary"
+                icon={<QrcodeOutlined />}
+                onClick={openPayUrl}
+              >
+                去支付（浏览器打开）
+              </Button>
+            </div>
+          </div>
         )}
       </div>
       <div style={{ marginTop: 16 }}>
         <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }}>
-          支付完成后积分将自动到账，余额变更通过 WebSocket 实时推送。
+          {paid ? (
+            <>
+              <CheckCircleOutlined style={{ color: '#34d399', marginRight: 4 }} />
+              积分已到账，正在返回积分中心…
+            </>
+          ) : (
+            '支付成功后积分将自动到账，页面将自动刷新余额（约 2-5 秒）。'
+          )}
         </Text>
       </div>
     </div>

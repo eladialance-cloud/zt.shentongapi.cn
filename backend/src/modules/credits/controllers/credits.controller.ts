@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Param,
   Get,
   Post,
   Query,
@@ -77,6 +78,15 @@ export class CreditsController {
     @CurrentUser() user: ICurrentUser,
   ) {
     return this.rechargeService.createRecharge(user.userId, dto);
+  }
+
+  @Get('recharge/:orderNo/status')
+  @ApiOperation({ summary: '查询充值订单状态（支付结果轮询）' })
+  async getRechargeStatus(
+    @Param('orderNo') orderNo: string,
+    @CurrentUser() user: ICurrentUser,
+  ) {
+    return this.rechargeService.getRechargeStatus(orderNo, user.userId);
   }
 
   @Get('transactions')

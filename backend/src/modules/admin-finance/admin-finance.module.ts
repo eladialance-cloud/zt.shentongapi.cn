@@ -7,6 +7,8 @@ import { ReconciliationDiffEntity } from '../reconciliation/entities/reconciliat
 import { UserEntity } from '../user/entities/user.entity';
 import { InvoiceEntity } from './entities/invoice.entity';
 import { AdminAuthModule } from '../admin-auth/admin-auth.module';
+import { CreditsModule } from '../credits/credits.module';
+import { PaymentModule } from '../payment/payment.module';
 import { AdminFinanceController } from './admin-finance.controller';
 import { AdminFinanceService } from './admin-finance.service';
 
@@ -36,6 +38,8 @@ import { AdminFinanceService } from './admin-finance.service';
       InvoiceEntity,
     ]),
     AdminAuthModule,
+    CreditsModule,
+    PaymentModule,
   ],
   controllers: [AdminFinanceController],
   providers: [AdminFinanceService],

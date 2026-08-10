@@ -38,7 +38,8 @@
     "socket.io-client": "^4.8.1",
     "tree-kill": "^1.2.2",
     "zustand": "^4.5.5",
-    "@esotericsoftware/spine-pixi-v8": "~4.2.0"
+    "@esotericsoftware/spine-pixi-v8": "~4.2.0",
+    "qrcode.react": "^4.2.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",

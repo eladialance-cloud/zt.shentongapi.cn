@@ -68,7 +68,7 @@ export class CreditsService {
     return this.getOrCreateAccount(userId);
   }
 
-  /** 充值入账 */
+  /** 充值入账（独立事务 + 分布式锁） */
   async rechargeCredits(
     userId: number,
     amount: number,
@@ -79,27 +79,95 @@ export class CreditsService {
       BusinessException.throw(ErrorCode.VALIDATION_FAILED, '充值金额必须大于 0');
     }
     return this.withLock(userId, async () => {
-      return this.dataSource.transaction(async (manager) => {
-        const account = await this.getOrCreateAccountLocked(manager, userId);
-        const balanceBefore = account.balance;
-        const balanceAfter = balanceBefore + amount;
-        await this.updateAccountVersioned(manager, account.id, account.version, {
-          balance: balanceAfter,
-          totalRecharged: account.totalRecharged + amount,
-        });
-        const txn = manager.getRepository(CreditTransactionEntity).create({
-          userId,
-          type: 'recharge',
-          amount,
-          balanceBefore,
-          balanceAfter,
-          source: 'recharge',
-          sourceId,
-          remark,
-        });
-        return manager.getRepository(CreditTransactionEntity).save(txn);
-      });
+      return this.dataSource.transaction(async (manager) =>
+        this.applyRechargeFromManager(manager, userId, amount, sourceId, remark),
+      );
     });
+  }
+
+  /** 事务内充值入账（供支付回调在自身事务中调用，保证订单与积分一致性） */
+  async applyRechargeFromManager(
+    manager: any,
+    userId: number,
+    amount: number,
+    sourceId: string,
+    remark?: string,
+  ): Promise<CreditTransactionEntity> {
+    if (amount <= 0) {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '充值金额必须大于 0');
+    }
+    const account = await this.getOrCreateAccountLocked(manager, userId);
+    const balanceBefore = account.balance;
+    const balanceAfter = balanceBefore + amount;
+    await this.updateAccountVersioned(manager, account.id, account.version, {
+      balance: balanceAfter,
+      totalRecharged: account.totalRecharged + amount,
+    });
+    const txn = manager.getRepository(CreditTransactionEntity).create({
+      userId,
+      type: 'recharge',
+      amount,
+      balanceBefore,
+      balanceAfter,
+      source: 'recharge',
+      sourceId,
+      remark,
+    });
+    return manager.getRepository(CreditTransactionEntity).save(txn);
+  }
+
+  /** 退款扣回积分（负流水 + 余额扣减，余额不足则拒绝） */
+  async deductCredits(
+    userId: number,
+    amount: number,
+    sourceId: string,
+    remark?: string,
+  ): Promise<CreditTransactionEntity> {
+    if (amount <= 0) {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '退款金额必须大于 0');
+    }
+    return this.withLock(userId, async () => {
+      return this.dataSource.transaction(async (manager) =>
+        this.applyDeductFromManager(manager, userId, amount, sourceId, remark),
+      );
+    });
+  }
+
+  /** 事务内退款扣回（供管理后台退款在事务内调用） */
+  async applyDeductFromManager(
+    manager: any,
+    userId: number,
+    amount: number,
+    sourceId: string,
+    remark?: string,
+  ): Promise<CreditTransactionEntity> {
+    if (amount <= 0) {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '退款金额必须大于 0');
+    }
+    const account = await this.getOrCreateAccountLocked(manager, userId);
+    if (account.balance < amount) {
+      BusinessException.throw(
+        ErrorCode.VALIDATION_FAILED,
+        '退款时用户积分余额不足，无法自动扣回，请先处理用户积分',
+      );
+    }
+    const balanceBefore = account.balance;
+    const balanceAfter = balanceBefore - amount;
+    await this.updateAccountVersioned(manager, account.id, account.version, {
+      balance: balanceAfter,
+      totalConsumed: account.totalConsumed + amount,
+    });
+    const txn = manager.getRepository(CreditTransactionEntity).create({
+      userId,
+      type: 'refund',
+      amount: -amount,
+      balanceBefore,
+      balanceAfter,
+      source: 'recharge_refund',
+      sourceId,
+      remark,
+    });
+    return manager.getRepository(CreditTransactionEntity).save(txn);
   }
 
   /** 奖励入账 */

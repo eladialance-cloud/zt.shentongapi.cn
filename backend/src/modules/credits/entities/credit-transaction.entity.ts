@@ -25,7 +25,8 @@ export type CreditTxnSource =
   | 'signup_reward'
   | 'llm_proxy'
   | 'market_purchase'
-  | 'media_generation';
+  | 'media_generation'
+  | 'recharge_refund';
 
 /**
  * 积分流水实体（不可变，仅追加）

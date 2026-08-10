@@ -1,11 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { CreditTransactionEntity } from '../credits/entities/credit-transaction.entity';
 import { RechargeOrderEntity } from '../payment/entities/recharge-order.entity';
 import { PaymentRecordEntity } from '../payment/entities/payment-record.entity';
 import { ReconciliationDiffEntity } from '../reconciliation/entities/reconciliation-diff.entity';
 import { UserEntity } from '../user/entities/user.entity';
+import { PaymentConfigEntity } from '../payment/entities/payment-config.entity';
+import { CreditAccountEntity } from '../credits/entities/credit-account.entity';
+import { PaymentGatewayService } from '../payment/services/payment-gateway.service';
+import { CreditsService } from '../credits/services/credits.service';
 import { InvoiceEntity } from './entities/invoice.entity';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/constants/error.constant';
@@ -39,6 +43,11 @@ export class AdminFinanceService {
     private invoiceRepo: Repository<InvoiceEntity>,
     @InjectRepository(UserEntity)
     private userRepo: Repository<UserEntity>,
+    @InjectRepository(PaymentConfigEntity)
+    private configRepo: Repository<PaymentConfigEntity>,
+    @InjectDataSource() private dataSource: DataSource,
+    private readonly gateway: PaymentGatewayService,
+    private readonly creditsService: CreditsService,
   ) {}
 
   // ============ 积分流水 ============
@@ -163,7 +172,7 @@ export class AdminFinanceService {
     return this.toFinanceRechargeOrder(order, payment, username);
   }
 
-  /** 订单退款 */
+  /** 订单退款（真实渠道退款 + 积分扣回） */
   async refundOrder(id: number, dto: RefundDto) {
     const order = await this.orderRepo.findOne({ where: { id } });
     if (!order) {
@@ -172,20 +181,71 @@ export class AdminFinanceService {
     if (order.status !== 'paid') {
       BusinessException.throw(ErrorCode.VALIDATION_FAILED, '仅已支付订单可退款');
     }
-    order.status = 'refunded';
-    await this.orderRepo.save(order);
 
-    if (order.paymentRecordId) {
-      const payment = await this.paymentRepo.findOne({
-        where: { id: order.paymentRecordId },
-      });
-      if (payment) {
-        payment.status = 'refunded';
-        payment.refundAmount = order.amount;
-        payment.refundedAt = new Date();
-        await this.paymentRepo.save(payment);
-      }
+    const payment = order.paymentRecordId
+      ? await this.paymentRepo.findOne({ where: { id: order.paymentRecordId } })
+      : null;
+    const channel = order.paymentChannel || payment?.channel;
+    if (!channel) {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '订单缺少支付渠道信息');
     }
+    const channelCfg = await this.configRepo.findOne({ where: { channel } });
+    if (!channelCfg?.enabled || channelCfg.isMock) {
+      BusinessException.throw(ErrorCode.FORBIDDEN, '该支付渠道未启用真实支付，无法自动退款');
+    }
+
+    // 1) 调真实渠道退款（refundNo 固定基于订单号，保证渠道侧幂等）
+    const refundNo = `RF${order.orderNo}`;
+    await this.gateway.refund(channel, {
+      orderNo: order.orderNo,
+      refundNo,
+      amount: Number(order.amount),
+      totalAmount: Number(order.amount),
+      config: (channelCfg.config || {}) as Record<string, unknown>,
+      transactionId: payment?.paymentTxnId,
+    });
+
+    // 2) 本地事务：更新订单/支付记录 + 扣回积分（余额不足按实际余额扣并备注）
+    await this.dataSource.transaction(async (manager) => {
+      const orderRepo = manager.getRepository(RechargeOrderEntity);
+      const locked = await orderRepo
+        .createQueryBuilder('o')
+        .setLock('pessimistic_write')
+        .where('o.id = :id', { id })
+        .getOne();
+      if (!locked || locked.status !== 'paid') {
+        BusinessException.throw(ErrorCode.VALIDATION_FAILED, '订单状态已变化，退款中止');
+      }
+      const account = await manager
+        .getRepository(CreditAccountEntity)
+        .findOne({ where: { userId: locked.userId } });
+      const deduct = Math.min(locked.credits, account?.balance ?? 0);
+      if (deduct > 0) {
+        const remark =
+          deduct < locked.credits
+            ? `订单退款扣回（应扣${locked.credits}，余额不足按实际扣${deduct}）${dto.reason ? '，' + dto.reason : ''}`
+            : `订单退款扣回${dto.reason ? '，' + dto.reason : ''}`;
+        await this.creditsService.applyDeductFromManager(
+          manager,
+          locked.userId,
+          deduct,
+          locked.orderNo,
+          remark,
+        );
+      }
+      locked.status = 'refunded';
+      await orderRepo.save(locked);
+
+      const pay = await manager
+        .getRepository(PaymentRecordEntity)
+        .findOne({ where: { orderNo: locked.orderNo } });
+      if (pay) {
+        pay.status = 'refunded';
+        pay.refundAmount = Number(locked.amount);
+        pay.refundedAt = new Date();
+        await manager.getRepository(PaymentRecordEntity).save(pay);
+      }
+    });
   }
 
   // ============ 发票 ============
