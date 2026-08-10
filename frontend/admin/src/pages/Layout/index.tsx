@@ -71,13 +71,19 @@ const MENU_ENTRIES: MenuEntry[] = [
     label: '财务管理',
     icon: <DollarOutlined />,
     children: [
-      { key: 'finance-transactions', label: '充值订单', path: '/finance/transactions' },
+      { key: 'finance-transactions', label: '积分流水', path: '/finance/transactions' },
       { key: 'finance-orders', label: '订单管理', path: '/finance/orders' },
-      { key: 'finance-invoices', label: '发票管理', path: '/finance/invoices' },
-      { key: 'finance-reconciliation', label: '对账管理', path: '/finance/reconciliation' },
-      { key: 'finance-recharge-plans', label: '充值档位', path: '/finance/recharge-plans' },
-      { key: 'finance-payment-config', label: '支付配置', path: '/finance/payment-config' },
-      { key: 'plans', label: '套餐管理', path: '/plans' }
+      {
+        key: 'finance-more',
+        label: '更多设置',
+        children: [
+          { key: 'finance-invoices', label: '发票管理', path: '/finance/invoices' },
+          { key: 'finance-reconciliation', label: '对账管理', path: '/finance/reconciliation' },
+          { key: 'finance-recharge-plans', label: '充值档位', path: '/finance/recharge-plans' },
+          { key: 'finance-payment-config', label: '支付配置', path: '/finance/payment-config' },
+          { key: 'plans', label: '套餐管理', path: '/plans' }
+        ]
+      }
     ]
   },
   {
@@ -99,23 +105,23 @@ const MENU_ENTRIES: MenuEntry[] = [
 interface LeafInfo {
   key: string
   path: string
-  parentKey?: string
+  /** 展开链（从一级分组到最深父级），用于多级菜单自动展开 */
+  parentChain: string[]
 }
 
 // 展开所有叶子节点，便于根据 pathname 反查选中项与所属分组。
 const ALL_LEAVES: LeafInfo[] = (() => {
   const leaves: LeafInfo[] = []
-  for (const entry of MENU_ENTRIES) {
-    if (entry.children && entry.children.length > 0) {
-      for (const child of entry.children) {
-        if (child.path) {
-          leaves.push({ key: child.key, path: child.path, parentKey: entry.key })
-        }
+  const walk = (entries: MenuEntry[], chain: string[]): void => {
+    for (const entry of entries) {
+      if (entry.children && entry.children.length > 0) {
+        walk(entry.children, [...chain, entry.key])
+      } else if (entry.path) {
+        leaves.push({ key: entry.key, path: entry.path, parentChain: chain })
       }
-    } else if (entry.path) {
-      leaves.push({ key: entry.key, path: entry.path })
     }
   }
+  walk(MENU_ENTRIES, [])
   return leaves
 })()
 
@@ -130,13 +136,13 @@ export default function AdminLayout() {
   const user = useAdminAuthStore((s) => s.user)
   const clearAdminAuth = useAdminAuthStore((s) => s.clearAdminAuth)
 
-  const { selectedKey, parentKey } = useMemo(() => {
+  const { selectedKey, parentChain } = useMemo(() => {
     const matched = SORTED_LEAVES.find((leaf) =>
       location.pathname.startsWith(leaf.path)
     )
     return {
       selectedKey: matched?.key || 'dashboard',
-      parentKey: matched?.parentKey
+      parentChain: matched?.parentChain ?? []
     }
   }, [location.pathname])
 
@@ -144,42 +150,40 @@ export default function AdminLayout() {
     const matched = SORTED_LEAVES.find((leaf) =>
       location.pathname.startsWith(leaf.path)
     )
-    return matched?.parentKey ? [matched.parentKey] : []
+    return matched?.parentChain ?? []
   })
 
   // 当选中项所在分组未展开时自动展开（如通过 URL 直接访问子页面）
   useEffect(() => {
-    if (parentKey && !openKeys.includes(parentKey)) {
-      setOpenKeys((prev) => [...prev, parentKey])
+    if (parentChain.some((key) => !openKeys.includes(key))) {
+      setOpenKeys((prev) => Array.from(new Set([...prev, ...parentChain])))
     }
-  }, [parentKey, openKeys])
+  }, [parentChain, openKeys])
 
   const handleOpenChange = (keys: React.Key[]) => {
     setOpenKeys(keys.map(String))
   }
 
-  const menuItems: MenuProps['items'] = useMemo(
-    () =>
-      MENU_ENTRIES.map((entry) => {
-        if (entry.children && entry.children.length > 0) {
-          return {
-            key: entry.key,
-            icon: entry.icon,
-            label: entry.label,
-            children: entry.children.map((child) => ({
-              key: child.key,
-              label: child.label,
-              onClick: () => child.path && navigate(child.path)
-            }))
-          }
-        }
+  const buildMenuItems = (entries: MenuEntry[]): MenuProps['items'] =>
+    entries.map((entry) => {
+      if (entry.children && entry.children.length > 0) {
         return {
           key: entry.key,
           icon: entry.icon,
           label: entry.label,
-          onClick: () => entry.path && navigate(entry.path)
+          children: buildMenuItems(entry.children)
         }
-      }),
+      }
+      return {
+        key: entry.key,
+        icon: entry.icon,
+        label: entry.label,
+        onClick: () => entry.path && navigate(entry.path)
+      }
+    })
+
+  const menuItems: MenuProps['items'] = useMemo(
+    () => buildMenuItems(MENU_ENTRIES),
     [navigate]
   )
 
