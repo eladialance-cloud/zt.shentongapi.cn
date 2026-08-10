@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import {
+  Alert,
   Button,
   Empty,
   Form,
@@ -300,6 +301,14 @@ export default function FinanceInvoices() {
           刷新
         </Button>
       </div>
+
+      <Alert
+        type="warning"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="发票功能待接入"
+        description="用户端暂无发票申请入口，接入真实支付/税务渠道后启用。"
+      />
 
       <Tabs
         activeKey={tab}

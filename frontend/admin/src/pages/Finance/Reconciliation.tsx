@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import {
+  Alert,
   Button,
   Card,
   Empty,
@@ -302,6 +303,14 @@ export default function FinanceReconciliation() {
           刷新
         </Button>
       </div>
+
+      <Alert
+        type="warning"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="模拟支付阶段说明"
+        description="当前为模拟支付阶段，「支付流水」对账暂无数据；「流水vs余额」「Token用量」为真实对账数据。"
+      />
 
       {/* 顶部统计卡片 */}
       <div className={styles.statsGrid}>
