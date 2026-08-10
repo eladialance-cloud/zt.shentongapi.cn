@@ -1,4 +1,4 @@
-﻿// 主进程 / 渲染进程共享类型定义
+// 主进程 / 渲染进程共享类型定义
 // 该文件同时被 tsconfig.node.json 与 tsconfig.web.json 包含
 
 export type ServiceName = "openclaw" | "n8n" | "mcp" | "hermes";
@@ -201,14 +201,39 @@ export interface DeviceInfo extends DeviceFingerprint {
 /** 市场内容类型 */
 export type MarketItemType = "skill" | "plugin" | "workflow" | "agent";
 
+/** 本地内容来源:官方下载 / 自定义导入 / 对话中 OpenClaw 安装 */
+export type MarketSource = "official" | "custom" | "chat";
+
 /** 本地已安装记录（market/installed.json 条目） */
 export interface InstalledRecord {
   type: MarketItemType;
-  id: number;
+  /** 官方下载=数字市场 id;自定义导入/对话安装=字符串标识(slug/文件名) */
+  id: number | string;
   name: string;
   version: string;
   dir: string;
   installedAt: string;
+  /** 来源,缺省视为 official(存量数据) */
+  source?: MarketSource;
+  /** 官方最新版本(渲染层更新检测结果,不持久化) */
+  latestVersion?: string;
+}
+
+/** 本地详情(我的详情页读本地文件后返回) */
+export interface MarketItemDetail {
+  type: MarketItemType;
+  id: number | string;
+  name: string;
+  version: string;
+  dir: string;
+  source: MarketSource;
+  installedAt: string;
+  description: string;
+  /**
+   * 分类专用载荷:
+   * agent=systemPrompt / tools 引用;skill=SKILL.md 全文;workflow=workflowJson;plugin=manifest 对象
+   */
+  detail: Record<string, unknown>;
 }
 
 /** 下载安装包结果（后端 GET /api/market/items/:type/:id/download） */
@@ -341,13 +366,23 @@ export interface ElectronAPI {
       pkg: Record<string, unknown>,
     ): Promise<{ ok: boolean; dir?: string; error?: string }>;
     /** 卸载：删除本地目录并更新清单 */
-    uninstall(type: MarketItemType, id: number): Promise<{ ok: boolean; error?: string }>;
+    uninstall(type: MarketItemType, id: number | string): Promise<{ ok: boolean; error?: string }>;
     /** 本地已安装清单 */
     list(): Promise<InstalledRecord[]>;
     /** 导出个人内容（个人知识库 + 清单）为 .zip，返回保存路径或 null（取消） */
     export(): Promise<{ ok: boolean; path?: string; error?: string }>;
     /** 从 .zip 导入个人内容，返回导入记录数 */
     import(): Promise<{ ok: boolean; imported?: number; error?: string }>;
+    /** 读取本地详情(我的详情页) */
+    detail(type: MarketItemType, id: number | string): Promise<{ ok: boolean; detail?: MarketItemDetail; error?: string }>;
+    /** 自定义导入(选择本地目录/文件) */
+    importDir(type: MarketItemType): Promise<{ ok: boolean; record?: InstalledRecord; error?: string }>;
+    /** 登记对话安装内容(source=chat) */
+    register(type: MarketItemType, id: number | string, name: string, version: string, dir: string): Promise<{ ok: boolean; error?: string }>;
+    /** 更新本地内容(官方新版) */
+    update(type: MarketItemType, id: number, name: string, version: string, pkg: Record<string, unknown>): Promise<{ ok: boolean; dir?: string; error?: string }>;
+    /** 扫描本地运行时目录补登记 */
+    syncChat(): Promise<{ ok: boolean; added?: number; error?: string }>;
   };
   syncQueue: {
     /** 入队：写入 local_sync_queue，返回自增 id */

@@ -18,14 +18,22 @@ const STATUS_MAP: Record<string, { text: string; color: string }> = {
   canceled: { text: "已取消", color: "orange" },
 };
 
-export default function WorkflowExecutions() {
+export default function WorkflowExecutions({
+  workflowId,
+}: {
+  workflowId?: number;
+} = {}) {
   const [list, setList] = useState<WorkflowExecution[]>([]);
   const [loading, setLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await workflowApi.listExecutions({ page: 1, pageSize: 50 });
+      const res = await workflowApi.listExecutions({
+        page: 1,
+        pageSize: 50,
+        ...(workflowId != null ? { workflowId } : {}),
+      });
       setList(res.list || []);
     } catch (err) {
       console.error("[WorkflowExecutions] load failed:", err);
@@ -34,7 +42,7 @@ export default function WorkflowExecutions() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [workflowId]);
 
   useEffect(() => {
     void loadData();

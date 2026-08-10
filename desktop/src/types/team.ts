@@ -27,7 +27,7 @@ export interface TeamMember {
   id: number
   teamId: number
   /** 关联的 Agent ID */
-  agentId: number
+  agentId: number | string
   /** Agent 名称快照 */
   agentName: string
   /** Agent 头像快照 */
@@ -69,7 +69,7 @@ export interface TeamTask {
 
 /** 创建团队-成员 DTO（员工名称/职位/选择 Agent） */
 export interface CreateTeamMemberDto {
-  agentId: number
+  agentId: number | string
   /** 员工名称 */
   agentName?: string
   /** 职位（职能名） */
@@ -86,14 +86,14 @@ export interface CreateTeamDto {
   /** 关联的知识库 ID（可选） */
   knowledgeBaseId?: number
   /** 初始成员 Agent ID 列表（简化方式） */
-  memberAgentIds?: number[]
+  memberAgentIds?: Array<number | string>
   /** 初始成员详情（员工名称/职位/Agent） */
   members?: CreateTeamMemberDto[]
 }
 
 /** 添加成员 DTO */
 export interface AddMemberDto {
-  agentId: number
+  agentId: number | string
   roleTitle: string
   roleDescription?: string
   roleEmoji?: string
@@ -123,7 +123,7 @@ export interface UpdateTeamTaskDto {
 
 /** 可选 Agent（用于创建团队时选择成员） */
 export interface SelectableAgent {
-  id: number
+  id: number | string
   name: string
   avatar?: string
   description?: string

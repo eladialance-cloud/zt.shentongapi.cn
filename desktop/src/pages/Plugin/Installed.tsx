@@ -50,14 +50,14 @@ export default function InstalledPlugins({ embedded = false }: { embedded?: bool
       const localRows: PluginRow[] = localList
         .filter((r) => r.type === 'plugin')
         .map((r) => ({
-          id: -(r.id + 100000), // 负 id 避免与云端行冲突（仅作表格 key）
-          pluginId: r.id,
+          id: -(Number(r.id) + 100000), // 负 id 仅作表格 key
+          pluginId: Number(r.id),
           enabled: true,
           isInstalled: true,
           installedAt: r.installedAt,
           installDir: r.dir,
           plugin: {
-            id: r.id,
+            id: Number(r.id),
             name: r.name,
             description: '',
             version: r.version,

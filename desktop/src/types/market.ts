@@ -3,13 +3,17 @@
 
 import type {
   MarketItemType,
+  MarketSource,
   InstalledRecord,
+  MarketItemDetail,
   MarketDownloadResult,
 } from '@shared/types'
 
 export type {
   MarketItemType,
+  MarketSource,
   InstalledRecord,
+  MarketItemDetail,
   MarketDownloadResult,
 } from '@shared/types'
 

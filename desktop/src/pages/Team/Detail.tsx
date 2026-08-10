@@ -119,7 +119,7 @@ export default function TeamDetail() {
   // 打开添加/编辑成员弹窗
   const openMemberModal = async (member?: TeamMember) => {
     try {
-      const agents = await teamApi.listSelectableAgents();
+      const agents = await teamApi.listLocalSelectableAgents();
       setSelectableAgents(agents || []);
     } catch { /* ignore */ }
     setEditingMember(member || null);

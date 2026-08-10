@@ -30,11 +30,11 @@ interface CreateFormValues {
   name: string;
   description?: string;
   knowledgeBaseId?: number;
-  memberAgentIds?: number[];
+  memberAgentIds?: Array<number | string>;
   members?: Array<{
     agentName?: string;
     roleTitle?: string;
-    agentId?: number;
+    agentId?: number | string;
   }>;
 }
 
@@ -66,7 +66,7 @@ export default function TeamList() {
 
   const loadAgents = useCallback(async () => {
     try {
-      const list = await teamApi.listSelectableAgents();
+      const list = await teamApi.listLocalSelectableAgents();
       setAgents(list || []);
     } catch (err) {
       console.error("[TeamList] load agents failed:", err);
@@ -98,7 +98,7 @@ export default function TeamList() {
       const members = (values.members || [])
         .filter((m) => m && m.agentId != null)
         .map((m) => ({
-          agentId: m.agentId as number,
+          agentId: m.agentId as number | string,
           agentName: m.agentName || undefined,
           roleTitle: m.roleTitle || "团队成员",
         }));

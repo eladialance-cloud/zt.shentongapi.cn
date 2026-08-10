@@ -20,6 +20,7 @@ import { MessageInput } from './components/MessageInput'
 import { MediaGenerationModal } from './components/MediaGenerationModal'
 import type { MediaJob } from '@/api/media-generation-api'
 import * as chatApi from '@/api/chat-api'
+import * as marketApi from '@/api/market-api'
 import { createOpenClawChat, type OpenClawChatHandle } from '@/api/openclaw-chat-api'
 import type { OpenClawChatMessage, OpenClawToolCall } from '@shared/types'
 import { listMarketAgents } from '@/api/agent-api'
@@ -209,6 +210,8 @@ export default function Chat() {
       abortRequestedRef.current = false
       setAgentPhase('idle')
       agentPhaseRef.current = 'idle'
+      // OpenClaw 对话安装的内容自动同步进「我的」(同一本地清单)
+      void marketApi.syncChat().catch(() => undefined)
       // officeBridge: 回复完成 → 审核员审核 → 所有人切 IDLE
       officeBridge.onReview()
       setTimeout(() => officeBridge.onTaskComplete(), 1500)
@@ -246,6 +249,8 @@ export default function Chat() {
       setStreamingToolCalls([])
       setAgentPhase('idle')
       agentPhaseRef.current = 'idle'
+      // OpenClaw 对话安装的内容自动同步进「我的」(同一本地清单)
+      void marketApi.syncChat().catch(() => undefined)
       streamingContentRef.current = ''
       streamingToolCallsRef.current = []
       abortRequestedRef.current = false

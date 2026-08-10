@@ -13,6 +13,7 @@
 //   PATCH  /teams/:teamId/tasks/:taskId 更新任务
 //   GET    /agents                   可选 Agent 列表（用于选择成员）
 import { httpClient } from "./http-client";
+import * as marketApi from "./market-api";
 import type {
   Team,
   TeamMember,
@@ -106,6 +107,27 @@ export async function updateTask(
   );
 }
 
+/** 可选 Agent(本地):只返回「我的」里已下载的 Agent(创建团队/添加成员用) */
+export async function listLocalSelectableAgents(): Promise<SelectableAgent[]> {
+  try {
+    const list = await marketApi.listInstalled()
+    const agents = list.filter((r) => r.type === 'agent')
+    const result: SelectableAgent[] = []
+    for (const r of agents) {
+      let avatar: string | undefined
+      try {
+        const d = await marketApi.getDetail('agent', r.id)
+        avatar = String((d.detail as Record<string, unknown>).avatar || '')
+      } catch { avatar = undefined }
+      result.push({ id: r.id, name: r.name, avatar: avatar || undefined })
+    }
+    return result
+  } catch (err) {
+    console.warn('[team-api] 读取本地 Agent 失败:', err)
+    return []
+  }
+}
+
 /** 可选 Agent 列表 GET /teams/agents */
 export async function listSelectableAgents(): Promise<SelectableAgent[]> {
   return httpClient.get<SelectableAgent[]>("/teams/agents");
@@ -123,4 +145,5 @@ export default {
   listTasks,
   updateTask,
   listSelectableAgents,
+  listLocalSelectableAgents,
 };

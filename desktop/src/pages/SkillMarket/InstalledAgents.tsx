@@ -25,7 +25,7 @@ export default function InstalledAgents() {
       const localAgents = localList
         .filter((r) => r.type === "agent")
         .map((r) => ({
-          id: r.id,
+          id: Number(r.id) || 0,
           name: r.name,
           displayName: r.name,
           description: "",

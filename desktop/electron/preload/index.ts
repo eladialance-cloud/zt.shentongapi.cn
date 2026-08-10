@@ -15,6 +15,7 @@ import type {
   InstallProgressPayload,
   MarketItemType,
   InstalledRecord,
+  MarketItemDetail,
   OpenClawChatMessage,
   OpenClawChatMessagePayload,
   OpenClawToolCall,
@@ -109,11 +110,20 @@ const electronAPI: ElectronAPI = {
   market: {
     install: (type: MarketItemType, id: number, name: string, version: string, pkg: Record<string, unknown>) =>
       ipcRenderer.invoke('market:install', type, id, name, version, pkg) as Promise<{ ok: boolean; dir?: string; error?: string }>,
-    uninstall: (type: MarketItemType, id: number) =>
+    uninstall: (type: MarketItemType, id: number | string) =>
       ipcRenderer.invoke('market:uninstall', type, id) as Promise<{ ok: boolean; error?: string }>,
     list: () => ipcRenderer.invoke('market:list') as Promise<InstalledRecord[]>,
     export: () => ipcRenderer.invoke('market:export') as Promise<{ ok: boolean; path?: string; error?: string }>,
-    import: () => ipcRenderer.invoke('market:import') as Promise<{ ok: boolean; imported?: number; error?: string }>
+    import: () => ipcRenderer.invoke('market:import') as Promise<{ ok: boolean; imported?: number; error?: string }>,
+    detail: (type: MarketItemType, id: number | string) =>
+      ipcRenderer.invoke('market:detail', type, id) as Promise<{ ok: boolean; detail?: MarketItemDetail; error?: string }>,
+    importDir: (type: MarketItemType) =>
+      ipcRenderer.invoke('market:importDir', type) as Promise<{ ok: boolean; record?: InstalledRecord; error?: string }>,
+    register: (type: MarketItemType, id: number | string, name: string, version: string, dir: string) =>
+      ipcRenderer.invoke('market:register', type, id, name, version, dir) as Promise<{ ok: boolean; error?: string }>,
+    update: (type: MarketItemType, id: number, name: string, version: string, pkg: Record<string, unknown>) =>
+      ipcRenderer.invoke('market:update', type, id, name, version, pkg) as Promise<{ ok: boolean; dir?: string; error?: string }>,
+    syncChat: () => ipcRenderer.invoke('market:syncChat') as Promise<{ ok: boolean; added?: number; error?: string }>
   },
   openclawChat: {
     /** 注入用户 llm-proxy 静态 Key（登录后调用；OpenClaw openai provider 指向云端 llm-proxy） */

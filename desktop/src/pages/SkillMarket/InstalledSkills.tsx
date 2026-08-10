@@ -30,7 +30,7 @@ export default function InstalledSkills() {
       const localSkills = localList
         .filter((r) => r.type === "skill")
         .map((r) => ({
-          id: r.id,
+          id: Number(r.id) || 0,
           name: r.name,
           description: "",
           author: "官方",

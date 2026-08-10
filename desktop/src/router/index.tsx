@@ -30,6 +30,7 @@ import AgentMarket from "@/pages/AgentMarket";
 import AgentDetail from "@/pages/AgentMarket/Detail";
 import AgentFavorites from "@/pages/AgentMarket/Favorites";
 import SkillMarket from "@/pages/SkillMarket";
+import LocalDetail from "@/pages/SkillMarket/LocalDetail";
 import HermesList from "@/pages/Hermes";
 import HermesDetail from "@/pages/Hermes/Detail";
 import TeamList from "@/pages/Team";
@@ -116,6 +117,7 @@ const router = createHashRouter([
       { path: "/agent-market/:id", element: <AgentDetail /> },
       { path: "/mcp-market", element: <McpConfig /> },
       { path: "/skill-market", element: <SkillMarket /> },
+      { path: "/skill-market/detail/:type/:id", element: <LocalDetail /> },
       { path: "/automation", element: <Navigate to="/workflow" replace /> },
       // 兼容旧链接：复数 /workflows 别名指向单数路由
       { path: "/workflows", element: <Navigate to="/workflow" replace /> },

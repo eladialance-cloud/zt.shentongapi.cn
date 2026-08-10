@@ -12,6 +12,7 @@ import { httpClient } from './http-client'
 import type {
   MarketItemType,
   InstalledRecord,
+  MarketItemDetail,
   MarketDownloadResult,
 } from '@/types/market'
 import type { PurchasedItem } from '@/types/market'
@@ -63,7 +64,7 @@ export async function install(
 /** 卸载本地内容 */
 export async function uninstall(
   type: MarketItemType,
-  itemId: number,
+  itemId: number | string,
 ): Promise<{ ok: boolean; error?: string }> {
   return (await getMarket().uninstall(type, itemId)) as { ok: boolean; error?: string }
 }
@@ -78,6 +79,52 @@ export async function exportMarket(): Promise<{ ok: boolean; path?: string; erro
   return (await getMarket().export()) as { ok: boolean; path?: string; error?: string }
 }
 
+/** 读取本地内容详情(我的详情页) */
+export async function getDetail(
+  type: MarketItemType,
+  itemId: number | string,
+): Promise<MarketItemDetail> {
+  const res = await getMarket().detail(type, itemId)
+  if (!res.ok || !res.detail) {
+    throw new Error(res.error || '读取本地详情失败')
+  }
+  return res.detail
+}
+
+/** 自定义导入(选择本地目录/文件,由主进程弹窗) */
+export async function importDir(
+  type: MarketItemType,
+): Promise<{ ok: boolean; record?: InstalledRecord; error?: string }> {
+  return (await getMarket().importDir(type)) as { ok: boolean; record?: InstalledRecord; error?: string }
+}
+
+/** 登记对话安装内容(source=chat) */
+export async function register(
+  type: MarketItemType,
+  itemId: number | string,
+  name: string,
+  version: string,
+  dir: string,
+): Promise<{ ok: boolean; error?: string }> {
+  return (await getMarket().register(type, itemId, name, version, dir)) as { ok: boolean; error?: string }
+}
+
+/** 更新本地内容(官方新版) */
+export async function update(
+  type: MarketItemType,
+  itemId: number,
+  name: string,
+  version: string,
+  pkg: Record<string, unknown>,
+): Promise<{ ok: boolean; dir?: string; error?: string }> {
+  return (await getMarket().update(type, itemId, name, version, pkg)) as { ok: boolean; dir?: string; error?: string }
+}
+
+/** 扫描本地运行时目录,补登记对话安装内容 */
+export async function syncChat(): Promise<{ ok: boolean; added?: number; error?: string }> {
+  return (await getMarket().syncChat()) as { ok: boolean; added?: number; error?: string }
+}
+
 /** 导入个人内容 */
 export async function importMarket(): Promise<{ ok: boolean; imported?: number; error?: string }> {
   return (await getMarket().import()) as { ok: boolean; imported?: number; error?: string }
@@ -90,6 +137,11 @@ export default {
   install,
   uninstall,
   listInstalled,
+  getDetail,
+  importDir,
+  register,
+  update,
+  syncChat,
   exportMarket,
   importMarket,
 }

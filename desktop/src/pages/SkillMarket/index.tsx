@@ -6,13 +6,10 @@ import { useState } from "react";
 import { Tabs } from "antd";
 import { ShopOutlined } from "@ant-design/icons";
 import PluginMarket from "@/pages/Plugin";
-import InstalledPlugins from "@/pages/Plugin/Installed";
 import WorkflowList from "@/pages/Workflow";
 import AgentMarket from "@/pages/AgentMarket";
 import HermesSkillMarket from "@/pages/Hermes/SkillMarket";
-import WorkflowExecutions from "./WorkflowExecutions";
-import InstalledAgents from "./InstalledAgents";
-import InstalledSkills from "./InstalledSkills";
+import InstalledList from "./InstalledList";
 import styles from "./styles.module.css";
 
 type Scope = "official" | "mine";
@@ -49,13 +46,13 @@ export default function SkillMarket() {
     }
     switch (category) {
       case "plugin":
-        return <InstalledPlugins embedded />;
+        return <InstalledList type={"plugin"} />;
       case "workflow":
-        return <WorkflowExecutions />;
+        return <InstalledList type={"workflow"} />;
       case "agent":
-        return <InstalledAgents />;
+        return <InstalledList type={"agent"} />;
       case "skill":
-        return <InstalledSkills />;
+        return <InstalledList type={"skill"} />;
     }
   };
 

@@ -82,10 +82,26 @@ export default function AgentDetail() {
     }
   }, [agentId])
 
+  const loadInstalledStatus = useCallback(async () => {
+    try {
+      const list = await marketApi.listInstalled()
+      const rec = list.find(
+        (r) => r.type === 'agent' && String(r.id) === String(agentId),
+      )
+      if (rec) {
+        setInstalled(true)
+        setInstallDir(rec.dir)
+      }
+    } catch (err) {
+      console.warn('[AgentDetail] 读取本地已装失败:', err)
+    }
+  }, [agentId])
+
   useEffect(() => {
     void loadDetail()
     void loadReviews()
-  }, [loadDetail, loadReviews])
+    void loadInstalledStatus()
+  }, [loadDetail, loadReviews, loadInstalledStatus])
 
   const handleToggleFav = async () => {
     if (!agent) return
@@ -126,6 +142,10 @@ export default function AgentDetail() {
   }
 
   const handleUse = () => {
+    if (!installed) {
+      message.warning('请先下载该 Agent 到本地')
+      return
+    }
     navigate(`/chat?agentId=${agentId}`)
   }
 
@@ -258,7 +278,7 @@ export default function AgentDetail() {
               onClick={handleInstall}
               style={{ marginBottom: 0 }}
             >
-              {installed ? '已安装' : '安装到本地'}
+              {installed ? '已下载' : '下载到本地'}
             </Button>
             {installed && installDir && (
               <div style={{ fontSize: 12, color: '#8b98a5', wordBreak: 'break-all' }}>
@@ -283,6 +303,7 @@ export default function AgentDetail() {
               size="large"
               icon={<ThunderboltOutlined />}
               className={styles.useAgentBtn}
+              disabled={!installed}
               onClick={handleUse}
             >
               使用此 Agent

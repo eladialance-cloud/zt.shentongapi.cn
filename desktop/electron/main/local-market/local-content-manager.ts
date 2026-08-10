@@ -13,7 +13,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type {
   MarketItemType,
+  MarketSource,
   InstalledRecord,
+  MarketItemDetail,
 } from '../../shared/types';
 
 /** userData 目录（jest 等无 electron 环境时回退 APPDATA，与 runtime-config 一致） */
@@ -63,7 +65,7 @@ function writeInstalled(records: InstalledRecord[]): void {
 }
 
 /** 类型对应的本地安装目录 */
-function resolveTargetDir(type: MarketItemType, id: number): string {
+function resolveTargetDir(type: MarketItemType, id: number | string): string {
   switch (type) {
     case 'skill':
       return path.join(getOpenClawHome(), 'skills', String(id));
@@ -140,7 +142,7 @@ export async function installMarketItem(
 /** 卸载 */
 export async function uninstallMarketItem(
   type: MarketItemType,
-  id: number,
+  id: number | string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const target = resolveTargetDir(type, id);
@@ -158,6 +160,269 @@ export async function uninstallMarketItem(
 /** 本地已安装清单 */
 export function listInstalled(): InstalledRecord[] {
   return readInstalled();
+}
+/** 按类型+id 读取本地详情(我的详情页) */
+export function getInstalledDetail(
+  type: MarketItemType,
+  id: number | string,
+): { ok: boolean; detail?: MarketItemDetail; error?: string } {
+  try {
+    const record = readInstalled().find(
+      (r) => r.type === type && String(r.id) === String(id),
+    );
+    if (!record) return { ok: false, error: '未找到本地记录' };
+    const source: MarketSource = record.source ?? 'official';
+    const dir = record.dir;
+    const base = {
+      type,
+      id: record.id,
+      name: record.name,
+      version: record.version,
+      dir,
+      source,
+      installedAt: record.installedAt,
+      description: '',
+    };
+    if (type === 'skill') {
+      const markdown = fs.existsSync(path.join(dir, 'SKILL.md'))
+        ? fs.readFileSync(path.join(dir, 'SKILL.md'), 'utf-8')
+        : '';
+      let manifest: Record<string, unknown> = {};
+      try { manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf-8')); } catch { manifest = {}; }
+      return { ok: true, detail: { ...base, description: String(manifest.description || ''), detail: { markdown, manifest } } };
+    }
+    if (type === 'agent') {
+      let agent: Record<string, unknown> = {};
+      try { agent = JSON.parse(fs.readFileSync(path.join(dir, 'agent.json'), 'utf-8')); } catch { agent = {}; }
+      return { ok: true, detail: { ...base, description: String(agent.description || ''), detail: agent } };
+    }
+    if (type === 'workflow') {
+      let workflow: Record<string, unknown> = {};
+      try { workflow = JSON.parse(fs.readFileSync(path.join(dir, 'workflow.json'), 'utf-8')); } catch { workflow = {}; }
+      return { ok: true, detail: { ...base, description: String(workflow.description || ''), detail: workflow } };
+    }
+    if (type === 'plugin') {
+      let plugin: Record<string, unknown> = {};
+      try { plugin = JSON.parse(fs.readFileSync(path.join(dir, 'plugin.json'), 'utf-8')); } catch { plugin = {}; }
+      return { ok: true, detail: { ...base, description: String(plugin.description || ''), detail: plugin } };
+    }
+    return { ok: false, error: '不支持的类型: ' + type };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** 从名称生成稳定的字符串 id(slug + 冲突时加时间戳) */
+function makeCustomId(name: string): string {
+  const slug = String(name || 'custom')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48) || 'custom';
+  const exists = readInstalled().some((r) => String(r.id) === slug);
+  return exists ? slug + '-' + Date.now().toString(36) : slug;
+}
+
+/** 自定义导入:选择本地目录或文件,校验后复制到本地内容目录并登记(source=custom) */
+export async function importCustomDir(
+  type: MarketItemType,
+): Promise<{ ok: boolean; record?: InstalledRecord; error?: string }> {
+  try {
+    const markerByType: Record<MarketItemType, string> = {
+      skill: 'SKILL.md',
+      plugin: 'plugin.json',
+      workflow: 'workflow.json',
+      agent: 'agent.json',
+    };
+    const typeName: Record<MarketItemType, string> = {
+      skill: '技能包',
+      plugin: '插件',
+      workflow: '工作流',
+      agent: 'Agent',
+    };
+    const result = await dialog.showOpenDialog({
+      title: '导入' + typeName[type],
+      properties: ['openDirectory', 'openFile', 'showHiddenFiles'],
+    });
+    if (result.canceled || !result.filePaths[0]) return { ok: false };
+    const src = result.filePaths[0];
+    const isFile = fs.statSync(src).isFile();
+    const markerName = markerByType[type];
+    let name = path.basename(src);
+    let contentDir = src;
+    if (isFile) {
+      if (path.basename(src).toLowerCase() !== markerName.toLowerCase()) {
+        return { ok: false, error: '文件必须是 ' + markerName };
+      }
+      name = path.basename(path.dirname(src));
+      try {
+        if (type === 'skill') {
+          const md = fs.readFileSync(src, 'utf-8');
+          const m = md.match(/^name:\s*(.+)$/m);
+          if (m) name = m[1].trim();
+        } else {
+          const parsed = JSON.parse(fs.readFileSync(src, 'utf-8'));
+          if (parsed && typeof parsed.name === 'string') name = parsed.name;
+        }
+      } catch { /* 保持默认 */ }
+    } else {
+      const marker = path.join(src, markerName);
+      if (!fs.existsSync(marker)) return { ok: false, error: '目录中缺少 ' + markerName };
+      contentDir = src;
+      try {
+        if (type === 'skill') {
+          const md = fs.readFileSync(marker, 'utf-8');
+          const m = md.match(/^name:\s*(.+)$/m);
+          if (m) name = m[1].trim();
+        } else {
+          const parsed = JSON.parse(fs.readFileSync(marker, 'utf-8'));
+          if (parsed && typeof parsed.name === 'string') name = parsed.name;
+        }
+      } catch { /* 保持默认 */ }
+    }
+    const id = makeCustomId(name);
+    const target = resolveTargetDir(type, id);
+    safeRemove(target);
+    fs.cpSync(contentDir, target, { recursive: true });
+    const record: InstalledRecord = {
+      type,
+      id,
+      name,
+      version: '1.0.0',
+      dir: target,
+      installedAt: new Date().toISOString(),
+      source: 'custom',
+    };
+    const records = readInstalled().filter(
+      (r) => !(r.type === type && String(r.id) === String(id)),
+    );
+    records.unshift(record);
+    writeInstalled(records);
+    return { ok: true, record };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** 登记对话中 OpenClaw 安装的内容(source=chat),幂等 */
+export function registerChatInstalled(
+  type: MarketItemType,
+  id: number | string,
+  name: string,
+  version: string,
+  dir: string,
+): { ok: boolean; error?: string } {
+  try {
+    const records = readInstalled();
+    if (records.some((r) => r.type === type && path.resolve(r.dir) === path.resolve(dir))) {
+      return { ok: true };
+    }
+    records.unshift({
+      type,
+      id,
+      name: name || String(id),
+      version: version || '1.0.0',
+      dir: path.resolve(dir),
+      installedAt: new Date().toISOString(),
+      source: 'chat',
+    });
+    writeInstalled(records);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** 更新:备份旧目录 → 复用安装流程 → 失败回滚 */
+export async function updateMarketItem(
+  type: MarketItemType,
+  id: number | string,
+  name: string,
+  version: string,
+  pkg: Record<string, unknown>,
+): Promise<{ ok: boolean; dir?: string; error?: string }> {
+  const target = resolveTargetDir(type, id);
+  const backup = target + '.backup-' + Date.now();
+  let backupMade = false;
+  if (fs.existsSync(target)) {
+    try {
+      fs.cpSync(target, backup, { recursive: true });
+      backupMade = true;
+    } catch (err) {
+      return { ok: false, error: '备份旧版本失败: ' + (err instanceof Error ? err.message : String(err)) };
+    }
+  }
+  const result = await installMarketItem(type, Number(id), name, version, pkg);
+  if (!result.ok) {
+    if (backupMade) {
+      try {
+        safeRemove(target);
+        fs.cpSync(backup, target, { recursive: true });
+      } catch { /* 回滚失败仅记录 */ }
+    }
+    return result;
+  }
+  if (backupMade) {
+    try { safeRemove(backup); } catch { /* 忽略 */ }
+  }
+  return result;
+}
+
+function readNameFromDir(
+  type: MarketItemType,
+  markerPath: string,
+  fallback: string,
+): string {
+  try {
+    if (type === 'skill') {
+      const md = fs.readFileSync(markerPath, 'utf-8');
+      const m = md.match(/^name:\s*(.+)$/m);
+      if (m) return m[1].trim();
+    } else {
+      const parsed = JSON.parse(fs.readFileSync(markerPath, 'utf-8'));
+      if (parsed && typeof parsed.name === 'string') return parsed.name;
+    }
+  } catch { /* 忽略 */ }
+  return fallback;
+}
+
+/** 扫描本地运行时目录,把 OpenClaw/Hermes 已安装但未登记的内容补登记(source=chat) */
+export function syncChatInstalled(): { ok: boolean; added?: number; error?: string } {
+  try {
+    const roots: Array<{ type: MarketItemType; root: string; marker: string }> = [
+      { type: 'skill', root: path.join(getOpenClawHome(), 'skills'), marker: 'SKILL.md' },
+      { type: 'plugin', root: path.join(getOpenClawHome(), 'plugins'), marker: 'plugin.json' },
+      { type: 'workflow', root: path.join(getHermesHome(), 'workflows'), marker: 'workflow.json' },
+      { type: 'agent', root: path.join(getHermesHome(), 'agents'), marker: 'agent.json' },
+    ];
+    const records = readInstalled();
+    let added = 0;
+    for (const { type, root, marker } of roots) {
+      if (!fs.existsSync(root)) continue;
+      for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const dir = path.join(root, entry.name);
+        const markerPath = path.join(dir, marker);
+        if (!fs.existsSync(markerPath)) continue;
+        if (records.some((r) => r.type === type && path.resolve(r.dir) === path.resolve(dir))) continue;
+        const name = readNameFromDir(type, markerPath, entry.name);
+        records.unshift({
+          type,
+          id: entry.name,
+          name,
+          version: '1.0.0',
+          dir,
+          installedAt: new Date().toISOString(),
+          source: 'chat',
+        });
+        added += 1;
+      }
+    }
+    if (added > 0) writeInstalled(records);
+    return { ok: true, added };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 // ---------- 各类型安装内容 ----------

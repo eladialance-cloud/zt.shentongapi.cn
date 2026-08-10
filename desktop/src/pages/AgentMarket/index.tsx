@@ -5,7 +5,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Card,
-  Tabs,
   Select,
   Input,
   Rate,
@@ -20,6 +19,9 @@ import {
   SearchOutlined,
   RobotOutlined,
   CrownOutlined,
+  DownloadOutlined,
+  CheckCircleOutlined,
+  LoadingOutlined,
   HeartOutlined,
   HeartFilled,
   ThunderboltOutlined,
@@ -33,16 +35,15 @@ import {
   favoriteAgent,
   unfavoriteAgent,
 } from "@/api/agent-api";
+import * as marketApi from "@/api/market-api";
 import type {
   Agent,
   MarketQuery,
-  MarketTab,
   AgentCategory,
 } from "@/types/agent";
 import { useSystemStore } from "@/store/system";
 import { NetworkError } from "@/utils/errors";
 import styles from "./styles.module.css";
-import Favorites from "./Favorites";
 
 const CATEGORY_OPTIONS: Array<{ label: string; value: AgentCategory | "" }> = [
   { label: "全部分类", value: "" },
@@ -53,16 +54,6 @@ const CATEGORY_OPTIONS: Array<{ label: string; value: AgentCategory | "" }> = [
   { label: "其他", value: "other" },
 ];
 
-const TAB_ITEMS: Array<{
-  key: MarketTab | "favorites";
-  label: string;
-  icon: React.ReactNode;
-}> = [
-  { key: "all", label: "全部", icon: <AppstoreOutlined /> },
-  { key: "official", label: "官方推荐", icon: <CrownOutlined /> },
-  { key: "community", label: "社区", icon: <RobotOutlined /> },
-  { key: "favorites", label: "我的", icon: <HeartFilled /> },
-];
 
 const PAGE_SIZE = 12;
 
@@ -73,18 +64,15 @@ export default function AgentMarket({ embedded = false }: { embedded?: boolean }
   const [agents, setAgents] = useState<Agent[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [tab, setTab] = useState<MarketTab | "favorites">("all");
   const [category, setCategory] = useState<string>("");
+  const [installedIds, setInstalledIds] = useState<Set<string>>(new Set());
+  const [installingIds, setInstallingIds] = useState<Set<string>>(new Set());
   const [keyword, setKeyword] = useState("");
 
   const loadData = useCallback(async () => {
-    if (tab === "favorites") {
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     const query: MarketQuery = {
-      tab,
+      tab: "official",
       page,
       pageSize: PAGE_SIZE,
     };
@@ -102,20 +90,57 @@ export default function AgentMarket({ embedded = false }: { embedded?: boolean }
     } finally {
       setLoading(false);
     }
-  }, [tab, category, keyword, page, backendAvailable]);
+  }, [category, keyword, page, backendAvailable]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
 
-  const handleTabChange = (key: string) => {
-    setTab(key as MarketTab | "favorites");
-    setPage(1);
-  };
-
   const handleSearch = () => {
     setPage(1);
     void loadData();
+  };
+
+  /** 已下载到本地的 Agent id 集合(只有已下载才能「使用」) */
+  const loadInstalled = useCallback(async () => {
+    try {
+      const list = await marketApi.listInstalled();
+      setInstalledIds(
+        new Set(
+          list
+            .filter((r) => r.type === "agent")
+            .map((r) => String(r.id)),
+        ),
+      );
+    } catch (err) {
+      console.warn("[AgentMarket] 读取本地已装失败:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadInstalled();
+  }, [loadInstalled]);
+
+  /** 下载安装到本地 */
+  const handleDownload = async (agent: Agent) => {
+    setInstallingIds((prev) => new Set(prev).add(String(agent.id)));
+    try {
+      const res = await marketApi.install("agent", agent.id);
+      if (!res.ok) throw new Error(res.error || "本地安装失败");
+      message.success(
+        `Agent「${agent.displayName || agent.name}」已下载安装到本地，可在「我的」查看`,
+      );
+      setInstalledIds((prev) => new Set(prev).add(String(agent.id)));
+    } catch (err) {
+      console.error("[AgentMarket] download failed:", err);
+      message.error("下载失败: " + (err as Error).message);
+    } finally {
+      setInstallingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(String(agent.id));
+        return next;
+      });
+    }
   };
 
   const handleUse = (agent: Agent) => {
@@ -174,23 +199,7 @@ export default function AgentMarket({ embedded = false }: { embedded?: boolean }
 
       {/* 工具栏 */}
       <div className={styles.toolbar}>
-        <Tabs
-          activeKey={tab}
-          onChange={handleTabChange}
-          items={TAB_ITEMS.map((item) => ({
-            key: item.key,
-            label: (
-              <span>
-                {item.icon}
-                <span style={{ marginLeft: 6 }}>{item.label}</span>
-              </span>
-            ),
-          }))}
-          style={{ marginBottom: 0 }}
-        />
         <div className={styles.toolbarLeft}>
-          {tab !== "favorites" && (
-            <>
           <Select
             value={category}
             onChange={(v) => {
@@ -208,17 +217,12 @@ export default function AgentMarket({ embedded = false }: { embedded?: boolean }
             prefix={<SearchOutlined style={{ color: "#64748b" }} />}
             className={styles.searchBox}
             allowClear
-            />
-            </>
-          )}
+          />
         </div>
       </div>
 
-      {/* Agent 列表 / 我的收藏 */}
-      {tab === "favorites" ? (
-        <Favorites embedded />
-      ) : (
-        <Spin spinning={loading}>
+      {/* Agent 列表 */}
+      <Spin spinning={loading}>
         {agents.length === 0 && !loading ? (
           <Empty description="暂无 Agent" style={{ marginTop: 80 }} />
         ) : (
@@ -227,6 +231,9 @@ export default function AgentMarket({ embedded = false }: { embedded?: boolean }
               <AgentCardItem
                 key={agent.id}
                 agent={agent}
+                installed={installedIds.has(String(agent.id))}
+                installing={installingIds.has(String(agent.id))}
+                onDownload={() => handleDownload(agent)}
                 onUse={() => handleUse(agent)}
                 onToggleFav={() => handleToggleFav(agent)}
                 onOpenDetail={() => navigate(`/agent-market/${agent.id}`)}
@@ -246,8 +253,7 @@ export default function AgentMarket({ embedded = false }: { embedded?: boolean }
             />
           </div>
         )}
-        </Spin>
-      )}
+      </Spin>
     </div>
   );
 }
@@ -255,11 +261,17 @@ export default function AgentMarket({ embedded = false }: { embedded?: boolean }
 /** Agent 卡片项 */
 function AgentCardItem({
   agent,
+  installed,
+  installing,
+  onDownload,
   onUse,
   onToggleFav,
   onOpenDetail,
 }: {
   agent: Agent;
+  installed: boolean;
+  installing: boolean;
+  onDownload: () => void;
   onUse: () => void;
   onToggleFav: () => void;
   onOpenDetail: () => void;
@@ -270,16 +282,31 @@ function AgentCardItem({
       <div className={styles.agentCardBody}>
         {/* 头部：头像 + 名称 + 收藏 */}
         <div className={styles.agentHeader}>
-          <div className={styles.agentAvatar}>
-            {agent.avatar ? (
-              <img
-                src={agent.avatar}
-                alt={agent.displayName || agent.name}
-                className={styles.agentAvatarImg}
-              />
-            ) : (
-              (agent.displayName || agent.name).charAt(0).toUpperCase()
-            )}
+          <div
+            className={styles.agentAvatarWrap}
+            onClick={installed ? onOpenDetail : onDownload}
+            title={installed ? "查看详情" : installing ? "下载中…" : "点击下载到本地"}
+          >
+            <div className={styles.agentAvatar}>
+              {agent.avatar ? (
+                <img
+                  src={agent.avatar}
+                  alt={agent.displayName || agent.name}
+                  className={styles.agentAvatarImg}
+                />
+              ) : (
+                (agent.displayName || agent.name).charAt(0).toUpperCase()
+              )}
+            </div>
+            <span className={styles.agentAvatarBadge}>
+              {installed ? (
+                <CheckCircleOutlined style={{ color: "#22c55e" }} />
+              ) : installing ? (
+                <LoadingOutlined />
+              ) : (
+                <DownloadOutlined />
+              )}
+            </span>
           </div>
           <div className={styles.agentTitleRow}>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -376,8 +403,15 @@ function AgentCardItem({
 
         {/* 操作 */}
         <div className={styles.agentActions}>
-          <Button type="primary" className={styles.useBtn} onClick={onUse}>
-            使用
+          <Button
+            type="primary"
+            className={styles.useBtn}
+            icon={installed ? undefined : <DownloadOutlined />}
+            loading={installing}
+            disabled={!installed && installing}
+            onClick={installed ? onUse : onDownload}
+          >
+            {installed ? "使用" : installing ? "下载中…" : "下载"}
           </Button>
           <Button onClick={onOpenDetail} className={styles.favBtn}>
             详情

@@ -37,6 +37,11 @@ import {
   listInstalled,
   exportMarketBundle,
   importMarketBundle,
+  getInstalledDetail,
+  importCustomDir,
+  registerChatInstalled,
+  updateMarketItem,
+  syncChatInstalled,
 } from './local-market/local-content-manager'
 import type { MarketItemType } from '../shared/types'
 import type { ServiceName, SyncQueueItem, SyncQueueRow } from '../shared/types'
@@ -431,7 +436,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle('market:install', async (_event, type: MarketItemType, id: number, name: string, version: string, pkg: Record<string, unknown>) =>
     installMarketItem(type, id, name, version, pkg))
 
-  ipcMain.handle('market:uninstall', async (_event, type: MarketItemType, id: number) =>
+  ipcMain.handle('market:uninstall', async (_event, type: MarketItemType, id: number | string) =>
     uninstallMarketItem(type, id))
 
   ipcMain.handle('market:list', async () => listInstalled())
@@ -439,5 +444,18 @@ function registerIpcHandlers(): void {
   ipcMain.handle('market:export', async () => exportMarketBundle())
 
   ipcMain.handle('market:import', async () => importMarketBundle())
+  ipcMain.handle('market:detail', async (_event, type: MarketItemType, id: number | string) =>
+    getInstalledDetail(type, id))
+
+  ipcMain.handle('market:importDir', async (_event, type: MarketItemType) =>
+    importCustomDir(type))
+
+  ipcMain.handle('market:register', async (_event, type: MarketItemType, id: number | string, name: string, version: string, dir: string) =>
+    registerChatInstalled(type, id, name, version, dir))
+
+  ipcMain.handle('market:update', async (_event, type: MarketItemType, id: number, name: string, version: string, pkg: Record<string, unknown>) =>
+    updateMarketItem(type, id, name, version, pkg))
+
+  ipcMain.handle('market:syncChat', async () => syncChatInstalled())
 
 }

@@ -12,8 +12,11 @@ import {
   SearchOutlined,
   PlayCircleOutlined,
   PictureOutlined,
+  DownloadOutlined,
+  CheckCircleOutlined,
 } from "@ant-design/icons";
 import * as workflowApi from "@/api/workflow-api";
+import * as marketApi from "@/api/market-api";
 import type {
   WorkflowTemplate,
   WorkflowCategory,
@@ -66,6 +69,8 @@ export default function WorkflowList({ embedded = false }: { embedded?: boolean 
 
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
   const [loading, setLoading] = useState(false);
+  const [installedIds, setInstalledIds] = useState<Set<string>>(new Set());
+  const [installingIds, setInstallingIds] = useState<Set<string>>(new Set());
   const [category, setCategory] = useState<string>("");
   const [keyword, setKeyword] = useState("");
 
@@ -110,6 +115,46 @@ export default function WorkflowList({ embedded = false }: { embedded?: boolean 
       category: (category as WorkflowCategory) || undefined,
       keyword: value || undefined,
     });
+  };
+
+  /** 已下载到本地的工作流 id 集合 */
+  const loadInstalled = useCallback(async () => {
+    try {
+      const list = await marketApi.listInstalled();
+      setInstalledIds(
+        new Set(
+          list
+            .filter((r) => r.type === "workflow")
+            .map((r) => String(r.id)),
+        ),
+      );
+    } catch (err) {
+      console.warn("[WorkflowList] 读取本地已装失败:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadInstalled();
+  }, [loadInstalled]);
+
+  /** 下载工作流到本地(导入本地 N8N) */
+  const handleDownload = async (template: WorkflowTemplate) => {
+    setInstallingIds((prev) => new Set(prev).add(String(template.id)));
+    try {
+      const res = await marketApi.install("workflow", template.id);
+      if (!res.ok) throw new Error(res.error || "本地安装失败");
+      message.success(`工作流「${template.name}」已下载到本地，可在「我的」查看`);
+      setInstalledIds((prev) => new Set(prev).add(String(template.id)));
+    } catch (err) {
+      console.error("[WorkflowList] download failed:", err);
+      message.error("下载失败: " + (err as Error).message);
+    } finally {
+      setInstallingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(String(template.id));
+        return next;
+      });
+    }
   };
 
   /** 使用模板 → 跳转详情 */
@@ -229,15 +274,28 @@ export default function WorkflowList({ embedded = false }: { embedded?: boolean 
 
                 {/* 操作按钮 */}
                 <div className={styles.cardFooter}>
-                  <Button
-                    type="primary"
-                    className={styles.useBtn}
-                    icon={<PlayCircleOutlined />}
-                    onClick={() => handleUseTemplate(tpl)}
-                    block
-                  >
-                    使用模板
-                  </Button>
+                  {installedIds.has(String(tpl.id)) ? (
+                    <Button
+                      type="primary"
+                      className={styles.useBtn}
+                      icon={<CheckCircleOutlined />}
+                      onClick={() => handleUseTemplate(tpl)}
+                      block
+                    >
+                      查看详情
+                    </Button>
+                  ) : (
+                    <Button
+                      type="primary"
+                      className={styles.useBtn}
+                      icon={<DownloadOutlined />}
+                      loading={installingIds.has(String(tpl.id))}
+                      onClick={() => handleDownload(tpl)}
+                      block
+                    >
+                      下载
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
