@@ -36,6 +36,21 @@ export class ImportProviderModelItemDto {
   @IsString()
   @MaxLength(32)
   modelType?: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  outputType?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  inputTypes?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  advancedCapabilities?: string[];
+
 
   @ApiPropertyOptional({ description: '最终输入单价(积分/千token)，缺省=0' })
   @IsOptional()

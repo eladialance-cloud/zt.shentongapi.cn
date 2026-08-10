@@ -80,6 +80,21 @@ export class CreateModelDto {
   @IsString()
   @MaxLength(32)
   modelType?: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  outputType?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  inputTypes?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  advancedCapabilities?: string[];
+
 
   @IsOptional()
   @IsString()

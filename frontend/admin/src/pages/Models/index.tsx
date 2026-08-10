@@ -54,11 +54,23 @@ import type {
   AdminModelItem,
   AdminProviderItem,
   ConnectionStatus,
-  ModelCapability,
-  ModelType,
   UpdateAdminModelDto,
   UpdateProviderDto
 } from '@/types/admin-model'
+import {
+  ADVANCED_CAP_LABEL,
+  ADVANCED_CAP_OPTIONS,
+  INPUT_TYPE_LABEL,
+  INPUT_TYPE_OPTIONS,
+  MODEL_TYPE_LABEL,
+  OUTPUT_TYPE_OPTIONS,
+  deriveModelType,
+  inputTypesFromModelType,
+  outputTypeFromModelType,
+  type AdvancedCapability,
+  type ModelInputType,
+  type ModelOutputType
+} from '@/utils/model-type'
 import type { AdminPaginatedResult } from '@/types/admin-auth'
 import styles from './styles.module.css'
 
@@ -72,22 +84,6 @@ const MODEL_TYPE_OPTIONS: Array<{ label: string; value: string }> = [
   { label: '视频生成 video', value: 'video' },
   { label: '语音合成 tts', value: 'tts' }
 ]
-
-const CAPABILITY_OPTIONS: Array<{ label: string; value: ModelCapability }> = [
-  { label: '视觉 (Vision)', value: 'vision' },
-  { label: '函数调用 (Function Calling)', value: 'function_calling' },
-  { label: '流式 (Streaming)', value: 'streaming' },
-  { label: '推理 (Reasoning)', value: 'reasoning' },
-  { label: 'JSON 模式 (JSON Mode)', value: 'json_mode' }
-]
-
-const CAPABILITY_LABEL: Record<string, string> = {
-  vision: '视觉',
-  function_calling: '函数调用',
-  streaming: '流式',
-  reasoning: '推理',
-  json_mode: 'JSON'
-}
 
 const CONNECTION_TAG: Record<string, { color: string; text: string }> = {
   untested: { color: 'default', text: '未测试' },
@@ -107,18 +103,6 @@ const MODEL_TYPE_COLOR: Record<string, string> = {
   audio: 'gold'
 }
 
-const MODEL_TYPE_LABEL: Record<string, string> = {
-  chat: '文本对话',
-  vision: '图片识图',
-  image: '文生图',
-  image_edit: '图生图',
-  video: '视频生成',
-  tts: '语音合成',
-  reasoning: '推理',
-  embedding: '向量',
-  audio: '音频'
-}
-
 const ENABLED_OPTIONS = [
   { label: '全部', value: '' },
   { label: '已上架', value: 'true' },
@@ -127,10 +111,11 @@ const ENABLED_OPTIONS = [
 
 interface ModelFormValues {
   displayName: string
-  modelType: ModelType
+  outputType: ModelOutputType
+  inputTypes: ModelInputType[]
+  advancedCapabilities: AdvancedCapability[]
   inputPricePerToken?: number
   outputPricePerToken?: number
-  capabilities: ModelCapability[]
   enabled: boolean
   sortOrder?: number
   pricePerImage?: number
@@ -173,7 +158,13 @@ export default function AdminModels() {
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<AdminModelItem | null>(null)
   const [form] = Form.useForm<ModelFormValues>()
-  const modelType = Form.useWatch('modelType', form)
+  const outputType = Form.useWatch('outputType', form)
+  const inputTypes = Form.useWatch('inputTypes', form)
+  // 输出类型 × 输入类型 -> 路由分类（自动归类）
+  const derivedType = useMemo(
+    () => deriveModelType(outputType, inputTypes),
+    [outputType, inputTypes]
+  )
   const [saving, setSaving] = useState(false)
 
   // ----- 导入向导 -----
@@ -233,10 +224,14 @@ export default function AdminModels() {
     const gen = item.generationParams || {}
     form.setFieldsValue({
       displayName: item.displayName,
-      modelType: item.modelType || 'chat',
+      outputType: item.outputType ?? outputTypeFromModelType(item.modelType),
+      inputTypes:
+        item.inputTypes && item.inputTypes.length
+          ? item.inputTypes
+          : inputTypesFromModelType(item.modelType),
+      advancedCapabilities: item.advancedCapabilities ?? [],
       inputPricePerToken: item.inputPricePerToken ?? 0,
       outputPricePerToken: item.outputPricePerToken ?? 0,
-      capabilities: item.capabilities || [],
       enabled: item.enabled,
       sortOrder: item.sortOrder ?? 0,
       pricePerImage: item.pricePerImage ?? undefined,
@@ -261,13 +256,15 @@ export default function AdminModels() {
       const values = await form.validateFields()
       if (!editing) return
       setSaving(true)
-      const mt = values.modelType || 'chat'
+      // 输出类型 × 输入类型 -> 路由分类（后端同样推导，此处用于专属计费字段显隐）
+      const mt = deriveModelType(values.outputType, values.inputTypes)
       const dto: UpdateAdminModelDto = {
         displayName: values.displayName,
-        modelType: mt,
+        outputType: values.outputType,
+        inputTypes: values.inputTypes,
+        advancedCapabilities: values.advancedCapabilities ?? [],
         inputPricePerToken: values.inputPricePerToken ?? 0,
         outputPricePerToken: values.outputPricePerToken ?? 0,
-        capabilities: values.capabilities,
         enabled: values.enabled,
         sortOrder: values.sortOrder ?? 0
       }
@@ -455,18 +452,30 @@ export default function AdminModels() {
       }
     },
     {
-      title: '能力',
+      title: '能力（输入类型）',
       key: 'capabilities',
-      width: 180,
-      render: (_, m) => (
-        <Space size={4} wrap>
-          {(m.capabilities || []).map((c) => (
-            <Tag key={c} color="blue" style={{ marginRight: 0 }}>
-              {CAPABILITY_LABEL[c] || c}
-            </Tag>
-          ))}
-        </Space>
-      )
+      width: 200,
+      render: (_, m) => {
+        const inputs =
+          m.inputTypes && m.inputTypes.length
+            ? m.inputTypes
+            : inputTypesFromModelType(m.modelType)
+        const adv = m.advancedCapabilities || []
+        return (
+          <Space size={4} wrap>
+            {inputs.map((t) => (
+              <Tag key={'in-' + t} color="blue" style={{ marginRight: 0 }}>
+                {INPUT_TYPE_LABEL[t] || t}
+              </Tag>
+            ))}
+            {adv.map((c) => (
+              <Tag key={'adv-' + c} color="purple" style={{ marginRight: 0 }}>
+                {ADVANCED_CAP_LABEL[c] || c}
+              </Tag>
+            ))}
+          </Space>
+        )
+      }
     },
     {
       title: '连接',
@@ -837,13 +846,36 @@ export default function AdminModels() {
           >
             <Input maxLength={128} />
           </Form.Item>
-          <Form.Item name="modelType" label="模型类型" extra="分类决定调用路径与计费方式，选对应分类自动显示专属配置">
-            <Select options={MODEL_TYPE_OPTIONS} allowClear placeholder="选择类型" />
+          <Form.Item
+            name="outputType"
+            label="模型类型（输出）"
+            extra="模型输出的内容类型：文本 / 图片 / 视频 / 语音"
+          >
+            <Select options={OUTPUT_TYPE_OPTIONS} placeholder="选择输出类型" />
+          </Form.Item>
+          <Form.Item
+            name="inputTypes"
+            label="能力（输入类型，多选）"
+            extra="模型能识别的输入：文字 / 图片 / 视频 / 语音；选择后自动归类调用路径"
+          >
+            <Select mode="multiple" options={INPUT_TYPE_OPTIONS} placeholder="选择模型支持的输入类型" />
+          </Form.Item>
+          <Form.Item
+            name="advancedCapabilities"
+            label="高级能力（多选）"
+            extra="函数调用 / 流式 / 推理 / JSON 模式等"
+          >
+            <Select mode="multiple" options={ADVANCED_CAP_OPTIONS} placeholder="选择高级能力" />
+          </Form.Item>
+          <Form.Item label="自动归类" extra="根据输出类型与输入类型自动推导，保存后生效">
+            <Tag color={MODEL_TYPE_COLOR[derivedType] || 'default'}>
+              {MODEL_TYPE_LABEL[derivedType] || derivedType || '文本对话'}
+            </Tag>
           </Form.Item>
           <Form.Item name="sortOrder" label="排序权重" extra="越小越靠前（用户端默认模型与下拉排序）">
             <InputNumber min={0} step={1} style={{ width: '100%' }} placeholder="如 0" />
           </Form.Item>
-          {(modelType === 'chat' || modelType === 'vision') && (
+          {(derivedType === 'chat' || derivedType === 'vision') && (
             <>
               <Form.Item
                 name="inputPricePerToken"
@@ -861,7 +893,7 @@ export default function AdminModels() {
               </Form.Item>
             </>
           )}
-          {(modelType === 'image' || modelType === 'image_edit') && (
+          {(derivedType === 'image' || derivedType === 'image_edit') && (
             <>
               <Form.Item name="pricePerImage" label="图片生成积分/张" extra="用户生成一张图扣除的积分">
                 <InputNumber min={0} step={0.1} style={{ width: '100%' }} placeholder="如 10" />
@@ -877,7 +909,7 @@ export default function AdminModels() {
               </Form.Item>
             </>
           )}
-          {modelType === 'video' && (
+          {derivedType === 'video' && (
             <>
               <Form.Item key={editing?.modelId ?? 'new-model'} name="videoPrices" label="视频价格矩阵（分辨率 × 时长）" extra="每个格子 = 该规格生成一条视频扣除的积分，留空表示不提供">
                 <VideoPriceMatrixEditor />
@@ -890,7 +922,7 @@ export default function AdminModels() {
               </Form.Item>
             </>
           )}
-          {modelType === 'tts' && (
+          {derivedType === 'tts' && (
             <>
               <Form.Item name="pricePerCall" label="按次计费积分" extra="用户每次语音合成调用扣除的积分">
                 <InputNumber min={0} step={0.1} style={{ width: '100%' }} placeholder="如 1" />
@@ -909,14 +941,11 @@ export default function AdminModels() {
               </Form.Item>
             </>
           )}
-          {(modelType === 'image' || modelType === 'image_edit' || modelType === 'video' || modelType === 'tts') && (
+          {(derivedType === 'image' || derivedType === 'image_edit' || derivedType === 'video' || derivedType === 'tts') && (
             <Form.Item name="generationParamsText" label="高级参数(JSON, 可选)" extra='其他接口参数，如 {"video_resolutions":["720p","1080p"],"video_durations":[5,10]}'>
               <Input.TextArea rows={3} placeholder='{"video_resolutions":["720p","1080p"]}' />
             </Form.Item>
           )}
-          <Form.Item name="capabilities" label="能力(多选)">
-            <Select mode="multiple" options={CAPABILITY_OPTIONS} placeholder="选择模型支持的能力" />
-          </Form.Item>
           <Form.Item name="enabled" label="上架" valuePropName="checked">
             <Switch checkedChildren="上架" unCheckedChildren="下架" />
           </Form.Item>

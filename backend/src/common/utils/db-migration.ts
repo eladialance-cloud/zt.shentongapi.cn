@@ -912,6 +912,27 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       await ensureColumn('users', colName, colDef);
     }
 
+
+    // models 表：输入类型/高级能力（「类型=输出类型、能力=输入类型」重构，幂等）
+    await ensureColumn('models', 'input_types', "JSON DEFAULT NULL COMMENT '输入类型(多选): text/image/video/audio'");
+    await ensureColumn('models', 'advanced_capabilities', "JSON DEFAULT NULL COMMENT '高级能力(多选): function_calling/streaming/reasoning/json_mode'");
+    // 存量模型按 model_type 回填输入类型（只处理空值行，幂等）
+    await queryRunner.query(
+      `UPDATE models SET input_types = JSON_ARRAY('text') WHERE model_type IN ('chat','image','video','tts') AND (input_types IS NULL OR JSON_LENGTH(input_types) = 0)`
+    );
+    await queryRunner.query(
+      `UPDATE models SET input_types = JSON_ARRAY('text','image') WHERE model_type IN ('vision','image_edit') AND (input_types IS NULL OR JSON_LENGTH(input_types) = 0)`
+    );
+    await queryRunner.query(
+      `UPDATE models SET input_types = JSON_ARRAY('text') WHERE input_types IS NULL OR JSON_LENGTH(input_types) = 0`
+    );
+    await queryRunner.query(
+      `UPDATE models SET advanced_capabilities = JSON_ARRAY('function_calling') WHERE supports_functions = 1 AND (advanced_capabilities IS NULL OR JSON_LENGTH(advanced_capabilities) = 0)`
+    );
+    await queryRunner.query(
+      `UPDATE models SET advanced_capabilities = JSON_ARRAY() WHERE advanced_capabilities IS NULL`
+    );
+
     logger.log('Startup migrations completed');
   } catch (err) {
     logger.error(`Startup migration failed: ${(err as Error).message}`);

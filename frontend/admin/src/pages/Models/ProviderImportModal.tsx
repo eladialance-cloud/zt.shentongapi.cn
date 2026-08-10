@@ -42,25 +42,22 @@ import type {
   AdminProviderItem,
   ImportProviderModelItem,
   ImportProviderModelsResult,
-  ModelType,
   UpstreamModel
 } from '@/types/admin-model'
+import {
+  INPUT_TYPE_OPTIONS,
+  OUTPUT_TYPE_OPTIONS,
+  type ModelInputType,
+  type ModelOutputType
+} from '@/utils/model-type'
 
 const STEPS = [{ title: '连接信息' }, { title: '读取模型' }, { title: '逐模型定价' }]
 
-const MODEL_TYPE_OPTIONS: Array<{ label: string; value: string }> = [
-  { label: '文本对话 chat', value: 'chat' },
-  { label: '图片识图 vision', value: 'vision' },
-  { label: '文生图 image', value: 'image' },
-  { label: '图生图 image_edit', value: 'image_edit' },
-  { label: '视频生成 video', value: 'video' },
-  { label: '语音合成 tts', value: 'tts' },
-]
-
-/** 每个勾选模型的定价配置 */
+/** 每个勾选模型的定价配置（类型=输出类型、能力=输入类型） */
 interface PricingRow {
   displayName: string
-  modelType: ModelType
+  outputType: ModelOutputType
+  inputTypes: ModelInputType[]
   inputPricePer1k: number
   outputPricePer1k: number
   enabled: boolean
@@ -206,7 +203,8 @@ export default function ProviderImportModal({
       for (const m of r.models || []) {
         prefill[m.modelId] = {
           displayName: m.modelId,
-          modelType: 'chat',
+          outputType: 'text',
+          inputTypes: ['text'],
           // 上游价格(元/千token) -> 积分/千token (x100)
           inputPricePer1k: m.upstreamInputPrice != null ? Math.round(m.upstreamInputPrice * 100 * 100) / 100 : 0,
           outputPricePer1k: m.upstreamOutputPrice != null ? Math.round(m.upstreamOutputPrice * 100 * 100) / 100 : 0,
@@ -278,17 +276,31 @@ export default function ProviderImportModal({
       ),
     },
     {
-      title: '模型类型',
-      key: 'modelType',
-      width: 160,
+      title: '输出类型',
+      key: 'outputType',
+      width: 120,
       render: (_, m) => (
         <Select
-          value={pricingMap[m.modelId]?.modelType ?? 'chat'}
-          onChange={(v) => updatePricing(m.modelId, { modelType: v })}
-          options={MODEL_TYPE_OPTIONS}
-          style={{ width: 140 }}
-          allowClear
-          placeholder="选择类型"
+          value={pricingMap[m.modelId]?.outputType ?? 'text'}
+          onChange={(v) => updatePricing(m.modelId, { outputType: v })}
+          options={OUTPUT_TYPE_OPTIONS}
+          style={{ width: 100 }}
+          placeholder="输出"
+        />
+      ),
+    },
+    {
+      title: '输入类型',
+      key: 'inputTypes',
+      width: 170,
+      render: (_, m) => (
+        <Select
+          mode="multiple"
+          value={pricingMap[m.modelId]?.inputTypes ?? ['text']}
+          onChange={(v) => updatePricing(m.modelId, { inputTypes: v })}
+          options={INPUT_TYPE_OPTIONS}
+          style={{ width: 150 }}
+          placeholder="输入能力"
         />
       ),
     },
@@ -340,7 +352,8 @@ export default function ProviderImportModal({
     const modelsPayload: ImportProviderModelItem[] = selectedModels.map((m) => {
       const row = pricingMap[m.modelId] ?? {
         displayName: m.modelId,
-        modelType: 'chat' as ModelType,
+        outputType: 'text' as ModelOutputType,
+        inputTypes: ['text'] as ModelInputType[],
         inputPricePer1k: 0,
         outputPricePer1k: 0,
         enabled: true,
@@ -348,7 +361,8 @@ export default function ProviderImportModal({
       return {
         upstreamModelId: m.modelId,
         displayName: row.displayName || m.modelId,
-        modelType: row.modelType || 'chat',
+        outputType: row.outputType || 'text',
+        inputTypes: row.inputTypes && row.inputTypes.length ? row.inputTypes : ['text'],
         inputPricePer1k: row.inputPricePer1k ?? 0,
         outputPricePer1k: row.outputPricePer1k ?? 0,
         enabled: row.enabled ?? true,

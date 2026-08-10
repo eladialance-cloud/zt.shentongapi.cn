@@ -14,8 +14,21 @@ export type ModelCapability =
   | 'reasoning'
   | 'json_mode'
 
-/** 模型类型标签（可修改）：chat 文本对话 / vision 图片识图 / image 文生图 / image_edit 图生图 / video 视频生成 / tts 语音合成 */
+/** 模型类型标签（路由/计费分类，由输出类型×输入类型推导）：chat 文本对话 / vision 图片识图 / image 文生图 / image_edit 图生图 / video 视频生成 / tts 语音合成 */
 export type ModelType = 'chat' | 'vision' | 'image' | 'image_edit' | 'video' | 'tts' | string
+
+/** 模型输出类型：text 文本 / image 图片 / video 视频 / audio 语音 */
+export type ModelOutputType = 'text' | 'image' | 'video' | 'audio'
+
+/** 模型输入类型（能力，多选）：text 文字 / image 图片 / video 视频 / audio 语音 */
+export type ModelInputType = 'text' | 'image' | 'video' | 'audio'
+
+/** 高级能力（多选） */
+export type AdvancedCapability =
+  | 'function_calling'
+  | 'streaming'
+  | 'reasoning'
+  | 'json_mode'
 
 /** 用户等级 */
 export type MinUserLevel = 1 | 2 | 3 | 4 | 5
@@ -60,6 +73,12 @@ export interface AdminModelItem {
   syncStatus: 'pending' | 'synced' | 'failed'
   syncErrorMessage?: string
   capabilities: ModelCapability[]
+  /** 输出类型（text/image/video/audio） */
+  outputType: ModelOutputType
+  /** 输入类型（能力，多选） */
+  inputTypes: ModelInputType[]
+  /** 高级能力（多选） */
+  advancedCapabilities: AdvancedCapability[]
   concurrencyLimit?: number
   rateLimitPerMinute?: number
   lastSyncedAt?: string
@@ -156,6 +175,12 @@ export interface ImportProviderModelItem {
   upstreamModelId: string
   displayName?: string
   modelType?: ModelType
+  /** 输出类型（text/image/video/audio） */
+  outputType?: ModelOutputType
+  /** 输入类型（能力，多选） */
+  inputTypes?: ModelInputType[]
+  /** 高级能力（多选） */
+  advancedCapabilities?: AdvancedCapability[]
   /** 最终输入单价(积分/千token) */
   inputPricePer1k?: number
   /** 最终输出单价(积分/千token) */
@@ -210,6 +235,12 @@ export interface UpdateAdminModelDto {
   inputPricePerToken?: number
   outputPricePerToken?: number
   capabilities?: ModelCapability[]
+  /** 输出类型（text/image/video/audio） */
+  outputType?: ModelOutputType
+  /** 输入类型（能力，多选） */
+  inputTypes?: ModelInputType[]
+  /** 高级能力（多选） */
+  advancedCapabilities?: AdvancedCapability[]
   enabled?: boolean
   concurrencyLimit?: number
   rateLimitPerMinute?: number

@@ -20,6 +20,13 @@ import {
   buildUniqueModelId,
   parseUpstreamModels,
 } from './utils/provider-utils';
+import {
+  deriveModelType,
+  inputTypesFromModelType,
+  normalizeAdvancedCapabilities,
+  normalizeInputTypes,
+  outputTypeFromModelType,
+} from './utils/model-type-utils';
 
 /** 模型查询参数 */
 interface ModelQuery {
@@ -385,19 +392,36 @@ export class AdminModelService {
       try {
         const modelId = buildUniqueModelId(upstreamModelId, provider.slug, existingIds);
         existingIds.add(modelId);
+        const inputTypes = normalizeInputTypes(
+          item.inputTypes ||
+            (item.capabilities?.includes('vision')
+              ? ['text', 'image']
+              : inputTypesFromModelType(item.modelType)),
+        );
+        const advancedCapabilities = normalizeAdvancedCapabilities(
+          item.advancedCapabilities ||
+            (item.capabilities?.includes('function_calling')
+              ? ['function_calling']
+              : []),
+        );
         const entity = this.modelRepo.create({
           provider: provider.slug,
           providerId: provider.id,
           upstreamModelId,
-          modelType: item.modelType || 'chat',
+          modelType:
+            item.outputType || item.inputTypes
+              ? deriveModelType(item.outputType, inputTypes)
+              : item.modelType || 'chat',
           modelId,
           name: item.displayName?.trim() || upstreamModelId,
           pricePer1kInput: item.inputPricePer1k ?? 0,
           pricePer1kOutput: item.outputPricePer1k ?? 0,
           isActive: item.enabled ?? true,
           connectionStatus: 'untested',
-          supportsVision: item.capabilities?.includes('vision') ?? false,
-          supportsFunctions: item.capabilities?.includes('function_calling') ?? false,
+          inputTypes,
+          advancedCapabilities,
+          supportsVision: inputTypes.includes('image'),
+          supportsFunctions: advancedCapabilities.includes('function_calling'),
           minUserLevel: 1,
         });
         await this.modelRepo.save(entity);
@@ -496,13 +520,29 @@ export class AdminModelService {
     entity.provider = dto.provider;
     entity.modelId = dto.modelId;
     entity.upstreamModelId = dto.upstreamModelId || dto.modelId;
-    entity.modelType = dto.modelType || 'chat';
     entity.name = dto.displayName;
     entity.pricePer1kInput = dto.inputPricePerToken ?? 0;
     entity.pricePer1kOutput = dto.outputPricePerToken ?? 0;
     entity.isActive = dto.enabled;
-    entity.supportsVision = dto.capabilities?.includes('vision') ?? false;
-    entity.supportsFunctions = dto.capabilities?.includes('function_calling') ?? false;
+    // 新语义：输出类型 × 输入类型 -> 路由分类；旧接口仍按 modelType + capabilities 兼容
+    if (dto.outputType !== undefined || dto.inputTypes !== undefined) {
+      const inputTypes = normalizeInputTypes(dto.inputTypes);
+      entity.modelType = deriveModelType(dto.outputType, inputTypes);
+      entity.inputTypes = inputTypes;
+      entity.advancedCapabilities = normalizeAdvancedCapabilities(
+        dto.advancedCapabilities,
+      );
+    } else {
+      entity.modelType = dto.modelType || 'chat';
+      entity.inputTypes = inputTypesFromModelType(entity.modelType);
+      entity.advancedCapabilities = dto.capabilities?.includes('function_calling')
+        ? ['function_calling']
+        : [];
+    }
+    entity.supportsVision = (entity.inputTypes || []).includes('image');
+    entity.supportsFunctions = (entity.advancedCapabilities || []).includes(
+      'function_calling',
+    );
     if (dto.providerId) entity.providerId = dto.providerId;
     if (dto.apiKey) entity.apiKey = this.encryption.encryptAes(dto.apiKey);
     if (dto.apiEndpoint) entity.apiEndpoint = dto.apiEndpoint;
@@ -513,7 +553,6 @@ export class AdminModelService {
     if (dto.provider !== undefined) entity.provider = dto.provider;
     if (dto.modelId !== undefined) entity.modelId = dto.modelId;
     if (dto.upstreamModelId !== undefined) entity.upstreamModelId = dto.upstreamModelId;
-    if (dto.modelType !== undefined) entity.modelType = dto.modelType;
     if (dto.pricePerImage !== undefined) entity.pricePerImage = dto.pricePerImage;
     if (dto.videoPrices !== undefined) entity.videoPrices = dto.videoPrices ?? null;
     if (dto.generationParams !== undefined) entity.generationParams = dto.generationParams ?? null;
@@ -523,7 +562,35 @@ export class AdminModelService {
     if (dto.inputPricePerToken !== undefined) entity.pricePer1kInput = dto.inputPricePerToken;
     if (dto.outputPricePerToken !== undefined) entity.pricePer1kOutput = dto.outputPricePerToken;
     if (dto.enabled !== undefined) entity.isActive = dto.enabled;
-    if (dto.capabilities !== undefined) {
+    // 新语义：输出类型 × 输入类型 -> 路由分类（优先于旧的 modelType）
+    if (dto.outputType !== undefined || dto.inputTypes !== undefined) {
+      const inputTypes = normalizeInputTypes(dto.inputTypes);
+      entity.modelType = deriveModelType(dto.outputType, inputTypes);
+      entity.inputTypes = inputTypes;
+      entity.supportsVision = inputTypes.includes('image');
+    }
+    if (dto.advancedCapabilities !== undefined) {
+      entity.advancedCapabilities = normalizeAdvancedCapabilities(
+        dto.advancedCapabilities,
+      );
+      entity.supportsFunctions = (entity.advancedCapabilities || []).includes(
+        'function_calling',
+      );
+    }
+    // 旧接口兼容：仅传 modelType / capabilities 时按旧语义处理
+    if (
+      dto.modelType !== undefined &&
+      dto.outputType === undefined &&
+      dto.inputTypes === undefined
+    ) {
+      entity.modelType = dto.modelType;
+      entity.inputTypes = inputTypesFromModelType(dto.modelType);
+    }
+    if (
+      dto.capabilities !== undefined &&
+      dto.outputType === undefined &&
+      dto.inputTypes === undefined
+    ) {
       entity.supportsVision = dto.capabilities.includes('vision');
       entity.supportsFunctions = dto.capabilities.includes('function_calling');
     }
@@ -534,9 +601,28 @@ export class AdminModelService {
 
   /** 实体 -> 管理端契约视图对象 */
   private toAdminModelItem(m: ModelEntity, provider?: ModelProviderEntity | null) {
+    const inputTypes =
+      Array.isArray(m.inputTypes) && m.inputTypes.length
+        ? m.inputTypes
+        : inputTypesFromModelType(m.modelType);
+    const advancedCapabilities = Array.isArray(m.advancedCapabilities)
+      ? m.advancedCapabilities
+      : m.supportsFunctions
+        ? ['function_calling']
+        : [];
+    // 旧字段兼容：vision / function_calling / streaming / reasoning / json_mode
     const capabilities: string[] = [];
-    if (m.supportsVision) capabilities.push('vision');
-    if (m.supportsFunctions) capabilities.push('function_calling');
+    if (inputTypes.includes('image')) capabilities.push('vision');
+    for (const c of advancedCapabilities) {
+      if (
+        c === 'function_calling' ||
+        c === 'streaming' ||
+        c === 'reasoning' ||
+        c === 'json_mode'
+      ) {
+        capabilities.push(c);
+      }
+    }
 
     return {
       id: m.id,
@@ -546,6 +632,9 @@ export class AdminModelService {
       modelId: m.modelId,
       upstreamModelId: m.upstreamModelId ?? m.modelId,
       modelType: m.modelType || 'chat',
+      outputType: outputTypeFromModelType(m.modelType),
+      inputTypes,
+      advancedCapabilities,
       pricePerImage: m.pricePerImage ?? null,
       videoPrices: m.videoPrices ?? {},
       generationParams: m.generationParams ?? {},

@@ -19,7 +19,7 @@ export class ModelEntity extends BaseEntity {
   @Column({ name: 'upstream_model_id', length: 128, nullable: true })
   upstreamModelId?: string;
 
-  /** 分类标签（可修改）：chat / reasoning / image / embedding 等 */
+  /** 路由/计费分类（由「输出类型×输入类型」推导）：chat / vision / image / image_edit / video / tts */
   @Column({ name: 'model_type', length: 32, default: 'chat' })
   modelType: string;
 
@@ -65,6 +65,14 @@ export class ModelEntity extends BaseEntity {
 
   @Column({ name: 'supports_functions', type: 'boolean', default: false })
   supportsFunctions: boolean;
+
+  /** 输入类型(多选)：text 文字 / image 图片 / video 视频 / audio 语音 */
+  @Column({ name: 'input_types', type: 'json', nullable: true })
+  inputTypes?: string[] | null;
+
+  /** 高级能力(多选)：function_calling / streaming / reasoning / json_mode */
+  @Column({ name: 'advanced_capabilities', type: 'json', nullable: true })
+  advancedCapabilities?: string[] | null;
 
   @Column({ name: 'min_user_level', type: 'int', default: 0 })
   minUserLevel: number;
