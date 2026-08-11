@@ -101,6 +101,64 @@ export class AdminImportsService implements OnModuleInit {
     return job;
   }
 
+  /** 删除导入任务；withDrafts=true 时连带删除该任务导入的草稿（仅未发布草稿，已发布跳过） */
+  async remove(id: number, withDrafts: boolean): Promise<{ removedDrafts: number; skipped: number }> {
+    const job = await this.jobRepo.findOne({ where: { id } });
+    if (!job) BusinessException.throw(ErrorCode.NOT_FOUND, '导入任务不存在');
+    let removedDrafts = 0;
+    let skipped = 0;
+    if (withDrafts && job.result?.created?.length) {
+      for (const item of job.result.created) {
+        const r = await this.removeDraftIfUnpublished(item.type, item.id);
+        if (r === 'removed') removedDrafts++;
+        else if (r === 'skipped') skipped++;
+      }
+    }
+    await this.jobRepo.delete(id);
+    return { removedDrafts, skipped };
+  }
+
+  /** 删除单个草稿资产（仅未发布/未启用状态；已发布或已上架跳过） */
+  private async removeDraftIfUnpublished(type: AssetImportType, id: number): Promise<'removed' | 'skipped'> {
+    try {
+      switch (type) {
+        case 'agent': {
+          const row = await this.agentRepo.findOne({ where: { id } });
+          if (!row) return 'skipped';
+          if (row.status === 'published' || row.status === 'offline' || row.status === 'rejected') return 'skipped';
+          await this.agentRepo.delete(id);
+          return 'removed';
+        }
+        case 'workflow': {
+          const row = await this.workflowRepo.findOne({ where: { id } });
+          if (!row) return 'skipped';
+          if (row.publishStatus === 'approved' || row.publishStatus === 'published' || row.isActive) return 'skipped';
+          await this.workflowRepo.delete(id);
+          return 'removed';
+        }
+        case 'mcp':
+        case 'n8n_mcp': {
+          const row = await this.mcpRepo.findOne({ where: { id } });
+          if (!row) return 'skipped';
+          if (row.enabled) return 'skipped';
+          await this.mcpRepo.delete(id);
+          return 'removed';
+        }
+        case 'skill':
+        case 'skill_pack': {
+          const row = await this.skillRepo.findOne({ where: { id } });
+          if (!row) return 'skipped';
+          if (row.status === 'published' || row.status === 'approved') return 'skipped';
+          await this.skillRepo.delete(id);
+          return 'removed';
+        }
+      }
+    } catch (e) {
+      this.logger.warn('删除导入草稿失败 type=' + type + ' id=' + id + ': ' + (e as Error).message);
+    }
+    return 'skipped';
+  }
+
   private setStep(job: AssetImportJobEntity, key: ImportStepKey, status: ImportStep['status']) {
     job.steps = (job.steps ?? []).map(s => (s.key === key ? { ...s, status } : s));
   }

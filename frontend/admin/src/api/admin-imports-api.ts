@@ -33,3 +33,13 @@ export async function getImport(id: number): Promise<ImportJob> {
 export async function retryImport(id: number): Promise<ImportJob> {
   return adminRequest<ImportJob>('post', `/admin/imports/${id}/retry`)
 }
+
+/** 删除导入任务（withDrafts=true 时连带删除该任务导入的草稿资产，已发布/已上架自动跳过） */
+export async function deleteImport(
+  id: number,
+  withDrafts: boolean
+): Promise<{ removedDrafts: number; skipped: number }> {
+  return adminRequest<{ removedDrafts: number; skipped: number }>('delete', `/admin/imports/${id}`, {
+    params: withDrafts ? { withDrafts: 'true' } : undefined
+  })
+}

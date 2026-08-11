@@ -25,19 +25,36 @@ function makeGithub(overrides: {
   };
 }
 
-/** mock 资产 repo：save 分配自增 id 并记录（可选 onSave 抛错模拟唯一冲突） */
-function makeRepo<T extends object>(onSave?: (e: T) => void) {
+/** mock 资产 repo：save 分配自增 id 并记录（可选 onSave 抛错模拟唯一冲突）；支持 seed/findOne/delete */
+function makeRepo<T extends object>(onSave?: (e: T) => void, seed: Array<T & { id?: number }> = []) {
   const saved: T[] = [];
+  const rows: Array<T & { id?: number }> = [];
   let nextId = 1;
+  for (const r of seed) {
+    rows.push(r);
+    if ((r.id ?? 0) >= nextId) nextId = (r.id ?? 0) + 1;
+  }
   return {
     saved,
+    rows,
     create: (data: T) => ({ ...data }) as T,
     save: async (e: T) => {
       if (onSave) onSave(e);
       const rec = e as T & { id?: number };
       if (!rec.id) rec.id = nextId++;
       saved.push(e);
+      rows.push(rec);
       return e;
+    },
+    findOne: async (opts: { where?: { id?: number } } = {}) => {
+      const id = opts?.where?.id;
+      return rows.find(r => id === undefined || r.id === id) ?? null;
+    },
+    delete: async (criteria: number | { id: number }) => {
+      const id = typeof criteria === 'number' ? criteria : criteria.id;
+      const idx = rows.findIndex(r => r.id === id);
+      rows.splice(idx, 1);
+      return { affected: 1 };
     },
   };
 }
@@ -57,6 +74,11 @@ function makeJobRepo() {
       if (criteria.status !== undefined && job.status !== criteria.status) return { affected: 0 };
       Object.assign(job, data);
       return { affected: 1 };
+    },
+    delete: async (criteria: number | { id: number }) => {
+      const id = typeof criteria === 'number' ? criteria : criteria.id;
+      if (job && job.id === id) { job = null; return { affected: 1 }; }
+      return { affected: 0 };
     },
     createQueryBuilder: () => {
       const qb = {
@@ -245,4 +267,76 @@ test('saveDrafts: agent 草稿 creatorId/userId 透传 adminId', async () => {
   assert.equal(row.modelId, 'default');
   assert.equal(row.status, 'pending_review');
   assert.equal(row.sourceType, 'imported');
+});
+
+test('remove: 删除导入任务（不连带草稿）→ 任务删除、资产保留', async () => {
+  const jobRepo = makeJobRepo();
+  const job = makePendingJob('agent');
+  job.status = 'succeeded';
+  job.result = { created: [{ type: 'agent', id: 10, name: 'a' }], skipped: 0 };
+  jobRepo.set(job);
+  const agentRepo = makeRepo<AgentEntity>(undefined, [{ id: 10, name: 'a', status: 'pending_review' } as AgentEntity & { id?: number }]);
+  const workflowRepo = makeRepo<WorkflowEntity>();
+  const mcpRepo = makeRepo<McpCatalogEntity>();
+  const skillRepo = makeRepo<SkillPackageEntity>();
+  const service = buildService(jobRepo, agentRepo, workflowRepo, mcpRepo, skillRepo, makeGithub());
+
+  const res = await service.remove(1, false);
+  assert.deepEqual(res, { removedDrafts: 0, skipped: 0 });
+  assert.equal(jobRepo.job(), null);
+  assert.equal(agentRepo.rows.length, 1);
+});
+
+test('remove: withDrafts=true 连带删除未发布草稿（agent pending_review + mcp disabled）', async () => {
+  const jobRepo = makeJobRepo();
+  const job = makePendingJob('agent');
+  job.status = 'succeeded';
+  job.result = {
+    created: [
+      { type: 'agent', id: 10, name: 'a' },
+      { type: 'mcp', id: 20, name: 'm' },
+    ],
+    skipped: 0,
+  };
+  jobRepo.set(job);
+  const agentRepo = makeRepo<AgentEntity>(undefined, [{ id: 10, name: 'a', status: 'pending_review' } as AgentEntity & { id?: number }]);
+  const workflowRepo = makeRepo<WorkflowEntity>();
+  const mcpRepo = makeRepo<McpCatalogEntity>(undefined, [{ id: 20, name: 'm', enabled: false } as McpCatalogEntity & { id?: number }]);
+  const skillRepo = makeRepo<SkillPackageEntity>();
+  const service = buildService(jobRepo, agentRepo, workflowRepo, mcpRepo, skillRepo, makeGithub());
+
+  const res = await service.remove(1, true);
+  assert.deepEqual(res, { removedDrafts: 2, skipped: 0 });
+  assert.equal(agentRepo.rows.length, 0);
+  assert.equal(mcpRepo.rows.length, 0);
+});
+
+test('remove: withDrafts=true 已发布/已上架资产跳过不删', async () => {
+  const jobRepo = makeJobRepo();
+  const job = makePendingJob('agent');
+  job.status = 'succeeded';
+  job.result = {
+    created: [
+      { type: 'agent', id: 10, name: 'a' },
+      { type: 'workflow', id: 30, name: 'w' },
+    ],
+    skipped: 0,
+  };
+  jobRepo.set(job);
+  const agentRepo = makeRepo<AgentEntity>(undefined, [{ id: 10, name: 'a', status: 'published' } as AgentEntity & { id?: number }]);
+  const workflowRepo = makeRepo<WorkflowEntity>(undefined, [{ id: 30, name: 'w', publishStatus: 'published', isActive: true } as WorkflowEntity & { id?: number }]);
+  const mcpRepo = makeRepo<McpCatalogEntity>();
+  const skillRepo = makeRepo<SkillPackageEntity>();
+  const service = buildService(jobRepo, agentRepo, workflowRepo, mcpRepo, skillRepo, makeGithub());
+
+  const res = await service.remove(1, true);
+  assert.deepEqual(res, { removedDrafts: 0, skipped: 2 });
+  assert.equal(agentRepo.rows.length, 1);
+  assert.equal(workflowRepo.rows.length, 1);
+});
+
+test('remove: 任务不存在抛异常', async () => {
+  const jobRepo = makeJobRepo();
+  const service = buildService(jobRepo, makeRepo<AgentEntity>(), makeRepo<WorkflowEntity>(), makeRepo<McpCatalogEntity>(), makeRepo<SkillPackageEntity>(), makeGithub());
+  await assert.rejects(() => service.remove(999, true));
 });

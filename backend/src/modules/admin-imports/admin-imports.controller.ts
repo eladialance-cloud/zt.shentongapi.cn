@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { AdminGuard } from '../admin-auth/admin.guard';
@@ -37,5 +37,11 @@ export class AdminImportsController {
   @ApiOperation({ summary: '重试失败的导入任务' })
   retry(@Param('id', BigIntParsePipe) id: number, @Req() req: any) {
     return this.service.retry(id, req.adminUser.id);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: '删除导入任务（withDrafts=true 时连带删除导入的草稿资产）' })
+  remove(@Param('id', BigIntParsePipe) id: number, @Query('withDrafts') withDrafts?: string) {
+    return this.service.remove(id, withDrafts === 'true' || withDrafts === '1');
   }
 }

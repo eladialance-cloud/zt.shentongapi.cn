@@ -5,12 +5,14 @@
 //   GET    /admin/imports            任务列表
 //   GET    /admin/imports/:id        任务详情（轮询进度）
 //   POST   /admin/imports/:id/retry  重试失败任务
+//   DELETE /admin/imports/:id?withDrafts=true  删除任务（可连带删除草稿资产，已发布自动跳过）
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Alert,
   Button,
   Card,
+  Checkbox,
   Form,
   Input,
   Modal,
@@ -24,11 +26,12 @@ import {
   message
 } from 'antd'
 import type { TableColumnsType } from 'antd'
-import { CloudDownloadOutlined, RedoOutlined } from '@ant-design/icons'
+import { CloudDownloadOutlined, DeleteOutlined, RedoOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import {
   IMPORT_TYPE_LABEL,
   createImport,
+  deleteImport,
   getImport,
   listImports,
   retryImport
@@ -70,6 +73,10 @@ export default function AdminImports() {
   const pollRef = useRef<number | null>(null)
   // 详情 Modal
   const [detailJob, setDetailJob] = useState<ImportJob | null>(null)
+  // 删除确认 Modal
+  const [deleteJob, setDeleteJob] = useState<ImportJob | null>(null)
+  const [deleteWithDrafts, setDeleteWithDrafts] = useState(true)
+  const [deleting, setDeleting] = useState(false)
 
   const stopPolling = useCallback(() => {
     if (pollRef.current !== null) {
@@ -145,6 +152,25 @@ export default function AdminImports() {
     }
   }
 
+
+  const handleDelete = async () => {
+    if (!deleteJob) return
+    setDeleting(true)
+    try {
+      const res = await deleteImport(deleteJob.id, deleteWithDrafts)
+      const parts = [`已删除导入任务 #${deleteJob.id}`]
+      if (res.removedDrafts > 0) parts.push(`删除 ${res.removedDrafts} 个草稿资产`)
+      if (res.skipped > 0) parts.push(`跳过 ${res.skipped} 个已发布/已上架资产`)
+      message.success(parts.join('，'))
+      setDeleteJob(null)
+      setDeleteWithDrafts(true)
+      void loadList()
+    } catch (e) {
+      message.error((e as Error).message || '删除失败')
+    } finally {
+      setDeleting(false)
+    }
+  }
   const closeProgress = () => {
     stopPolling()
     setProgressOpen(false)
@@ -213,6 +239,9 @@ export default function AdminImports() {
               重试
             </Button>
           )}
+          <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => setDeleteJob(record)}>
+            删除
+          </Button>
           <Button type="link" size="small" onClick={() => setDetailJob(record)}>
             详情
           </Button>
@@ -376,6 +405,41 @@ export default function AdminImports() {
               </div>
             )}
             {detailJob.errorMessage && <Alert type="error" showIcon message={detailJob.errorMessage} />}
+          </div>
+        )}
+      </Modal>
+
+      {/* 删除确认 Modal */}
+      <Modal
+        title={deleteJob ? `删除导入任务 #${deleteJob.id}` : "删除导入任务"}
+        open={!!deleteJob}
+        onCancel={() => { if (!deleting) setDeleteJob(null) }}
+        okText="删除"
+        okButtonProps={{ danger: true, loading: deleting }}
+        cancelButtonProps={{ disabled: deleting }}
+        onOk={() => void handleDelete()}
+      >
+        {deleteJob && (
+          <div>
+            <Alert
+              type="warning"
+              showIcon
+              message="删除后无法恢复"
+              description={
+                deleteJob.result?.created?.length
+                  ? `该任务已导入 ${deleteJob.result.created.length} 个资产`
+                  : "该任务暂无成功导入的资产"
+              }
+            />
+            <div style={{ marginTop: 12 }}>
+              <Checkbox
+                checked={deleteWithDrafts}
+                onChange={(e) => setDeleteWithDrafts(e.target.checked)}
+                disabled={deleting}
+              >
+                连带删除导入的草稿资产（已发布/已上架的将自动跳过）
+              </Checkbox>
+            </div>
           </div>
         )}
       </Modal>
