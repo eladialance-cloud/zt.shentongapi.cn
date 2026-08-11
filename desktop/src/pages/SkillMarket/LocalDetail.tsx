@@ -23,6 +23,7 @@ const TYPE_META: Record<MarketItemType, { label: string }> = {
   workflow: { label: '工作流' },
   agent: { label: 'Agent' },
   skill: { label: '技能包' },
+  mcp: { label: 'MCP 服务' },
 }
 
 const SOURCE_META: Record<string, string> = {

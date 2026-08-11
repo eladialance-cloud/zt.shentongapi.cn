@@ -10,10 +10,12 @@ import WorkflowList from "@/pages/Workflow";
 import AgentMarket from "@/pages/AgentMarket";
 import HermesSkillMarket from "@/pages/Hermes/SkillMarket";
 import InstalledList from "./InstalledList";
+import McpMarket from "@/pages/McpMarket";
+import InstalledMcp from "@/pages/McpMarket/Installed";
 import styles from "./styles.module.css";
 
 type Scope = "official" | "mine";
-type Category = "plugin" | "workflow" | "agent" | "skill";
+type Category = "plugin" | "workflow" | "agent" | "skill" | "mcp";
 
 const SCOPE_TABS: Array<{ key: Scope; label: string }> = [
   { key: "official", label: "官方" },
@@ -25,6 +27,7 @@ const CATEGORY_TABS: Array<{ key: Category; label: string }> = [
   { key: "workflow", label: "工作流" },
   { key: "agent", label: "Agent" },
   { key: "skill", label: "技能包" },
+  { key: "mcp", label: "MCP" },
 ];
 
 export default function SkillMarket() {
@@ -42,6 +45,8 @@ export default function SkillMarket() {
           return <AgentMarket embedded />;
         case "skill":
           return <HermesSkillMarket embedded />;
+        case "mcp":
+          return <McpMarket embedded />;
       }
     }
     switch (category) {
@@ -53,6 +58,8 @@ export default function SkillMarket() {
         return <InstalledList type={"agent"} />;
       case "skill":
         return <InstalledList type={"skill"} />;
+      case "mcp":
+        return <InstalledMcp />;
     }
   };
 

@@ -33,7 +33,10 @@ import type {
   McpToolRegistry,
   UpdateMcpResourceDto,
   UpdateMcpServerDto,
-  UpdateMcpToolDto
+  UpdateMcpToolDto,
+  McpCatalog,
+  McpCatalogListResult,
+  McpCatalogQuery
 } from '@/types/admin-mcp'
 
 /** 服务列表 */
@@ -158,6 +161,58 @@ export async function listMcpCallLogs(
   )
 }
 
+
+/** 官方目录列表 */
+export async function listMcpCatalog(
+  query: McpCatalogQuery = {}
+): Promise<McpCatalogListResult> {
+  return adminRequest<McpCatalogListResult>('get', '/admin/mcp-catalog', {
+    params: query as Record<string, unknown>
+  })
+}
+
+/** 官方目录详情 */
+export async function getMcpCatalog(id: number): Promise<McpCatalog> {
+  return adminRequest<McpCatalog>('get', `/admin/mcp-catalog/${id}`)
+}
+
+/** 创建官方目录条目 */
+export async function createMcpCatalog(
+  dto: Omit<McpCatalog, 'id'>
+): Promise<McpCatalog> {
+  return adminRequest<McpCatalog>('post', '/admin/mcp-catalog', { data: dto })
+}
+
+/** 更新官方目录条目 */
+export async function updateMcpCatalog(
+  id: number,
+  dto: Partial<Omit<McpCatalog, 'id'>>
+): Promise<McpCatalog> {
+  return adminRequest<McpCatalog>('put', `/admin/mcp-catalog/${id}`, {
+    data: dto
+  })
+}
+
+/** 切换上架状态 */
+export async function toggleMcpCatalog(id: number): Promise<McpCatalog> {
+  return adminRequest<McpCatalog>('post', `/admin/mcp-catalog/${id}/toggle`)
+}
+
+/** 删除官方目录条目 */
+export async function removeMcpCatalog(id: number): Promise<void> {
+  await adminRequest<void>('delete', `/admin/mcp-catalog/${id}`)
+}
+
+/** 官方目录 API 集合 */
+export const adminMcpCatalogApi = {
+  list: listMcpCatalog,
+  get: getMcpCatalog,
+  create: createMcpCatalog,
+  update: updateMcpCatalog,
+  toggle: toggleMcpCatalog,
+  remove: removeMcpCatalog
+}
+
 export default {
   listMcpServers,
   createMcpServer,
@@ -172,5 +227,12 @@ export default {
   createMcpResource,
   updateMcpResource,
   deleteMcpResource,
-  listMcpCallLogs
+  listMcpCallLogs,
+  listMcpCatalog,
+  getMcpCatalog,
+  createMcpCatalog,
+  updateMcpCatalog,
+  toggleMcpCatalog,
+  removeMcpCatalog,
+  adminMcpCatalogApi
 }

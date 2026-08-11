@@ -126,6 +126,11 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('market:update', type, id, name, version, pkg) as Promise<{ ok: boolean; dir?: string; error?: string }>,
     syncChat: () => ipcRenderer.invoke('market:syncChat') as Promise<{ ok: boolean; added?: number; error?: string }>
   },
+  openclawMcp: {
+    /** 从后端同步启用中的 MCP 到 OpenClaw 本地配置（登录后调用） */
+    syncFromBackend: (token: string) =>
+      ipcRenderer.invoke('mcp:syncFromBackend', token) as Promise<{ ok: boolean; count?: number; error?: string }>,
+  },
   openclawChat: {
     /** 注入用户 llm-proxy 静态 Key（登录后调用；OpenClaw openai provider 指向云端 llm-proxy） */
     setProxyKey: (key: string) => {

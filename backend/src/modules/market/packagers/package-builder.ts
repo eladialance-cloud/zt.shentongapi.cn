@@ -2,6 +2,7 @@ import { HermesSkillEntity } from '../../hermes/entities/hermes-skill.entity';
 import { PluginEntity } from '../../plugin/entities/plugin.entity';
 import { WorkflowEntity } from '../../admin-workflow/entities/workflow.entity';
 import { AgentEntity } from '../../agent/entities/agent.entity';
+import { McpCatalogEntity } from '../../admin-mcp/entities/mcp-catalog.entity';
 import { MarketItemType } from '../entities/purchased-item.entity';
 
 /** 市场安装包（单一 JSON 文件，含 meta + payload，payload 由桌面端安装器消费） */
@@ -131,6 +132,36 @@ export function buildAgentPackage(agent: AgentEntity): MarketPackage {
         pricingStrategy: agent.pricingStrategy || 'model',
         modelConfig: agent.modelConfig || null,
         outputRule: agent.outputRule || '',
+      },
+    },
+  };
+}
+export function buildMcpPackage(c: McpCatalogEntity): MarketPackage {
+  return {
+    type: 'mcp',
+    id: Number(c.id),
+    version: c.version || '1.0.0',
+    name: c.name,
+    payload: {
+      mcp: {
+        id: Number(c.id),
+        name: c.name,
+        description: c.description || '',
+        category: c.category || null,
+        tags: c.tags || [],
+        icon: c.icon || null,
+        homepage: c.homepage || '',
+        sourceUrl: c.sourceUrl || '',
+        license: c.license || '',
+        runtime: c.runtime,
+        securityLevel: c.securityLevel,
+        transportType: c.transportType,
+        command: c.command || '',
+        args: c.args || [],
+        envTemplate: c.envTemplate || [],
+        url: c.url || '',
+        headers: c.headers || null,
+        version: c.version || '1.0.0',
       },
     },
   };

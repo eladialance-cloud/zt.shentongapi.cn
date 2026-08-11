@@ -8,12 +8,15 @@ import { HermesSkillEntity } from '../hermes/entities/hermes-skill.entity';
 import { PluginEntity } from '../plugin/entities/plugin.entity';
 import { WorkflowEntity } from '../admin-workflow/entities/workflow.entity';
 import { AgentEntity } from '../agent/entities/agent.entity';
+import { McpCatalogEntity } from '../admin-mcp/entities/mcp-catalog.entity';
+import { McpServerEntity } from '../mcp/entities/mcp-server.entity';
 import { CreditsService } from '../credits/services/credits.service';
 import {
   buildSkillPackage,
   buildPluginPackage,
   buildWorkflowPackage,
   buildAgentPackage,
+  buildMcpPackage,
   canonicalJson,
   MarketPackage,
 } from './packagers/package-builder';
@@ -44,6 +47,10 @@ export class MarketService {
     private readonly workflowRepo: Repository<WorkflowEntity>,
     @InjectRepository(AgentEntity)
     private readonly agentRepo: Repository<AgentEntity>,
+    @InjectRepository(McpCatalogEntity)
+    private readonly mcpCatalogRepo: Repository<McpCatalogEntity>,
+    @InjectRepository(McpServerEntity)
+    private readonly mcpServerRepo: Repository<McpServerEntity>,
     private readonly creditsService: CreditsService,
   ) {}
 
@@ -71,6 +78,11 @@ export class MarketService {
         const a = await this.agentRepo.findOne({ where: { id: itemId } });
         if (!a || a.status !== 'published') throw new NotFoundException('Agent 不存在或未发布');
         return { price: a.pricePerCall || 0, version: String(a.version ?? 1), pkg: buildAgentPackage(a) };
+      }
+      case 'mcp': {
+        const c = await this.mcpCatalogRepo.findOne({ where: { id: itemId, enabled: true } });
+        if (!c) throw new NotFoundException('MCP 目录条目不存在或已下架');
+        return { price: 0, version: c.version || '1.0.0', pkg: buildMcpPackage(c) };
       }
       default:
         throw new NotFoundException('不支持的内容类型');
@@ -118,6 +130,45 @@ export class MarketService {
       });
       if (!rec) throw new HttpException('请先购买该内容', 402);
     }
+    let mcpServerId: number | null = null;
+    if (type === 'mcp') {
+      const catalog = await this.mcpCatalogRepo.findOne({ where: { id: itemId } });
+      if (catalog) {
+        const existing = await this.mcpServerRepo.findOne({ where: { userId, catalogId: itemId, source: 'official' } });
+        if (existing) {
+          mcpServerId = existing.id;
+        } else {
+          const env: Record<string, string> = {};
+          for (const t of catalog.envTemplate || []) {
+            if (t.default) env[t.key] = t.default;
+          }
+          // 创建实例 + downloadCount 递增在同一事务内，避免并发下记录与计数不一致
+          const created = await this.mcpServerRepo.manager.transaction(async (manager) => {
+            const saved = await manager.save(
+              McpServerEntity,
+              manager.create(McpServerEntity, {
+                userId,
+                name: catalog.name,
+                description: catalog.description,
+                transportType: catalog.transportType,
+                command: catalog.command,
+                args: catalog.args,
+                env,
+                url: catalog.url,
+                headers: catalog.headers,
+                source: 'official',
+                catalogId: catalog.id,
+                enabled: false,
+                status: 'pending',
+              }),
+            );
+            await manager.increment(McpCatalogEntity, { id: catalog.id }, 'downloadCount', 1);
+            return saved;
+          });
+          mcpServerId = created.id;
+        }
+      }
+    }
     const json = canonicalJson(pkg);
     const sha256 = crypto.createHash('sha256').update(json, 'utf8').digest('hex');
     return {
@@ -128,6 +179,7 @@ export class MarketService {
       sha256,
       size: Buffer.byteLength(json, 'utf8'),
       pkg,
+      mcpServerId,
     };
   }
 }

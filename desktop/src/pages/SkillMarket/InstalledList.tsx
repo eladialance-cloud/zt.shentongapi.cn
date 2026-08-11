@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
+  ApiOutlined,
   AppstoreOutlined,
   DeleteOutlined,
   DeploymentUnitOutlined,
@@ -21,6 +22,7 @@ const TYPE_META: Record<MarketItemType, { label: string; icon: React.ReactNode }
   workflow: { label: '工作流', icon: <DeploymentUnitOutlined /> },
   agent: { label: 'Agent', icon: <RobotOutlined /> },
   skill: { label: '技能包', icon: <ThunderboltOutlined /> },
+  mcp: { label: 'MCP 服务', icon: <ApiOutlined /> },
 }
 
 const SOURCE_META: Record<string, { label: string; color: string }> = {

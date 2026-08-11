@@ -28,6 +28,12 @@ export interface McpServer extends OwnershipFields {
  headers?: Record<string, string>
  enabled: boolean
  status?: string
+ /** 后端标记来源：official=官方目录安装 / custom=自定义添加 / chat=对话安装 */
+ source?: 'official' | 'custom' | 'chat'
+ /** 官方目录条目 id（source=official 时存在，与本地 mcp.json 的目录 id 对应） */
+ catalogId?: number | null
+ /** 工具数量（后端汇总） */
+ toolCount?: number
  lastConnectedAt?: string
  createdAt: string
  updatedAt: string
@@ -75,6 +81,29 @@ export interface McpServerListQuery {
  ownerType?: OwnerType
 }
 
+/** 官方 MCP 目录条目（GET /mcp/catalog） */
+export interface McpCatalogItem {
+ id: number
+ name: string
+ description?: string
+ category?: string
+ tags?: string[]
+ icon?: string
+ homepage?: string
+ sourceUrl?: string
+ license?: string
+ runtime: 'node' | 'python' | 'docker' | 'http'
+ securityLevel: 'official' | 'community'
+ transportType: 'stdio' | 'http' | 'streamable-http'
+ command?: string
+ args?: string[]
+ envTemplate?: Array<{ key: string; label: string; required?: boolean; secret?: boolean; default?: string; description?: string }>
+ url?: string
+ headers?: Record<string, string>
+ version: string
+ isInstalled: boolean
+ mcpServerId?: number | null
+}
 export const mcpApi = {
  /**
   * MCP 网关信息
@@ -87,6 +116,20 @@ export const mcpApi = {
   * GET /mcp/health
   */
  getHealth: () => httpClient.get<McpHealthResult>('/mcp/health'),
+
+ /**
+  * 官方目录列表
+  * GET /mcp/catalog
+  */
+ listCatalog: (query: { category?: string; keyword?: string }) =>
+  httpClient.get<{ total: number; list: McpCatalogItem[] }>('/mcp/catalog', { params: query }),
+
+ /**
+  * 官方目录详情
+  * GET /mcp/catalog/:id
+  */
+ getCatalog: (id: number) =>
+  httpClient.get<McpCatalogItem>(`/mcp/catalog/${id}`),
 
  /**
   * 探测服务器连通性

@@ -200,3 +200,63 @@ export interface McpPaginatedResult<T> {
   page: number
   pageSize: number
 }
+
+
+/** MCP 运行时类型 */
+export type McpRuntime = 'node' | 'python' | 'docker' | 'http'
+
+/** MCP 安全分级 */
+export type McpSecurityLevel = 'official' | 'community'
+
+/** 环境变量模板项 */
+export interface EnvTemplateItem {
+  key: string
+  label?: string
+  required?: boolean
+  secret?: boolean
+  default?: string
+  description?: string
+}
+
+/** 官方目录条目 */
+export interface McpCatalog {
+  id: number
+  name: string
+  description?: string
+  category?: string
+  tags?: string[]
+  icon?: string
+  homepage?: string
+  sourceUrl?: string
+  license?: string
+  runtime: McpRuntime
+  securityLevel: McpSecurityLevel
+  transportType: McpTransportType
+  command?: string
+  args?: string[]
+  envTemplate?: EnvTemplateItem[]
+  url?: string
+  headers?: Record<string, string>
+  version?: string
+  enabled?: boolean
+  sortOrder?: number
+  toolCount?: number
+  downloadCount?: number
+}
+
+/** 官方目录查询参数 */
+export interface McpCatalogQuery {
+  keyword?: string
+  category?: string
+  enabled?: string
+  page?: number
+  pageSize?: number
+}
+
+/** 官方目录分页列表响应 */
+export interface McpCatalogListResult {
+  list: McpCatalog[]
+  total: number
+  page: number
+  pageSize: number
+}

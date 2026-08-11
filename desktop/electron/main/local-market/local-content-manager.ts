@@ -75,6 +75,8 @@ function resolveTargetDir(type: MarketItemType, id: number | string): string {
       return path.join(getHermesHome(), 'workflows', String(id));
     case 'agent':
       return path.join(getHermesHome(), 'agents', String(id));
+    case 'mcp':
+      return path.join(getHermesHome(), 'mcp', String(id));
   }
 }
 
@@ -111,6 +113,8 @@ export async function installMarketItem(
       writeWorkflowFiles(staging, payload.workflow as Record<string, unknown>);
     } else if (type === 'agent') {
       writeAgentFiles(staging, payload.agent as Record<string, unknown>);
+    } else if (type === 'mcp') {
+      writeMcpFiles(staging, payload.mcp as Record<string, unknown>);
     } else {
       throw new Error('不支持的内容类型: ' + type);
     }
@@ -206,6 +210,11 @@ export function getInstalledDetail(
       try { plugin = JSON.parse(fs.readFileSync(path.join(dir, 'plugin.json'), 'utf-8')); } catch { plugin = {}; }
       return { ok: true, detail: { ...base, description: String(plugin.description || ''), detail: plugin } };
     }
+    if (type === 'mcp') {
+      let mcp: Record<string, unknown> = {};
+      try { mcp = JSON.parse(fs.readFileSync(path.join(dir, 'mcp.json'), 'utf-8')); } catch { mcp = {}; }
+      return { ok: true, detail: { ...base, description: String(mcp.description || ''), detail: mcp } };
+    }
     return { ok: false, error: '不支持的类型: ' + type };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -233,12 +242,14 @@ export async function importCustomDir(
       plugin: 'plugin.json',
       workflow: 'workflow.json',
       agent: 'agent.json',
+      mcp: 'mcp.json',
     };
     const typeName: Record<MarketItemType, string> = {
       skill: '技能包',
       plugin: '插件',
       workflow: '工作流',
       agent: 'Agent',
+      mcp: 'MCP 服务',
     };
     const result = await dialog.showOpenDialog({
       title: '导入' + typeName[type],
@@ -394,6 +405,7 @@ export function syncChatInstalled(): { ok: boolean; added?: number; error?: stri
       { type: 'plugin', root: path.join(getOpenClawHome(), 'plugins'), marker: 'plugin.json' },
       { type: 'workflow', root: path.join(getHermesHome(), 'workflows'), marker: 'workflow.json' },
       { type: 'agent', root: path.join(getHermesHome(), 'agents'), marker: 'agent.json' },
+      { type: 'mcp', root: path.join(getHermesHome(), 'mcp'), marker: 'mcp.json' },
     ];
     const records = readInstalled();
     let added = 0;
@@ -569,6 +581,11 @@ function writeAgentFiles(dir: string, agent: Record<string, unknown>): void {
   );
 }
 
+/** MCP 服务 → mcp.json（官方目录信息；用户 env 由后端 mcp_servers 管理） */
+function writeMcpFiles(dir: string, mcp: Record<string, unknown>): void {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'mcp.json'), JSON.stringify(mcp ?? {}, null, 2), 'utf-8');
+}
 // ---------- 导出 / 导入（Phase 1 为 JSON 清单包；Phase 3 升级为 zip 并纳入个人知识库） ----------
 
 export async function exportMarketBundle(): Promise<{ ok: boolean; path?: string; error?: string }> {

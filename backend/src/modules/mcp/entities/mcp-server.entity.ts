@@ -68,4 +68,10 @@ export class McpServerEntity extends BaseEntity {
     default: 'pending',
   })
   status: 'pending' | 'connected' | 'failed' | 'disabled';
+
+  @Column({ length: 16, default: 'custom' })
+  source: 'custom' | 'official' | 'chat';
+
+  @Column({ name: 'catalog_id', type: 'bigint', nullable: true })
+  catalogId?: number;
 }

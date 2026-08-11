@@ -67,6 +67,7 @@ import type {
 import styles from './styles.module.css'
 import { TabContent, editDeleteActions, renderEnabled, renderDescription, renderName, renderDisplayName, renderNumber } from './components'
 import { KvEditor } from './KvEditor'
+import { CatalogTab } from './CatalogTab'
 
 const LOG_PAGE_SIZE = 20
 
@@ -706,7 +707,7 @@ export default function AdminMcp() {
               if (activeTab === 'servers') void loadServers()
               else if (activeTab === 'tools') void loadTools()
               else if (activeTab === 'resources') void loadResources()
-              else void loadLogs()
+              else if (activeTab === 'logs') void loadLogs()
             }}
             className={styles.ghostBtn}
           >
@@ -749,12 +750,16 @@ export default function AdminMcp() {
         activeKey={activeTab}
         onChange={setActiveTab}
         items={[
+          { key: 'catalog', label: '官方目录' },
           { key: 'servers', label: '服务配置' },
           { key: 'tools', label: '工具注册' },
           { key: 'resources', label: '资源注册' },
           { key: 'logs', label: '调用日志' }
         ]}
       />
+
+      {/* 官方目录 Tab */}
+      {activeTab === 'catalog' && <CatalogTab />}
 
       {/* 服务配置 Tab */}
       {activeTab === 'servers' && (

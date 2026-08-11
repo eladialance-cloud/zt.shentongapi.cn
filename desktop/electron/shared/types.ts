@@ -199,7 +199,7 @@ export interface DeviceInfo extends DeviceFingerprint {
 
 
 /** 市场内容类型 */
-export type MarketItemType = "skill" | "plugin" | "workflow" | "agent";
+export type MarketItemType = "skill" | "plugin" | "workflow" | "agent" | "mcp";
 
 /** 本地内容来源:官方下载 / 自定义导入 / 对话中 OpenClaw 安装 */
 export type MarketSource = "official" | "custom" | "chat";
@@ -385,6 +385,10 @@ export interface ElectronAPI {
     update(type: MarketItemType, id: number, name: string, version: string, pkg: Record<string, unknown>): Promise<{ ok: boolean; dir?: string; error?: string }>;
     /** 扫描本地运行时目录补登记 */
     syncChat(): Promise<{ ok: boolean; added?: number; error?: string }>;
+  };
+  /** 把后端启用中的 MCP 写入 OpenClaw 本地配置 */
+  openclawMcp: {
+    syncFromBackend(token: string): Promise<{ ok: boolean; count?: number; error?: string }>;
   };
   syncQueue: {
     /** 入队：写入 local_sync_queue，返回自增 id */

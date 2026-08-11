@@ -1,7 +1,7 @@
 import { Entity, Column, Index, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
 
 /** 市场已购清单（官方内容购买记录，换机可重下） */
-export type MarketItemType = 'skill' | 'plugin' | 'workflow' | 'agent';
+export type MarketItemType = 'skill' | 'plugin' | 'workflow' | 'agent' | 'mcp';
 
 @Entity('purchased_items')
 export class PurchasedItemEntity {

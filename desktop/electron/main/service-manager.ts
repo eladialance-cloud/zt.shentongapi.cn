@@ -141,6 +141,8 @@ function getMcpBridgeScriptPath(): string {
   return path.join(process.cwd(), 'resources', 'mcp', 'mcp-gateway-server.js')
 }
 
+export const ST_API_BASE = 'https://zt.shentongapi.cn/api'
+
 /** OpenClaw 子进程环境变量（每次启动实时构建，确保 OPENCLAW_HOME 目录已创建） */
 function buildOpenClawEnv(): NodeJS.ProcessEnv {
   const home = getOpenClawHome()
@@ -167,7 +169,7 @@ function buildOpenClawEnv(): NodeJS.ProcessEnv {
     HERMES_PYTHON: hermesRoot ? path.join(hermesRoot, 'python', 'python.exe') : '',
     HERMES_HOME: getHermesHome(),
     N8N_API_KEY: getOrCreateN8nApiKey(),
-    ST_API_BASE: 'https://zt.shentongapi.cn/api',
+    ST_API_BASE,
     ST_ACCOUNTING_FILE: path.join(accountingDir, 'current-accounting.json'),
     ST_AUTH_FILE: path.join(accountingDir, 'auth.json'),
   }
@@ -321,6 +323,7 @@ function ensureOpenClawConfig(): void {
     const patch: Record<string, unknown> = {
       gateway: { http: { endpoints: { chatCompletions: { enabled: true } } } },
       skills: { load: { extraDirs: [skillsDir] } },
+      mcpServers: {},
       // OpenClaw agent 的模型通道指向云端 llm-proxy（强制 openai-completions 协议；apiKey 为用户静态 Key）
       models: {
         providers: {

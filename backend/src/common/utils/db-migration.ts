@@ -588,6 +588,78 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='支付流水表'`);
     logger.log('Ensured table: payment_records');
 
+    // MCP 官方目录表 mcp_catalog（技能市场-MCP 官方来源）
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS mcp_catalog (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      name VARCHAR(128) NOT NULL COMMENT '展示名称',
+      description VARCHAR(512) DEFAULT NULL COMMENT '简介',
+      category VARCHAR(32) DEFAULT NULL COMMENT '分类: database/search/browser/git/files/messaging/ai/devops/other',
+      tags JSON DEFAULT NULL COMMENT '标签数组',
+      icon VARCHAR(512) DEFAULT NULL COMMENT '图标 URL',
+      homepage VARCHAR(512) DEFAULT NULL COMMENT '官方文档地址',
+      source_url VARCHAR(512) DEFAULT NULL COMMENT '来源仓库地址',
+      license VARCHAR(64) DEFAULT NULL COMMENT '许可证',
+      runtime ENUM('node','python','docker','http') NOT NULL DEFAULT 'node' COMMENT '运行方式',
+      security_level ENUM('official','community') NOT NULL DEFAULT 'community' COMMENT '安全分级',
+      transport_type ENUM('stdio','http','streamable-http') NOT NULL DEFAULT 'stdio' COMMENT '传输方式',
+      command VARCHAR(256) DEFAULT NULL COMMENT '启动命令(npx/uvx/docker/python/node)',
+      args JSON DEFAULT NULL COMMENT '命令参数数组',
+      env_template JSON DEFAULT NULL COMMENT '[{key,label,required,secret,default,description}]',
+      url VARCHAR(512) DEFAULT NULL COMMENT 'http 型服务器地址',
+      headers JSON DEFAULT NULL COMMENT 'http 型请求头模板',
+      version VARCHAR(32) DEFAULT '1.0.0' COMMENT '目录版本',
+      enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '上架/下架',
+      sort_order INT NOT NULL DEFAULT 0 COMMENT '排序',
+      tool_count INT NOT NULL DEFAULT 0 COMMENT '已知工具数',
+      download_count INT NOT NULL DEFAULT 0 COMMENT '累计下载数',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_mcp_catalog_category (category),
+      KEY idx_mcp_catalog_enabled (enabled)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MCP 官方目录'`);
+    logger.log('Ensured table: mcp_catalog');
+
+    // mcp_servers 用户已装实例：来源 + 目录条目关联
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS mcp_servers (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      user_id BIGINT NOT NULL COMMENT '用户 ID',
+      name VARCHAR(128) NOT NULL COMMENT '服务器名称',
+      description VARCHAR(512) DEFAULT NULL COMMENT '描述',
+      transport_type ENUM('stdio','http','streamable-http') NOT NULL DEFAULT 'stdio' COMMENT '传输方式',
+      command VARCHAR(256) DEFAULT NULL COMMENT '启动命令',
+      args JSON DEFAULT NULL COMMENT '命令参数',
+      env JSON DEFAULT NULL COMMENT '环境变量',
+      url VARCHAR(512) DEFAULT NULL COMMENT '服务器 URL',
+      headers JSON DEFAULT NULL COMMENT '请求头',
+      enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+      last_connected_at DATETIME DEFAULT NULL COMMENT '最后连接时间',
+      tool_count INT NOT NULL DEFAULT 0 COMMENT '工具数量',
+      status ENUM('pending','connected','failed','disabled') NOT NULL DEFAULT 'pending' COMMENT '连接状态',
+      source VARCHAR(16) NOT NULL DEFAULT 'custom' COMMENT '来源: custom/official/chat',
+      catalog_id BIGINT DEFAULT NULL COMMENT '关联 mcp_catalog.id',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_mcp_servers_user_id (user_id),
+      KEY idx_mcp_servers_status (status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户 MCP 服务器配置表'`);
+    logger.log('Ensured table: mcp_servers');
+    await ensureColumn('mcp_servers', 'source', "VARCHAR(16) NOT NULL DEFAULT 'custom' COMMENT '来源: custom/official/chat'");
+    await ensureColumn('mcp_servers', 'catalog_id', "BIGINT DEFAULT NULL COMMENT '关联 mcp_catalog.id'");
+
+    // 唯一索引兜底：同一用户对同一官方目录条目只允许一个实例（幂等复用依赖）
+    const [ukMcpRow] = await queryRunner.query(
+      `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'mcp_servers' AND INDEX_NAME = 'uk_mcp_user_catalog'`
+    );
+    if (!ukMcpRow) {
+      await queryRunner.query(
+        'ALTER TABLE mcp_servers ADD UNIQUE KEY `uk_mcp_user_catalog` (user_id, catalog_id)'
+      );
+      logger.log('Added unique index: mcp_servers.uk_mcp_user_catalog');
+    }
+
     // ===== 知识库引擎升级（MaxKB）Phase 1 =====
     // 行业分类表 industry_categories（官方知识库按行业归类）
     await queryRunner.query(`CREATE TABLE IF NOT EXISTS industry_categories (

@@ -2,11 +2,14 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
+  IsInt,
   IsObject,
   IsOptional,
   IsString,
   MaxLength,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 /**
  * 创建 MCP Server DTO
@@ -31,6 +34,7 @@ export class CreateMcpServerDto {
 
   @IsOptional()
   @IsArray()
+  @IsString({ each: true })
   args?: string[];
 
   @IsOptional()
@@ -49,6 +53,16 @@ export class CreateMcpServerDto {
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['custom', 'official', 'chat'])
+  source?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  catalogId?: number;
 }
 
 /**
@@ -76,6 +90,7 @@ export class UpdateMcpServerDto {
 
   @IsOptional()
   @IsArray()
+  @IsString({ each: true })
   args?: string[];
 
   @IsOptional()
@@ -94,6 +109,16 @@ export class UpdateMcpServerDto {
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['custom', 'official', 'chat'])
+  source?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  catalogId?: number;
 }
 
 /**

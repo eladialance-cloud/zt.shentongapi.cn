@@ -25,6 +25,7 @@ if (!app.isPackaged) {
 import { createMainWindow, getMainWindow, setQuitting } from './windows/main-window'
 import { createTray, destroyTray } from './tray'
 import { ServiceManager } from './service-manager'
+import { syncOpenClawMcpFromBackend } from './openclaw-mcp-sync'
 import { AppUpdater } from './updater'
 import { getDeviceFingerprint } from './device'
 import { localDb } from './local-db'
@@ -199,6 +200,11 @@ function registerIpcHandlers(): void {
   ipcMain.on('openclaw-chat:set-proxy-key', (_event, key: string) => {
     serviceManager.setOpenClawProxyKey(key || '')
   })
+
+  // 从后端同步启用中的 MCP 到 OpenClaw 本地配置（登录后由渲染层触发）
+  ipcMain.handle('mcp:syncFromBackend', async (_e, token: string) =>
+    syncOpenClawMcpFromBackend(typeof token === 'string' ? token : ''),
+  )
 
   // 服务管理
   ipcMain.handle('shell:openExternal', async (_event, url: string) => {

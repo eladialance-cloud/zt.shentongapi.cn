@@ -61,6 +61,14 @@ export async function install(
   return result as { ok: boolean; dir?: string; error?: string }
 }
 
+/** 安装 MCP（官方目录）：免费购买 → 下载配置包 → 本地登记 → 返回 mcpServerId */
+export async function installMcp(itemId: number): Promise<{ ok: boolean; mcpServerId?: number; dir?: string; error?: string }> {
+  await purchase('mcp', itemId)
+  const pkg = await getDownloadPackage('mcp', itemId)
+  const result = await getMarket().install(pkg.type, pkg.id, pkg.name, pkg.version, pkg.pkg as Record<string, unknown>)
+  if (!result.ok) return { ok: false, error: result.error }
+  return { ok: true, mcpServerId: (pkg as unknown as { mcpServerId?: number }).mcpServerId, dir: result.dir }
+}
 /** 卸载本地内容 */
 export async function uninstall(
   type: MarketItemType,
@@ -135,6 +143,7 @@ export default {
   listPurchased,
   getDownloadPackage,
   install,
+  installMcp,
   uninstall,
   listInstalled,
   getDetail,

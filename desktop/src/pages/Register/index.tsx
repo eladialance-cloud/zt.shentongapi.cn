@@ -55,6 +55,9 @@ export default function Register() {
       message.warning('本地数据库初始化失败，已进入降级模式')
     }
 
+    // 同步启用中的 MCP 到 OpenClaw 本地配置（fire-and-forget，失败不阻塞登录）
+    void window.electronAPI?.openclawMcp?.syncFromBackend?.(data.accessToken)
+
     message.success(`注册成功，欢迎加入深瞳 AI，${data.user.username}`)
     navigate('/dashboard', { replace: true })
   }
