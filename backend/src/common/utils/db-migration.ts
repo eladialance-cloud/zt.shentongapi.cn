@@ -1165,6 +1165,7 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       await ensureColumn(table, 'steps', 'json NULL');
       await ensureColumn(table, 'result', 'json NULL');
       await ensureColumn(table, 'error_message', 'varchar(1024) NULL');
+      await ensureColumn(table, 'params', 'json NULL');
     };
     await ensureAssetImportJobsTable();
 

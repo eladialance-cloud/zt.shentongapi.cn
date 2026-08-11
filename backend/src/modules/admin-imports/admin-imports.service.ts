@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AssetImportJobEntity, ImportStep, ImportJobResult } from './entities/asset-import-job.entity';
+import { AssetImportJobEntity, ImportStep, ImportJobCatalogStats, ImportJobResult } from './entities/asset-import-job.entity';
 import { CreateImportDto } from './dto/create-import.dto';
 import { ImportQueryDto } from './dto/import-query.dto';
 import { IMPORT_STEPS, ImportStepKey, AssetImportType } from './admin-imports.constants';
@@ -12,6 +12,8 @@ import { WorkflowParser } from './parsers/workflow-parser';
 import { McpParser } from './parsers/mcp-parser';
 import { N8nMcpParser } from './parsers/n8n-mcp-parser';
 import { SkillParser } from './parsers/skill-parser';
+import { SkillCatalogParser, SkillCatalogEntry } from './parsers/skill-catalog-parser';
+import { SkillCatalogExpander, SkillRepoFetcher } from './parsers/skill-catalog-expander';
 import { SkillPackParser } from './parsers/skill-pack-parser';
 import { AgentEntity } from '../agent/entities/agent.entity';
 import { WorkflowEntity } from '../admin-workflow/entities/workflow.entity';
@@ -25,6 +27,21 @@ import { AiClassifyService } from '../admin-classify/ai-classify.service';
 export class AdminImportsService implements OnModuleInit {
   private readonly logger = new Logger(AdminImportsService.name);
   private readonly parsers: Record<AssetImportType, ImportParser>;
+  private readonly catalogParser = new SkillCatalogParser();
+  private readonly catalogExpander = new SkillCatalogExpander(this.skillFetcher());
+
+  /** 技能目录展开时拉取单个技能仓库的 SKILL.md（raw 请求，不受 GitHub API 速率限制） */
+  private skillFetcher(): SkillRepoFetcher {
+    return {
+      fetchSkillMd: async (owner: string, repo: string) => {
+        const root = await this.githubClient.getFileContent(owner, repo, 'SKILL.md');
+        if (root) return { path: 'SKILL.md', content: root };
+        const nested = await this.githubClient.getFileContent(owner, repo, 'skills/SKILL.md');
+        if (nested) return { path: 'skills/SKILL.md', content: nested };
+        return null;
+      },
+    };
+  }
 
   constructor(
     @InjectRepository(AssetImportJobEntity) private jobRepo: Repository<AssetImportJobEntity>,
@@ -66,6 +83,7 @@ export class AdminImportsService implements OnModuleInit {
       branch: dto.branch || undefined,
       status: 'pending',
       steps: IMPORT_STEPS.map(s => ({ key: s.key, label: s.label, status: 'pending' as const })),
+      params: dto.maxSkills ? { maxSkills: dto.maxSkills } : undefined,
     });
     const saved = await this.jobRepo.save(job);
     this.run(saved.id, adminId).catch(e => this.logger.error('导入任务 ' + saved.id + ' 失败: ' + (e as Error).message));
@@ -187,11 +205,29 @@ export class AdminImportsService implements OnModuleInit {
       this.setStep(job, 'parse', 'running'); await this.jobRepo.save(job);
       const parser = this.parsers[job.type];
       const keyPaths = this.pickKeyFiles(job.type, allPaths);
-      const files: ImportFile[] = [];
-      for (const p of keyPaths) {
-        files.push({ path: p, content: await this.githubClient.getFileContent(owner, repo, p, job.branch) });
+      // 技能目录仓库（categories/*.md 索引，无 SKILL.md）→ 自动展开为具体技能仓库草稿
+      const isSkillCatalog = job.type === 'skill' && keyPaths.length === 0
+        && allPaths.some(p => /^categories\/[^/]+\.md$/i.test(p));
+      let drafts: ImportedAssetDraft[] = [];
+      let catalogStats: ImportJobCatalogStats | undefined;
+      if (isSkillCatalog) {
+        const catPaths = allPaths.filter(p => /^categories\/[^/]+\.md$/i.test(p)).slice(0, 50);
+        const catFiles: ImportFile[] = [];
+        for (const p of catPaths) {
+          catFiles.push({ path: p, content: await this.githubClient.getFileContent(owner, repo, p, job.branch) });
+        }
+        const entries: SkillCatalogEntry[] = this.catalogParser.parseCatalogFiles(catFiles);
+        const maxSkills = Number(job.params?.maxSkills) || 100;
+        const expanded = await this.catalogExpander.expand(entries, maxSkills);
+        drafts = expanded.drafts;
+        catalogStats = expanded.stats;
+      } else {
+        const files: ImportFile[] = [];
+        for (const p of keyPaths) {
+          files.push({ path: p, content: await this.githubClient.getFileContent(owner, repo, p, job.branch) });
+        }
+        drafts = await parser.parse({ repoUrl: job.repoUrl, branch: job.branch, topics, files });
       }
-      const drafts = await parser.parse({ repoUrl: job.repoUrl, branch: job.branch, topics, files });
       this.setStep(job, 'parse', 'done'); await this.jobRepo.save(job);
 
       // 3. classify
@@ -208,11 +244,12 @@ export class AdminImportsService implements OnModuleInit {
       // 4. save
       this.setStep(job, 'save', 'running'); await this.jobRepo.save(job);
       const result = await this.saveDrafts(job, drafts, adminId);
+      if (catalogStats) result.catalog = catalogStats;
       this.setStep(job, 'save', 'done');
       if (result.created.length === 0) {
         // 0 产物：标记失败并给出可操作原因（避免「导入成功」但无资产的误导）
         job.status = 'failed';
-        job.errorMessage = this.buildEmptyReason(job.type, allPaths, result.skipped, keyPaths);
+        job.errorMessage = this.buildEmptyReason(job.type, allPaths, result.skipped, keyPaths, catalogStats);
         job.result = result;
         await this.jobRepo.save(job);
         return;
@@ -257,12 +294,16 @@ export class AdminImportsService implements OnModuleInit {
   }
 
   /** 0 产物时的失败原因（按类型给出可操作提示，附仓库文件清单与已检查关键文件） */
-  private buildEmptyReason(type: AssetImportType, paths: string[], skipped: number, keyPaths: string[]): string {
+  private buildEmptyReason(type: AssetImportType, paths: string[], skipped: number, keyPaths: string[], catalogStats?: ImportJobCatalogStats): string {
     if (skipped > 0) {
       return '解析出 ' + skipped + ' 个资产但全部因重名被跳过，请检查管理后台是否已存在同名资产';
     }
     const sample = paths.slice(0, 20).join(', ');
     const checked = '已检查关键文件：' + (keyPaths.length ? keyPaths.join(', ') : '（无，仓库树未包含根目录关键文件）');
+    if (catalogStats && catalogStats.totalEntries > 0 && catalogStats.fetched === 0) {
+      return '目录仓库解析到 ' + catalogStats.totalEntries + ' 个技能条目，实际尝试展开 ' + catalogStats.attempted
+        + ' 个，但全部拉取失败（具体技能仓库可能不存在、未包含 SKILL.md，或 GitHub 网络异常），请稍后重试或调低 maxSkills';
+    }
     switch (type) {
       case 'agent':
         return '未解析到 Agent：仓库中未找到 agent.json / agent.md 或说明类 .md 文件。仓库文件示例：' + sample + '；' + checked;

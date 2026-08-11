@@ -6,6 +6,8 @@ import { McpParser } from '../../src/modules/admin-imports/parsers/mcp-parser';
 import { N8nMcpParser } from '../../src/modules/admin-imports/parsers/n8n-mcp-parser';
 import { SkillParser } from '../../src/modules/admin-imports/parsers/skill-parser';
 import { SkillPackParser } from '../../src/modules/admin-imports/parsers/skill-pack-parser';
+import { SkillCatalogParser, resolveRepoCandidates } from '../../src/modules/admin-imports/parsers/skill-catalog-parser';
+import { SkillCatalogExpander, type SkillRepoFetcher } from '../../src/modules/admin-imports/parsers/skill-catalog-expander';
 import type { ImportFile, ImportParseContext } from '../../src/modules/admin-imports/parsers/import-parser.interface';
 
 const baseCtx = (files: ImportFile[], topics: string[] = []): ImportParseContext => ({
@@ -204,4 +206,88 @@ test('mcp-parser: Python 项目无包名（pyproject 无 name）→ 返回空', 
     { path: 'README.md', content: 'hello' },
   ], []);
   assert.deepEqual(await new McpParser().parse(ctx), []);
+});
+
+
+test('skill-catalog-parser: resolveRepoCandidates 解析 clawhub/clawskills/github 三类链接', () => {
+  assert.deepEqual(resolveRepoCandidates('https://clawhub.ai/owner/repo'), [{ owner: 'owner', repo: 'repo' }]);
+  assert.deepEqual(resolveRepoCandidates('https://github.com/foo/bar.git'), [{ owner: 'foo', repo: 'bar' }]);
+  // clawskills slug 首个连字符切分
+  const c1 = resolveRepoCandidates('https://clawskills.sh/skills/mfergpt-4claw');
+  assert.ok(c1.some(c => c.owner === 'mfergpt' && c.repo === '4claw'));
+  // owner 本身含连字符：第二个连字符切分命中
+  const c2 = resolveRepoCandidates('https://clawskills.sh/skills/browseract-cli-browser-act-skills');
+  assert.ok(c2.some(c => c.owner === 'browseract-cli' && c.repo === 'browser-act-skills'));
+  assert.ok(c2.length <= 2);
+  assert.deepEqual(resolveRepoCandidates('https://example.com/x'), []);
+});
+
+test('skill-catalog-parser: 解析 categories/*.md 行格式为条目（含分类、候选、描述）', () => {
+  const parser = new SkillCatalogParser();
+  const entries = parser.parseCatalogFiles([
+    { path: 'categories/ai-and-llms.md', content: '\n- [claw-skill](https://clawskills.sh/skills/owner-skill) - AI 工具\n- [hub-skill](https://clawhub.ai/o/r) - 另一个\n- 普通行无链接\n' },
+    { path: 'categories/devops-and-cloud.md', content: '- [gh-skill](https://github.com/foo/bar) - 云技能' },
+  ]);
+  assert.equal(entries.length, 3);
+  assert.equal(entries[0].category, 'ai-and-llms');
+  assert.equal(entries[0].name, 'claw-skill');
+  assert.equal(entries[0].description, 'AI 工具');
+  assert.equal(entries[0].candidates[0].owner, 'owner');
+  assert.equal(entries[1].candidates[0].owner, 'o');
+  assert.equal(entries[2].category, 'devops-and-cloud');
+});
+
+test('skill-catalog-expander: 分类轮询 + 候选失败换下一个 + 失败计数', async () => {
+  const skillMd = (name: string) => `---\nname: ${name}\ndescription: ${name} desc\n---\nbody`;
+  const fetcher: SkillRepoFetcher = {
+    fetchSkillMd: async (owner, repo) => {
+      const key = owner + '/' + repo;
+      const map: Record<string, string | null> = {
+        'a1/a1': skillMd('a1'),
+        'b1/b1': skillMd('b1'),
+        'browseract/cli-browser-act-skills': null, // 候选1 失败
+        'browseract-cli/browser-act-skills': skillMd('browser-act'), // 候选2 命中
+      };
+      const v = map[key];
+      if (v == null) return null;
+      return { path: 'SKILL.md', content: v };
+    },
+  };
+  const expander = new SkillCatalogExpander(fetcher);
+  const entries = [
+    { name: 'a1', description: '', category: 'ai-and-llms', sourceUrl: 'https://clawskills.sh/skills/a1-a1', candidates: [{ owner: 'a1', repo: 'a1' }] },
+    { name: 'a2', description: '', category: 'ai-and-llms', sourceUrl: 'https://clawskills.sh/skills/a2-a2', candidates: [{ owner: 'a2', repo: 'a2' }] },
+    { name: 'b1', description: '', category: 'devops-and-cloud', sourceUrl: 'https://clawskills.sh/skills/b1-b1', candidates: [{ owner: 'b1', repo: 'b1' }] },
+    { name: 'multi', description: '', category: 'devops-and-cloud', sourceUrl: 'https://clawskills.sh/skills/browseract-cli-browser-act-skills', candidates: [{ owner: 'browseract', repo: 'cli-browser-act-skills' }, { owner: 'browseract-cli', repo: 'browser-act-skills' }] },
+  ];
+  const res = await expander.expand(entries, 2);
+  // maxSkills=2：轮询覆盖 ai-and-llms 与 devops-and-cloud 各 1 个
+  assert.equal(res.stats.totalEntries, 4);
+  assert.equal(res.stats.attempted, 2);
+  assert.equal(res.stats.fetched, 2);
+  assert.equal(res.stats.failed, 0);
+  assert.deepEqual(res.drafts.map(d => d.name), ['a1', 'b1']);
+  assert.equal(res.drafts[0].category, 'ai-and-llms');
+  assert.equal(res.drafts[0].sourceRepo, 'https://github.com/a1/a1');
+  // 候选失败换下一个：展开单个条目验证
+  const res2 = await expander.expand([entries[3]], 10);
+  assert.equal(res2.stats.attempted, 1);
+  assert.equal(res2.stats.fetched, 1);
+  assert.equal(res2.drafts[0].name, 'browser-act');
+  assert.equal(res2.drafts[0].sourceRepo, 'https://github.com/browseract-cli/browser-act-skills');
+});
+
+test('skill-catalog-expander: 全部拉取失败 → 空草稿 + 失败计数（不中断）', async () => {
+  const fetcher: SkillRepoFetcher = { fetchSkillMd: async () => null };
+  const expander = new SkillCatalogExpander(fetcher);
+  const entries = [
+    { name: 'x', description: '', category: 'cat', sourceUrl: 'https://clawskills.sh/skills/x-x', candidates: [{ owner: 'x', repo: 'x' }] },
+    { name: 'y', description: '', category: 'cat', sourceUrl: 'https://clawskills.sh/skills/y-y', candidates: [{ owner: 'y', repo: 'y' }] },
+  ];
+  const res = await expander.expand(entries, 5);
+  assert.equal(res.stats.totalEntries, 2);
+  assert.equal(res.stats.attempted, 2);
+  assert.equal(res.stats.fetched, 0);
+  assert.equal(res.stats.failed, 2);
+  assert.deepEqual(res.drafts, []);
 });

@@ -15,6 +15,7 @@ import {
   Checkbox,
   Form,
   Input,
+  InputNumber,
   Modal,
   Pagination,
   Select,
@@ -61,7 +62,8 @@ function toAntdStepStatus(status: ImportStep['status']): 'wait' | 'process' | 'f
 }
 
 export default function AdminImports() {
-  const [form] = Form.useForm<{ type: string; repoUrl: string; branch?: string }>()
+  const [form] = Form.useForm<{ type: string; repoUrl: string; branch?: string; maxSkills?: number }>()
+  const watchedType = Form.useWatch('type', form)
   const [submitting, setSubmitting] = useState(false)
   const [list, setList] = useState<ImportJob[]>([])
   const [total, setTotal] = useState(0)
@@ -132,9 +134,10 @@ export default function AdminImports() {
       const job = await createImport({
         type: values.type as ImportJob['type'],
         repoUrl: values.repoUrl.trim(),
-        branch: values.branch?.trim() || undefined
+        branch: values.branch?.trim() || undefined,
+        maxSkills: values.maxSkills
       })
-      form.resetFields(['repoUrl', 'branch'])
+      form.resetFields(['repoUrl', 'branch', 'maxSkills'])
       startPolling(job)
     } catch (e) {
       message.error((e as Error).message || '提交导入任务失败')
@@ -272,6 +275,16 @@ export default function AdminImports() {
           >
             <Input placeholder="https://github.com/owner/repo" style={{ width: 340 }} />
           </Form.Item>
+          {watchedType === 'skill' && (
+            <Form.Item
+              name="maxSkills"
+              label="技能数量"
+              tooltip="技能目录仓库（如 awesome-openclaw-skills）自动展开的具体技能数量，默认 100，最大 200"
+              rules={[{ type: 'number', min: 1, max: 200, message: '数量需在 1-200 之间' }]}
+            >
+              <InputNumber placeholder="默认 100" style={{ width: 130 }} min={1} max={200} />
+            </Form.Item>
+          )}
           <Form.Item name="branch" label="分支">
             <Input placeholder="默认分支" style={{ width: 130 }} />
           </Form.Item>
@@ -332,6 +345,11 @@ export default function AdminImports() {
               {(progressJob.result?.created?.length ?? 0) > 0 ? (
                 <>
                   <Alert type="success" showIcon message={'导入成功，共 ' + progressJob.result!.created.length + ' 个资产'} />
+                    {progressJob.result!.catalog && (
+                      <div className={styles.progressResultItem}>
+                        目录技能：共 {progressJob.result!.catalog.totalEntries} 条，尝试展开 {progressJob.result!.catalog.attempted} 个，成功 {progressJob.result!.catalog.fetched}，失败 {progressJob.result!.catalog.failed}
+                      </div>
+                    )}
                   <div className={styles.progressResultList}>
                     {progressJob.result!.created.map((item) => (
                       <div key={item.id} className={styles.progressResultItem}>
@@ -402,6 +420,12 @@ export default function AdminImports() {
               <div className={styles.detailRow}>
                 <span className={styles.detailLabel}>跳过</span>
                 <span>{detailJob.result.skipped} 个重名资产</span>
+              </div>
+            )}
+            {detailJob.result?.catalog && (
+              <div className={styles.detailRow}>
+                <span className={styles.detailLabel}>目录统计</span>
+                <span>共 {detailJob.result.catalog.totalEntries} 条 / 尝试 {detailJob.result.catalog.attempted} / 成功 {detailJob.result.catalog.fetched} / 失败 {detailJob.result.catalog.failed}</span>
               </div>
             )}
             {detailJob.errorMessage && <Alert type="error" showIcon message={detailJob.errorMessage} />}

@@ -13,7 +13,9 @@ export const IMPORT_TYPE_LABEL: Record<ImportAssetType, string> = {
 }
 
 /** 提交 GitHub 导入任务 */
-export async function createImport(dto: { type: ImportAssetType; repoUrl: string; branch?: string }): Promise<ImportJob> {
+export async function createImport(
+  dto: { type: ImportAssetType; repoUrl: string; branch?: string; maxSkills?: number }
+): Promise<ImportJob> {
   return adminRequest<ImportJob>('post', '/admin/imports', { data: dto })
 }
 
