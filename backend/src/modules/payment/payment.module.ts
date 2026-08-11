@@ -20,6 +20,7 @@ import { PaymentCallbackService } from './services/payment-callback.service';
 
 @Module({
   imports: [
+    forwardRef(() => CreditsModule),
     TypeOrmModule.forFeature([
       MembershipPlanEntity,
       PaymentConfigEntity,
@@ -34,8 +35,9 @@ import { PaymentCallbackService } from './services/payment-callback.service';
     PaymentController,
     AdminRechargePlanController,
     AdminPaymentConfigController,
+    PaymentCallbackController,
   ],
-  providers: [PaymentService, RechargePlanService, PaymentConfigService],
-  exports: [PaymentService, RechargePlanService, PaymentConfigService],
+  providers: [PaymentService, RechargePlanService, PaymentConfigService, PaymentGatewayService, PaymentCallbackService],
+  exports: [PaymentService, RechargePlanService, PaymentConfigService, PaymentGatewayService],
 })
 export class PaymentModule {}
