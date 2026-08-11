@@ -154,7 +154,7 @@ export class AdminImportsService implements OnModuleInit {
       if (result.created.length === 0) {
         // 0 产物：标记失败并给出可操作原因（避免「导入成功」但无资产的误导）
         job.status = 'failed';
-        job.errorMessage = this.buildEmptyReason(job.type, allPaths, result.skipped);
+        job.errorMessage = this.buildEmptyReason(job.type, allPaths, result.skipped, keyPaths);
         job.result = result;
         await this.jobRepo.save(job);
         return;
@@ -198,26 +198,27 @@ export class AdminImportsService implements OnModuleInit {
     return (d.description + ' ' + d.githubTopics.join(' ')).slice(0, 2000);
   }
 
-  /** 0 产物时的失败原因（按类型给出可操作提示，并附仓库文件清单前 20 个） */
-  private buildEmptyReason(type: AssetImportType, paths: string[], skipped: number): string {
+  /** 0 产物时的失败原因（按类型给出可操作提示，附仓库文件清单与已检查关键文件） */
+  private buildEmptyReason(type: AssetImportType, paths: string[], skipped: number, keyPaths: string[]): string {
     if (skipped > 0) {
       return '解析出 ' + skipped + ' 个资产但全部因重名被跳过，请检查管理后台是否已存在同名资产';
     }
     const sample = paths.slice(0, 20).join(', ');
+    const checked = '已检查关键文件：' + (keyPaths.length ? keyPaths.join(', ') : '（无，仓库树未包含根目录关键文件）');
     switch (type) {
       case 'agent':
-        return '未解析到 Agent：仓库中未找到 agent.json / agent.md 或说明类 .md 文件。仓库文件示例：' + sample;
+        return '未解析到 Agent：仓库中未找到 agent.json / agent.md 或说明类 .md 文件。仓库文件示例：' + sample + '；' + checked;
       case 'workflow':
-        return '未解析到工作流：仓库中未找到可导入的 .json 工作流文件（已排除 package/tsconfig/lock）。仓库文件示例：' + sample;
+        return '未解析到工作流：仓库中未找到可导入的 .json 工作流文件（已排除 package/tsconfig/lock）。仓库文件示例：' + sample + '；' + checked;
       case 'mcp':
       case 'n8n_mcp':
-        return '未解析到 MCP：仓库根目录未找到 package.json / pyproject.toml / setup.py，且 README 未提取到服务地址。仓库文件示例：' + sample;
+        return '未解析到 MCP：仓库根目录未找到 package.json / pyproject.toml / setup.py，且 README 未提取到服务地址。仓库文件示例：' + sample + '；' + checked;
       case 'skill':
-        return '未解析到技能：仓库中未找到 SKILL.md（若为技能目录/索引仓库，请导入包含 SKILL.md 的具体技能仓库）。仓库文件示例：' + sample;
+        return '未解析到技能：仓库中未找到 SKILL.md（若为技能目录/索引仓库，请导入包含 SKILL.md 的具体技能仓库）。仓库文件示例：' + sample + '；' + checked;
       case 'skill_pack':
-        return '未解析到技能包：仓库中未找到 manifest.json / .pack.json。仓库文件示例：' + sample;
+        return '未解析到技能包：仓库中未找到 manifest.json / .pack.json。仓库文件示例：' + sample + '；' + checked;
       default:
-        return '未解析到任何资产，仓库文件示例：' + sample;
+        return '未解析到任何资产，仓库文件示例：' + sample + '；' + checked;
     }
   }
 

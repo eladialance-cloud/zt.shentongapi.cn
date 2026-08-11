@@ -57,19 +57,21 @@ export class GitHubClientService {
     return ((data as { default_branch?: string }).default_branch) || null;
   }
 
-  /** 递归文件树（过滤依赖/构建目录），返回文件路径列表 */
+  /** 递归文件树（过滤依赖/构建目录；根目录关键文件优先，避免大仓库截断吞掉 package.json/README 等） */
   async getRepoTree(owner: string, repo: string, branch = 'HEAD'): Promise<RepoFileEntry[]> {
     const data = await this.getJson(this.apiBase + '/repos/' + owner + '/' + repo + '/git/trees/' + encodeURIComponent(branch) + '?recursive=1');
     if (!data) return [];
     const tree = (data as { tree?: Array<{ path: string; type: string }> }).tree ?? [];
-    const out: RepoFileEntry[] = [];
+    const blobs: RepoFileEntry[] = [];
     for (const t of tree) {
       if (t.type !== 'blob') continue;
       if (SKIP_DIR_PREFIXES.some(p => t.path.startsWith(p))) continue;
-      if (out.length >= 200) break; // 单仓库最多解析 200 个文件
-      out.push({ path: t.path, type: 'blob' });
+      blobs.push({ path: t.path, type: 'blob' });
     }
-    return out;
+    // 根目录文件优先（package.json / README / pyproject.toml 等关键配置不被大仓库截断）
+    const roots = blobs.filter(b => !b.path.includes('/'));
+    const nested = blobs.filter(b => b.path.includes('/'));
+    return [...roots, ...nested].slice(0, 500);
   }
 
   /** 读取仓库内单个文件（raw），404 返回 null */
