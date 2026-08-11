@@ -351,13 +351,26 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
     logger.log('Ensured table: teams');
 
     const ensureColumn = async (table: string, name: string, def: string) => {
-      const [row] = await queryRunner.query(
-        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${table}' AND COLUMN_NAME = '${name}'`
-      );
-      if (!row) {
+      try {
+        const [row] = await queryRunner.query(
+          `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${table}' AND COLUMN_NAME = '${name}'`
+        );
+        if (row) return;
+      } catch (e) {
+        // information_schema 查询异常不阻塞，继续走 ALTER 并由下方兜底
+        logger.warn(`ensureColumn 检查失败 ${table}.${name}: ${(e as Error).message}`);
+      }
+      try {
         await queryRunner.query(`ALTER TABLE ${table} ADD COLUMN \`${name}\` ${def}`);
         logger.log(`Added column: ${table}.${name}`);
+      } catch (e) {
+        const msg = String((e as Error).message || e);
+        if (/Duplicate column/i.test(msg)) {
+          logger.warn(`Column already exists (skip): ${table}.${name}`);
+        } else {
+          throw e;
+        }
       }
     };
 
