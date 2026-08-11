@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CreditTransactionEntity } from '../credits/entities/credit-transaction.entity';
 import { RechargeOrderEntity } from '../payment/entities/recharge-order.entity';
 import { PaymentRecordEntity } from '../payment/entities/payment-record.entity';
+import { PaymentConfigEntity } from '../payment/entities/payment-config.entity';
 import { ReconciliationDiffEntity } from '../reconciliation/entities/reconciliation-diff.entity';
 import { UserEntity } from '../user/entities/user.entity';
 import { InvoiceEntity } from './entities/invoice.entity';
@@ -33,6 +34,7 @@ import { AdminFinanceService } from './admin-finance.service';
       CreditTransactionEntity,
       RechargeOrderEntity,
       PaymentRecordEntity,
+      PaymentConfigEntity,
       ReconciliationDiffEntity,
       UserEntity,
       InvoiceEntity,

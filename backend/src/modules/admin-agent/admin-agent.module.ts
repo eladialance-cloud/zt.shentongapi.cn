@@ -5,6 +5,9 @@ import { AgentReviewEntity } from '../agent/entities/agent-review.entity';
 import { UserEntity } from '../user/entities/user.entity';
 import { AgentCategoryEntity } from './entities/agent-category.entity';
 import { AgentImportTaskEntity } from './entities/agent-import-task.entity';
+import { AgentDepartmentEntity } from './entities/agent-department.entity';
+import { AgentTagEntity } from './entities/agent-tag.entity';
+import { AgentTagMapEntity } from './entities/agent-tag-map.entity';
 import { AdminAuthModule } from '../admin-auth/admin-auth.module';
 import { AdminAgentController } from './admin-agent.controller';
 import { AdminAgentService } from './admin-agent.service';
@@ -34,6 +37,9 @@ import { AdminClassifyModule } from '../admin-classify/admin-classify.module';
       UserEntity,
       AgentCategoryEntity,
       AgentImportTaskEntity,
+      AgentDepartmentEntity,
+      AgentTagEntity,
+      AgentTagMapEntity,
       ModelProviderEntity,
       ModelEntity,
     ]),

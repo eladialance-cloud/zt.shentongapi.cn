@@ -4,6 +4,7 @@ import { AdminAuthModule } from '../admin-auth/admin-auth.module';
 import { WorkflowEntity } from './entities/workflow.entity';
 import { N8nWorkflowExecLogEntity } from './entities/n8n-workflow-exec-log.entity';
 import { WorkflowMcpBindEntity } from './entities/workflow-mcp-bind.entity';
+import { N8nWorkflowLibEntity } from './entities/n8n-workflow-lib.entity';
 import { AdminWorkflowController } from './admin-workflow.controller';
 import { AdminWorkflowService } from './admin-workflow.service';
 import { AdminClassifyModule } from '../admin-classify/admin-classify.module';
@@ -20,6 +21,7 @@ import { AdminClassifyModule } from '../admin-classify/admin-classify.module';
       WorkflowEntity,
       N8nWorkflowExecLogEntity,
       WorkflowMcpBindEntity,
+      N8nWorkflowLibEntity,
     ]),
     AdminAuthModule,
     AdminClassifyModule,
