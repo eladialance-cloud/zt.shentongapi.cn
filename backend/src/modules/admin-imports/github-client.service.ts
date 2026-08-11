@@ -32,8 +32,25 @@ export class GitHubClientService {
     return h;
   }
 
+  /** 带超时与重试的 fetch：GitHub 网络不稳定，单次超时/断连自动重试（最多 3 次，退避间隔） */
+  private async fetchWithRetry(url: string, maxAttempts = 3): Promise<Response> {
+    let lastErr: Error | null = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await fetch(url, { headers: this.headers(), signal: AbortSignal.timeout(20000) });
+      } catch (e) {
+        lastErr = e as Error;
+        if (attempt < maxAttempts) {
+          this.logger.warn(`GitHub 请求失败(第 ${attempt} 次，共 ${maxAttempts} 次) ${url}: ${lastErr.message}`);
+          await new Promise((r) => setTimeout(r, attempt * 1000));
+        }
+      }
+    }
+    BusinessException.throw(ErrorCode.THIRD_PARTY_ERROR, 'GitHub 请求失败: ' + (lastErr?.message ?? 'unknown'));
+  }
+
   private async getJson(url: string): Promise<unknown | null> {
-    const resp = await fetch(url, { headers: this.headers(), signal: AbortSignal.timeout(15000) });
+    const resp = await this.fetchWithRetry(url);
     if (resp.status === 404) return null;
     if (!resp.ok) {
       const text = await resp.text();
@@ -77,7 +94,7 @@ export class GitHubClientService {
   /** 读取仓库内单个文件（raw），404 返回 null */
   async getFileContent(owner: string, repo: string, filePath: string, branch = 'HEAD'): Promise<string | null> {
     const url = this.rawBase + '/' + owner + '/' + repo + '/' + branch + '/' + filePath;
-    const resp = await fetch(url, { headers: this.headers(), signal: AbortSignal.timeout(15000) });
+    const resp = await this.fetchWithRetry(url);
     if (resp.status === 404) return null;
     if (!resp.ok) {
       const text = await resp.text();

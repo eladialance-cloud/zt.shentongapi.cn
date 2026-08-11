@@ -89,3 +89,22 @@ test('getRepoTree 过滤后超过 500 个文件时按上限截断', async () => 
   // 根文件全部保留（根优先）
   assert.ok(files.some(f => f.path === 'root-299.json'));
 });
+
+
+test('网络抖动时 fetch 自动重试（前两次超时，第三次成功）', async () => {
+  const calls: string[] = [];
+  mockFetch(async (url, init) => {
+    calls.push(String(url));
+    void init;
+    if (calls.length < 3) throw new Error('The operation was aborted due to timeout');
+    return { ok: true, status: 200, json: async () => ({ names: ['ai'] }) };
+  });
+  const topics = await svc.getRepoTopics('x', 'y');
+  assert.deepEqual(topics, ['ai']);
+  assert.equal(calls.length, 3);
+});
+
+test('多次重试仍失败时抛出业务异常', async () => {
+  mockFetch(async () => { throw new Error('The operation was aborted due to timeout'); });
+  await assert.rejects(() => svc.getRepoTopics('x', 'y'), /GitHub 请求失败/);
+});
