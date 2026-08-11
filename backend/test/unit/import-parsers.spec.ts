@@ -149,4 +149,59 @@ test('mcp-parser: README 含 github.com 带路径链接（非仓库主页）→ 
   assert.deepEqual(drafts[0].payload.args, ['src-mcp']);
 });
 
+test('mcp-parser: Python 项目（pyproject.toml + README http 端点）→ http 传输 + runtime python', async () => {
+  const ctx = baseCtx([
+    { path: 'pyproject.toml', content: '[project]\nname = "n8n-mcp-py"\nversion = "0.1.0"' },
+    { path: 'README.md', content: 'Server URL: http://localhost:8000/sse' },
+  ], []);
+  const drafts = await new McpParser().parse(ctx);
+  assert.equal(drafts.length, 1);
+  assert.equal(drafts[0].name, 'n8n-mcp-py');
+  assert.equal(drafts[0].payload.runtime, 'python');
+  assert.equal(drafts[0].payload.transportType, 'http');
+  assert.equal(drafts[0].payload.url, 'http://localhost:8000/sse');
+});
 
+test('mcp-parser: Python 项目无服务地址 → stdio uvx 兜底', async () => {
+  const ctx = baseCtx([
+    { path: 'pyproject.toml', content: '[project]\nname = "uv-mcp"\nversion = "1.0.0"' },
+    { path: 'README.md', content: 'A python MCP server' },
+  ], []);
+  const drafts = await new McpParser().parse(ctx);
+  assert.equal(drafts.length, 1);
+  assert.equal(drafts[0].payload.runtime, 'python');
+  assert.equal(drafts[0].payload.transportType, 'stdio');
+  assert.equal(drafts[0].payload.command, 'uvx');
+  assert.deepEqual(drafts[0].payload.args, ['uv-mcp']);
+});
+
+test('mcp-parser: 仅 setup.py 也能提取包名（无 package.json/pyproject）', async () => {
+  const ctx = baseCtx([
+    { path: 'setup.py', content: 'from setuptools import setup\nsetup(name="setup-mcp", version="0.1")' },
+    { path: 'README.md', content: 'http://127.0.0.1:9000/mcp' },
+  ], []);
+  const drafts = await new McpParser().parse(ctx);
+  assert.equal(drafts.length, 1);
+  assert.equal(drafts[0].name, 'setup-mcp');
+  assert.equal(drafts[0].payload.transportType, 'http');
+});
+
+test('n8n-mcp-parser: Python 项目（无 package.json）同样支持并标记 n8nMcp', async () => {
+  const ctx = baseCtx([
+    { path: 'pyproject.toml', content: '[project]\nname = "n8n-mcp-py"\nversion = "0.1.0"' },
+    { path: 'README.md', content: 'SSE endpoint: https://mcp.example.com/sse' },
+  ], []);
+  const drafts = await new N8nMcpParser().parse(ctx);
+  assert.equal(drafts.length, 1);
+  assert.equal(drafts[0].payload.n8nMcp, true);
+  assert.equal(drafts[0].payload.runtime, 'python');
+  assert.equal(drafts[0].payload.transportType, 'http');
+});
+
+test('mcp-parser: Python 项目无包名（pyproject 无 name）→ 返回空', async () => {
+  const ctx = baseCtx([
+    { path: 'pyproject.toml', content: '[build-system]\nrequires = ["setuptools"]' },
+    { path: 'README.md', content: 'hello' },
+  ], []);
+  assert.deepEqual(await new McpParser().parse(ctx), []);
+});

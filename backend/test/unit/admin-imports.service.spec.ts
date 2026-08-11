@@ -134,7 +134,7 @@ test('run: create→全流程成功，status=succeeded 且 steps 全 done，草�
   assert.equal(row.reviewStatus, 'pending');
 });
 
-test('saveDrafts: name 唯一冲突（Duplicate/1062）→ skipped=1 且任务仍成功', async () => {
+test('saveDrafts: name 唯一冲突（Duplicate/1062）→ skipped=1 且 0 产物任务标记 failed 并提示重名', async () => {
   const jobRepo = makeJobRepo();
   jobRepo.set(makePendingJob('agent'));
   const dupError = new Error('ER_DUP_ENTRY: Duplicate entry \'dup-agent\' for key \'agents.name\'');
@@ -151,9 +151,10 @@ test('saveDrafts: name 唯一冲突（Duplicate/1062）→ skipped=1 且任务�
   await service.run(1, 7);
   const job = jobRepo.job();
   assert.ok(job);
-  assert.equal(job.status, 'succeeded');
+  assert.equal(job.status, 'failed');
   assert.equal(job.result!.skipped, 1);
   assert.equal(job.result!.created.length, 0);
+  assert.ok((job.errorMessage || '').includes('重名'));
   assert.equal(agentRepo.saved.length, 0);
 });
 

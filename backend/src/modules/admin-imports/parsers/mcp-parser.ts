@@ -71,6 +71,23 @@ function firstEndpointUrl(readme: string): string | undefined {
   return undefined;
 }
 
+/** 解析 pyproject.toml [project] 段的 name（仅取首个 [project] 段） */
+function parsePyProjectName(content: string): string | undefined {
+  const idx = content.search(/^\[project\]/m);
+  if (idx < 0) return undefined;
+  const rest = content.slice(idx);
+  const endIdx = rest.slice(1).search(/^\[/m);
+  const block = endIdx > 0 ? rest.slice(0, endIdx + 1) : rest;
+  const m = block.match(/^\s*name\s*=\s*["']([^"']+)["']/m);
+  return m ? m[1] : undefined;
+}
+
+/** 解析 setup.py 的 name = "xxx" */
+function parseSetupPyName(content: string): string | undefined {
+  const m = content.match(/name\s*=\s*["']([^"']+)["']/);
+  return m ? m[1] : undefined;
+}
+
 function asString(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
@@ -94,37 +111,66 @@ export class McpParser implements ImportParser {
 
   async parse(ctx: ImportParseContext): Promise<ImportedAssetDraft[]> {
     const pkgFile = ctx.files.find(f => f.content != null && f.path.toLowerCase() === 'package.json');
-    if (!pkgFile || pkgFile.content == null) return [];
-    let pkg: Record<string, unknown>;
-    try {
-      const v = JSON.parse(pkgFile.content);
-      if (typeof v !== 'object' || v === null || Array.isArray(v)) return [];
-      pkg = v as Record<string, unknown>;
-    } catch {
-      return [];
-    }
-    const name = asString(pkg.name).trim();
-    if (!name) return [];
-    const description = asString(pkg.description);
-    const binName = resolveBinName(pkg, name);
+    const pyProject = ctx.files.find(f => f.content != null && f.path.toLowerCase() === 'pyproject.toml');
+    const setupPy = ctx.files.find(f => f.content != null && f.path.toLowerCase() === 'setup.py');
     const readme = this.findReadme(ctx) ?? '';
     const envTemplate = extractEnvTemplate(readme);
     const url = firstEndpointUrl(readme);
+
+    let name = '';
+    let description = '';
+    let runtime = 'node';
+    let command: string | undefined;
+    let args: string[] | undefined;
+    let sourcePath: string;
+    if (pkgFile && pkgFile.content != null) {
+      let pkg: Record<string, unknown>;
+      try {
+        const v = JSON.parse(pkgFile.content);
+        if (typeof v !== 'object' || v === null || Array.isArray(v)) return [];
+        pkg = v as Record<string, unknown>;
+      } catch {
+        return [];
+      }
+      name = asString(pkg.name).trim();
+      if (!name) return [];
+      description = asString(pkg.description);
+      const binName = resolveBinName(pkg, name);
+      if (binName) {
+        command = 'npx';
+        args = [binName];
+      } else if (!url) {
+        command = 'npx';
+        args = [name];
+      }
+      sourcePath = pkgFile.path;
+    } else {
+      // Python 项目（无 package.json）：pyproject.toml / setup.py 提取包名
+      const pyName = pyProject?.content != null ? parsePyProjectName(pyProject.content) : undefined;
+      const setupName = setupPy?.content != null ? parseSetupPyName(setupPy.content) : undefined;
+      name = (pyName || setupName || '').trim();
+      if (!name) return [];
+      runtime = 'python';
+      if (!url) {
+        // 无服务地址时按 stdio 惯例用 uvx 启动（草稿，管理员可改）
+        command = 'uvx';
+        args = [name];
+      }
+      sourcePath = pyProject?.content != null ? pyProject.path : setupPy?.path ?? 'README.md';
+    }
+
     const payload: Record<string, unknown> = {
-      runtime: 'node',
-      transportType: 'stdio',
+      runtime,
       envTemplate,
     };
-    if (binName) {
-      payload.command = 'npx';
-      payload.args = [binName];
-    } else if (url) {
-      // README 含可靠的 endpoint URL 且无 bin → http 传输
+    if (url) {
+      // README 含可靠的 endpoint URL → http 传输
       payload.transportType = 'http';
       payload.url = url;
     } else {
-      payload.command = 'npx';
-      payload.args = [name];
+      payload.transportType = 'stdio';
+      payload.command = command;
+      payload.args = args;
     }
     if (this.n8nMcp) payload.n8nMcp = true;
     return [
@@ -137,7 +183,7 @@ export class McpParser implements ImportParser {
         tags: [],
         sourceType: 'github',
         sourceRepo: ctx.repoUrl,
-        sourcePath: pkgFile.path,
+        sourcePath,
         githubTopics: ctx.topics,
         payload,
       },

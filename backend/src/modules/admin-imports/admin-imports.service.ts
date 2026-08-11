@@ -151,6 +151,14 @@ export class AdminImportsService implements OnModuleInit {
       this.setStep(job, 'save', 'running'); await this.jobRepo.save(job);
       const result = await this.saveDrafts(job, drafts, adminId);
       this.setStep(job, 'save', 'done');
+      if (result.created.length === 0) {
+        // 0 产物：标记失败并给出可操作原因（避免「导入成功」但无资产的误导）
+        job.status = 'failed';
+        job.errorMessage = this.buildEmptyReason(job.type, allPaths, result.skipped);
+        job.result = result;
+        await this.jobRepo.save(job);
+        return;
+      }
       job.status = 'succeeded';
       job.result = result;
       await this.jobRepo.save(job);
@@ -174,7 +182,7 @@ export class AdminImportsService implements OnModuleInit {
         return paths.filter(p => lower(p).endsWith('.json') && !/package\.json|tsconfig|lock\.json/i.test(p)).slice(0, 50);
       case 'mcp':
       case 'n8n_mcp':
-        return paths.filter(p => lower(p) === 'package.json' || isReadme(p) || lower(p) === 'readme_zh.md').slice(0, 5);
+        return paths.filter(p => lower(p) === 'package.json' || lower(p) === 'pyproject.toml' || lower(p) === 'setup.py' || isReadme(p) || lower(p) === 'readme_zh.md').slice(0, 5);
       case 'skill':
         return paths.filter(p => lower(p).endsWith('skill.md')).slice(0, 30);
       case 'skill_pack':
@@ -188,6 +196,29 @@ export class AdminImportsService implements OnModuleInit {
     if (d.type === 'agent' && typeof p.systemPrompt === 'string') return p.systemPrompt.slice(0, 2000);
     if (d.type === 'workflow' && typeof p.workflowJson === 'string') return (d.description + ' ' + p.workflowJson).slice(0, 2000);
     return (d.description + ' ' + d.githubTopics.join(' ')).slice(0, 2000);
+  }
+
+  /** 0 产物时的失败原因（按类型给出可操作提示，并附仓库文件清单前 20 个） */
+  private buildEmptyReason(type: AssetImportType, paths: string[], skipped: number): string {
+    if (skipped > 0) {
+      return '解析出 ' + skipped + ' 个资产但全部因重名被跳过，请检查管理后台是否已存在同名资产';
+    }
+    const sample = paths.slice(0, 20).join(', ');
+    switch (type) {
+      case 'agent':
+        return '未解析到 Agent：仓库中未找到 agent.json / agent.md 或说明类 .md 文件。仓库文件示例：' + sample;
+      case 'workflow':
+        return '未解析到工作流：仓库中未找到可导入的 .json 工作流文件（已排除 package/tsconfig/lock）。仓库文件示例：' + sample;
+      case 'mcp':
+      case 'n8n_mcp':
+        return '未解析到 MCP：仓库根目录未找到 package.json / pyproject.toml / setup.py，且 README 未提取到服务地址。仓库文件示例：' + sample;
+      case 'skill':
+        return '未解析到技能：仓库中未找到 SKILL.md（若为技能目录/索引仓库，请导入包含 SKILL.md 的具体技能仓库）。仓库文件示例：' + sample;
+      case 'skill_pack':
+        return '未解析到技能包：仓库中未找到 manifest.json / .pack.json。仓库文件示例：' + sample;
+      default:
+        return '未解析到任何资产，仓库文件示例：' + sample;
+    }
   }
 
   /** 落库草稿：各类型映射见决策 1-4；name 唯一冲突跳过计入 skipped */

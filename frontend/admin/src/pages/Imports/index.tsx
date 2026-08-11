@@ -300,20 +300,24 @@ export default function AdminImports() {
           )}
           {progressJob?.status === 'succeeded' && (
             <div className={styles.progressResult}>
-              <Alert type="success" showIcon message="导入成功" />
-              {(progressJob.result?.created?.length ?? 0) > 0 && (
-                <div className={styles.progressResultList}>
-                  {progressJob.result!.created.map((item) => (
-                    <div key={item.id} className={styles.progressResultItem}>
-                      <Tag color="blue">{IMPORT_TYPE_LABEL[item.type] ?? item.type}</Tag>
-                      <span>{item.name}</span>
-                      <span className={styles.progressResultId}>#{item.id}</span>
-                    </div>
-                  ))}
-                  {progressJob.result!.skipped > 0 && (
-                    <div className={styles.progressResultItem}>已跳过 {progressJob.result!.skipped} 个重名资产</div>
-                  )}
-                </div>
+              {(progressJob.result?.created?.length ?? 0) > 0 ? (
+                <>
+                  <Alert type="success" showIcon message={'导入成功，共 ' + progressJob.result!.created.length + ' 个资产'} />
+                  <div className={styles.progressResultList}>
+                    {progressJob.result!.created.map((item) => (
+                      <div key={item.id} className={styles.progressResultItem}>
+                        <Tag color="blue">{IMPORT_TYPE_LABEL[item.type] ?? item.type}</Tag>
+                        <span>{item.name}</span>
+                        <span className={styles.progressResultId}>#{item.id}</span>
+                      </div>
+                    ))}
+                    {progressJob.result!.skipped > 0 && (
+                      <div className={styles.progressResultItem}>已跳过 {progressJob.result!.skipped} 个重名资产</div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <Alert type="warning" showIcon message="导入完成，但未解析到任何资产（任务已标记失败，见详情中的错误信息）" />
               )}
             </div>
           )}
