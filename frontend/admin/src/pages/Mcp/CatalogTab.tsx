@@ -22,8 +22,9 @@ import {
   message
 } from 'antd'
 import type { TableColumnsType } from 'antd'
-import { PlusOutlined, SearchOutlined } from '@ant-design/icons'
+import { PlusOutlined, SearchOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { adminMcpCatalogApi } from '@/api/admin-mcp-api'
+import { reclassifyAsset } from '@/api/admin-classify-api'
 import type {
   EnvTemplateItem,
   McpCatalog,
@@ -289,6 +290,17 @@ export function CatalogTab() {
     }
   }
 
+  const handleReclassify = async (item: McpCatalog) => {
+    try {
+      const result = await reclassifyAsset('mcp', item.id)
+      message.success(`已分类：${result.category}`)
+      void loadList()
+    } catch (err) {
+      console.error('[CatalogTab] reclassify failed:', err)
+      message.error((err as Error).message || '重新分类失败（请检查模型配置）')
+    }
+  }
+
   /* ===== 表格列 ===== */
 
   const columns: TableColumnsType<McpCatalog> = [
@@ -349,6 +361,17 @@ export function CatalogTab() {
       width: 100,
       render: (v?: number) =>
         v === undefined || v === null ? <span style={{ color: '#64748b' }}>-</span> : renderNumber(v)
+    },
+    {
+      title: 'AI 分类',
+      key: 'reclassify',
+      width: 100,
+      fixed: 'right',
+      render: (_: unknown, record: McpCatalog) => (
+        <Button type="link" size="small" icon={<ThunderboltOutlined />} onClick={() => void handleReclassify(record)}>
+          重新分类
+        </Button>
+      ),
     },
     editDeleteActions(handleEdit, handleDelete, '确认删除该目录条目?')
   ]

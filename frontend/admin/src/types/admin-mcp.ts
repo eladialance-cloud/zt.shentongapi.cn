@@ -228,6 +228,10 @@ export interface McpCatalog {
   icon?: string
   homepage?: string
   sourceUrl?: string
+  sourceType?: 'github' | 'manual'
+  sourceRepo?: string
+  sourcePath?: string
+  githubTopics?: string[]
   license?: string
   runtime: McpRuntime
   securityLevel: McpSecurityLevel

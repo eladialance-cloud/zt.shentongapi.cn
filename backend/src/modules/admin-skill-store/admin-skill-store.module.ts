@@ -8,12 +8,14 @@ import { SkillInstallLogEntity } from '../skill-store/entities/skill-install-log
 import { HermesSkillEntity } from '../hermes/entities/hermes-skill.entity';
 import { AdminSkillStoreController } from './admin-skill-store.controller';
 import { AdminSkillStoreService } from './admin-skill-store.service';
+import { AdminClassifyModule } from '../admin-classify/admin-classify.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([SkillSourceEntity, SkillPackageEntity, SkillInstallLogEntity, HermesSkillEntity]),
     AdminAuthModule,
     SkillStoreModule,
+    AdminClassifyModule,
   ],
   controllers: [AdminSkillStoreController],
   providers: [AdminSkillStoreService],

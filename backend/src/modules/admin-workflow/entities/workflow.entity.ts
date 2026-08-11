@@ -14,6 +14,12 @@ export type WorkflowCategory =
   | 'ai_collaboration'
   | 'independent'
   | 'other';
+export type WorkflowSceneCategory =
+  | 'hotspot_monitor'
+  | 'multi_platform_distribution'
+  | 'comment_dm_ops'
+  | 'commercial_data_review'
+  | 'other';
 export type WorkflowReviewStatus = 'pending_review' | 'approved' | 'rejected';
 export type WorkflowPublishStatus =
   | 'draft'
@@ -37,6 +43,17 @@ export class WorkflowEntity extends BaseEntity {
 
   @Column({ length: 64, default: 'other' })
   category: WorkflowCategory;
+  @Column({ name: 'scene_category', length: 32, default: 'other' })
+  sceneCategory: WorkflowSceneCategory;
+
+  @Column({ name: 'source_type', length: 16, default: 'manual' })
+  sourceType: 'github' | 'manual';
+
+  @Column({ name: 'github_topics', type: 'json', nullable: true })
+  githubTopics?: string[];
+
+  @Column({ type: 'json', nullable: true })
+  pricing?: Record<string, unknown>;
 
   // ── n8n 工作流 JSON 定义（核心） ──
   @Column({ name: 'workflow_json', type: 'mediumtext', nullable: true })

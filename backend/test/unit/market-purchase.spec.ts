@@ -38,6 +38,8 @@ function makeService(overrides: Partial<any> = {}) {
     mockRepo([plugin]) as any,
     mockRepo([workflow]) as any,
     mockRepo([agent]) as any,
+    mockRepo([]) as any,
+    mockRepo([]) as any,
     credits as any,
   );
   return { service, purchasedRepo, credits };
@@ -77,6 +79,8 @@ describe('MarketService.purchase', () => {
       service['pluginRepo'] as any,
       service['workflowRepo'] as any,
       service['agentRepo'] as any,
+      mockRepo([]) as any,
+      mockRepo([]) as any,
       {
         freezeCredits: async (u: number, a: number) => { frozenCalls++; return { id: 100, userId: u, amount: a }; },
         settleCredits: async () => { settledCalls++; return {}; },
@@ -98,6 +102,8 @@ describe('MarketService.purchase', () => {
       service['pluginRepo'] as any,
       service['workflowRepo'] as any,
       service['agentRepo'] as any,
+      mockRepo([]) as any,
+      mockRepo([]) as any,
       { freezeCredits: async () => { calls++; return { id: 1 }; }, settleCredits: async () => {} } as any,
     );
     const rec = await svc.purchase(9, 'skill', 1);
@@ -113,6 +119,8 @@ describe('MarketService.purchase', () => {
       service['pluginRepo'] as any,
       service['workflowRepo'] as any,
       service['agentRepo'] as any,
+      mockRepo([]) as any,
+      mockRepo([]) as any,
       { freezeCredits: async () => { calls++; return { id: 1 }; }, settleCredits: async () => {} } as any,
     );
     const rec = await svc.purchase(9, 'plugin', 1);
@@ -140,6 +148,8 @@ describe('MarketService.getDownloadPackage', () => {
       service['pluginRepo'] as any,
       service['workflowRepo'] as any,
       service['agentRepo'] as any,
+      mockRepo([]) as any,
+      mockRepo([]) as any,
       { freezeCredits: async () => ({ id: 1 }), settleCredits: async () => {} } as any,
     );
     const r = await svc.getDownloadPackage(9, 'skill', 1);

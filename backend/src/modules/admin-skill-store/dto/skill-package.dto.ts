@@ -16,6 +16,28 @@ export class UpdateSkillPackageDto {
   @IsString()
   @MaxLength(32)
   category?: string;
+  @IsOptional()
+  @IsIn(['github', 'manual'])
+  sourceType?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  sourceRepo?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  sourcePath?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  githubTopics?: string[];
+
+  @IsOptional()
+  @IsObject()
+  pricing?: Record<string, unknown>;
 
   @IsOptional()
   @IsArray()

@@ -1,0 +1,79 @@
+.card {
+  composes: card from '../shared.module.css';
+}
+
+.tableWrap {
+  composes: tableWrap from '../shared.module.css';
+}
+
+.paginationWrap {
+  composes: paginationWrap from '../shared.module.css';
+}
+
+.toolbar {
+  composes: toolbar from '../shared.module.css';
+}
+
+/* 导入进度 Modal */
+.progressModal {
+  text-align: center;
+}
+
+.progressStep {
+  text-align: left;
+  margin: 8px 0 20px;
+}
+
+.progressError {
+  margin-top: 16px;
+  text-align: left;
+}
+
+.progressResult {
+  margin-top: 16px;
+  text-align: left;
+}
+
+.progressResultList {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progressResultItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progressResultId {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.progressFooter {
+  margin-top: 16px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* 详情 Modal */
+.detailBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detailRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.detailLabel {
+  color: #64748b;
+  width: 48px;
+  flex-shrink: 0;
+}

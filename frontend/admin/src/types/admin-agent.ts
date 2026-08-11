@@ -40,6 +40,12 @@ export interface AdminAgentItem {
   /** 系统提示词 */
   systemPrompt?: string
   category: AgentCategory
+  /** 允许挂载的 MCP 目录 ID 数组 */
+  allowedMcpIds?: number[]
+  /** GitHub 导入时仓库 topics 快照 */
+  githubTopics?: string[]
+  /** 标签(自动分类生成) */
+  tags?: string[]
   /** 使用示例 */
   usageExamples?: string[]
   /** 绑定模型 ID */
@@ -95,7 +101,10 @@ export interface CreateAdminAgentDto {
   displayName?: string
   description: string
   systemPrompt?: string
-  category: AgentCategory
+  category?: AgentCategory
+  allowedMcpIds?: number[]
+  githubTopics?: string[]
+  tags?: string[]
   usageExamples?: string[]
   modelId?: string
   modelConfig?: Record<string, unknown>
@@ -114,6 +123,9 @@ export interface UpdateAdminAgentDto {
   description?: string
   systemPrompt?: string
   category?: AgentCategory
+  allowedMcpIds?: number[]
+  githubTopics?: string[]
+  tags?: string[]
   usageExamples?: string[]
   modelId?: string
   modelConfig?: Record<string, unknown>

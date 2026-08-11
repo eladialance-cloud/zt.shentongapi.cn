@@ -33,6 +33,7 @@ import {
   PlusOutlined,
   ReloadOutlined,
   UploadOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons'
 import {
   createAdminPlugin,
@@ -44,6 +45,7 @@ import {
   unpublishAdminPlugin,
   updateAdminPlugin
 } from '@/api/admin-plugin-api'
+import { reclassifyAsset } from '@/api/admin-classify-api'
 import type {
   AdminPluginItem,
   AdminPluginStatus,
@@ -63,6 +65,18 @@ const TYPE_OPTIONS: Array<{ label: string; value: AdminPluginType }> = [
   { label: '连接器 (Connector)', value: 'connector' },
   { label: '知识库 (Knowledge Base)', value: 'knowledge_base' },
   { label: '工作流 (Workflow)', value: 'workflow' }
+]
+
+const PLUGIN_CATEGORY_OPTIONS = [
+  { label: '数据库', value: 'database' },
+  { label: '搜索', value: 'search' },
+  { label: '浏览器', value: 'browser' },
+  { label: 'Git', value: 'git' },
+  { label: '文件', value: 'files' },
+  { label: '消息', value: 'messaging' },
+  { label: 'AI', value: 'ai' },
+  { label: 'DevOps', value: 'devops' },
+  { label: '其他', value: 'other' },
 ]
 
 const TYPE_LABEL: Record<AdminPluginType, string> = {
@@ -93,6 +107,7 @@ interface PluginFormValues {
   name: string
   description: string
   type: AdminPluginType
+  category?: string
   version: string
   entryPoint?: string
   memoryLimit: number
@@ -168,6 +183,7 @@ export default function AdminPlugins() {
       name: item.name,
       description: item.description,
       type: item.type,
+      category: item.category,
       version: item.version,
       entryPoint: item.entryPoint,
       memoryLimit: item.sandboxConfig?.memoryLimit ?? 256,
@@ -194,6 +210,7 @@ export default function AdminPlugins() {
         name: values.name,
         description: values.description,
         type: values.type,
+        category: values.category,
         version: values.version,
         entryPoint: values.entryPoint,
         sandboxConfig,
@@ -292,6 +309,17 @@ export default function AdminPlugins() {
     }
   }
 
+  const handleReclassify = async (item: AdminPluginItem) => {
+    try {
+      const result = await reclassifyAsset('plugin', item.id)
+      message.success(`已分类：${result.category}`)
+      void loadList()
+    } catch (err) {
+      console.error('[AdminPlugins] reclassify failed:', err)
+      message.error((err as Error).message || '重新分类失败（请检查模型配置）')
+    }
+  }
+
   const columns: TableColumnsType<AdminPluginItem> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
     {
@@ -342,6 +370,17 @@ export default function AdminPlugins() {
       key: 'callCount',
       width: 100,
       render: (v: number) => <span style={{ color: '#c7d2fe' }}>{v.toLocaleString()}</span>
+    },
+    {
+      title: 'AI 分类',
+      key: 'reclassify',
+      width: 100,
+      fixed: 'right',
+      render: (_: unknown, record: AdminPluginItem) => (
+        <Button type="link" size="small" icon={<ThunderboltOutlined />} onClick={() => void handleReclassify(record)}>
+          重新分类
+        </Button>
+      ),
     },
     {
       title: '操作',
@@ -513,6 +552,9 @@ export default function AdminPlugins() {
             rules={[{ required: true, message: '请选择类型' }]}
           >
             <Select options={TYPE_OPTIONS} />
+          </Form.Item>
+          <Form.Item name="category" label="分类">
+            <Select options={PLUGIN_CATEGORY_OPTIONS} placeholder="选择分类（可选）" allowClear />
           </Form.Item>
           <Form.Item
             name="version"

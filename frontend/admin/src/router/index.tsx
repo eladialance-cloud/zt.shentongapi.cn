@@ -66,6 +66,7 @@ const AdminMcp = lazy(() => import('@/pages/Mcp'))
 const AdminInfraHub = lazy(() => import('@/pages/InfraHub'))
 const AdminPlans = lazy(() => import('@/pages/Plans'))
 const AdminApiKeyPool = lazy(() => import('@/pages/ApiKeyPool'))
+const AdminImports = lazy(() => import('@/pages/Imports'))
 
 /** Suspense fallback：Ant Design Spin 居中加载 */
 const SuspenseFallback = (
@@ -165,7 +166,8 @@ const router = createBrowserRouter(
         { path: 'system/announcements', element: withSuspense(<SystemAnnouncements />) },
         // 审核中心 / MCP / 基础设施 / 套餐
         { path: 'review', element: withSuspense(<AdminReview />) },
-        { path: 'mcp', element: withSuspense(<AdminMcp />) },
+        { path: 'imports', element: withSuspense(<AdminImports />) },
+{ path: 'mcp', element: withSuspense(<AdminMcp />) },
         { path: 'infra', element: withSuspense(<AdminInfraHub />) },
         { path: 'plans', element: withSuspense(<AdminPlans />) }
       ]

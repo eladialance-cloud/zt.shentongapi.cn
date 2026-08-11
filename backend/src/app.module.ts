@@ -52,6 +52,8 @@ import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
 import { AdminMcpModule } from './modules/admin-mcp/admin-mcp.module';
 import { AdminOssModule } from './modules/admin-oss/admin-oss.module';
 import { AdminSkillStoreModule } from './modules/admin-skill-store/admin-skill-store.module';
+import { AdminImportsModule } from './modules/admin-imports/admin-imports.module';
+import { AdminClassifyModule } from './modules/admin-classify/admin-classify.module';
 import { AdminSystemModule } from './modules/admin-system/admin-system.module';
 import { AdminCommunityModule } from './modules/admin-community/admin-community.module';
 import { AdminPlanModule } from './modules/admin-plan/admin-plan.module';
@@ -134,6 +136,8 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     AdminMcpModule,
     AdminOssModule,
     AdminSkillStoreModule,
+    AdminClassifyModule,
+    AdminImportsModule,
     AdminSystemModule,
     AdminCommunityModule,
     AdminPlanModule,

@@ -10,6 +10,7 @@ import { AdminMcpController } from './admin-mcp.controller';
 import { AdminMcpService } from './admin-mcp.service';
 import { AdminMcpCatalogController } from './admin-mcp-catalog.controller';
 import { AdminMcpCatalogService } from './admin-mcp-catalog.service';
+import { AdminClassifyModule } from '../admin-classify/admin-classify.module';
 
 /**
  * MCP 全局管理模块
@@ -27,6 +28,7 @@ import { AdminMcpCatalogService } from './admin-mcp-catalog.service';
       McpCatalogEntity,
     ]),
     AdminAuthModule,
+    AdminClassifyModule,
   ],
   controllers: [AdminMcpController, AdminMcpCatalogController],
   providers: [AdminMcpService, AdminMcpCatalogService],

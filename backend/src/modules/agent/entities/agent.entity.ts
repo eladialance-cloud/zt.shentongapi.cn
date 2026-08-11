@@ -64,6 +64,14 @@ export class AgentEntity extends BaseEntity {
 
   @Column({ name: 'allowed_plugin_ids', type: 'json', nullable: true })
   allowedPluginIds?: number[];
+  @Column({ name: 'allowed_mcp_ids', type: 'json', nullable: true })
+  allowedMcpIds?: number[];
+
+  @Column({ name: 'github_topics', type: 'json', nullable: true })
+  githubTopics?: string[];
+
+  @Column({ type: 'json', nullable: true })
+  pricing?: Record<string, unknown>;
 
   @Column({ name: 'allowed_workflow_ids', type: 'json', nullable: true })
   allowedWorkflowIds?: number[];

@@ -13,6 +13,7 @@ import { ModelProviderEntity } from '../admin-model/entities/model-provider.enti
 import { ModelEntity } from '../model/entities/model.entity';
 import { CommonModule } from '../../common/common.module';
 import { ApiKeyPoolModule } from '../api-key-pool/api-key-pool.module';
+import { AdminClassifyModule } from '../admin-classify/admin-classify.module';
 
 /**
  * 管理端 Agent 市场模块
@@ -39,6 +40,7 @@ import { ApiKeyPoolModule } from '../api-key-pool/api-key-pool.module';
     AdminAuthModule,
     CommonModule,
     ApiKeyPoolModule,
+    AdminClassifyModule,
   ],
   controllers: [AdminAgentController],
   providers: [AdminAgentService, AgentTranslateService],

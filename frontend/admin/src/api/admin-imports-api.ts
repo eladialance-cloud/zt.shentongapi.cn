@@ -1,0 +1,35 @@
+// 管理端资产导入 API
+import { adminRequest } from './admin-auth-api'
+import type { AdminPaginatedResult } from '@/types/admin-auth'
+import type { ImportAssetType, ImportJob } from '@/types/admin-imports'
+
+export const IMPORT_TYPE_LABEL: Record<ImportAssetType, string> = {
+  agent: '智能体',
+  workflow: '工作流',
+  mcp: '插件/MCP',
+  skill: '技能',
+  skill_pack: '技能包',
+  n8n_mcp: 'N8N MCP'
+}
+
+/** 提交 GitHub 导入任务 */
+export async function createImport(dto: { type: ImportAssetType; repoUrl: string; branch?: string }): Promise<ImportJob> {
+  return adminRequest<ImportJob>('post', '/admin/imports', { data: dto })
+}
+
+/** 导入任务列表 */
+export async function listImports(
+  query: { page?: number; pageSize?: number; type?: string; status?: string } = {}
+): Promise<AdminPaginatedResult<ImportJob>> {
+  return adminRequest<AdminPaginatedResult<ImportJob>>('get', '/admin/imports', { params: query as Record<string, unknown> })
+}
+
+/** 导入任务详情（前端轮询进度） */
+export async function getImport(id: number): Promise<ImportJob> {
+  return adminRequest<ImportJob>('get', `/admin/imports/${id}`)
+}
+
+/** 重试失败的导入任务 */
+export async function retryImport(id: number): Promise<ImportJob> {
+  return adminRequest<ImportJob>('post', `/admin/imports/${id}/retry`)
+}

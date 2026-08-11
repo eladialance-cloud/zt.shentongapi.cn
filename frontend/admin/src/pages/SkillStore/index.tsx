@@ -38,7 +38,8 @@ import {
   MedicineBoxOutlined,
   PlusOutlined,
   ShopOutlined,
-  UploadOutlined
+  UploadOutlined,
+  ThunderboltOutlined
 } from '@ant-design/icons'
 import {
   analyzeSkillSource,
@@ -57,6 +58,7 @@ import {
   uploadSkillSource,
   batchDeleteSkillPackages,
 } from '@/api/admin-skill-store-api'
+import { reclassifyAsset } from '@/api/admin-classify-api'
 import type {
   AdminSkillPackage,
   AdminSkillSource,
@@ -486,6 +488,17 @@ export default function AdminSkillStore() {
     }
   }
 
+  const handleReclassify = async (pkg: AdminSkillPackage) => {
+    try {
+      const result = await reclassifyAsset('skill', pkg.id)
+      message.success(`已分类：${result.category}`)
+      void loadPackages()
+    } catch (err) {
+      console.error('[SkillStore] reclassify failed:', err)
+      message.error((err as Error).message || '重新分类失败（请检查模型配置）')
+    }
+  }
+
   const sourceColumns: TableColumnsType<AdminSkillSource> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
     {
@@ -620,6 +633,17 @@ export default function AdminSkillStore() {
       key: 'callCount',
       width: 100,
       render: (v: number) => <span className={styles.muted}>{(v || 0).toLocaleString()}</span>
+    },
+    {
+      title: 'AI 分类',
+      key: 'reclassify',
+      width: 100,
+      fixed: 'right',
+      render: (_: unknown, record: AdminSkillPackage) => (
+        <Button type="link" size="small" icon={<ThunderboltOutlined />} onClick={() => void handleReclassify(record)}>
+          重新分类
+        </Button>
+      ),
     },
     {
       title: '操作',

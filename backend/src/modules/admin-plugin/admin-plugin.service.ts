@@ -1,4 +1,4 @@
-﻿import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+﻿import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
@@ -14,6 +14,8 @@ import {
   UpdateAdminPluginDto,
 } from './dto/plugin.dto';
 import { extractZipFile } from '../../common/utils/zip.util';
+import { normalizeTags } from '../../common/utils/asset-common';
+import { AiClassifyService } from '../admin-classify/ai-classify.service';
 
 /**
  * 管理端插件服务
@@ -28,6 +30,7 @@ export class AdminPluginService {
   constructor(
     @InjectRepository(PluginEntity)
     private readonly repo: Repository<PluginEntity>,
+    @Optional() private readonly aiClassify?: AiClassifyService,
   ) {}
 
   /** 插件列表（分页） */
@@ -69,10 +72,19 @@ export class AdminPluginService {
       description: dto.description,
       version: dto.version,
       mcpServerUrl: dto.entryPoint,
+      category: dto.category,
+      sourceType: dto.sourceType === 'github' ? 'github' : 'manual',
+      sourceRepo: dto.sourceRepo?.trim(),
+      sourcePath: dto.sourcePath?.trim(),
+      githubTopics: normalizeTags(dto.githubTopics),
+      pricing: dto.pricing,
       isOfficial: false,
       isActive: false,
     });
     const saved = await this.repo.save(entity);
+    if (!dto.category && this.aiClassify) {
+      void this.aiClassify.classifyAndUpdate('plugin', saved.id);
+    }
     return this.toItem(saved);
   }
 
@@ -86,6 +98,12 @@ export class AdminPluginService {
     if (dto.description !== undefined) plugin.description = dto.description;
     if (dto.version !== undefined) plugin.version = dto.version;
     if (dto.entryPoint !== undefined) plugin.mcpServerUrl = dto.entryPoint;
+    if (dto.category !== undefined) plugin.category = dto.category;
+    if (dto.sourceType !== undefined) plugin.sourceType = dto.sourceType === 'github' ? 'github' : 'manual';
+    if (dto.sourceRepo !== undefined) plugin.sourceRepo = dto.sourceRepo.trim();
+    if (dto.sourcePath !== undefined) plugin.sourcePath = dto.sourcePath.trim();
+    if (dto.githubTopics !== undefined) plugin.githubTopics = normalizeTags(dto.githubTopics);
+    if (dto.pricing !== undefined) plugin.pricing = dto.pricing;
     await this.repo.save(plugin);
   }
 

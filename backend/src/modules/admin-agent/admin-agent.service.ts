@@ -1,4 +1,4 @@
-﻿import { Injectable, Logger } from '@nestjs/common';
+﻿import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { exec } from 'child_process';
@@ -27,10 +27,12 @@ import { RejectAgentDto } from './dto/reject-agent.dto';
 import { ImportGithubDto } from './dto/import-github.dto';
 import { UpdateCategoryDisplayDto } from './dto/update-category-display.dto';
 import { extractZipFile } from '../../common/utils/zip.util';
+import { normalizeTags } from '../../common/utils/asset-common';
 import {
   ParsedAgentMarkdown,
   parseAgentMarkdown,
 } from './agent-import.parser';
+import { AiClassifyService } from '../admin-classify/ai-classify.service';
 import {
   AgentCategory,
   BATCH_SIZE,
@@ -85,6 +87,7 @@ export class AdminAgentService {
     @InjectRepository(AgentImportTaskEntity)
     private agentImportTaskRepo: Repository<AgentImportTaskEntity>,
     private readonly agentTranslateService: AgentTranslateService,
+    @Optional() private readonly aiClassify?: AiClassifyService,
   ) {}
 
   // ============ Agent CRUD ============
@@ -154,11 +157,18 @@ export class AdminAgentService {
       creatorType: 'official',
       status: 'draft',
       category: dto.category,
+      allowedMcpIds: dto.allowedMcpIds,
+      tags: normalizeTags(dto.tags),
+      githubTopics: normalizeTags(dto.githubTopics),
+      pricing: dto.pricing,
       sourceType: 'official',
       runtimeType: 'openclaw',
       userId: 0,
     });
     const saved = await this.agentRepo.save(agent);
+    if (!dto.category && this.aiClassify) {
+      void this.aiClassify.classifyAndUpdate('agent', saved.id);
+    }
     return (await this.toAdminAgentItems([saved as AgentEntity]))[0];
   }
 
@@ -177,6 +187,10 @@ export class AdminAgentService {
     }
     if (dto.modelId !== undefined) agent.modelId = dto.modelId;
     if (dto.category !== undefined) agent.category = dto.category;
+    if (dto.allowedMcpIds !== undefined) agent.allowedMcpIds = dto.allowedMcpIds;
+    if (dto.tags !== undefined) agent.tags = normalizeTags(dto.tags);
+    if (dto.githubTopics !== undefined) agent.githubTopics = normalizeTags(dto.githubTopics);
+    if (dto.pricing !== undefined) agent.pricing = dto.pricing;
     if (dto.pricePerCall !== undefined) agent.pricePerCall = dto.pricePerCall;
     if (dto.pricingMode !== undefined) {
       if (dto.pricingMode === 'perToken') {
@@ -712,7 +726,7 @@ export class AdminAgentService {
       for (let i = 0; i < updatePayloads.length; i += BATCH_SIZE) {
         const batch = updatePayloads.slice(i, i + BATCH_SIZE);
         for (const payload of batch) {
-          await this.agentRepo.update(payload.id, payload.fields);
+          await this.agentRepo.update(payload.id, payload.fields as any);
         }
         processedCount += batch.length;
         if (taskId) {
@@ -868,6 +882,9 @@ export class AdminAgentService {
         description: zh?.description || a.description || '',
         systemPrompt: a.systemPrompt,
         category: a.category,
+        allowedMcpIds: a.allowedMcpIds,
+        githubTopics: a.githubTopics,
+        tags: a.tags,
         usageExamples: a.usageExample ? a.usageExample.split('\n').filter(Boolean) : undefined,
         modelId: a.modelId,
         creatorType: a.creatorType,

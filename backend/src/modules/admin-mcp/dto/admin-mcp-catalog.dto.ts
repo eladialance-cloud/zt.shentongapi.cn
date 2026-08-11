@@ -3,6 +3,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsObject,
   IsOptional,
@@ -75,6 +76,28 @@ export class CreateMcpCatalogDto {
   @IsString()
   @MaxLength(512)
   sourceUrl?: string;
+  @IsOptional()
+  @IsIn(['github', 'manual'])
+  sourceType?: 'github' | 'manual';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  sourceRepo?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  sourcePath?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  githubTopics?: string[];
+
+  @IsOptional()
+  @IsObject()
+  pricing?: Record<string, unknown>;
 
   @IsOptional()
   @IsString()
@@ -173,6 +196,28 @@ export class UpdateMcpCatalogDto {
   @IsString()
   @MaxLength(512)
   sourceUrl?: string;
+  @IsOptional()
+  @IsIn(['github', 'manual'])
+  sourceType?: 'github' | 'manual';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  sourceRepo?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  sourcePath?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  githubTopics?: string[];
+
+  @IsOptional()
+  @IsObject()
+  pricing?: Record<string, unknown>;
 
   @IsOptional()
   @IsString()

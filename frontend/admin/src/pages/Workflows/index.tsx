@@ -49,6 +49,7 @@ import {
   rejectWorkflow,
   updateAdminWorkflow,
 } from '@/api/admin-workflow-api'
+import { reclassifyAsset } from '@/api/admin-classify-api'
 import type {
   AdminWorkflowItem,
   CreateAdminWorkflowDto,
@@ -79,6 +80,14 @@ const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
   CATEGORY_OPTIONS.map((o) => [o.value, o.label]),
 )
 
+const SCENE_CATEGORY_OPTIONS = [
+  { label: '热点监控', value: 'hotspot_monitor' },
+  { label: '多平台分发', value: 'multi_platform_distribution' },
+  { label: '评论私信运营', value: 'comment_dm_ops' },
+  { label: '商单数据复盘', value: 'commercial_data_review' },
+  { label: '其他', value: 'other' },
+]
+
 const TABS: Array<{ key: WorkflowPublishStatus; label: string }> = [
   { key: 'draft', label: '草稿' },
   { key: 'pending_review', label: '待审核' },
@@ -102,6 +111,7 @@ interface WorkflowFormValues {
   n8nWorkflowId?: string
   cozeWorkflowId?: string
   category: string
+  sceneCategory?: string
   inputSchema?: string
   outputSchema?: string
   pricePerExecution: number
@@ -212,6 +222,7 @@ export default function AdminWorkflows() {
       n8nWorkflowId: item.n8nWorkflowId,
       cozeWorkflowId: item.cozeWorkflowId,
       category: item.category,
+      sceneCategory: item.sceneCategory,
       inputSchema: item.inputSchema ? JSON.stringify(item.inputSchema, null, 2) : '',
       outputSchema: item.outputSchema ? JSON.stringify(item.outputSchema, null, 2) : '',
       pricePerExecution: item.pricePerExecution,
@@ -247,6 +258,7 @@ export default function AdminWorkflows() {
           n8nWorkflowId: values.engineType === 'n8n' ? values.n8nWorkflowId : undefined,
           cozeWorkflowId: values.engineType === 'coze' ? values.cozeWorkflowId : undefined,
           category: values.category,
+          sceneCategory: values.sceneCategory,
           inputSchema: inputSchemaParsed,
           outputSchema: outputSchemaParsed,
           pricePerExecution: values.pricePerExecution,
@@ -318,6 +330,17 @@ export default function AdminWorkflows() {
     } catch (err) {
       console.error('[Workflows] delete failed:', err)
       message.error('删除失败')
+    }
+  }
+
+  const handleReclassify = async (item: AdminWorkflowItem) => {
+    try {
+      const result = await reclassifyAsset('workflow', item.id)
+      message.success(`已分类：${result.category}`)
+      void loadList()
+    } catch (err) {
+      console.error('[Workflows] reclassify failed:', err)
+      message.error((err as Error).message || '重新分类失败（请检查模型配置）')
     }
   }
 
@@ -509,6 +532,18 @@ export default function AdminWorkflows() {
     },
   ]
 
+  const reclassifyColumn: TableColumnsType<AdminWorkflowItem>[0] = {
+    title: 'AI 分类',
+    key: 'reclassify',
+    width: 100,
+    fixed: 'right',
+    render: (_: unknown, record: AdminWorkflowItem) => (
+      <Button type="link" size="small" icon={<ThunderboltOutlined />} onClick={() => void handleReclassify(record)}>
+        重新分类
+      </Button>
+    ),
+  }
+
   const actionColumn: TableColumnsType<AdminWorkflowItem>[0] = {
     title: '操作',
     key: 'action',
@@ -631,6 +666,7 @@ export default function AdminWorkflows() {
           ) : null,
       })
     }
+    cols.push(reclassifyColumn)
     cols.push(actionColumn)
     return cols
   })()
@@ -801,6 +837,9 @@ export default function AdminWorkflows() {
           </Form.Item>
           <Form.Item name="category" label="分类" rules={[{ required: true }]}>
             <Select options={CATEGORY_OPTIONS} />
+          </Form.Item>
+          <Form.Item name="sceneCategory" label="场景分类">
+            <Select options={SCENE_CATEGORY_OPTIONS} placeholder="选择使用场景（可选）" allowClear />
           </Form.Item>
           <Form.Item name="triggerType" label="触发类型">
             <Input placeholder="如:webhook / schedule / manual" />

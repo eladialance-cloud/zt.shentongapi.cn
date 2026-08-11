@@ -3,10 +3,12 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { WorkflowEntity, WorkflowPublishStatus } from './entities/workflow.entity';
+import type { WorkflowSceneCategory } from './entities/workflow.entity';
 import { N8nWorkflowExecLogEntity } from './entities/n8n-workflow-exec-log.entity';
 import { WorkflowMcpBindEntity } from './entities/workflow-mcp-bind.entity';
 import {
@@ -22,6 +24,8 @@ import * as path from 'path';
 import * as os from 'os';
 import fg from 'fast-glob';
 import { extractZipFile } from '../../common/utils/zip.util';
+import { normalizeTags } from '../../common/utils/asset-common';
+import { AiClassifyService } from '../admin-classify/ai-classify.service';
 
 const execFileAsync = promisify(execFile);
 
@@ -52,6 +56,7 @@ export class AdminWorkflowService {
     private readonly execLogRepo: Repository<N8nWorkflowExecLogEntity>,
     @InjectRepository(WorkflowMcpBindEntity)
     private readonly bindRepo: Repository<WorkflowMcpBindEntity>,
+    @Optional() private readonly aiClassify?: AiClassifyService,
   ) {}
 
   // ═══════════════════════════════════════════════════════════
@@ -110,6 +115,10 @@ export class AdminWorkflowService {
       cozeWorkflowId: dto.cozeWorkflowId,
       workflowJson: dto.workflowJson,
       category: dto.category as WorkflowEntity['category'],
+      sceneCategory: (dto.sceneCategory ?? 'other') as WorkflowSceneCategory,
+      sourceType: dto.sourceType === 'github' ? 'github' : 'manual',
+      githubTopics: normalizeTags(dto.githubTopics),
+      pricing: dto.pricing,
       inputSchema: dto.inputSchema,
       outputSchema: dto.outputSchema,
       pricePerExecution: dto.pricePerExecution,
@@ -118,12 +127,16 @@ export class AdminWorkflowService {
       publishStatus: 'draft',
       reviewStatus: 'pending_review',
       icon: dto.icon,
-      tags: dto.tags,
+      tags: normalizeTags(dto.tags),
       triggerType: dto.triggerType,
       nodeCount: dto.nodeCount ?? 0,
       executionCount: 0,
     });
-    return this.workflowRepo.save(entity);
+    const saved = await this.workflowRepo.save(entity);
+    if (!dto.category && this.aiClassify) {
+      void this.aiClassify.classifyAndUpdate('workflow', saved.id);
+    }
+    return saved;
   }
 
   async update(id: number, dto: UpdateAdminWorkflowDto): Promise<void> {
@@ -132,10 +145,17 @@ export class AdminWorkflowService {
       'name', 'description', 'engineType', 'n8nWorkflowId', 'cozeWorkflowId',
       'workflowJson', 'category', 'inputSchema', 'outputSchema',
       'pricePerExecution', 'isActive', 'isPublished', 'icon', 'tags',
-      'triggerType', 'nodeCount',
+      'triggerType', 'nodeCount', 'sceneCategory', 'sourceType', 'githubTopics', 'pricing',
     ];
     for (const key of simpleFields) {
-      if (dto[key] !== undefined) (workflow as any)[key] = dto[key];
+      if (dto[key] === undefined) continue;
+      if (key === 'githubTopics' || key === 'tags') {
+        (workflow as any)[key] = normalizeTags(dto[key]);
+      } else if (key === 'sourceType') {
+        (workflow as any)[key] = dto.sourceType === 'github' ? 'github' : 'manual';
+      } else {
+        (workflow as any)[key] = dto[key];
+      }
     }
     if (dto.publishStatus !== undefined) {
       workflow.publishStatus = dto.publishStatus as WorkflowPublishStatus;

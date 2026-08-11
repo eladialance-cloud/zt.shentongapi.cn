@@ -40,6 +40,7 @@ import {
   CloseOutlined,
   StopOutlined,
   UploadOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons'
 import {
   createAdminAgent,
@@ -54,7 +55,9 @@ import {
   rejectAgent,
   forceUnpublishAgent,
 } from '@/api/admin-agent-api'
+import { reclassifyAsset } from '@/api/admin-classify-api'
 import { listAdminModels } from '@/api/admin-model-api'
+import { listMcpCatalog } from '@/api/admin-mcp-api'
 import type {
   AdminAgentItem,
   AgentCategory,
@@ -111,6 +114,9 @@ interface AgentFormValues {
   description: string
   systemPrompt?: string
   category: AgentCategory
+  allowedMcpIds?: number[]
+  githubTopics?: string[]
+  tags?: string[]
   usageExamples?: string[]
   modelId?: string
   modelConfig?: string
@@ -135,6 +141,9 @@ export default function AdminAgents() {
   const [editing, setEditing] = useState<AdminAgentItem | null>(null)
   const [form] = Form.useForm<AgentFormValues>()
   const [saving, setSaving] = useState(false)
+
+  // MCP 目录选项（Agent 挂载选择用）
+  const [mcpOptions, setMcpOptions] = useState<Array<{ label: string; value: number }>>([])
 
   // 审核驳回
   const [rejectOpen, setRejectOpen] = useState(false)
@@ -200,6 +209,7 @@ export default function AdminAgents() {
     form.resetFields()
     form.setFieldsValue({
       category: 'office',
+      allowedMcpIds: [],
       pricingMode: 'perCall',
       pricePerCall: 0,
       pricePerTokenInput: 0,
@@ -217,6 +227,9 @@ export default function AdminAgents() {
       description: item.description,
       systemPrompt: item.systemPrompt,
       category: item.category,
+      allowedMcpIds: item.allowedMcpIds || [],
+      githubTopics: item.githubTopics || [],
+      tags: item.tags || [],
       usageExamples: item.usageExamples || [],
       modelId: item.modelId,
       modelConfig: item.modelConfig ? JSON.stringify(item.modelConfig, null, 2) : '',
@@ -250,6 +263,9 @@ export default function AdminAgents() {
           description: values.description,
           systemPrompt: values.systemPrompt,
           category: values.category,
+          allowedMcpIds: values.allowedMcpIds,
+          githubTopics: values.githubTopics,
+          tags: values.tags,
           usageExamples,
           modelId: values.modelId,
           modelConfig: modelConfigParsed,
@@ -270,6 +286,9 @@ export default function AdminAgents() {
           description: values.description,
           systemPrompt: values.systemPrompt,
           category: values.category,
+          allowedMcpIds: values.allowedMcpIds,
+          githubTopics: values.githubTopics,
+          tags: values.tags,
           usageExamples,
           modelId: values.modelId,
           modelConfig: modelConfigParsed,
@@ -326,6 +345,17 @@ export default function AdminAgents() {
     }
   }
 
+  const handleReclassify = async (item: AdminAgentItem) => {
+    try {
+      const result = await reclassifyAsset('agent', item.id)
+      message.success(`已分类：${result.category}`)
+      void loadList()
+    } catch (err) {
+      console.error('[AdminAgents] reclassify failed:', err)
+      message.error((err as Error).message || '重新分类失败（请检查模型配置）')
+    }
+  }
+
   // 加载模型列表（供翻译模型选择）
   useEffect(() => {
     void listAdminModels({ enabled: true, pageSize: 100 })
@@ -334,6 +364,13 @@ export default function AdminAgents() {
         setModels(res.list || [])
       })
       .catch((err) => console.error('[AdminAgents] load models failed:', err))
+  }, [])
+
+  // 加载 MCP 目录选项（供 allowedMcpIds 多选）
+  useEffect(() => {
+    listMcpCatalog({ page: 1, pageSize: 500 })
+      .then((res) => setMcpOptions(res.list.map((c) => ({ label: c.name, value: c.id }))))
+      .catch(() => setMcpOptions([]))
   }, [])
 
   const handleLocalUpload = async (file: File) => {
@@ -485,6 +522,18 @@ export default function AdminAgents() {
     },
   ]
 
+  const reclassifyColumn: TableColumnsType<AdminAgentItem>[0] = {
+    title: 'AI 分类',
+    key: 'reclassify',
+    width: 100,
+    fixed: 'right',
+    render: (_: unknown, record: AdminAgentItem) => (
+      <Button type="link" size="small" icon={<ThunderboltOutlined />} onClick={() => void handleReclassify(record)}>
+        重新分类
+      </Button>
+    ),
+  }
+
   const actionColumn: TableColumnsType<AdminAgentItem>[0] = {
     title: '操作',
     key: 'action',
@@ -592,9 +641,10 @@ export default function AdminAgents() {
           render: (v: string | undefined) =>
             v ? <span style={{ color: '#f87171', fontSize: 12 }}>{v}</span> : <span style={{ color: '#8b949e' }}>-</span>
         },
+        reclassifyColumn,
         actionColumn,
       ]
-    : [...commonColumns, actionColumn]
+    : [...commonColumns, reclassifyColumn, actionColumn]
 
   return (
     <div className={styles.page}>
@@ -735,6 +785,20 @@ export default function AdminAgents() {
             rules={[{ required: true, message: '请选择分类' }]}
           >
             <Select options={CATEGORY_OPTIONS} />
+          </Form.Item>
+          <Form.Item name="allowedMcpIds" label="允许挂载 MCP">
+            <Select
+              mode="multiple"
+              options={mcpOptions}
+              placeholder="选择该 Agent 可挂载的 MCP（可多选）"
+              allowClear
+            />
+          </Form.Item>
+          <Form.Item name="githubTopics" label="GitHub Topics">
+            <Select mode="tags" placeholder="GitHub 导入仓库 topics 快照（可编辑）" allowClear />
+          </Form.Item>
+          <Form.Item name="tags" label="标签">
+            <Select mode="tags" placeholder="输入标签后回车" allowClear />
           </Form.Item>
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: 'block', marginBottom: 8, color: '#e6edf3' }}>使用示例</label>

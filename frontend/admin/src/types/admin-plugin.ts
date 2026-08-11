@@ -72,6 +72,8 @@ export interface AdminPluginItem {
   name: string
   description: string
   type: AdminPluginType
+  /** 分类 */
+  category?: string
   version: string
   /** 入口 */
   entryPoint?: string
@@ -144,6 +146,11 @@ export interface CreateAdminPluginDto {
   name: string
   description: string
   type: AdminPluginType
+  category?: string
+  sourceType?: 'github' | 'manual'
+  sourceRepo?: string
+  sourcePath?: string
+  githubTopics?: string[]
   version: string
   entryPoint?: string
   sandboxConfig?: SandboxConfig
@@ -158,6 +165,11 @@ export interface UpdateAdminPluginDto {
   name?: string
   description?: string
   type?: AdminPluginType
+  category?: string
+  sourceType?: 'github' | 'manual'
+  sourceRepo?: string
+  sourcePath?: string
+  githubTopics?: string[]
   version?: string
   entryPoint?: string
   sandboxConfig?: SandboxConfig

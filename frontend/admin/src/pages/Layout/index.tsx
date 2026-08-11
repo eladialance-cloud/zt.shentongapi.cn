@@ -12,6 +12,7 @@ import {
   CloudServerOutlined,
   DashboardOutlined,
   DollarOutlined,
+  GithubOutlined,
   LogoutOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
@@ -53,7 +54,8 @@ const MENU_ENTRIES: MenuEntry[] = [
       { key: 'plugins', label: '插件', path: '/plugins' },
       { key: 'skills', label: '技能', path: '/skills' },
       { key: 'knowledge-bases', label: '官方知识库', path: '/content/knowledge-bases' },
-      { key: 'review', label: '审核中心', path: '/review' }
+      { key: 'review', label: '审核中心', path: '/review' },
+      { key: 'imports', label: 'GitHub 导入', path: '/imports', icon: <GithubOutlined /> }
     ]
   },
   {

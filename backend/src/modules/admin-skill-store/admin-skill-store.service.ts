@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as fs from 'fs/promises';
@@ -10,11 +10,13 @@ import { SkillAnalyzerService } from '../skill-store/services/skill-analyzer.ser
 import { SkillRunnerService } from '../skill-store/services/skill-runner.service';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/constants/error.constant';
+import { AiClassifyService } from '../admin-classify/ai-classify.service';
 import {
   CreateSkillSourceDto,
   SkillSourceQueryDto,
 } from './dto/skill-source.dto';
 import { UploadSkillSourceDto } from './dto/upload-skill-source.dto';
+import { pickGitHubSourceFields } from '../../common/utils/asset-common';
 import * as path from 'path';
 import {
   SkillPackageQueryDto,
@@ -40,6 +42,7 @@ export class AdminSkillStoreService {
     private readonly installLogRepo: Repository<SkillInstallLogEntity>,
     private readonly analyzerService: SkillAnalyzerService,
     private readonly skillRunnerService: SkillRunnerService,
+    @Optional() private readonly aiClassify?: AiClassifyService,
   ) {}
 
   /** 提交技能源：创建为 pending 状态并落库 */
@@ -183,7 +186,16 @@ export class AdminSkillStoreService {
       BusinessException.throw(ErrorCode.NOT_FOUND, `技能包 ${id} 不存在`);
     }
     Object.assign(pkg, dto);
-    await this.packageRepo.save(pkg);
+    const gh = pickGitHubSourceFields(dto);
+    if (dto.sourceType !== undefined) pkg.sourceType = gh.sourceType;
+    if (dto.githubTopics !== undefined) pkg.githubTopics = gh.githubTopics;
+    if (dto.sourceRepo !== undefined) pkg.sourceRepo = gh.sourceRepo;
+    if (dto.sourcePath !== undefined) pkg.sourcePath = gh.sourcePath;
+    if (dto.pricing !== undefined) pkg.pricing = gh.pricing;
+    const saved = await this.packageRepo.save(pkg);
+    if (!pkg.category && this.aiClassify) {
+      void this.aiClassify.classifyAndUpdate('skill', saved.id);
+    }
   }
 
   /** 提交审核：仅 draft 状态可提交 */
@@ -321,6 +333,12 @@ export class AdminSkillStoreService {
       category: pkg.category || '其他',
       tags: pkg.triggerKeywords || [],
       execConfig: execConfig as any,
+      skillIds: [pkg.id],
+      sourceType: pkg.sourceType ?? 'manual',
+      sourceRepo: pkg.sourceRepo,
+      sourcePath: pkg.sourcePath,
+      githubTopics: pkg.githubTopics,
+      pricing: pkg.pricing,
       sourcePackageId: pkg.id,
     };
     if (existing) {

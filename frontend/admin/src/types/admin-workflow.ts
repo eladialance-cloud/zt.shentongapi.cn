@@ -34,6 +34,12 @@ export interface AdminWorkflowItem {
   /** Coze 工作流 ID */
   cozeWorkflowId?: string
   category: string
+  /** 场景分类 */
+  sceneCategory?: string
+  /** 来源: github=导入 manual=手工 */
+  sourceType?: 'github' | 'manual'
+  /** GitHub 导入时仓库 topics 快照 */
+  githubTopics?: string[]
   /** n8n JSON 原始定义 */
   workflowJson?: string
   /** 输入参数 Schema */
@@ -89,7 +95,10 @@ export interface CreateAdminWorkflowDto {
   n8nWorkflowId?: string
   cozeWorkflowId?: string
   workflowJson?: string
-  category: string
+  category?: string
+  sceneCategory?: string
+  sourceType?: 'github' | 'manual'
+  githubTopics?: string[]
   inputSchema?: Record<string, unknown>
   outputSchema?: Record<string, unknown>
   pricePerExecution: number
@@ -109,6 +118,9 @@ export interface UpdateAdminWorkflowDto {
   cozeWorkflowId?: string
   workflowJson?: string
   category?: string
+  sceneCategory?: string
+  sourceType?: 'github' | 'manual'
+  githubTopics?: string[]
   inputSchema?: Record<string, unknown>
   outputSchema?: Record<string, unknown>
   pricePerExecution?: number

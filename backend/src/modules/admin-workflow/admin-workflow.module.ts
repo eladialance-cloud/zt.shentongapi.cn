@@ -6,6 +6,7 @@ import { N8nWorkflowExecLogEntity } from './entities/n8n-workflow-exec-log.entit
 import { WorkflowMcpBindEntity } from './entities/workflow-mcp-bind.entity';
 import { AdminWorkflowController } from './admin-workflow.controller';
 import { AdminWorkflowService } from './admin-workflow.service';
+import { AdminClassifyModule } from '../admin-classify/admin-classify.module';
 
 /**
  * 管理端工作流模板模块（合并版）
@@ -21,6 +22,7 @@ import { AdminWorkflowService } from './admin-workflow.service';
       WorkflowMcpBindEntity,
     ]),
     AdminAuthModule,
+    AdminClassifyModule,
   ],
   controllers: [AdminWorkflowController],
   providers: [AdminWorkflowService],

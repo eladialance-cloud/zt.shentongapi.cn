@@ -83,6 +83,24 @@ export class HermesSkillEntity extends BaseEntity {
   /** 标签（JSON 数组） */
   @Column({ type: 'json', nullable: true })
   tags?: string[];
+  /** 挂载的技能 ID 数组（skill_packages.id，设计文档 3.5） */
+  @Column({ name: 'skill_ids', type: 'json', nullable: true })
+  skillIds?: number[];
+
+  @Column({ name: 'source_type', length: 16, default: 'manual' })
+  sourceType: 'github' | 'manual';
+
+  @Column({ name: 'source_repo', length: 512, nullable: true })
+  sourceRepo?: string;
+
+  @Column({ name: 'source_path', length: 512, nullable: true })
+  sourcePath?: string;
+
+  @Column({ name: 'github_topics', type: 'json', nullable: true })
+  githubTopics?: string[];
+
+  @Column({ type: 'json', nullable: true })
+  pricing?: Record<string, unknown>;
 
   /** 更新日志 */
   @Column({ name: 'changelog', type: 'text', nullable: true })

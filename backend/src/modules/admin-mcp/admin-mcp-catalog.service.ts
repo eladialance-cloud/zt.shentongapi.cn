@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { McpCatalogEntity } from './entities/mcp-catalog.entity';
@@ -10,6 +10,8 @@ import {
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/constants/error.constant';
 import { assertMcpCommandSafe } from '../mcp/utils/mcp-security';
+import { AiClassifyService } from '../admin-classify/ai-classify.service';
+import { normalizeTags, pickGitHubSourceFields } from '../../common/utils/asset-common';
 
 /**
  * MCP 官方目录管理服务
@@ -20,6 +22,7 @@ export class AdminMcpCatalogService {
   constructor(
     @InjectRepository(McpCatalogEntity)
     private readonly repo: Repository<McpCatalogEntity>,
+    @Optional() private readonly aiClassify?: AiClassifyService,
   ) {}
 
   /** 目录列表（分页） */
@@ -73,14 +76,27 @@ export class AdminMcpCatalogService {
       sortOrder: 0,
       toolCount: 0,
       ...dto,
+      ...pickGitHubSourceFields(dto),
+      tags: normalizeTags(dto.tags),
     });
-    return this.repo.save(entity);
+    const saved = await this.repo.save(entity);
+    if (!dto.category && this.aiClassify) {
+      void this.aiClassify.classifyAndUpdate('mcp', saved.id);
+    }
+    return saved;
   }
 
   /** 更新目录条目 */
   async update(id: number, dto: UpdateMcpCatalogDto) {
     const item = await this.get(id);
     Object.assign(item, dto);
+    const gh = pickGitHubSourceFields(dto);
+    if (dto.tags !== undefined) item.tags = normalizeTags(dto.tags);
+    if (dto.sourceType !== undefined) item.sourceType = gh.sourceType;
+    if (dto.githubTopics !== undefined) item.githubTopics = gh.githubTopics;
+    if (dto.sourceRepo !== undefined) item.sourceRepo = gh.sourceRepo;
+    if (dto.sourcePath !== undefined) item.sourcePath = gh.sourcePath;
+    if (dto.pricing !== undefined) item.pricing = gh.pricing;
     if (item.transportType === 'stdio') {
       assertMcpCommandSafe(item.command, item.args);
     }

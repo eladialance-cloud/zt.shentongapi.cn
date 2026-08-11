@@ -25,6 +25,10 @@ export interface AdminSkillPackage {
   runtimeType: string;
   category?: string;
   sourceUrl: string;
+  sourceType?: 'github' | 'manual';
+  sourceRepo?: string;
+  sourcePath?: string;
+  githubTopics?: string[];
   installPath?: string;
   entryPoint?: string;
   inputSchema?: Record<string, unknown>;
@@ -57,6 +61,10 @@ export interface UpdateSkillPackageDto {
   displayName?: string;
   description?: string;
   category?: string;
+  sourceType?: 'github' | 'manual';
+  sourceRepo?: string;
+  sourcePath?: string;
+  githubTopics?: string[];
   triggerKeywords?: string[];
   examples?: Record<string, unknown>[];
   uiConfig?: { icon?: string; color?: string; [key: string]: unknown };

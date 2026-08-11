@@ -39,6 +39,23 @@ export class UpdateAgentDto {
   @IsOptional()
   @IsArray()
   usageExamples?: string[];
+  @IsOptional()
+  @IsArray()
+  allowedMcpIds?: number[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  githubTopics?: string[];
+
+  @IsOptional()
+  @IsObject()
+  pricing?: Record<string, unknown>;
 
   @IsOptional()
   @IsString()

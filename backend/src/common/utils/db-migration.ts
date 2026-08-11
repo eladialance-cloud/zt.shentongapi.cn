@@ -1053,6 +1053,108 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       `UPDATE models SET advanced_capabilities = JSON_ARRAY() WHERE advanced_capabilities IS NULL`
     );
 
+    // ===== 资产市场重构 Phase 1：六类资产公共字段补齐（幂等） =====
+    // agents：允许挂载 MCP ID 数组 + GitHub topics 快照 + 统一定价
+    const assetAgentCols: Array<[string, string]> = [
+      ['allowed_mcp_ids', "JSON DEFAULT NULL COMMENT '允许挂载的 MCP 目录 ID 数组(mcp_catalog.id)'"],
+      ['github_topics', "JSON DEFAULT NULL COMMENT 'GitHub 导入时仓库 topics 快照'"],
+      ['pricing', "JSON DEFAULT NULL COMMENT '统一定价配置(可选,兼容现有 pricePerCall/pricePerToken)'"],
+    ];
+    for (const [colName, colDef] of assetAgentCols) {
+      await ensureColumn('agents', colName, colDef);
+    }
+
+    // workflows：场景分类 + 来源类型 + GitHub topics + 统一定价
+    const assetWorkflowCols: Array<[string, string]> = [
+      ['scene_category', "VARCHAR(32) NOT NULL DEFAULT 'other' COMMENT '场景分类: hotspot_monitor/multi_platform_distribution/comment_dm_ops/commercial_data_review/other'"],
+      ['source_type', "VARCHAR(16) NOT NULL DEFAULT 'manual' COMMENT '来源: github=导入 manual=手工'"],
+      ['github_topics', "JSON DEFAULT NULL COMMENT 'GitHub 导入时仓库 topics 快照'"],
+      ['pricing', "JSON DEFAULT NULL COMMENT '统一定价配置(可选)'"],
+    ];
+    for (const [colName, colDef] of assetWorkflowCols) {
+      await ensureColumn('workflows', colName, colDef);
+    }
+
+    // mcp_catalog：GitHub 来源字段
+    const assetMcpCols: Array<[string, string]> = [
+      ['source_type', "VARCHAR(16) NOT NULL DEFAULT 'manual' COMMENT '来源: github=导入 manual=手工'"],
+      ['source_repo', "VARCHAR(512) DEFAULT NULL COMMENT '来源仓库 URL'"],
+      ['source_path', "VARCHAR(512) DEFAULT NULL COMMENT '仓库内文件路径'"],
+      ['github_topics', "JSON DEFAULT NULL COMMENT 'GitHub 导入时仓库 topics 快照'"],
+      ['pricing', "JSON DEFAULT NULL COMMENT '统一定价配置(可选)'"],
+    ];
+    for (const [colName, colDef] of assetMcpCols) {
+      await ensureColumn('mcp_catalog', colName, colDef);
+    }
+
+    // skill_packages：GitHub 来源字段
+    const assetSkillCols: Array<[string, string]> = [
+      ['source_type', "VARCHAR(16) NOT NULL DEFAULT 'manual' COMMENT '来源: github=导入 manual=手工'"],
+      ['source_repo', "VARCHAR(512) DEFAULT NULL COMMENT '来源仓库 URL'"],
+      ['source_path', "VARCHAR(512) DEFAULT NULL COMMENT '仓库内文件路径'"],
+      ['github_topics', "JSON DEFAULT NULL COMMENT 'GitHub 导入时仓库 topics 快照'"],
+      ['pricing', "JSON DEFAULT NULL COMMENT '统一定价配置(可选)'"],
+    ];
+    for (const [colName, colDef] of assetSkillCols) {
+      await ensureColumn('skill_packages', colName, colDef);
+    }
+
+    // hermes_skills（技能包）：挂载技能 ID + GitHub 来源字段
+    const assetHermesCols: Array<[string, string]> = [
+      ['skill_ids', "JSON DEFAULT NULL COMMENT '挂载的技能 ID 数组(skill_packages.id)'"],
+      ['source_type', "VARCHAR(16) NOT NULL DEFAULT 'manual' COMMENT '来源: github=导入 manual=手工'"],
+      ['source_repo', "VARCHAR(512) DEFAULT NULL COMMENT '来源仓库 URL'"],
+      ['source_path', "VARCHAR(512) DEFAULT NULL COMMENT '仓库内文件路径'"],
+      ['github_topics', "JSON DEFAULT NULL COMMENT 'GitHub 导入时仓库 topics 快照'"],
+      ['pricing', "JSON DEFAULT NULL COMMENT '统一定价配置(可选)'"],
+    ];
+    for (const [colName, colDef] of assetHermesCols) {
+      await ensureColumn('hermes_skills', colName, colDef);
+    }
+
+    // plugins（用户自定义插件）：分类 + GitHub 来源字段
+    const assetPluginCols: Array<[string, string]> = [
+      ['category', "VARCHAR(32) DEFAULT NULL COMMENT '分类: database/search/browser/git/files/messaging/ai/devops/other'"],
+      ['source_type', "VARCHAR(16) NOT NULL DEFAULT 'manual' COMMENT '来源: github=导入 manual=手工'"],
+      ['source_repo', "VARCHAR(512) DEFAULT NULL COMMENT '来源仓库 URL'"],
+      ['source_path', "VARCHAR(512) DEFAULT NULL COMMENT '仓库内文件路径'"],
+      ['github_topics', "JSON DEFAULT NULL COMMENT 'GitHub 导入时仓库 topics 快照'"],
+      ['pricing', "JSON DEFAULT NULL COMMENT '统一定价配置(可选)'"],
+    ];
+    for (const [colName, colDef] of assetPluginCols) {
+      await ensureColumn('plugins', colName, colDef);
+    }
+
+    // ===== 资产市场重构 Phase 2：GitHub 统一导入任务表（Task 2） =====
+    const ensureAssetImportJobsTable = async (): Promise<void> => {
+      const table = 'asset_import_jobs';
+      // 全量 DDL 建表（幂等），再对存量旧表兜底补齐缺失列
+      await queryRunner.query(`CREATE TABLE IF NOT EXISTS asset_import_jobs (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        type VARCHAR(32) NOT NULL DEFAULT 'agent' COMMENT '资产类型: agent/workflow/mcp/skill/skill_pack/n8n_mcp',
+        repo_url VARCHAR(512) NOT NULL COMMENT 'GitHub 仓库地址',
+        branch VARCHAR(128) DEFAULT NULL COMMENT '导入分支(默认仓库默认分支)',
+        status ENUM('pending','processing','succeeded','failed') NOT NULL DEFAULT 'pending' COMMENT '任务状态',
+        steps JSON DEFAULT NULL COMMENT '步骤进度: fetch_repo/parse/classify/save',
+        result JSON DEFAULT NULL COMMENT '导入结果(created/skipped)',
+        error_message VARCHAR(1024) DEFAULT NULL COMMENT '失败原因',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY idx_asset_import_jobs_type (type),
+        KEY idx_asset_import_jobs_status (status)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='资产市场-GitHub 统一导入任务表'`);
+      logger.log('Ensured table: asset_import_jobs');
+      await ensureColumn(table, 'type', "varchar(32) NOT NULL DEFAULT 'agent'");
+      await ensureColumn(table, 'repo_url', 'varchar(512) NOT NULL');
+      await ensureColumn(table, 'branch', 'varchar(128) NULL');
+      await ensureColumn(table, 'status', "enum('pending','processing','succeeded','failed') NOT NULL DEFAULT 'pending'");
+      await ensureColumn(table, 'steps', 'json NULL');
+      await ensureColumn(table, 'result', 'json NULL');
+      await ensureColumn(table, 'error_message', 'varchar(1024) NULL');
+    };
+    await ensureAssetImportJobsTable();
+
     logger.log('Startup migrations completed');
   } catch (err) {
     logger.error(`Startup migration failed: ${(err as Error).message}`);

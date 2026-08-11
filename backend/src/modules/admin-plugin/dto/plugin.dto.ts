@@ -1,9 +1,11 @@
 import {
+  IsArray,
   IsIn,
   IsInt,
   IsObject,
   IsOptional,
   IsString,
+  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -72,6 +74,32 @@ export class CreateAdminPluginDto {
 
   @IsIn(['tool', 'connector', 'knowledge_base', 'workflow'])
   type: string;
+  @IsOptional()
+  @IsIn(['database', 'search', 'browser', 'git', 'files', 'messaging', 'ai', 'devops', 'other'])
+  category?: string;
+
+  @IsOptional()
+  @IsIn(['github', 'manual'])
+  sourceType?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  sourceRepo?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  sourcePath?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  githubTopics?: string[];
+
+  @IsOptional()
+  @IsObject()
+  pricing?: Record<string, unknown>;
 
   @IsString()
   version: string;
@@ -110,6 +138,32 @@ export class UpdateAdminPluginDto {
   @IsOptional()
   @IsIn(['tool', 'connector', 'knowledge_base', 'workflow'])
   type?: string;
+  @IsOptional()
+  @IsIn(['database', 'search', 'browser', 'git', 'files', 'messaging', 'ai', 'devops', 'other'])
+  category?: string;
+
+  @IsOptional()
+  @IsIn(['github', 'manual'])
+  sourceType?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  sourceRepo?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  sourcePath?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  githubTopics?: string[];
+
+  @IsOptional()
+  @IsObject()
+  pricing?: Record<string, unknown>;
 
   @IsOptional()
   @IsString()

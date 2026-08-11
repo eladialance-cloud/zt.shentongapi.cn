@@ -4,6 +4,7 @@ import { AdminAuthModule } from '../admin-auth/admin-auth.module';
 import { PluginEntity } from '../plugin/entities/plugin.entity';
 import { AdminPluginController } from './admin-plugin.controller';
 import { AdminPluginService } from './admin-plugin.service';
+import { AdminClassifyModule } from '../admin-classify/admin-classify.module';
 
 /**
  * 管理端插件模块
@@ -14,7 +15,7 @@ import { AdminPluginService } from './admin-plugin.service';
  * 注意：本模块不在此处注册到 AppModule，由后续任务统一注册。
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([PluginEntity]), AdminAuthModule],
+  imports: [TypeOrmModule.forFeature([PluginEntity]), AdminAuthModule, AdminClassifyModule],
   controllers: [AdminPluginController],
   providers: [AdminPluginService],
   exports: [AdminPluginService],

@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsIn,
   IsInt,
   IsObject,
@@ -65,8 +66,25 @@ export class CreateAdminWorkflowDto {
   @IsString()
   workflowJson?: string;
 
+  @IsOptional()
   @IsIn(['automation', 'integration', 'data_processing', 'ai_collaboration', 'independent', 'other'])
-  category: string;
+  category?: string;
+  @IsOptional()
+  @IsIn(['hotspot_monitor', 'multi_platform_distribution', 'comment_dm_ops', 'commercial_data_review', 'other'])
+  sceneCategory?: string;
+
+  @IsOptional()
+  @IsIn(['github', 'manual'])
+  sourceType?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  githubTopics?: string[];
+
+  @IsOptional()
+  @IsObject()
+  pricing?: Record<string, unknown>;
 
   @IsOptional()
   @IsObject()
@@ -127,6 +145,22 @@ export class UpdateAdminWorkflowDto {
   @IsOptional()
   @IsIn(['automation', 'integration', 'data_processing', 'ai_collaboration', 'independent', 'other'])
   category?: string;
+  @IsOptional()
+  @IsIn(['hotspot_monitor', 'multi_platform_distribution', 'comment_dm_ops', 'commercial_data_review', 'other'])
+  sceneCategory?: string;
+
+  @IsOptional()
+  @IsIn(['github', 'manual'])
+  sourceType?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  githubTopics?: string[];
+
+  @IsOptional()
+  @IsObject()
+  pricing?: Record<string, unknown>;
 
   @IsOptional()
   @IsObject()
