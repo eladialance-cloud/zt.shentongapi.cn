@@ -540,6 +540,54 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       logger.log('Seeded payment_configs with 3 default channels');
     }
 
+    // 充值订单表 recharge_orders（真实支付：下单/回调入账/退款）
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS recharge_orders (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      order_no VARCHAR(64) NOT NULL COMMENT '订单号',
+      user_id BIGINT NOT NULL COMMENT '用户 ID',
+      package_id BIGINT DEFAULT NULL COMMENT '充值档位 ID',
+      credits INT NOT NULL COMMENT '到账积分',
+      amount DECIMAL(10,2) NOT NULL COMMENT '支付金额(元)',
+      status ENUM('pending','paid','failed','refunded') NOT NULL DEFAULT 'pending' COMMENT '订单状态',
+      payment_channel ENUM('wechat','alipay','stripe') DEFAULT NULL COMMENT '支付渠道',
+      payment_record_id BIGINT DEFAULT NULL COMMENT '支付流水 ID',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_recharge_orders_order_no (order_no),
+      KEY idx_recharge_orders_user_id (user_id),
+      KEY idx_recharge_orders_status (status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='充值订单表'`);
+    logger.log('Ensured table: recharge_orders');
+
+    // 支付流水表 payment_records（渠道侧支付记录，含回调原文）
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS payment_records (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      user_id BIGINT NOT NULL COMMENT '用户 ID',
+      order_no VARCHAR(64) NOT NULL COMMENT '业务订单号',
+      channel ENUM('wechat','alipay','stripe') NOT NULL COMMENT '支付渠道',
+      sub_method VARCHAR(32) DEFAULT NULL COMMENT '支付方式: native/jsapi/pc/wap/card',
+      amount DECIMAL(10,2) NOT NULL COMMENT '支付金额(元)',
+      currency VARCHAR(8) NOT NULL DEFAULT 'CNY',
+      status ENUM('pending','paid','failed','refunded','refunding') NOT NULL DEFAULT 'pending' COMMENT '流水状态',
+      payment_txn_id VARCHAR(128) DEFAULT NULL COMMENT '渠道交易号',
+      pay_params JSON DEFAULT NULL COMMENT '下单返回参数(二维码等)',
+      paid_at DATETIME DEFAULT NULL COMMENT '支付时间',
+      refund_txn_id VARCHAR(128) DEFAULT NULL COMMENT '退款渠道交易号',
+      refund_amount DECIMAL(10,2) DEFAULT NULL COMMENT '退款金额',
+      refunded_at DATETIME DEFAULT NULL COMMENT '退款时间',
+      description VARCHAR(256) DEFAULT NULL COMMENT '描述',
+      callback_raw JSON DEFAULT NULL COMMENT '回调原文',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_payment_records_order_no (order_no),
+      KEY idx_payment_records_user_id (user_id),
+      KEY idx_payment_records_status (status),
+      KEY idx_payment_records_txn_id (payment_txn_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='支付流水表'`);
+    logger.log('Ensured table: payment_records');
+
     // ===== 知识库引擎升级（MaxKB）Phase 1 =====
     // 行业分类表 industry_categories（官方知识库按行业归类）
     await queryRunner.query(`CREATE TABLE IF NOT EXISTS industry_categories (
