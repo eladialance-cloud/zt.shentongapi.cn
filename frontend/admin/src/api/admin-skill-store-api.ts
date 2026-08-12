@@ -12,6 +12,7 @@ import type {
   AdminSkillSource,
   AdminSkillPackage,
   CreateSkillSourceDto,
+  UpdateSkillSourceDto,
   UpdateSkillPackageDto,
   SkillSourceQuery,
   SkillPackageQuery,
@@ -38,6 +39,16 @@ export async function analyzeSkillSource(id: number): Promise<AnalyzeTriggerResu
 /** 删除技能源 */
 export async function removeSkillSource(id: number): Promise<void> {
   await adminRequest<void>('delete', `/admin/skill-store/sources/${id}`)
+}
+
+/** 编辑技能源 */
+export async function updateSkillSource(id: number, dto: UpdateSkillSourceDto): Promise<AdminSkillSource> {
+  return adminRequest<AdminSkillSource>('patch', `/admin/skill-store/sources/${id}`, { data: dto })
+}
+
+/** 批量删除技能源 */
+export async function batchDeleteSkillSources(ids: number[]): Promise<SkillBatchDeleteResult> {
+  return adminRequest<SkillBatchDeleteResult>('post', '/admin/skill-store/sources/batch-delete', { data: { ids } })
 }
 
 /** 本地上传 zip 技能源 */

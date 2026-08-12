@@ -15,6 +15,7 @@ import type {
   MarketItemDetail,
   MarketDownloadResult,
 } from '@/types/market'
+import type { UserSkillSource } from '@/types/skill-source'
 import type { PurchasedItem } from '@/types/market'
 
 /** electronAPI.market 是否可用（preload 未注入时降级抛错） */
@@ -138,6 +139,30 @@ export async function importMarket(): Promise<{ ok: boolean; imported?: number; 
   return (await getMarket().import()) as { ok: boolean; imported?: number; error?: string }
 }
 
+/** 开源技能库（技能源清单）：分页 + 中文分类 + 关键词 */
+export async function listSkillSources(query: {
+  page?: number
+  pageSize?: number
+  category?: string
+  keyword?: string
+} = {}): Promise<{ list: UserSkillSource[]; total: number; page: number; pageSize: number; totalPages: number }> {
+  return httpClient.get('/skill-sources', { params: query })
+}
+
+/** 开源技能库分类 */
+export async function listSkillSourceCategories(): Promise<Array<{ category: string; count: number }>> {
+  return httpClient.get('/skill-sources/categories')
+}
+
+/** GitHub 直连下载安装开源技能（主进程下载+解压+登记） */
+export async function installGithubSkill(
+  sourceId: number,
+  name: string,
+  candidates: Array<{ owner: string; repo: string }>,
+): Promise<{ ok: boolean; dir?: string; error?: string }> {
+  return (await getMarket().installGithubSkill(sourceId, name, candidates)) as { ok: boolean; dir?: string; error?: string }
+}
+
 export default {
   purchase,
   listPurchased,
@@ -153,4 +178,7 @@ export default {
   syncChat,
   exportMarket,
   importMarket,
+  listSkillSources,
+  listSkillSourceCategories,
+  installGithubSkill,
 }

@@ -201,8 +201,8 @@ export interface DeviceInfo extends DeviceFingerprint {
 /** 市场内容类型 */
 export type MarketItemType = "skill" | "plugin" | "workflow" | "agent" | "mcp";
 
-/** 本地内容来源:官方下载 / 自定义导入 / 对话中 OpenClaw 安装 */
-export type MarketSource = "official" | "custom" | "chat";
+/** 本地内容来源:官方下载 / 自定义导入 / 对话中 OpenClaw 安装 / GitHub 开源技能直连下载 */
+export type MarketSource = "official" | "custom" | "chat" | "github";
 
 /** 本地已安装记录（market/installed.json 条目） */
 export interface InstalledRecord {
@@ -366,6 +366,12 @@ export interface ElectronAPI {
       name: string,
       version: string,
       pkg: Record<string, unknown>,
+    ): Promise<{ ok: boolean; dir?: string; error?: string }>;
+    /** GitHub 开源技能直连下载安装（候选仓库依次尝试 main/master 分支 tar.gz） */
+    installGithubSkill(
+      sourceId: number,
+      name: string,
+      candidates: Array<{ owner: string; repo: string }>,
     ): Promise<{ ok: boolean; dir?: string; error?: string }>;
     /** 卸载：删除本地目录并更新清单 */
     uninstall(type: MarketItemType, id: number | string): Promise<{ ok: boolean; error?: string }>;

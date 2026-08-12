@@ -186,6 +186,17 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技能商店-技能来源'
       `);
       logger.log('Created table: skill_sources');
+    } else {
+      const [ssCatCol] = await queryRunner.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'skill_sources' AND COLUMN_NAME = 'category'`
+      );
+      if (!ssCatCol) {
+        await queryRunner.query(
+          `ALTER TABLE skill_sources ADD COLUMN category VARCHAR(64) DEFAULT NULL COMMENT '平台中文分类'`,
+        );
+        logger.log('Added column: skill_sources.category');
+      }
     }
 
     // 7. skill_install_logs 表

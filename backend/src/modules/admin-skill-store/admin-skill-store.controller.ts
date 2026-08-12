@@ -20,7 +20,7 @@ import { Public } from '../../common/decorators/public.decorator';
 import { AdminGuard } from '../admin-auth/admin.guard';
 import { BigIntParsePipe } from '../../common/pipes/bigint-parse.pipe';
 import { AdminSkillStoreService } from './admin-skill-store.service';
-import { CreateSkillSourceDto, SkillSourceQueryDto } from './dto/skill-source.dto';
+import { CreateSkillSourceDto, SkillSourceQueryDto, UpdateSkillSourceDto } from './dto/skill-source.dto';
 import { UploadSkillSourceDto } from './dto/upload-skill-source.dto';
 import { BatchDeleteDto } from '../../common/dto/batch-delete.dto';
 import { UpdateSkillPackageDto, SkillPackageQueryDto, RejectSkillPackageDto } from './dto/skill-package.dto';
@@ -83,6 +83,18 @@ export class AdminSkillStoreController {
   @ApiOperation({ summary: '触发解析' })
   async analyze(@Param('id', BigIntParsePipe) id: number) {
     return this.service.triggerAnalyze(id);
+  }
+
+  @Patch('sources/:id')
+  @ApiOperation({ summary: '编辑技能源' })
+  async updateSource(@Param('id', BigIntParsePipe) id: number, @Body() dto: UpdateSkillSourceDto) {
+    return this.service.updateSource(id, dto);
+  }
+
+  @Post('sources/batch-delete')
+  @ApiOperation({ summary: '批量删除技能源' })
+  async batchDeleteSources(@Body() dto: BatchDeleteDto) {
+    return this.service.batchDeleteSources(dto.ids);
   }
 
   @Delete('sources/:id')

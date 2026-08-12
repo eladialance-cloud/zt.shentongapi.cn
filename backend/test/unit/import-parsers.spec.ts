@@ -7,6 +7,7 @@ import { N8nMcpParser } from '../../src/modules/admin-imports/parsers/n8n-mcp-pa
 import { SkillParser } from '../../src/modules/admin-imports/parsers/skill-parser';
 import { SkillPackParser } from '../../src/modules/admin-imports/parsers/skill-pack-parser';
 import { SkillCatalogParser, resolveRepoCandidates } from '../../src/modules/admin-imports/parsers/skill-catalog-parser';
+import { SKILL_CATALOG_CATEGORY_MAP, resolveCatalogCategory } from '../../src/modules/admin-imports/parsers/skill-catalog-categories';
 import { SkillCatalogExpander, type SkillRepoFetcher } from '../../src/modules/admin-imports/parsers/skill-catalog-expander';
 import type { ImportFile, ImportParseContext } from '../../src/modules/admin-imports/parsers/import-parser.interface';
 
@@ -290,4 +291,14 @@ test('skill-catalog-expander: 全部拉取失败 → 空草稿 + 失败计数（
   assert.equal(res.stats.fetched, 0);
   assert.equal(res.stats.failed, 2);
   assert.deepEqual(res.drafts, []);
+});
+
+test('skill-catalog-categories: 30 个英文分类映射为平台中文分类', () => {
+  assert.equal(resolveCatalogCategory('ai-and-llms'), 'AI与LLM');
+  assert.equal(resolveCatalogCategory('web-and-frontend-development'), 'Web与前端开发');
+  assert.equal(resolveCatalogCategory('devops-and-cloud'), '运维与云服务');
+  assert.equal(resolveCatalogCategory('search-and-research'), '搜索与研究');
+  assert.equal(resolveCatalogCategory('unknown-cat'), 'unknown-cat');
+  assert.equal(resolveCatalogCategory(undefined), '其他');
+  assert.equal(Object.keys(SKILL_CATALOG_CATEGORY_MAP).length, 30);
 });

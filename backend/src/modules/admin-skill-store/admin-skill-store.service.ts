@@ -14,6 +14,7 @@ import { AiClassifyService } from '../admin-classify/ai-classify.service';
 import {
   CreateSkillSourceDto,
   SkillSourceQueryDto,
+  UpdateSkillSourceDto,
 } from './dto/skill-source.dto';
 import { UploadSkillSourceDto } from './dto/upload-skill-source.dto';
 import { pickGitHubSourceFields } from '../../common/utils/asset-common';
@@ -99,6 +100,12 @@ export class AdminSkillStoreService {
     if (query.skillType) {
       qb.andWhere('s.skill_type = :skillType', { skillType: query.skillType });
     }
+    if (query.category) {
+      qb.andWhere('s.category = :category', { category: query.category });
+    }
+    if (query.keyword) {
+      qb.andWhere('(s.skill_name LIKE :kw OR s.skill_desc LIKE :kw OR s.source_url LIKE :kw)', { kw: '%' + query.keyword + '%' });
+    }
     qb.orderBy('s.created_at', 'DESC')
       .skip((page - 1) * pageSize)
       .take(pageSize);
@@ -168,6 +175,37 @@ export class AdminSkillStoreService {
       await this.packageRepo.delete(source.packageId);
     }
     await this.sourceRepo.delete(id);
+  }
+
+  /** 编辑技能源（名称/描述/分类） */
+  async updateSource(id: number, dto: UpdateSkillSourceDto) {
+    const source = await this.sourceRepo.findOne({ where: { id } });
+    if (!source) {
+      BusinessException.throw(ErrorCode.NOT_FOUND, `技能源 ${id} 不存在`);
+    }
+    if (dto.skillName !== undefined) source.skillName = dto.skillName;
+    if (dto.skillDesc !== undefined) source.skillDesc = dto.skillDesc;
+    if (dto.category !== undefined) source.category = dto.category || undefined;
+    // 同步 analyze_result 中的展示字段
+    const ar = (source.analyzeResult ?? {}) as Record<string, unknown>;
+    if (dto.category !== undefined) ar.category = source.category;
+    source.analyzeResult = ar;
+    return this.sourceRepo.save(source);
+  }
+
+  /** 批量删除技能源（含关联 package 的清理，复用单删逻辑） */
+  async batchDeleteSources(ids: number[]) {
+    const stats = { total: ids.length, deleted: 0, failed: 0, errors: [] as string[] };
+    for (const id of ids) {
+      try {
+        await this.removeSource(id);
+        stats.deleted++;
+      } catch (e) {
+        stats.failed++;
+        stats.errors.push(`技能源 ${id}: ${(e as Error).message}`);
+      }
+    }
+    return stats;
   }
 
   /** 技能包详情：返回完整实体（含 installPath/skillMdPath） */

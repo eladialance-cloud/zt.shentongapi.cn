@@ -19,6 +19,10 @@ export class SkillSourceEntity extends BaseEntity {
   @Column({ name: 'skill_type', length: 32, default: 'skill' })
   skillType: 'skill' | 'workflow';
 
+  /** 平台分类（目录清单导入时为中文分类；GitHub/zip 来源由解析/归类后回填） */
+  @Column({ length: 64, nullable: true })
+  category?: string;
+
   @Column({ name: 'auto_detected_type', length: 32, nullable: true })
   autoDetectedType?: string;
 

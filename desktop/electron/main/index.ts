@@ -43,6 +43,7 @@ import {
   registerChatInstalled,
   updateMarketItem,
   syncChatInstalled,
+  installGithubSkill,
 } from './local-market/local-content-manager'
 import type { MarketItemType } from '../shared/types'
 import type { ServiceName, SyncQueueItem, SyncQueueRow } from '../shared/types'
@@ -446,6 +447,9 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('market:install', async (_event, type: MarketItemType, id: number, name: string, version: string, pkg: Record<string, unknown>) =>
     installMarketItem(type, id, name, version, pkg))
+
+  ipcMain.handle('market:installGithubSkill', async (_event, sourceId: number, name: string, candidates: Array<{ owner: string; repo: string }>) =>
+    installGithubSkill(sourceId, name, candidates))
 
   ipcMain.handle('market:uninstall', async (_event, type: MarketItemType, id: number | string) =>
     uninstallMarketItem(type, id))

@@ -9,13 +9,14 @@ import { AgentEntity } from '../../src/modules/agent/entities/agent.entity';
 import { WorkflowEntity } from '../../src/modules/admin-workflow/entities/workflow.entity';
 import { McpCatalogEntity } from '../../src/modules/admin-mcp/entities/mcp-catalog.entity';
 import { SkillPackageEntity } from '../../src/modules/skill-store/entities/skill-package.entity';
+import { SkillSourceEntity } from '../../src/modules/skill-store/entities/skill-source.entity';
 
 const AGENT_MD = ['---', 'name: quick-reply', 'display_name: 快捷回复', 'description: 快捷回复', 'trigger: [回复, reply]', '---', '技能正文'].join('\n');
 
 /** mock GitHubClientService：固定 topics/tree/file，可按用例覆盖 */
 function makeGithub(overrides: {
   getRepoTree?: () => Promise<RepoFileEntry[]>;
-  getFileContent?: () => Promise<string | null>;
+  getFileContent?: (owner: string, repo: string, path?: string) => Promise<string | null>;
 } = {}) {
   return {
     getRepoTopics: async (): Promise<string[]> => ['ai', 'agent'],
@@ -111,6 +112,7 @@ function buildService(
   mcpRepo: ReturnType<typeof makeRepo<McpCatalogEntity>>,
   skillRepo: ReturnType<typeof makeRepo<SkillPackageEntity>>,
   github: ReturnType<typeof makeGithub>,
+  skillSourceRepo: ReturnType<typeof makeRepo<SkillSourceEntity>> = makeRepo<SkillSourceEntity>(),
 ) {
   return new AdminImportsService(
     jobRepo as unknown as Repository<AssetImportJobEntity>,
@@ -118,6 +120,7 @@ function buildService(
     workflowRepo as unknown as Repository<WorkflowEntity>,
     mcpRepo as unknown as Repository<McpCatalogEntity>,
     skillRepo as unknown as Repository<SkillPackageEntity>,
+    skillSourceRepo as unknown as Repository<SkillSourceEntity>,
     github as unknown as GitHubClientService,
   );
 }
@@ -219,6 +222,7 @@ test('retry: 原子条件更新仅失败任务可重试，重试后重新执行�
   await service.run(1, 7);
   const job = jobRepo.job();
   assert.ok(job);
+
   assert.equal(job.status, 'succeeded');
   assert.ok(job.steps!.every((s: ImportStep) => s.status === 'done'));
   assert.equal(job.result!.created.length, 1);
@@ -339,4 +343,47 @@ test('remove: 任务不存在抛异常', async () => {
   const jobRepo = makeJobRepo();
   const service = buildService(jobRepo, makeRepo<AgentEntity>(), makeRepo<WorkflowEntity>(), makeRepo<McpCatalogEntity>(), makeRepo<SkillPackageEntity>(), makeGithub());
   await assert.rejects(() => service.remove(999, true));
+});
+
+test('run: 技能目录仓库（categories/*.md）→ 条目写入技能源 skill_sources（中文分类 + 下载候选）', async () => {
+  const jobRepo = makeJobRepo();
+  jobRepo.set(makePendingJob('skill'));
+  const agentRepo = makeRepo<AgentEntity>();
+  const workflowRepo = makeRepo<WorkflowEntity>();
+  const mcpRepo = makeRepo<McpCatalogEntity>();
+  const skillRepo = makeRepo<SkillPackageEntity>();
+  const skillSourceRepo = makeRepo<SkillSourceEntity>();
+  const github = makeGithub({
+    getRepoTree: async (): Promise<RepoFileEntry[]> => [
+      { path: 'categories/ai-and-llms.md', type: 'blob' },
+      { path: 'categories/devops-and-cloud.md', type: 'blob' },
+      { path: 'README.md', type: 'blob' },
+    ],
+    getFileContent: async (owner: string, repo: string, path?: string): Promise<string | null> => {
+      if (path === 'categories/ai-and-llms.md') return '- [claw-skill](https://clawskills.sh/skills/owner-skill) - AI 工具\n- [hub-skill](https://clawhub.ai/o/r) - 另一个';
+      if (path === 'categories/devops-and-cloud.md') return '- [gh-skill](https://github.com/foo/bar) - 云技能';
+      return null;
+    },
+  });
+  const service = buildService(jobRepo, agentRepo, workflowRepo, mcpRepo, skillRepo, github, skillSourceRepo);
+
+  await service.run(1, 7);
+  const job = jobRepo.job();
+  assert.ok(job);
+
+  assert.equal(job.status, 'succeeded');
+  assert.equal(job.result!.created.length, 3);
+  assert.equal(job.result!.catalog!.totalEntries, 3);
+  assert.equal(job.result!.catalog!.saved, 3);
+  assert.equal(skillSourceRepo.saved.length, 3);
+  const first = skillSourceRepo.saved[0] as SkillSourceEntity;
+  assert.equal(first.category, 'AI与LLM');
+  assert.equal(first.status, 'analyzed');
+  const ar = first.analyzeResult as Record<string, unknown>;
+  assert.ok(Array.isArray(ar.repoCandidates));
+  const second = skillSourceRepo.saved[1] as SkillSourceEntity;
+  assert.equal(second.category, 'AI与LLM');
+  const third = skillSourceRepo.saved[2] as SkillSourceEntity;
+  assert.equal(third.category, '运维与云服务');
+  assert.equal(third.sourceUrl, 'https://github.com/foo/bar');
 });

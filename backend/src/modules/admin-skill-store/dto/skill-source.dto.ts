@@ -21,6 +21,23 @@ export class CreateSkillSourceDto {
   skillType: 'skill' | 'workflow';
 }
 
+export class UpdateSkillSourceDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  skillName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  skillDesc?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  category?: string;
+}
+
 export class SkillSourceQueryDto {
   @IsOptional()
   @Type(() => Number)
@@ -41,4 +58,14 @@ export class SkillSourceQueryDto {
   @IsOptional()
   @IsIn(['skill', 'workflow'])
   skillType?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  keyword?: string;
 }

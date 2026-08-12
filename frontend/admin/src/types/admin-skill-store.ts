@@ -7,6 +7,7 @@ export interface AdminSkillSource {
   skillName: string;
   skillDesc: string;
   skillType: 'skill' | 'workflow';
+  category?: string;
   autoDetectedType?: string;
   status: 'pending' | 'analyzing' | 'analyzed' | 'failed';
   analyzeResult?: Record<string, unknown>;
@@ -71,11 +72,19 @@ export interface UpdateSkillPackageDto {
   opcAgentConfig?: Record<string, unknown>;
 }
 
+export interface UpdateSkillSourceDto {
+  skillName?: string;
+  skillDesc?: string;
+  category?: string;
+}
+
 export interface SkillSourceQuery {
   page?: number;
   pageSize?: number;
   status?: string;
   skillType?: string;
+  category?: string;
+  keyword?: string;
 }
 
 export interface SkillPackageQuery {

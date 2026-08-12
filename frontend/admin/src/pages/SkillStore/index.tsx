@@ -52,6 +52,8 @@ import {
   rejectSkillPackage,
   removeSkillPackage,
   removeSkillSource,
+  updateSkillSource,
+  batchDeleteSkillSources,
   submitReviewSkillPackage,
   unpublishSkillPackage,
   updateSkillPackage,
@@ -63,6 +65,7 @@ import type {
   AdminSkillPackage,
   AdminSkillSource,
   CreateSkillSourceDto,
+  UpdateSkillSourceDto,
   UpdateSkillPackageDto
 } from '@/types/admin-skill-store'
 import styles from './styles.module.css'
@@ -100,14 +103,23 @@ function getLifecycleTag(pkg: AdminSkillPackage): { color: string; text: string 
   return { color: 'default', text: '未知' }
 }
 
-const CATEGORY_OPTIONS = [
-  { label: '视频', value: 'video' },
-  { label: '文本', value: 'text' },
-  { label: '代码', value: 'code' },
-  { label: '数据', value: 'data' },
-  { label: '图像', value: 'image' },
-  { label: '其他', value: 'other' }
+const CATEGORY_OPTIONS = [
+  { label: '视频', value: 'video' },
+  { label: '文本', value: 'text' },
+  { label: '代码', value: 'code' },
+  { label: '数据', value: 'data' },
+  { label: '图像', value: 'image' },
+  { label: '其他', value: 'other' }
 ]
+
+// GitHub 技能目录（awesome-openclaw-skills）中文分类
+const SOURCE_CATEGORY_OPTIONS = [
+  'AI与LLM', '苹果应用与服务', '浏览器与自动化', '日历与日程', 'Clawdbot工具', '命令行工具',
+  '编程智能体与IDE', '通讯沟通', '数据与分析', '运维与云服务', '游戏', 'Git与GitHub',
+  '健康与健身', '图像与视频生成', 'iOS与macOS开发', '营销与销售', '媒体与流媒体', 'Moltbook',
+  '笔记与知识管理', 'PDF与文档', '个人成长', '效率与任务', '搜索与研究', '安全与密码',
+  '自托管与自动化', '购物与电商', '智能家居与物联网', '语音与转写', '出行交通', 'Web与前端开发'
+].map((c) => ({ label: c, value: c }))
 
 interface SourceFormValues {
   sourceUrl: string
@@ -155,6 +167,15 @@ export default function AdminSkillStore() {
   // 技能包批量删除
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
 
+  // 技能源：编辑 / 批量删除 / 筛选
+  const [sourceSelectedKeys, setSourceSelectedKeys] = useState<React.Key[]>([])
+  const [sourceEditOpen, setSourceEditOpen] = useState(false)
+  const [editingSource, setEditingSource] = useState<AdminSkillSource | null>(null)
+  const [sourceSaving, setSourceSaving] = useState(false)
+  const [sourceEditForm] = Form.useForm<{ skillName: string; skillDesc: string; category?: string }>()
+  const [sourceCategory, setSourceCategory] = useState<string | undefined>()
+  const [sourceKeyword, setSourceKeyword] = useState('')
+
   // 添加技能源 Modal
   const [sourceModalOpen, setSourceModalOpen] = useState(false)
   const [sourceSubmitting, setSourceSubmitting] = useState(false)
@@ -185,7 +206,7 @@ export default function AdminSkillStore() {
   const loadSources = useCallback(async () => {
     setSourceLoading(true)
     try {
-      const res = await listSkillSources({ page: sourcePage, pageSize: PAGE_SIZE })
+      const res = await listSkillSources({ page: sourcePage, pageSize: PAGE_SIZE, category: sourceCategory, keyword: sourceKeyword || undefined })
       setSources(res.list || [])
       setSourceTotal(res.total || 0)
     } catch (err) {
@@ -194,7 +215,7 @@ export default function AdminSkillStore() {
     } finally {
       setSourceLoading(false)
     }
-  }, [sourcePage])
+  }, [sourcePage, sourceCategory, sourceKeyword])
 
   const loadPackages = useCallback(async () => {
     setPackageLoading(true)
@@ -326,16 +347,63 @@ export default function AdminSkillStore() {
     }
   }
 
-  const handleDeleteSource = async (source: AdminSkillSource) => {
+  const handleDeleteSource = async (source: AdminSkillSource) => {
+    try {
+      await removeSkillSource(source.id)
+      message.success('已删除')
+      void loadSources()
+    } catch (err) {
+      console.error('[SkillStore] delete source failed:', err)
+      message.error('删除失败')
+    }
+  }
+
+  const openEditSource = (source: AdminSkillSource) => {
+    setEditingSource(source)
+    sourceEditForm.setFieldsValue({
+      skillName: source.skillName,
+      skillDesc: source.skillDesc,
+      category: source.category
+    })
+    setSourceEditOpen(true)
+  }
+
+  const handleSaveSource = async () => {
+    if (!editingSource) return
     try {
-      await removeSkillSource(source.id)
-      message.success('已删除')
+      const values = await sourceEditForm.validateFields()
+      setSourceSaving(true)
+      const dto: UpdateSkillSourceDto = {
+        skillName: values.skillName,
+        skillDesc: values.skillDesc,
+        category: values.category
+      }
+      await updateSkillSource(editingSource.id, dto)
+      message.success('已保存')
+      setSourceEditOpen(false)
       void loadSources()
     } catch (err) {
-      console.error('[SkillStore] delete source failed:', err)
-      message.error('删除失败')
+      if ((err as { errorFields?: unknown }).errorFields) return
+      console.error('[SkillStore] update source failed:', err)
+      message.error('保存失败')
+    } finally {
+      setSourceSaving(false)
     }
   }
+
+  const handleBatchDeleteSources = async () => {
+    if (sourceSelectedKeys.length === 0) return
+    try {
+      const res = await batchDeleteSkillSources(sourceSelectedKeys.map(Number))
+      message.success(`已删除 ${res.deleted} 个，失败 ${res.failed} 个`)
+      setSourceSelectedKeys([])
+      void loadSources()
+    } catch (err) {
+      console.error('[SkillStore] batch delete sources failed:', err)
+      message.error('批量删除失败')
+    }
+  }
+
 
   // 技能包编辑 Drawer
   const openEditDrawer = (pkg: AdminSkillPackage) => {
@@ -515,6 +583,13 @@ export default function AdminSkillStore() {
       render: (v: string) => <span className={styles.nameCell}>{v}</span>
     },
     {
+      title: '分类',
+      dataIndex: 'category',
+      key: 'category',
+      width: 140,
+      render: (v: string) => (v ? <Tag color="geekblue">{v}</Tag> : <span className={styles.muted}>-</span>)
+    },
+    {
       title: '类型',
       dataIndex: 'skillType',
       key: 'skillType',
@@ -542,7 +617,7 @@ export default function AdminSkillStore() {
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 260,
       fixed: 'right',
       render: (_: unknown, record: AdminSkillSource) => (
         <>
@@ -561,6 +636,9 @@ export default function AdminSkillStore() {
               解析
             </Button>
           )}
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEditSource(record)}>
+            编辑
+          </Button>
           <Popconfirm
             title="确认删除该技能源?"
             onConfirm={() => void handleDeleteSource(record)}
@@ -762,6 +840,35 @@ export default function AdminSkillStore() {
               label: '技能源',
               children: (
                 <Spin spinning={sourceLoading}>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <Input.Search
+                      placeholder="搜索名称 / 描述 / 来源链接"
+                      allowClear
+                      style={{ width: 260 }}
+                      value={sourceKeyword}
+                      onChange={(e) => setSourceKeyword(e.target.value)}
+                      onSearch={() => { setSourcePage(1); void loadSources() }}
+                    />
+                    <Select
+                      placeholder="按分类筛选"
+                      allowClear
+                      style={{ width: 180 }}
+                      value={sourceCategory}
+                      onChange={(v) => { setSourceCategory(v); setSourcePage(1); void loadSources() }}
+                      options={SOURCE_CATEGORY_OPTIONS}
+                    />
+                    <Popconfirm
+                      title={`确认删除选中的 ${sourceSelectedKeys.length} 个技能源?`}
+                      onConfirm={() => void handleBatchDeleteSources()}
+                      okText="删除"
+                      okButtonProps={{ danger: true }}
+                      disabled={sourceSelectedKeys.length === 0}
+                    >
+                      <Button danger icon={<DeleteOutlined />} disabled={sourceSelectedKeys.length === 0}>
+                        批量删除
+                      </Button>
+                    </Popconfirm>
+                  </div>
                   {sources.length === 0 && !sourceLoading ? (
                     <Empty description="暂无技能源" style={{ marginTop: 60 }} />
                   ) : (
@@ -772,7 +879,11 @@ export default function AdminSkillStore() {
                         dataSource={sources}
                         pagination={false}
                         size="middle"
-                        scroll={{ x: 1000 }}
+                        scroll={{ x: 1100 }}
+                        rowSelection={{
+                          selectedRowKeys: sourceSelectedKeys,
+                          onChange: setSourceSelectedKeys
+                        }}
                       />
                     </div>
                   )}
@@ -1073,6 +1184,30 @@ export default function AdminSkillStore() {
         />
       </Modal>
 
+      {/* 编辑技能源 Modal */}
+      <Modal
+        title={`编辑技能源 #${editingSource?.id ?? ''}`}
+        open={sourceEditOpen}
+        onCancel={() => setSourceEditOpen(false)}
+        onOk={() => void handleSaveSource()}
+        confirmLoading={sourceSaving}
+        okText="保存"
+        cancelText="取消"
+        width={560}
+      >
+        <Form form={sourceEditForm} layout="vertical">
+          <Form.Item name="skillName" label="技能名称" rules={[{ required: true, message: '请输入技能名称' }]}>
+            <Input maxLength={64} placeholder="技能名称" />
+          </Form.Item>
+          <Form.Item name="skillDesc" label="技能描述" rules={[{ required: true, message: '请输入技能描述' }]}>
+            <Input.TextArea rows={3} maxLength={500} showCount placeholder="技能描述" />
+          </Form.Item>
+          <Form.Item name="category" label="分类">
+            <Select options={SOURCE_CATEGORY_OPTIONS} allowClear placeholder="选择分类（中文）" showSearch />
+          </Form.Item>
+        </Form>
+      </Modal>
+
       {/* 查看技能源 Modal */}
       <Modal
         title="技能源详情"
@@ -1088,6 +1223,7 @@ export default function AdminSkillStore() {
             <p>技能名称: {viewSource.skillName}</p>
             <p>技能描述: {viewSource.skillDesc}</p>
             <p>技能类型: {viewSource.skillType}</p>
+            <p>分类: {viewSource.category || '-'}</p>
             <p>状态: {viewSource.status}</p>
             {viewSource.packageId && (
               <p>已关联技能包 ID: {viewSource.packageId}</p>

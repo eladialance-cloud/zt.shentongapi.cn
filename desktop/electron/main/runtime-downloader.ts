@@ -125,7 +125,7 @@ function serviceInstallDir(name: ServiceName): string {
  * - 拒绝绝对路径与 .. 穿越，防解压路径逃逸
  * - 内存有界：文件内容按 chunk 直接写盘；元数据条目跨 chunk 有状态机保持对齐
  */
-function extractTarGz(
+export function extractTarGz(
   tarGzPath: string,
   destDir: string,
   onProgress?: (extractedEntries: number) => void,

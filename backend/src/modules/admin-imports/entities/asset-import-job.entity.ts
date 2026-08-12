@@ -19,6 +19,10 @@ export interface ImportJobCatalogStats {
   fetched: number;
   /** 拉取失败 / 仓库无 SKILL.md 的条目数 */
   failed: number;
+  /** 技能源保存模式：成功写入 skill_sources 的条目数 */
+  saved?: number;
+  /** 技能源保存模式：因 sourceUrl 重复被跳过的条目数 */
+  skippedSources?: number;
 }
 
 export interface ImportJobResult {

@@ -13,12 +13,13 @@ import { McpParser } from './parsers/mcp-parser';
 import { N8nMcpParser } from './parsers/n8n-mcp-parser';
 import { SkillParser } from './parsers/skill-parser';
 import { SkillCatalogParser, SkillCatalogEntry } from './parsers/skill-catalog-parser';
-import { SkillCatalogExpander, SkillRepoFetcher } from './parsers/skill-catalog-expander';
+import { resolveCatalogCategory } from './parsers/skill-catalog-categories';
 import { SkillPackParser } from './parsers/skill-pack-parser';
 import { AgentEntity } from '../agent/entities/agent.entity';
 import { WorkflowEntity } from '../admin-workflow/entities/workflow.entity';
 import { McpCatalogEntity } from '../admin-mcp/entities/mcp-catalog.entity';
 import { SkillPackageEntity } from '../skill-store/entities/skill-package.entity';
+import { SkillSourceEntity } from '../skill-store/entities/skill-source.entity';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/constants/error.constant';
 import { AiClassifyService } from '../admin-classify/ai-classify.service';
@@ -28,20 +29,6 @@ export class AdminImportsService implements OnModuleInit {
   private readonly logger = new Logger(AdminImportsService.name);
   private readonly parsers: Record<AssetImportType, ImportParser>;
   private readonly catalogParser = new SkillCatalogParser();
-  private readonly catalogExpander = new SkillCatalogExpander(this.skillFetcher());
-
-  /** 技能目录展开时拉取单个技能仓库的 SKILL.md（raw 请求，不受 GitHub API 速率限制） */
-  private skillFetcher(): SkillRepoFetcher {
-    return {
-      fetchSkillMd: async (owner: string, repo: string) => {
-        const root = await this.githubClient.getFileContent(owner, repo, 'SKILL.md');
-        if (root) return { path: 'SKILL.md', content: root };
-        const nested = await this.githubClient.getFileContent(owner, repo, 'skills/SKILL.md');
-        if (nested) return { path: 'skills/SKILL.md', content: nested };
-        return null;
-      },
-    };
-  }
 
   constructor(
     @InjectRepository(AssetImportJobEntity) private jobRepo: Repository<AssetImportJobEntity>,
@@ -49,6 +36,7 @@ export class AdminImportsService implements OnModuleInit {
     @InjectRepository(WorkflowEntity) private workflowRepo: Repository<WorkflowEntity>,
     @InjectRepository(McpCatalogEntity) private mcpRepo: Repository<McpCatalogEntity>,
     @InjectRepository(SkillPackageEntity) private skillRepo: Repository<SkillPackageEntity>,
+    @InjectRepository(SkillSourceEntity) private skillSourceRepo: Repository<SkillSourceEntity>,
     private githubClient: GitHubClientService,
     @Optional() private aiClassify?: AiClassifyService,
   ) {
@@ -209,18 +197,17 @@ export class AdminImportsService implements OnModuleInit {
       const isSkillCatalog = job.type === 'skill' && keyPaths.length === 0
         && allPaths.some(p => /^categories\/[^/]+\.md$/i.test(p));
       let drafts: ImportedAssetDraft[] = [];
+      let catalogEntries: SkillCatalogEntry[] = [];
       let catalogStats: ImportJobCatalogStats | undefined;
       if (isSkillCatalog) {
+        // 技能目录（索引）仓库：整库条目写入「技能源」skill_sources，由桌面端用户按条目直连 GitHub 下载
         const catPaths = allPaths.filter(p => /^categories\/[^/]+\.md$/i.test(p)).slice(0, 50);
         const catFiles: ImportFile[] = [];
         for (const p of catPaths) {
           catFiles.push({ path: p, content: await this.githubClient.getFileContent(owner, repo, p, job.branch) });
         }
-        const entries: SkillCatalogEntry[] = this.catalogParser.parseCatalogFiles(catFiles);
-        const maxSkills = Number(job.params?.maxSkills) || 100;
-        const expanded = await this.catalogExpander.expand(entries, maxSkills);
-        drafts = expanded.drafts;
-        catalogStats = expanded.stats;
+        catalogEntries = this.catalogParser.parseCatalogFiles(catFiles);
+        catalogStats = { totalEntries: catalogEntries.length, attempted: catalogEntries.length, fetched: 0, failed: 0 };
       } else {
         const files: ImportFile[] = [];
         for (const p of keyPaths) {
@@ -230,9 +217,11 @@ export class AdminImportsService implements OnModuleInit {
       }
       this.setStep(job, 'parse', 'done'); await this.jobRepo.save(job);
 
-      // 3. classify
+      // 3. classify（目录清单：分类直接映射为平台中文分类，跳过 AI 避免数千次调用）
       this.setStep(job, 'classify', 'running'); await this.jobRepo.save(job);
-      if (this.aiClassify) {
+      if (isSkillCatalog) {
+        for (const e of catalogEntries) e.category = resolveCatalogCategory(e.category);
+      } else if (this.aiClassify) {
         for (const d of drafts) {
           const r = await this.aiClassify.classify(this.describe(d), d.type, d.category);
           d.category = r.category;
@@ -243,8 +232,10 @@ export class AdminImportsService implements OnModuleInit {
 
       // 4. save
       this.setStep(job, 'save', 'running'); await this.jobRepo.save(job);
-      const result = await this.saveDrafts(job, drafts, adminId);
-      if (catalogStats) result.catalog = catalogStats;
+      const result = isSkillCatalog
+        ? await this.saveCatalogSources(catalogEntries)
+        : await this.saveDrafts(job, drafts, adminId);
+      if (catalogStats) result.catalog = { ...catalogStats, saved: result.created.length, skippedSources: result.skipped };
       this.setStep(job, 'save', 'done');
       if (result.created.length === 0) {
         // 0 产物：标记失败并给出可操作原因（避免「导入成功」但无资产的误导）
@@ -300,9 +291,11 @@ export class AdminImportsService implements OnModuleInit {
     }
     const sample = paths.slice(0, 20).join(', ');
     const checked = '已检查关键文件：' + (keyPaths.length ? keyPaths.join(', ') : '（无，仓库树未包含根目录关键文件）');
-    if (catalogStats && catalogStats.totalEntries > 0 && catalogStats.fetched === 0) {
-      return '目录仓库解析到 ' + catalogStats.totalEntries + ' 个技能条目，实际尝试展开 ' + catalogStats.attempted
-        + ' 个，但全部拉取失败（具体技能仓库可能不存在、未包含 SKILL.md，或 GitHub 网络异常），请稍后重试或调低 maxSkills';
+    if (catalogStats && catalogStats.totalEntries > 0 && (catalogStats.saved ?? 0) === 0) {
+      if ((catalogStats.skippedSources ?? 0) > 0) {
+        return '目录仓库解析到 ' + catalogStats.totalEntries + ' 个技能条目，但全部已存在于技能源（来源链接重复被跳过），无需重复导入';
+      }
+      return '目录仓库解析到 ' + catalogStats.totalEntries + ' 个技能条目，但保存到技能源失败（请查看导入任务日志或稍后重试）';
     }
     switch (type) {
       case 'agent':
@@ -319,6 +312,44 @@ export class AdminImportsService implements OnModuleInit {
       default:
         return '未解析到任何资产，仓库文件示例：' + sample + '；' + checked;
     }
+  }
+
+  /** 技能目录清单落库为「技能源」（skill_sources）：每条独立一行，status=analyzed，无需再解析。
+   *  条目下载地址候选写入 analyze_result.repoCandidates，桌面端直连 GitHub 下载 */
+  private async saveCatalogSources(entries: SkillCatalogEntry[]): Promise<ImportJobResult> {
+    const result: ImportJobResult = { created: [], skipped: 0 };
+    for (const e of entries) {
+      try {
+        const repoUrl = e.candidates.length
+          ? 'https://github.com/' + e.candidates[0].owner + '/' + e.candidates[0].repo
+          : e.sourceUrl;
+        const row = await this.skillSourceRepo.save(this.skillSourceRepo.create({
+          sourceUrl: e.sourceUrl.slice(0, 512),
+          sourceType: 'github',
+          skillName: (e.name || e.candidates[0]?.repo || 'skill').slice(0, 64),
+          skillDesc: (e.description || '').slice(0, 500),
+          skillType: 'skill',
+          category: resolveCatalogCategory(e.category),
+          status: 'analyzed',
+          analyzeResult: {
+            repoCandidates: e.candidates,
+            repoUrl,
+            sourceUrl: e.sourceUrl,
+            category: resolveCatalogCategory(e.category),
+          },
+        } as Partial<SkillSourceEntity>));
+        result.created.push({ type: 'skill', id: row.id, name: row.skillName });
+      } catch (err) {
+        const msg = String((err as Error).message || err);
+        if (/Duplicate|1062/i.test(msg)) {
+          result.skipped++;
+          this.logger.warn('技能源跳过（sourceUrl 冲突）: ' + e.sourceUrl);
+        } else {
+          throw err;
+        }
+      }
+    }
+    return result;
   }
 
   /** 落库草稿：各类型映射见决策 1-4；name 唯一冲突跳过计入 skipped */

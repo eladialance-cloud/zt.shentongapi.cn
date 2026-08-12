@@ -8,7 +8,7 @@
 // 安装策略：staging 目录写入 → 原子 rename → 更新 installed.json
 // （沿用 n8n EBUSY/重装修复的原子替换思路，避免半成品）
 
-import { app, dialog } from 'electron';
+import { app, dialog, net } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type {
@@ -17,6 +17,7 @@ import type {
   InstalledRecord,
   MarketItemDetail,
 } from '../../shared/types';
+import { extractTarGz } from '../runtime-downloader';
 
 /** userData 目录（jest 等无 electron 环境时回退 APPDATA，与 runtime-config 一致） */
 function userDataDir(): string {
@@ -646,6 +647,126 @@ export async function importMarketBundle(): Promise<{ ok: boolean; imported?: nu
     }
     if (imported > 0) writeInstalled(records);
     return { ok: true, imported };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+
+/** 下载文件到磁盘（Electron net.fetch 自动跟随 302 重定向；手动超时 120s） */
+async function downloadArchive(url: string, dest: string): Promise<void> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120_000);
+  try {
+    const res = await net.fetch(url, { method: 'GET', redirect: 'follow', signal: controller.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    fs.writeFileSync(dest, buf);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** 递归查找包含 SKILL.md 的目录（优先浅层命中） */
+function findSkillDir(root: string): string | null {
+  if (fs.existsSync(path.join(root, 'SKILL.md'))) return root;
+  const dirs = fs.readdirSync(root, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => path.join(root, d.name));
+  for (const d of dirs) {
+    if (fs.existsSync(path.join(d, 'SKILL.md'))) return d;
+  }
+  for (const d of dirs) {
+    const nested = findSkillDir(d);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+/** 复制目录全部内容（源 → 目标） */
+function copyDirContents(src: string, dest: string): void {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const ent of fs.readdirSync(src, { withFileTypes: true })) {
+    const from = path.join(src, ent.name);
+    const to = path.join(dest, ent.name);
+    if (ent.isDirectory()) copyDirContents(from, to);
+    else fs.copyFileSync(from, to);
+  }
+}
+
+/** GitHub 开源技能直连下载安装：
+ *  按候选仓库 × main/master 分支依次尝试下载 tar.gz，
+ *  解压后定位含 SKILL.md 的目录，安装到 openclaw-home/skills/<sourceId> 并登记 installed.json(source=github)
+ */
+export async function installGithubSkill(
+  sourceId: number,
+  name: string,
+  candidates: Array<{ owner: string; repo: string }>,
+): Promise<{ ok: boolean; dir?: string; error?: string }> {
+  try {
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+      return { ok: false, error: '该技能没有可用的下载地址（仓库解析失败）' };
+    }
+    const target = path.join(getOpenClawHome(), 'skills', String(sourceId));
+    const staging = target + '.staging';
+    safeRemove(staging);
+    fs.mkdirSync(staging, { recursive: true });
+    const tmp = path.join(marketRoot(), '.tmp');
+    fs.mkdirSync(tmp, { recursive: true });
+
+    const urls: string[] = [];
+    for (const c of candidates) {
+      if (!c || !c.owner || !c.repo) continue;
+      urls.push(`https://github.com/${c.owner}/${c.repo}/archive/refs/heads/main.tar.gz`);
+      urls.push(`https://github.com/${c.owner}/${c.repo}/archive/refs/heads/master.tar.gz`);
+    }
+    if (urls.length === 0) {
+      return { ok: false, error: '该技能没有可用的仓库候选' };
+    }
+
+    let lastErr = '';
+    let installed = false;
+    for (let i = 0; i < urls.length && !installed; i++) {
+      const archive = path.join(tmp, `skill-${sourceId}-${Date.now()}-${i}.tar.gz`);
+      const extractRoot = path.join(tmp, `skill-${sourceId}-${Date.now()}-${i}`);
+      try {
+        await downloadArchive(urls[i], archive);
+        fs.mkdirSync(extractRoot, { recursive: true });
+        await extractTarGz(archive, extractRoot);
+        const skillDir = findSkillDir(extractRoot);
+        if (!skillDir) throw new Error('压缩包内未找到 SKILL.md');
+        copyDirContents(skillDir, staging);
+        installed = true;
+      } catch (e) {
+        lastErr = e instanceof Error ? e.message : String(e);
+      } finally {
+        safeRemove(extractRoot);
+        try { fs.unlinkSync(archive); } catch { /* ignore */ }
+      }
+    }
+    if (!installed) {
+      safeRemove(staging);
+      throw new Error('所有下载源均失败: ' + lastErr);
+    }
+    if (!fs.existsSync(path.join(staging, 'SKILL.md'))) {
+      safeRemove(staging);
+      throw new Error('安装内容缺少 SKILL.md');
+    }
+
+    safeRemove(target);
+    fs.renameSync(staging, target);
+    const records = readInstalled().filter((r) => !(r.type === 'skill' && r.id === sourceId));
+    records.unshift({
+      type: 'skill',
+      id: sourceId,
+      name: name || String(sourceId),
+      version: '1.0.0',
+      dir: target,
+      source: 'github',
+      installedAt: new Date().toISOString(),
+    });
+    writeInstalled(records);
+    return { ok: true, dir: target };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

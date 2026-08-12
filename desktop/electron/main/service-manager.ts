@@ -320,10 +320,13 @@ function ensureOpenClawConfig(): void {
     const skillsDir = app.isPackaged
       ? path.join(process.resourcesPath, 'openclaw', 'skills')
       : path.join(process.cwd(), 'resources', 'openclaw', 'skills')
+    // 内置技能目录可能未随包携带（打包遗漏或用户移动目录）：目录不存在时清空 extraDirs，
+    // 避免 openclaw.json 残留失效路径导致 OpenClaw 启动校验失败（Invalid config）
+    const skillsLoad: Record<string, unknown> = fs.existsSync(skillsDir) ? { extraDirs: [skillsDir] } : { extraDirs: [] }
     const patch: Record<string, unknown> = {
       gateway: { http: { endpoints: { chatCompletions: { enabled: true } } } },
-      skills: { load: { extraDirs: [skillsDir] } },
-      mcpServers: {},
+      skills: { load: skillsLoad },
+      mcp: { servers: {} },
       // OpenClaw agent 的模型通道指向云端 llm-proxy（强制 openai-completions 协议；apiKey 为用户静态 Key）
       models: {
         providers: {
@@ -342,6 +345,15 @@ function ensureOpenClawConfig(): void {
       existing = {}
     }
     const merged = deepMergeConfig(existing, patch)
+    // OpenClaw 2026.7+ 的 MCP 配置路径为 mcp.servers；旧版根级 mcpServers 键会导致整份配置校验失败（Invalid config），
+    // 合并后将其迁移进 mcp.servers 并删除，保证历史配置可自动修复
+    if (merged.mcpServers && typeof merged.mcpServers === 'object') {
+      const legacyMcp = merged.mcpServers as Record<string, unknown>
+      const existingMcp = (merged.mcp as Record<string, unknown> | undefined) ?? {}
+      const existingServers = (existingMcp.servers as Record<string, unknown> | undefined) ?? {}
+      merged.mcp = { ...existingMcp, servers: { ...existingServers, ...legacyMcp } }
+      delete merged.mcpServers
+    }
     if (!openclawProxyKey) {
       const openai = (merged as any)?.models?.providers?.openai
       if (openai && typeof openai === 'object') delete openai.apiKey

@@ -36,7 +36,12 @@ export function writeOpenClawMcpServers(
       mcpServers[s.name] = { command: s.command, args: s.args || [], env: s.env || {} }
     }
   }
-  cfg.mcpServers = mcpServers
+  // OpenClaw 2026.7+ 的 MCP 配置路径为 mcp.servers；根级 mcpServers 会导致配置校验失败（Invalid config）
+  const legacyMcp = (cfg.mcpServers as Record<string, unknown> | undefined) ?? {}
+  delete cfg.mcpServers
+  const existingMcp = (cfg.mcp as Record<string, unknown> | undefined) ?? {}
+  const existingServers = (existingMcp.servers as Record<string, unknown> | undefined) ?? {}
+  cfg.mcp = { ...existingMcp, servers: { ...existingServers, ...legacyMcp, ...mcpServers } }
   fs.mkdirSync(path.dirname(cfgPath), { recursive: true })
   fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2), 'utf-8')
 }
