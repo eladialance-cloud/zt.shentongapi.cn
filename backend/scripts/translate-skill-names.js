@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * translate-skill-names.js - 技能源(skill_sources)名称批量翻译成简体中文
- * 用法: node scripts/translate-skill-names.js [--batch 80]
- * 模型/中转: 默认复用「默认激活 chat 模型 + 全局中转(model_providers)」，也可用环境变量覆盖:
+ * 用法: node scripts/translate-skill-names.js [--batch 40]
+ * 模型/中转: 默认复用「默认激活 chat 模型 + 带 api_key 的 active 中转」，也可环境变量覆盖:
  *   SKILL_TRANSLATE_BASE_URL / SKILL_TRANSLATE_API_KEY / SKILL_TRANSLATE_MODEL
  * 幂等: 已含中文的名称自动跳过; 原文备份到 analyze_result.enName
  */
@@ -14,6 +14,9 @@ const https = require('https');
 const mysql = require('mysql2/promise');
 
 const CJK_RE = /[\u4e00-\u9fff]/;
+// markdown 代码块围栏（反引号 x3），避免在模板字符串中直接写字面反引号
+const FENCE_RE = new RegExp('^' + '\\x60\\x60\\x60(?:json)?\\s*', 'i');
+const FENCE_END_RE = new RegExp('\\s*\\x60\\x60\\x60\\s*$');
 
 function loadEnv(file) {
   const env = {};
@@ -56,7 +59,7 @@ function postJson(url, headers, bodyObj, timeoutMs) {
       {
         method: 'POST',
         headers: Object.assign({ 'Content-Type': 'application/json' }, headers, { 'Content-Length': Buffer.byteLength(body) }),
-        timeout: timeoutMs || 90000,
+        timeout: timeoutMs || 60000,
       },
       (res) => {
         const chunks = [];
@@ -65,9 +68,9 @@ function postJson(url, headers, bodyObj, timeoutMs) {
           const text = Buffer.concat(chunks).toString('utf8');
           if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
             try { resolve(JSON.parse(text)); }
-            catch (e) { reject(new Error('响应非JSON: ' + text.slice(0, 300))); }
+            catch (e) { reject(new Error('响应非JSON: ' + text.slice(0, 200))); }
           } else {
-            reject(new Error('HTTP ' + res.statusCode + ': ' + text.slice(0, 300)));
+            reject(new Error('HTTP ' + res.statusCode + ': ' + text.slice(0, 200)));
           }
         });
       },
@@ -76,6 +79,19 @@ function postJson(url, headers, bodyObj, timeoutMs) {
     req.on('error', (e) => reject(e));
     req.end(body);
   });
+}
+
+/** 从模型响应中稳健提取 JSON 对象文本 */
+function extractJson(text) {
+  let t = String(text || '').trim();
+  t = t.replace(FENCE_RE, '').replace(FENCE_END_RE, '');
+  const first = t.indexOf('{');
+  const last = t.lastIndexOf('}');
+  if (first === -1 || last === -1 || last <= first) return null;
+  let cand = t.slice(first, last + 1);
+  try { return JSON.parse(cand); } catch (e) { /* 继续尝试修复 */ }
+  cand = cand.replace(/,\s*([}\]])/g, '$1').replace(/[\u0000-\u001f]/g, ' ');
+  try { return JSON.parse(cand); } catch (e) { return null; }
 }
 
 /** 翻译一批名称 → { id: '中文名' } */
@@ -87,7 +103,7 @@ async function translateBatch(url, apiKey, model, batch) {
     '2) 通用词意译（如 Skills→技能、Workflow→工作流、Assistant→助手、Manager→管理器、Helper→助手）；',
     '3) 名称自然通顺，每个不超过 30 个汉字。',
     '输入是 JSON 数组：' + JSON.stringify(items),
-    '只输出 JSON 对象，键为输入的 id，值为中文名，例如：{"12":"网页抓取助手"}。',
+    '只输出一个 JSON 对象，键为输入的 id，值为中文名，例如：{"12":"网页抓取助手"}。不要输出任何其他文字。',
   ].join('\n');
   const resp = await postJson(
     url,
@@ -95,21 +111,31 @@ async function translateBatch(url, apiKey, model, batch) {
     {
       model,
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 4000,
+      max_tokens: 8000,
       temperature: 0,
+      response_format: { type: 'json_object' },
     },
-    90000,
+    60000,
   );
-  const text = String((resp && resp.choices && resp.choices[0] && resp.choices[0].message && resp.choices[0].message.content) || '');
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('未解析到JSON: ' + text.slice(0, 200));
-  return JSON.parse(match[0]);
+  const raw = resp && resp.choices && resp.choices[0] && resp.choices[0].message ? resp.choices[0].message.content : '';
+  let text = '';
+  if (Array.isArray(raw)) {
+    text = raw.map((p) => (p && (p.text || p.content)) || '').join('');
+  } else {
+    text = String(raw || '');
+  }
+  if (!text.trim()) throw new Error('空响应');
+  const parsed = extractJson(text);
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('未解析到JSON: ' + text.slice(0, 200));
+  }
+  return parsed;
 }
 
 async function main() {
   const args = process.argv.slice(2);
   const batchSizeArg = args.find((a) => a.startsWith('--batch='));
-  const batchSize = batchSizeArg ? (Number(batchSizeArg.split('=')[1]) || 80) : 80;
+  const batchSize = batchSizeArg ? (Number(batchSizeArg.split('=')[1]) || 40) : 40;
 
   const envFile = findEnvFile();
   const env = envFile ? loadEnv(envFile) : {};
@@ -124,13 +150,13 @@ async function main() {
     charset: 'utf8mb4',
   });
 
-  // 1) 解析中转与模型：环境变量优先，其次 DB 全局中转 + 默认 chat 模型
+  // 1) 解析中转与模型：环境变量优先，其次 DB「带 api_key 的 active 中转」+ 默认 chat 模型
   let baseUrl = env.SKILL_TRANSLATE_BASE_URL;
   let apiKey = env.SKILL_TRANSLATE_API_KEY;
   let model = env.SKILL_TRANSLATE_MODEL;
   if (!baseUrl || !model) {
     const [providers] = await conn.execute(
-      "SELECT base_url, api_key FROM model_providers WHERE status='active' ORDER BY (is_global=1) DESC, id ASC LIMIT 1",
+      "SELECT base_url, api_key FROM model_providers WHERE status='active' AND api_key IS NOT NULL AND TRIM(api_key) != '' ORDER BY (is_global=1) DESC, id ASC LIMIT 1",
     );
     const [models] = await conn.execute(
       "SELECT upstream_model_id, model_id FROM models WHERE is_active=1 AND model_type='chat' ORDER BY id ASC LIMIT 1",
@@ -151,8 +177,9 @@ async function main() {
   const url = baseUrl.replace(/\/+$/, '') + '/v1/chat/completions';
   console.log('中转: ' + url);
   console.log('模型: ' + model);
+  console.log('批次: ' + batchSize);
 
-  // 2) 取待翻译条目（跳过已含中文的）
+  // 2) 取待翻译条目（跳过已含中文的，支持断点续跑）
   const [rows] = await conn.execute(
     "SELECT id, skill_name, analyze_result FROM skill_sources WHERE status='analyzed' ORDER BY id",
   );
@@ -173,13 +200,13 @@ async function main() {
           fail += batch.length;
         } else {
           console.warn('批次重试 ' + attempt + ' id=' + batch[0].id + ': ' + e.message);
-          await new Promise((r) => setTimeout(r, 3000 * attempt));
+          await new Promise((r) => setTimeout(r, 2000 * attempt));
         }
       }
     }
     if (result) {
       for (const row of batch) {
-        const zh = result && result[String(row.id)];
+        const zh = result[String(row.id)];
         if (zh && typeof zh === 'string' && zh.trim()) {
           let ar = row.analyze_result;
           try { ar = typeof ar === 'string' ? JSON.parse(ar) : (ar || {}); } catch { ar = {}; }
@@ -197,7 +224,7 @@ async function main() {
     if ((i + batchSize) % (batchSize * 5) === 0 || i + batchSize >= todo.length) {
       console.log('进度: ' + Math.min(i + batchSize, todo.length) + '/' + todo.length + ' 已翻译=' + ok + ' 失败=' + fail);
     }
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((r) => setTimeout(r, 300));
   }
   await conn.end();
   console.log('完成: 翻译=' + ok + ' 未翻译=' + fail);
