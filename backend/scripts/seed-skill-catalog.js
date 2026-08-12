@@ -113,7 +113,11 @@ async function main() {
   }
   console.log('解析到技能条目: ' + entries.length);
 
-  const env = loadEnv(path.join(process.cwd(), '.env'));
+  let env = {};
+  const envCandidates = [path.join(process.cwd(), '.env'), path.join(__dirname, '..', '.env')];
+  const envFile = envCandidates.find((f) => fs.existsSync(f));
+  if (envFile) env = loadEnv(envFile);
+  else console.warn('[WARN] 未找到 .env，使用默认连接参数');
   const conn = await mysql.createConnection({
     host: env.DB_HOST || 'localhost',
     port: Number(env.DB_PORT || 3306),
