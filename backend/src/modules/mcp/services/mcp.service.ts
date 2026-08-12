@@ -46,10 +46,13 @@ export class McpService {
     qb.skip((page - 1) * pageSize).take(pageSize);
     const [list, total] = await qb.getManyAndCount();
     const installed = await this.serverRepo.find({ where: { userId, source: 'official' } });
-    const installedIds = new Set(installed.map((s) => Number(s.catalogId)));
+    const installedMap = new Map<number, number>(installed.map((s) => [Number(s.catalogId), s.id]));
     return {
       total,
-      list: list.map((c) => this.sanitizeCatalog({ ...c, isInstalled: c.id != null && installedIds.has(c.id) })),
+      list: list.map((c) => {
+        const serverId = c.id != null ? installedMap.get(c.id) ?? null : null;
+        return this.sanitizeCatalog({ ...c, isInstalled: serverId != null, mcpServerId: serverId });
+      }),
     };
   }
 
