@@ -858,6 +858,13 @@ export class ServiceManager extends EventEmitter {
           if (installed) {
             return await isPortListening(info.port)
           }
+          // 安装后仍未就绪：若错误仍是“运行时未安装”，说明运行时已下载但入口解析失败
+          //（如解压布局异常/自定义运行时目录不可读），替换为可操作的提示，避免误导用户
+          if (info.error === '运行时未安装') {
+            info.status = 'error'
+            info.error = '运行时已下载但入口文件未找到，请点击“安装/修复运行时”重装，或到「服务」页检查运行时位置'
+            this.emitStatus(name)
+          }
         } catch (installErr) {
           console.error(`[service-manager] ${name} auto-install failed:`, installErr)
           this.autoInstallAttempted.delete(name)

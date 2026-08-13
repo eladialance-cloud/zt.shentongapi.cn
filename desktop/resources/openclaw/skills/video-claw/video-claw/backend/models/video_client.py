@@ -254,7 +254,6 @@ class VideoClient:
         else:
             raise ValueError(f"未知的视频生成模型: {model}")
 
-    @staticmethod
     def _generate_llmproxy(
         self,
         prompt: str,

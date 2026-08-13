@@ -11,7 +11,7 @@
  */
 'use strict'
 
-const { spawn } = require('node:child_process')
+const { spawn, spawnSync } = require('node:child_process')
 const path = require('node:path')
 const fs = require('node:fs')
 
@@ -146,6 +146,23 @@ function ensureFallbackConfig() {
   }
 }
 
+/**
+ * 启动前预检 python 依赖：dashscope -> cryptography 需要 cffi，若嵌入式运行时缺传递依赖，
+ * 后端会在 import 阶段直接崩溃且无明确提示。此处提前导入启动必需模块，
+ * 把缺失模块名写到 stderr，桌面端「服务」页输出尾部可直接看到真实原因。
+ */
+function checkPythonDeps() {
+  const probe = spawnSync(PYTHON, [
+    '-c',
+    'import fastapi, uvicorn, pydantic, yaml, requests, httpx, PIL, openai, edge_tts, certifi, docx, PyPDF2, numpy, dashscope, multipart',
+  ], { encoding: 'utf-8', windowsHide: true, timeout: 30000 })
+  if (probe.status !== 0) {
+    const tail = String(probe.stderr || '').trim().slice(-800)
+    console.error('[video-claw] python 依赖预检失败: ' + (tail || ('exit=' + probe.status)))
+    process.exit(1)
+  }
+  log('python 依赖预检通过')
+}
 function main() {
   if (!fs.existsSync(PYTHON)) {
     console.error('[video-claw] bundled python not found: ' + PYTHON)
@@ -155,6 +172,7 @@ function main() {
     console.error('[video-claw] backend not found: ' + BACKEND_DIR)
     process.exit(1)
   }
+  checkPythonDeps()
   ensureFallbackConfig()
   spawnChild('backend', PYTHON, [path.join(BACKEND_DIR, 'api_server.py')], BACKEND_DIR)
   if (fs.existsSync(NEXT_BIN) && fs.existsSync(path.join(FRONTEND_DIR, '.next'))) {

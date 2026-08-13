@@ -29,6 +29,8 @@ python-docx>=1.1.0
 # AI/ML Clients
 openai>=1.0.0
 dashscope>=1.10.0
+# cffi: dashscope->cryptography 的传递依赖，嵌入式运行时 pip 不会为已满足的依赖补装，缺它会直接导入崩溃
+cffi>=1.16.0
 
 edge-tts==7.2.7
 certifi>=2025.10.5

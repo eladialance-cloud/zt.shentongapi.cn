@@ -1,4 +1,4 @@
-﻿﻿﻿# build-video-claw-runtime.ps1 - 构建并打包 VideoClaw Windows 运行时
+﻿# build-video-claw-runtime.ps1 - 构建并打包 VideoClaw Windows 运行时
 #
 # 用法:  powershell -ExecutionPolicy Bypass -File scripts\build-video-claw-runtime.ps1
 # 前置:  本机可联网（npm install / pip install 需要）
@@ -45,8 +45,25 @@ $py = Join-Path $stage "python\python.exe"
 if (-not (Test-Path $py)) { throw "python.exe 不存在: $py" }
 & $py -m pip --disable-pip-version-check --version | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "pip 不可用" }
-& $py -m pip install --disable-pip-version-check --no-warn-script-location numpy dashscope python-docx PyPDF2
+& $py -m pip install --disable-pip-version-check --no-warn-script-location numpy dashscope python-docx PyPDF2 cffi playwright
 if ($LASTEXITCODE -ne 0) { throw "pip install 失败，请检查网络后重试" }
+# 依赖冒烟：cffi 是 cryptography 的传递依赖，hermes 嵌入式 python 自带 cryptography 但缺 cffi，
+# pip 对已满足的依赖不会补装其传递依赖，导致 dashscope 导入崩溃（后端启动即退出）。
+# 逐个导入启动必需模块，任一缺失直接终止构建，避免“能打包但运行时坏”漏到线上。
+$depModules = @(
+  'fastapi','uvicorn','pydantic','yaml','requests','httpx','PIL','openai',
+  'edge_tts','certifi','docx','PyPDF2','numpy','dashscope','multipart','cffi','playwright'
+)
+$missingDeps = @()
+foreach ($m in $depModules) {
+  & $py -c "import $m" *> $null
+  if ($LASTEXITCODE -ne 0) { $missingDeps += $m }
+}
+if ($missingDeps.Count -gt 0) {
+  Write-Host ("[ERROR] python 依赖导入检查失败，缺失: " + ($missingDeps -join ', '))
+  throw "python 依赖不完整，请检查 pip install 结果"
+}
+Write-Host ("  [OK] python 启动依赖导入检查通过（" + $depModules.Count + " 个模块）")
 
 # ---- 3. 组装 node（复用 hermes 嵌入式 Node 24）----
 Write-Step "3" "组装 node 运行时..."

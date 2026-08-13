@@ -311,8 +311,8 @@ MODEL_CONFIG: dict[str, Any] = {'models': {
                                                   'resolutions': ['720P', '1080P'],
                                                   'ratios': ['16:9', '9:16', '1:1', '4:3', '3:4'],
                                                   'api_contract_verified': True}},
-            'wan2.7-i2v': {'name': 'Wan 2.7 I2V',
-                           'provider': 'dashscope',
+            'wan2.7-i2v': {'name': 'Wan 2.7 I2V (平台中转)',
+                           'provider': 'llmproxy',
                            'family': 'wan',
                            'type': ['video'],
                            'concurrency': 5,
@@ -488,8 +488,8 @@ MODEL_CONFIG: dict[str, Any] = {'models': {
                                                                             '21:9',
                                                                             'adaptive'],
                                                                  'api_contract_verified': True}},
-            'wan2.7-r2v': {'name': 'Wan 2.7 R2V',
-                           'provider': 'dashscope',
+            'wan2.7-r2v': {'name': 'Wan 2.7 R2V (平台中转)',
+                           'provider': 'llmproxy',
                            'family': 'wan',
                            'type': ['video'],
                            'concurrency': 5,
@@ -730,13 +730,29 @@ def _provider_visible(provider: str) -> bool:
 
 
 def _merged_model_config() -> dict[str, Any]:
-    """合并配置：平台 llm-proxy 启用模型（优先）+ 可见的静态模型（降级）。"""
+    """合并配置：平台 llm-proxy 启用模型（优先）+ 静态模型按类别兜底（降级）。"""
     models = dict(MODEL_CONFIG.get("models", {}))
     platform = fetch_platform_models()
-    if platform is not None:
-        # 平台拉取成功：以平台为准，后台没有的 llmproxy 静态条目不再显示
-        models = {mid: meta for mid, meta in models.items() if meta.get("provider") != "llmproxy"}
-        for item in platform:
+    # 可用平台模型：id 有效、非 deep-shentong 占位、类型可映射；
+    # 平台未配置/请求失败/返回空列表或仅占位条目时，一律降级静态表，保证下拉不为空。
+    platform_usable = [
+        item for item in (platform or [])
+        if str(item.get("id") or "").strip() and not str(item.get("id") or "").startswith("deep-shentong")
+        and _PLATFORM_TYPE_MAP.get(str(item.get("type") or "chat").lower())
+    ]
+    if platform_usable:
+        # 平台覆盖的类别集合：仅当平台贡献了某类别时才移除该类别静态 llmproxy 条目，
+        # 平台未覆盖的类别保留静态兜底，避免该类别下拉为空。
+        platform_types: set[str] = set()
+        for item in platform_usable:
+            mtype = str(item.get("type") or "chat").lower()
+            platform_types.update(_PLATFORM_TYPE_MAP.get(mtype) or [])
+        models = {
+            mid: meta for mid, meta in models.items()
+            if meta.get("provider") != "llmproxy"
+            or not (set(meta.get("type") or []) & platform_types)
+        }
+        for item in platform_usable:
             mid = str(item.get("id") or "")
             if not mid or mid == "deep-shentong":
                 continue
@@ -763,7 +779,7 @@ def _merged_model_config() -> dict[str, Any]:
                 "api_contract_verified": bool(platform_caps.get("api_contract_verified", True)),
                 "capabilities": platform_caps,
             }
-    # 失败降级：保留静态表（含 llmproxy 默认条目），保证功能可用
+    # 平台未配置/请求失败/返回空列表：降级保留静态表（含 llmproxy 默认条目），保证下拉不为空
     return {"models": {mid: meta for mid, meta in models.items() if _provider_visible(meta.get("provider", ""))}}
 
 

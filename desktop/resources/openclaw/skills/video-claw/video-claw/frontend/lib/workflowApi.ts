@@ -196,10 +196,19 @@ export async function fetchApiModels(params: {
   if (params.modelType) search.set('model_type', params.modelType);
   if (params.ability) search.set('ability', params.ability);
   if (params.verifiedOnly) search.set('verified_only', 'true');
-  const resp = await fetch(`/api/models${search.toString() ? `?${search.toString()}` : ''}`);
-  if (!resp.ok) throw new Error('获取模型列表失败');
-  const data = await resp.json();
-  return data.models || [];
+  const query = search.toString();
+  const load = async (base: string) => {
+    const resp = await fetch(`${base}/api/models${query ? `?${query}` : ''}`);
+    if (!resp.ok) throw new Error('获取模型列表失败');
+    const data = await resp.json();
+    return data.models || [];
+  };
+  try {
+    return await load('');
+  } catch {
+    // 代理（Next rewrite）暂不可用时回退直连后端，避免模型下拉永久为空
+    return load(DIRECT_API_BASE);
+  }
 }
 
 export async function fetchStandardTemplates(): Promise<StandardTemplateOption[]> {
