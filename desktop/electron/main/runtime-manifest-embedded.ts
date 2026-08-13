@@ -145,13 +145,13 @@ export const EMBEDDED_MANIFEST: RuntimeManifest = {
         "linux-x64": ""
       },
       "size": {
-        "win32-x64": 247817526,
+        "win32-x64": 251539298,
         "darwin-x64": 0,
         "darwin-arm64": 0,
         "linux-x64": 0
       },
       "sha256": {
-        "win32-x64": "f1d9e5ac8dfdce942848ae058386d84a14dd8edf942616a3648bdabb7dac5f84",
+        "win32-x64": "faf552c367aa309f6cb8758bb82752da3660e55a3923325da7e3cc03cda9a879",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""
