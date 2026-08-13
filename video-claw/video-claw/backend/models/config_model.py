@@ -744,6 +744,15 @@ def _merged_model_config() -> dict[str, Any]:
             types = _PLATFORM_TYPE_MAP.get(mtype)
             if not types:
                 continue
+            platform_caps = item.get("capabilities")
+            if not isinstance(platform_caps, dict) or not platform_caps:
+                platform_caps = _platform_capabilities(types)
+            else:
+                platform_caps = {
+                    **_platform_capabilities(types),
+                    **{key: value for key, value in platform_caps.items() if value is not None},
+                }
+                platform_caps.setdefault("api_contract_verified", True)
             models[mid] = {
                 "name": item.get("name") or mid,
                 "provider": "llmproxy",
@@ -751,8 +760,8 @@ def _merged_model_config() -> dict[str, Any]:
                 "type": types,
                 "concurrency": 3,
                 "price_per_image": 0,
-                "api_contract_verified": True,
-                "capabilities": _platform_capabilities(types),
+                "api_contract_verified": bool(platform_caps.get("api_contract_verified", True)),
+                "capabilities": platform_caps,
             }
     # 失败降级：保留静态表（含 llmproxy 默认条目），保证功能可用
     return {"models": {mid: meta for mid, meta in models.items() if _provider_visible(meta.get("provider", ""))}}

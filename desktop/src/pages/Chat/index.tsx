@@ -12,7 +12,9 @@ import {
   RobotOutlined,
   ThunderboltOutlined,
   DatabaseOutlined,
-  GlobalOutlined
+  GlobalOutlined,
+  ApiOutlined,
+  ReloadOutlined
 } from '@ant-design/icons'
 import { SessionList } from './components/SessionList'
 import { MessageList } from './components/MessageList'
@@ -32,6 +34,8 @@ import {
   consumePendingCompletions,
 } from '@/store/chat-stream'
 import { listMarketAgents } from '@/api/agent-api'
+import { listLlmIntegrations } from '@/api/llm-integrations-api'
+import type { LlmIntegration } from '@shared/types'
 import { listKnowledgeBases, listOfficialKnowledgeBases } from '@/api/knowledge-api'
 import { officeBridge, isRetrieveTool } from '@/pages/Office/services/officeBridge'
 import type {
@@ -97,6 +101,7 @@ export default function Chat() {
   // ===== 选项数据 =====
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
   const [modelLoading, setModelLoading] = useState(false)
+  const [customIntegrations, setCustomIntegrations] = useState<LlmIntegration[]>([])
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([])
   const [agentPriceMap, setAgentPriceMap] = useState<Record<number, Agent>>({})
   const [kbOptions, setKbOptions] = useState<KnowledgeBaseOption[]>([])
@@ -165,30 +170,50 @@ export default function Chat() {
     }
   }, [])
 
-  /** 加载可选模型列表（管理后台上线的启用模型，替代旧的写死列表） */
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      setModelLoading(true)
-      try {
-        const list = await chatApi.listChatModels()
-        if (cancelled) return
-        setModelOptions(list || [])
-        if (list && list.length > 0) {
-          setModelId((prev) =>
-            prev && list.some((m) => m.id === prev) ? prev : list[0].id,
-          )
-        }
-      } catch (err) {
-        console.error('[Chat] load models failed:', err)
-      } finally {
-        if (!cancelled) setModelLoading(false)
+  /** 加载可选模型列表（管理后台上线的启用模型 + 本机自定义大模型） */
+  const loadModels = useCallback(async () => {
+    setModelLoading(true)
+    try {
+      const [listResult, customResult] = await Promise.allSettled([
+        chatApi.listChatModels(),
+        listLlmIntegrations(),
+      ])
+      if (listResult.status === 'rejected') {
+        console.error('[Chat] load backend models failed:', listResult.reason)
       }
-    })()
-    return () => {
-      cancelled = true
+      if (customResult.status === 'rejected') {
+        console.error('[Chat] load custom integrations failed:', customResult.reason)
+      }
+      const list = listResult.status === 'fulfilled' ? listResult.value || [] : []
+      const custom = customResult.status === 'fulfilled' ? customResult.value || [] : []
+      setModelOptions(list)
+      setCustomIntegrations(custom)
+      const all = [
+        ...(list || []).map((m) => m.id),
+        ...(custom || []).flatMap((c) =>
+          (c.models || []).map((m) => 'custom/' + c.id + '/' + m.id),
+        ),
+      ]
+      setModelId((prev) => (prev && all.includes(prev) ? prev : all[0] || ''))
+    } catch (err) {
+      console.error('[Chat] load models failed:', err)
+    } finally {
+      setModelLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    void loadModels()
+  }, [loadModels])
+
+  // 窗口重新聚焦时刷新一次模型列表（管理后台新增/上下架模型后无需重启桌面端）
+  useEffect(() => {
+    const onFocus = () => {
+      void loadModels()
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [loadModels])
 
   /** 挂载恢复：回到对话页自动恢复上次会话 + 草稿/视频完成消费 */
   useEffect(() => {
@@ -371,9 +396,10 @@ export default function Chat() {
         content,
         history,
         knowledgeBaseId: knowledgeBaseIdRef.current,
+        modelId: modelId || undefined,
       })
     },
-    [activeSession, messages]
+    [activeSession, messages, modelId]
   )
 
   /** 持久化消息到云端（切换会话/重启后历史仍可恢复） */
@@ -429,16 +455,22 @@ export default function Chat() {
     setModelId(newModelId)
     if (activeSession && activeSession.modelId !== newModelId) {
       try {
-        await chatApi.updateSession(activeSession.id, { modelId: newModelId })
+        // 自定义模型标识仅本机有效，不写入云端会话（避免其它机器拿到失效的 custom/xxx）
+        if (!newModelId.startsWith('custom/')) {
+          await chatApi.updateSession(activeSession.id, { modelId: newModelId })
+        }
         setActiveSession({ ...activeSession, modelId: newModelId })
       } catch (err) {
         console.error('[Chat] update model failed:', err)
       }
     }
-    try {
-      await chatApi.setPreferredChatModel(newModelId)
-    } catch (err) {
-      console.error('[Chat] set preferred model failed:', err)
+    // 自定义模型仅本机使用，不写入云端默认模型
+    if (!newModelId.startsWith('custom/')) {
+      try {
+        await chatApi.setPreferredChatModel(newModelId)
+      } catch (err) {
+        console.error('[Chat] set preferred model failed:', err)
+      }
     }
   }
 
@@ -494,14 +526,32 @@ export default function Chat() {
         label: MODEL_TYPE_GROUP_LABEL[key] || key,
         options: items
       }))
+      // 自定义大模型（设置 → 大模型接入）：直连用户自己的 OpenAI 兼容端点
+      if (customIntegrations.length > 0) {
+        options.push({
+          label: '自定义模型',
+          options: customIntegrations.flatMap((c) =>
+            (c.models || []).map((m) => ({
+              label: (
+                <span>
+                  <ApiOutlined style={{ color: 'var(--color-text-secondary)', marginRight: 6 }} />
+                  {c.name} · {m.name || m.id}
+
+                </span>
+              ),
+              value: 'custom/' + c.id + '/' + m.id
+            }))
+          )
+        })
+      }
       return {
         options,
         notFoundContent: modelLoading
           ? '加载中...'
-          : '管理后台暂未上线模型，请联系管理员',
+          : '管理后台暂未上线模型，可在「设置 → 大模型接入」添加自定义模型',
       }
     },
-    [modelOptions, modelLoading]
+    [modelOptions, modelLoading, customIntegrations]
   )
 
   /** 当前选中的 Agent（用于价格提示） */
@@ -603,6 +653,16 @@ export default function Chat() {
             size="small"
             popupMatchSelectWidth={false}
           />
+          <Tooltip title="刷新模型列表（同步管理后台最新模型）">
+            <Button
+              type="text"
+              size="small"
+              icon={<ReloadOutlined />}
+              loading={modelLoading}
+              onClick={() => void loadModels()}
+              style={{ color: 'var(--color-text-secondary)' }}
+            />
+          </Tooltip>
           <span className={styles.selectorLabel}>Agent:</span>
           <Select
             {...agentSelectProps}

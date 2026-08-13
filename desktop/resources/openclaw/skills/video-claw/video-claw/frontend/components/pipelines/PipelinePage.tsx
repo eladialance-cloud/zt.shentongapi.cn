@@ -146,6 +146,12 @@ const PIPELINE_TITLE_ICONS = {
   digital_human: UserRound,
 };
 
+const MODEL_TYPE_LABELS: Record<string, string> = {
+  llm: 'LLM',
+  image: '图片',
+  video: '视频',
+};
+
 function SelectField({
   label,
   value,
@@ -157,22 +163,29 @@ function SelectField({
   onChange: (value: string) => void;
   groups: ProviderGroup[];
 }) {
+  const isEmpty = groups.length === 0 || groups.every(group => group.models.length === 0);
   return (
     <label className="flex flex-col gap-1.5 min-w-0">
       <span className="text-xs font-medium text-gray-500">{label}</span>
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 outline-none focus:border-blue-300"
-      >
-        {groups.map(group => (
-          <optgroup key={group.provider} label={group.label}>
-            {group.models.map(model => (
-              <option key={model.id} value={model.id}>{model.label}</option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
+      {isEmpty ? (
+        <div className="flex items-center h-10 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs text-amber-600">
+          暂无可用模型，请先在管理后台添加
+        </div>
+      ) : (
+        <select
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 outline-none focus:border-blue-300"
+        >
+          {groups.map(group => (
+            <optgroup key={group.provider} label={group.label}>
+              {group.models.map(model => (
+                <option key={model.id} value={model.id}>{model.label}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      )}
     </label>
   );
 }
@@ -838,7 +851,19 @@ export default function PipelinePage({ pipeline, title, subtitle }: PipelinePage
     setText(current => current || TEMPLATE_TEXT_DEFAULTS.text);
   };
 
+  const requiredModelEmpty = useMemo(() => {
+    const types: string[] = [];
+    if (pipeline === 'digital_human' || pipeline === 'standard') types.push('llm');
+    if (pipeline === 'standard') types.push('image');
+    if (pipeline !== 'standard' || standardVideoMode === 'dynamic_video' || templateVideoEnabled) types.push('video');
+    const groupsByType: Record<string, ProviderGroup[]> = { llm: llmModelGroups, image: imageModelGroups, video: videoModelGroups };
+    return types.filter(type => firstModelId(groupsByType[type]) === '');
+  }, [pipeline, standardVideoMode, templateVideoEnabled, llmModelGroups, imageModelGroups, videoModelGroups]);
+
+  const missingModelText = requiredModelEmpty.map(type => MODEL_TYPE_LABELS[type] || type).join('、');
+
   const canSubmit = useMemo(() => {
+    if (requiredModelEmpty.length > 0) return false;
     if (pipeline === 'standard') {
       return text.trim().length > 0
         && (!templateMode || Boolean(selectedTemplate))
@@ -846,7 +871,7 @@ export default function PipelinePage({ pipeline, title, subtitle }: PipelinePage
     }
     if (pipeline === 'action_transfer') return promptText.trim() && imagePath.trim() && videoPath.trim();
     return characterImage.trim() && goodsText.trim();
-  }, [pipeline, text, templateMode, selectedTemplate, templateVideoEnabled, promptText, imagePath, videoPath, characterImage, goodsText]);
+  }, [pipeline, requiredModelEmpty, text, templateMode, selectedTemplate, templateVideoEnabled, promptText, imagePath, videoPath, characterImage, goodsText]);
 
   useEffect(() => {
     if (!task || !['pending', 'running'].includes(task.status)) return;
@@ -1274,6 +1299,11 @@ export default function PipelinePage({ pipeline, title, subtitle }: PipelinePage
                 </>
               )}
               {error && <span className="text-xs text-red-500 truncate">{error}</span>}
+              {requiredModelEmpty.length > 0 && (
+                <span className="text-xs text-amber-600 truncate">
+                  暂无可用{missingModelText}模型，请先在管理后台添加后再启动任务
+                </span>
+              )}
               <button
                 onClick={submit}
                 disabled={!canSubmit || running}

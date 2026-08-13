@@ -18,6 +18,7 @@ import type {
   MarketItemDetail,
   OpenClawChatMessage,
   OpenClawChatMessagePayload,
+  LlmIntegration,
   OpenClawToolCall,
   OpenClawChatDonePayload,
   OpenClawChatLifecyclePayload,
@@ -133,13 +134,22 @@ const electronAPI: ElectronAPI = {
     syncFromBackend: (token: string) =>
       ipcRenderer.invoke('mcp:syncFromBackend', token) as Promise<{ ok: boolean; count?: number; error?: string }>,
   },
+  llmIntegrations: {
+    list: () => ipcRenderer.invoke('llm-integrations:list') as Promise<LlmIntegration[]>,
+    save: (integration: LlmIntegration) =>
+      ipcRenderer.invoke('llm-integrations:save', integration) as Promise<{ ok: boolean; integrations: LlmIntegration[]; error?: string }>,
+    remove: (id: string) =>
+      ipcRenderer.invoke('llm-integrations:remove', id) as Promise<{ ok: boolean; integrations: LlmIntegration[]; error?: string }>,
+    test: (baseUrl: string, apiKey: string, model: string) =>
+      ipcRenderer.invoke('llm-integrations:test', { baseUrl, apiKey, model }) as Promise<{ ok: boolean; message?: string }>,
+  },
   openclawChat: {
     /** 注入用户 llm-proxy 静态 Key（登录后调用；OpenClaw openai provider 指向云端 llm-proxy） */
     setProxyKey: (key: string) => {
       ipcRenderer.send('openclaw-chat:set-proxy-key', key)
     },
-    send: (text: string, token: string, history?: OpenClawChatMessage[], knowledgeBaseId?: number, sessionId?: number) =>
-      ipcRenderer.invoke('openclaw-chat:send', { text, token, history, knowledgeBaseId, sessionId }) as Promise<{ ok: boolean; aborted?: boolean }>,
+    send: (text: string, token: string, history?: OpenClawChatMessage[], knowledgeBaseId?: number, sessionId?: number, modelId?: string) =>
+      ipcRenderer.invoke('openclaw-chat:send', { text, token, history, knowledgeBaseId, sessionId, modelId }) as Promise<{ ok: boolean; aborted?: boolean }>,
     abort: () => {
       ipcRenderer.send('openclaw-chat:abort')
     },

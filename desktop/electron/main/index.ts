@@ -6,11 +6,14 @@ import { getRuntimeDirInfo, setRuntimeRoot, defaultRuntimeRoot } from './runtime
 import { join } from 'node:path'
 import {
   OpenClawChatService,
+  createCustomLlmCaller,
   createLocalOpenClawWsCaller,
   waitForLocalPort,
   OPENCLAW_LOCAL_PORT,
 } from './openclaw-chat'
+import { LlmIntegrationsStore } from './llm-integrations'
 import type { OpenClawChatMessage } from './openclaw-chat'
+import type { LlmIntegration } from '../shared/types'
 
 // GPU 白名单开关：解决部分显卡/驱动/远程桌面环境下 WebGL 被 Chromium 黑名单拦截的问题
 // 必须在 app.whenReady 之前设置
@@ -121,8 +124,12 @@ app.on('window-all-closed', () => {
 /** 注册 IPC 处理器 */
 function registerIpcHandlers(): void {
   // ===== OpenClaw 本地直达对话（记账云端 + 对话本地） =====
+  const llmIntegrations = new LlmIntegrationsStore(
+    join(app.getPath('userData'), 'llm-integrations.json'),
+  )
   const openClawChat = new OpenClawChatService({
     callOpenClaw: createLocalOpenClawWsCaller(),
+    callCustomModel: createCustomLlmCaller(llmIntegrations),
     ensureOpenClaw: async () => {
       const info = serviceManager.getInfo('openclaw')
       // 状态机防御：status='running' 但端口未监听（进程残留/假活）时也强制重启，
@@ -157,6 +164,7 @@ function registerIpcHandlers(): void {
         history?: OpenClawChatMessage[]
         knowledgeBaseId?: number
         sessionId?: number
+        modelId?: string
       },
     ) => {
       const win = BrowserWindow.fromWebContents(event.sender)
@@ -173,6 +181,7 @@ function registerIpcHandlers(): void {
             history: payload.history,
             knowledgeBaseId: payload.knowledgeBaseId,
             sessionId: payload.sessionId,
+            modelId: payload.modelId,
           },
           (chunk) => push('openclaw-chat:message', { content: chunk }),
           (e) => {
@@ -201,6 +210,18 @@ function registerIpcHandlers(): void {
   ipcMain.on('openclaw-chat:set-proxy-key', (_event, key: string) => {
     serviceManager.setOpenClawProxyKey(key || '')
   })
+
+  // ===== 自定义大模型接入（本机保存） =====
+  ipcMain.handle('llm-integrations:list', () => llmIntegrations.list())
+  ipcMain.handle('llm-integrations:save', (_e, integration: LlmIntegration) =>
+    llmIntegrations.save(integration),
+  )
+  ipcMain.handle('llm-integrations:remove', (_e, id: string) => llmIntegrations.remove(id))
+  ipcMain.handle(
+    'llm-integrations:test',
+    (_e, args: { baseUrl: string; apiKey: string; model: string }) =>
+      llmIntegrations.test(args?.baseUrl ?? '', args?.apiKey ?? '', args?.model ?? ''),
+  )
 
   // 从后端同步启用中的 MCP 到 OpenClaw 本地配置（登录后由渲染层触发）
   ipcMain.handle('mcp:syncFromBackend', async (_e, token: string) =>

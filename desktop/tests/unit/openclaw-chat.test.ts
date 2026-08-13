@@ -17,11 +17,13 @@
 import { test, it, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   OpenClawChatService,
+  createCustomLlmCaller,
   createLocalOpenClawCaller,
   createLocalOpenClawWsCaller,
   parseSseFrame,
@@ -296,3 +298,174 @@ const WS_MOCK = "const http = require('node:http');\nconst { WebSocketServer } =
 
 const WS_MOCK_TOOL = "const http = require('node:http');\nconst { WebSocketServer } = require('ws');\nconst srv = http.createServer();\nconst wss = new WebSocketServer({ server: srv });\nfunction push(ws, frame) { ws.send(JSON.stringify(frame)); }\nwss.on('connection', (ws) => {\n  ws.on('message', (raw) => {\n    const msg = JSON.parse(raw.toString());\n    if (msg.method === 'connect') {\n      ws.send(JSON.stringify({ type: 'res', id: msg.id, ok: true, payload: { type: 'hello-ok', protocol: 4 } }));\n    } else if (msg.method === 'sessions.create') {\n      ws.send(JSON.stringify({ type: 'res', id: msg.id, ok: true, payload: { key: 'agent:main:dashboard:tool' } }));\n    } else if (msg.method === 'chat.send') {\n      ws.send(JSON.stringify({ type: 'res', id: msg.id, ok: true, payload: { runId: msg.params.idempotencyKey, status: 'started' } }));\n      const rid = msg.params.idempotencyKey;\n      push(ws, { type: 'event', event: 'agent', payload: { runId: rid, stream: 'tool', data: { id: 't1', name: 'read', args: 'a.txt', status: 'done', output: 'file content' } } });\n      push(ws, { type: 'event', event: 'chat', payload: { runId: rid, state: 'final', stopReason: 'stop', message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] } } });\n      push(ws, { type: 'event', event: 'agent', payload: { runId: rid, stream: 'lifecycle', data: { phase: 'end', stopReason: 'stop' } } });\n    }\n  });\n});\nsrv.listen(0, '127.0.0.1', () => console.log('PORT=' + srv.address().port));";
 
+// ===== 自定义大模型直连（createCustomLlmCaller） =====
+
+function makeLlmStore(list: Array<{ id: string; baseUrl: string; apiKey: string }>) {
+  return { list: () => list }
+}
+
+async function startSseServer(
+  handler: (res: import('node:http').ServerResponse) => void,
+): Promise<import('node:http').Server> {
+  const server = createServer((_req, res) => handler(res))
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  return server
+}
+
+function serverPort(server: import('node:http').Server): number {
+  const addr = server.address()
+  if (addr && typeof addr === 'object') return addr.port
+  throw new Error('no port')
+}
+
+async function collectCustom(
+  caller: ReturnType<typeof createCustomLlmCaller>,
+  modelId: string,
+  signal = new AbortController().signal,
+): Promise<{ chunks: string[]; events: OpenClawChatEvent[] }> {
+  const chunks: string[] = []
+  const events: OpenClawChatEvent[] = []
+  for await (const c of caller({ text: 'hi', token: 'tok', modelId }, (e) => events.push(e), signal)) {
+    chunks.push(c)
+  }
+  return { chunks, events }
+}
+
+describe('createCustomLlmCaller', () => {
+  it('SSE 流式输出（LF 帧）+ usage 汇总', async () => {
+    const server = await startSseServer((res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      res.write('data: {"choices":[{"delta":{"content":"你"}}]}\n\n')
+      res.write('data: {"choices":[{"delta":{"content":"好"}}]}\n\n')
+      res.write('data: {"choices":[{"delta":{}}],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}\n\n')
+      res.write('data: [DONE]\n\n')
+      res.end()
+    })
+    try {
+      const caller = createCustomLlmCaller(
+        makeLlmStore([{ id: 'int1', baseUrl: `http://127.0.0.1:${serverPort(server)}/v1`, apiKey: 'sk-x' }]),
+      )
+      const { chunks, events } = await collectCustom(caller, 'custom/int1/gpt-x')
+      assert.deepEqual(chunks, ['你', '好'])
+      const done = events.find((e) => e.type === 'done')
+      assert.ok(done && done.type === 'done')
+      assert.deepEqual(done.usage, { input: 5, output: 3, total: 8 })
+    } finally {
+      server.close()
+    }
+  })
+
+  it('CRLF 帧能增量解析（不等流结束）', { timeout: 10000 }, async () => {
+    const server = await startSseServer((res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      res.write('data: {"choices":[{"delta":{"content":"A"}}]}\r\n\r\n')
+      // 保持连接：客户端应立刻读到 A，再等流结束
+      setTimeout(() => res.end(), 300)
+    })
+    try {
+      const caller = createCustomLlmCaller(
+        makeLlmStore([{ id: 'int1', baseUrl: `http://127.0.0.1:${serverPort(server)}/v1`, apiKey: 'sk-x' }]),
+      )
+      const iterator = caller(
+        { text: 'hi', token: 'tok', modelId: 'custom/int1/gpt-x' },
+        () => {},
+        new AbortController().signal,
+      )
+      const first = await iterator.next()
+      assert.equal(first.value, 'A')
+      const done = await iterator.next()
+      assert.equal(done.done, true)
+    } finally {
+      server.close()
+    }
+  })
+
+  it('401 → 可读鉴权错误', async () => {
+    const server = await startSseServer((res) => {
+      res.writeHead(401, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'bad key' }))
+    })
+    try {
+      const caller = createCustomLlmCaller(
+        makeLlmStore([{ id: 'int1', baseUrl: `http://127.0.0.1:${serverPort(server)}/v1`, apiKey: 'sk-wrong' }]),
+      )
+      await assert.rejects(collectCustom(caller, 'custom/int1/gpt-x'), /鉴权失败/)
+    } finally {
+      server.close()
+    }
+  })
+
+  it('接入已被删除 → 可读错误', async () => {
+    const caller = createCustomLlmCaller(makeLlmStore([]))
+    await assert.rejects(collectCustom(caller, 'custom/gone/gpt-x'), /不存在或已删除/)
+  })
+
+  it('modelId 格式不完整 → 可读错误', async () => {
+    const caller = createCustomLlmCaller(
+      makeLlmStore([{ id: 'int1', baseUrl: 'http://127.0.0.1:1/v1', apiKey: 'sk-x' }]),
+    )
+    await assert.rejects(collectCustom(caller, 'custom/int1'), /模型标识无效/)
+  })
+
+  it('用户中断 → AbortError', async () => {
+    const server = await startSseServer((res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      res.write('data: {"choices":[{"delta":{"content":"a"}}]}\n\n')
+      // 保持连接不结束，等待客户端中断
+    })
+    try {
+      const caller = createCustomLlmCaller(
+        makeLlmStore([{ id: 'int1', baseUrl: `http://127.0.0.1:${serverPort(server)}/v1`, apiKey: 'sk-x' }]),
+      )
+      const ac = new AbortController()
+      const iterator = caller({ text: 'hi', token: 'tok', modelId: 'custom/int1/gpt-x' }, () => {}, ac.signal)
+      const first = await iterator.next()
+      assert.equal(first.value, 'a')
+      ac.abort()
+      await assert.rejects(
+        iterator.next(),
+        (err: unknown) => err instanceof Error && err.name === 'AbortError',
+      )
+    } finally {
+      server.close()
+    }
+  })
+})
+
+describe('OpenClawChatService 自定义模型路由', () => {
+  it('modelId 以 custom/ 开头 → 走 callCustomModel，不 ensure、不 callOpenClaw', async () => {
+    const { deps, calls } = makeDeps({
+      callCustomModel: async function* (params: OpenClawSendParams) {
+        calls.push('custom:' + params.modelId)
+        yield '自定义回复'
+      },
+    })
+    const svc = new OpenClawChatService(deps as never)
+    const chunks: string[] = []
+    const result = await svc.send(
+      { text: 'hi', token: 'tok-c', modelId: 'custom/i1/m1' },
+      (c) => chunks.push(c),
+      () => {},
+    )
+    assert.deepEqual(calls, ['custom:custom/i1/m1'])
+    assert.deepEqual(chunks, ['自定义回复'])
+    assert.equal(result.aborted, false)
+  })
+
+  it('平台模型 → 走 callOpenClaw + ensureOpenClaw', async () => {
+    const { deps, calls } = makeDeps()
+    const svc = new OpenClawChatService(deps as never)
+    await svc.send({ text: 'hi', token: 'tok-p', modelId: 'qwen3.8-max' }, () => {}, () => {})
+    assert.deepEqual(calls, ['ensure', 'openclaw:hi'])
+  })
+
+  it('callCustomModel 通道缺失 → 可读错误', async () => {
+    const { deps, calls } = makeDeps()
+    const svc = new OpenClawChatService(deps as never)
+    await assert.rejects(
+      svc.send({ text: 'hi', token: 'tok', modelId: 'custom/i1/m1' }, () => {}, () => {}),
+      /自定义大模型通道不可用/
+    )
+    assert.deepEqual(calls, [])
+  })
+})

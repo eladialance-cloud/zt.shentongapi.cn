@@ -18,6 +18,7 @@ export interface OpenClawChatHandle {
     history?: OpenClawChatMessage[],
     knowledgeBaseId?: number,
     sessionId?: number,
+    modelId?: string,
   ) => Promise<{ ok: boolean; aborted?: boolean }>
   /** 中断当前对话（本地 abort，云端退款） */
   abort: () => void
@@ -40,10 +41,10 @@ export function createOpenClawChat(): OpenClawChatHandle {
   const api = window.electronAPI?.openclawChat
   if (!api) throw new Error('electronAPI.openclawChat 不可用（请升级桌面端版本）')
   return {
-    send: async (text, history, knowledgeBaseId, sessionId) => {
+    send: async (text, history, knowledgeBaseId, sessionId, modelId) => {
       const { accessToken } = useAuthStore.getState()
       if (!accessToken) throw new Error('未登录')
-      return api.send(text, accessToken, history, knowledgeBaseId, sessionId)
+      return api.send(text, accessToken, history, knowledgeBaseId, sessionId, modelId)
     },
     abort: () => api.abort(),
     onMessage: (cb) => api.onMessage((d) => cb(d.content)),

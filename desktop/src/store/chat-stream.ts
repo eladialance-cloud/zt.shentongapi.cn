@@ -414,6 +414,8 @@ export interface StartChatSendParams {
   content: string
   history: OpenClawChatMessage[]
   knowledgeBaseId?: number
+  /** 当前会话选择的模型（custom/<integrationId>/<modelId> 时主进程直连自定义端点） */
+  modelId?: string
 }
 
 export async function startChatSend(params: StartChatSendParams): Promise<void> {
@@ -436,7 +438,7 @@ export async function startChatSend(params: StartChatSendParams): Promise<void> 
   draftTimer = setInterval(saveDraft, DRAFT_INTERVAL_MS)
 
   try {
-    await h.send(params.content, params.history, params.knowledgeBaseId, params.sessionId)
+    await h.send(params.content, params.history, params.knowledgeBaseId, params.sessionId, params.modelId)
   } catch (err) {
     const messageText = err instanceof Error ? err.message : String(err)
     officeBridge.onSystemError(messageText)

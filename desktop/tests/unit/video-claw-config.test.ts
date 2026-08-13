@@ -7,6 +7,9 @@ import { join } from 'node:path'
 import {
   buildVideoClawConfigYaml,
   ensureVideoClawConfig,
+  syncVideoClawConfig,
+  patchYamlWhitelist,
+  extractYamlWhitelist,
   DEFAULT_VIDEO_CLAW_MODELS,
   type VideoClawConfigOptions,
 } from '../../electron/main/video-claw-config'
@@ -51,5 +54,97 @@ describe('ensureVideoClawConfig', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('syncVideoClawConfig', () => {
+  const NEW_OPTS: VideoClawConfigOptions = {
+    ...OPTS,
+    platformModels: [
+      { id: 'qwen3.8-max', type: 'chat' },
+      { id: 'qwen-vl-new', type: 'vision' },
+      { id: 'new-image-model', type: 'image' },
+      { id: 'new-video-model', type: 'video' },
+    ],
+  }
+
+  it('白名单变化时自动重写 config.yaml', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vc-sync-'))
+    try {
+      // 先用旧白名单生成
+      ensureVideoClawConfig(dir, OPTS)
+      const first = readFileSync(join(dir, 'config.yaml'), 'utf-8')
+      expect(first).not.toContain('new-image-model')
+
+      // 平台新增模型后同步：白名单应更新
+      const p = syncVideoClawConfig(dir, NEW_OPTS)
+      expect(p).toBe(join(dir, 'config.yaml'))
+      const second = readFileSync(p, 'utf-8')
+      expect(second).toContain('new-image-model')
+      expect(second).toContain('new-video-model')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('白名单未变化时不改写文件', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vc-sync2-'))
+    try {
+      ensureVideoClawConfig(dir, NEW_OPTS)
+      const first = readFileSync(join(dir, 'config.yaml'), 'utf-8')
+      syncVideoClawConfig(dir, NEW_OPTS)
+      const second = readFileSync(join(dir, 'config.yaml'), 'utf-8')
+      expect(second).toBe(first)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('白名单变化时仅修补白名单，保留用户其它配置（如改过的端口）', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vc-sync3-'))
+    try {
+      ensureVideoClawConfig(dir, OPTS)
+      const cfg = join(dir, 'config.yaml')
+      // 模拟用户修改端口
+      const userEdited = readFileSync(cfg, 'utf-8').replace('  port: 8000', '  port: 9000')
+      writeFileSync(cfg, userEdited, 'utf-8')
+      syncVideoClawConfig(dir, NEW_OPTS)
+      const after = readFileSync(cfg, 'utf-8')
+      expect(after).toContain('  port: 9000')
+      expect(after).toContain('llm: qwen3.8-max')
+      expect(extractYamlWhitelist(after)).toEqual([
+        'qwen3.8-max',
+        'qwen-vl-new',
+        'new-image-model',
+        'new-video-model',
+      ])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('extractYamlWhitelist 能解析 llmproxy.models', () => {
+    const yaml = buildVideoClawConfigYaml(NEW_OPTS)
+    const ids = extractYamlWhitelist(yaml)
+    expect(ids).toContain('qwen3.8-max')
+    expect(ids).toContain('new-video-model')
+    expect(ids.length).toBeGreaterThan(0)
+  })
+})
+
+describe('patchYamlWhitelist', () => {
+  it('仅替换 llmproxy.models 列表，保留其它配置', () => {
+    const userEdited = buildVideoClawConfigYaml(OPTS).replace('  port: 8000', '  port: 9000')
+    const patched = patchYamlWhitelist(userEdited, ['model-a', 'model-b'])
+    expect(patched).toContain('  port: 9000')
+    expect(patched).toContain('llm: qwen3.8-max')
+    expect(extractYamlWhitelist(patched)).toEqual(['model-a', 'model-b'])
+    expect(patched).not.toContain('      - qwen3.8-max')
+    expect(patched).not.toContain('      - wan2.7-i2v')
+  })
+
+  it('llmproxy 段缺失时返回原文本（不整体重建）', () => {
+    const noLlmp = 'project_name: x\nserver:\n  port: 8000\nmodels:\n  llm: y\n'
+    expect(patchYamlWhitelist(noLlmp, ['a'])).toBe(noLlmp)
   })
 })

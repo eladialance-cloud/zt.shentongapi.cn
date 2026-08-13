@@ -25,6 +25,7 @@ import type {
 import { resolve, verifyAll, getServiceVersionGap, isServiceContentStale } from './runtime-resolver'
 import {
   ensureVideoClawConfig,
+  syncVideoClawConfig,
   resolveVideoClawBackendDir,
   DEFAULT_VIDEO_CLAW_MODELS,
   fetchPlatformModels,
@@ -214,7 +215,7 @@ async function ensureVideoClawConfigSafe(): Promise<void> {
     const backendDir = resolveVideoClawBackendDir(path.dirname(resolved.cmd))
     const platformModels = await fetchPlatformModels(OPENCLAW_LLM_PROXY_BASE, openclawProxyKey)
     const opts = pickPlatformModels(platformModels, DEFAULT_VIDEO_CLAW_MODELS)
-    ensureVideoClawConfig(backendDir, {
+    syncVideoClawConfig(backendDir, {
       llmProxyBaseUrl: OPENCLAW_LLM_PROXY_BASE,
       apiKey: openclawProxyKey,
       ...opts,

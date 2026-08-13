@@ -17,6 +17,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createConnection } from 'node:net'
 import { WebSocket } from 'ws'
+import { normalizeChatEndpoint } from './llm-integrations'
 
 // ===== 常量 =====
 
@@ -85,6 +86,12 @@ export interface OpenClawChatDeps {
     onEvent: (e: OpenClawChatEvent) => void,
     signal: AbortSignal,
   ) => AsyncGenerator<string, void, unknown>
+  /** 自定义大模型直连（modelId 以 custom/ 开头时使用；不经 llm-proxy、不扣平台积分） */
+  callCustomModel?: (
+    params: OpenClawSendParams,
+    onEvent: (e: OpenClawChatEvent) => void,
+    signal: AbortSignal,
+  ) => AsyncGenerator<string, void, unknown>
   /** 确保 OpenClaw 服务运行中（未运行则启动；启动失败抛错） */
   ensureOpenClaw?: () => Promise<void>
   /** 上下文目录（默认 userData/openclaw-chat，由主进程注入） */
@@ -128,8 +135,16 @@ export class OpenClawChatService extends EventEmitter {
     const text = params.text?.trim()
     if (!text) throw new Error('消息内容为空')
 
-    // 0) 确保本地 OpenClaw 已运行（未运行自动启动；模型 Key 由 service-manager 注入配置）
-    if (this.deps.ensureOpenClaw) {
+    // 0) 自定义大模型直连（custom/<integrationId>/<modelId>）：不经 OpenClaw / llm-proxy
+    const useCustomModel = (params.modelId ?? '').startsWith('custom/')
+    const caller = useCustomModel ? this.deps.callCustomModel : this.deps.callOpenClaw
+    if (!caller) {
+      throw new Error(
+        useCustomModel ? '自定义大模型通道不可用（请到设置→大模型接入检查配置）' : 'OpenClaw 对话通道不可用',
+      )
+    }
+    // 0.1) 平台模型走本地 OpenClaw（未运行自动启动；模型 Key 由 service-manager 注入配置）
+    if (!useCustomModel && this.deps.ensureOpenClaw) {
       await this.deps.ensureOpenClaw()
     }
     this.writeContext(params)
@@ -144,7 +159,8 @@ export class OpenClawChatService extends EventEmitter {
 
     try {
       // 1) 本地 OpenClaw 对话（SSE 流式；OpenClaw 内部经 llm-proxy 调后台模型并扣费）
-      for await (const chunk of this.deps.callOpenClaw(
+      //    自定义模型则直连用户填写的 OpenAI 兼容端点（无工具/Agent，纯文本流式）
+      for await (const chunk of caller(
         { ...params, text },
         (e) => {
           if (e.type === 'done') usage = e.usage
@@ -802,4 +818,125 @@ function isPortListening(port: number, host = '127.0.0.1'): Promise<boolean> {
     socket.once('error', () => done(false))
     setTimeout(() => done(false), 1000)
   })
+}
+
+/** 自定义大模型直连调用（OpenAI 兼容 SSE 流式；modelId 格式 custom/<integrationId>/<modelId>） */
+export function createCustomLlmCaller(
+  store: { list(): Array<{ id: string; baseUrl: string; apiKey: string }> },
+): NonNullable<OpenClawChatDeps['callCustomModel']> {
+  return async function* callCustomModel(
+    params: OpenClawSendParams,
+    onEvent: (e: OpenClawChatEvent) => void,
+    signal: AbortSignal,
+  ): AsyncGenerator<string, void, unknown> {
+    const segments = (params.modelId ?? '').split('/')
+    const integrationId = segments[1]
+    const modelId = segments.slice(2).join('/')
+    if (!integrationId || !modelId) {
+      throw new Error('自定义模型标识无效')
+    }
+    const integration = store.list().find((i) => i.id === integrationId)
+    if (!integration) {
+      throw new Error('自定义大模型不存在或已删除，请到「设置 → 大模型接入」重新配置')
+    }
+    const url = normalizeChatEndpoint(integration.baseUrl || '')
+    const messages = [
+      ...(params.history ?? []).map((h) => ({ role: h.role, content: h.content })),
+      { role: 'user' as const, content: params.text },
+    ]
+    const controller = new AbortController()
+    const onUserAbort = () => controller.abort()
+    signal.addEventListener('abort', onUserAbort, { once: true })
+    const stallTimeoutMs = 60_000
+    let stallTimer: NodeJS.Timeout | null = null
+    const armStall = () => {
+      if (stallTimer) clearTimeout(stallTimer)
+      stallTimer = setTimeout(() => {
+        controller.abort(new Error('自定义大模型响应超时（60 秒未收到数据）'))
+      }, stallTimeoutMs)
+    }
+    const clearStall = () => {
+      if (stallTimer) {
+        clearTimeout(stallTimer)
+        stallTimer = null
+      }
+    }
+    try {
+      armStall()
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + (integration.apiKey || '').trim(),
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages,
+          stream: true,
+          stream_options: { include_usage: true },
+        }),
+        signal: controller.signal,
+      })
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '')
+        if (resp.status === 401 || resp.status === 403) {
+          throw new Error('自定义大模型鉴权失败（HTTP ' + resp.status + '），请检查 API Key')
+        }
+        throw new Error('自定义大模型连接失败 (HTTP ' + resp.status + '): ' + text.slice(0, 200))
+      }
+      if (!resp.body) throw new Error('自定义大模型无响应流')
+
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder('utf-8')
+      let buffer = ''
+      let usage: OpenClawUsage | undefined
+
+      const consume = (raw: string): string[] => {
+        const chunks: string[] = []
+        for (const line of raw.split('\n')) {
+          const dataLine = line.trim()
+          if (!dataLine.startsWith('data:')) continue
+          const payload = dataLine.slice(5).trimStart()
+          if (payload === '[DONE]') continue
+          try {
+            const data = JSON.parse(payload) as {
+              choices?: Array<{ delta?: { content?: string } }>
+              usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+            }
+            const delta = data?.choices?.[0]?.delta?.content
+            if (typeof delta === 'string' && delta) chunks.push(delta)
+            if (data?.usage) {
+              usage = {
+                input: data.usage.prompt_tokens ?? 0,
+                output: data.usage.completion_tokens ?? 0,
+                total: data.usage.total_tokens ?? 0,
+              }
+            }
+          } catch {
+            // 非 JSON 帧忽略
+          }
+        }
+        return chunks
+      }
+
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        armStall()
+        buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n')
+        const parts = buffer.split('\n\n')
+        buffer = parts.pop() ?? ''
+        for (const part of parts) {
+          for (const chunk of consume(part)) yield chunk
+        }
+      }
+      if (buffer.trim()) {
+        for (const chunk of consume(buffer)) yield chunk
+      }
+      onEvent({ type: 'done', usage })
+    } finally {
+      clearStall()
+      signal.removeEventListener('abort', onUserAbort)
+    }
+  }
 }

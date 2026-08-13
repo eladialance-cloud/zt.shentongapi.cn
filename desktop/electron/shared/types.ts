@@ -297,6 +297,42 @@ export interface OpenClawChatErrorPayload {
   message: string;
 }
 
+/** 自定义大模型接入（仅存本机 userData，OpenAI 兼容端点） */
+export interface LlmIntegrationModel {
+  /** 上游模型 ID（如 gpt-4o / deepseek-chat） */
+  id: string;
+  /** 显示名（缺省取模型 ID） */
+  name?: string;
+  /** chat=文本对话 / vision=支持图片输入 */
+  modelType?: "chat" | "vision";
+}
+
+export interface LlmIntegration {
+  /** 本地唯一 id（uuid） */
+  id: string;
+  /** 接入名称（如「我的 OpenAI」） */
+  name: string;
+  /** OpenAI 兼容 Base URL（如 https://api.openai.com/v1） */
+  baseUrl: string;
+  /** API Key（仅存本机） */
+  apiKey: string;
+  models: LlmIntegrationModel[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface LlmIntegrationTestResult {
+  ok: boolean;
+  message?: string;
+}
+
+export interface LlmIntegrationStoreResult {
+  ok: boolean;
+  integrations: LlmIntegration[];
+  error?: string;
+}
+
+
 export interface ElectronAPI {
   service: {
     getStatus(): Promise<Record<ServiceName, ServiceStatus>>;
@@ -411,6 +447,21 @@ export interface ElectronAPI {
     /** 根据 client_txn_id 查询是否已存在 */
     exists(client_txn_id: string): Promise<boolean>;
   };
+
+
+/** 自定义大模型接入（本机保存，OpenAI 兼容端点；测试连接与增删改查） */
+  llmIntegrations: {
+    list(): Promise<LlmIntegration[]>;
+    save(integration: LlmIntegration): Promise<LlmIntegrationStoreResult>;
+    remove(id: string): Promise<LlmIntegrationStoreResult>;
+    test(
+      baseUrl: string,
+      apiKey: string,
+      model: string,
+    ): Promise<LlmIntegrationTestResult>;
+  };
+
+
   /** OpenClaw 本地直达对话（记账在云端，消息走本地 OpenClaw） */
   openclawChat: {
     /** 注入用户 llm-proxy 静态 Key（登录后调用；OpenClaw openai provider 指向云端 llm-proxy） */
@@ -422,6 +473,7 @@ export interface ElectronAPI {
       history?: OpenClawChatMessage[],
       knowledgeBaseId?: number,
       sessionId?: number,
+      modelId?: string,
     ): Promise<{ ok: boolean; aborted?: boolean }>;
     /** 中断当前对话（本地 abort） */
     abort(): void;

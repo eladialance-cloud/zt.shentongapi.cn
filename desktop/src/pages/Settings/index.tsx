@@ -13,7 +13,8 @@ import {
   BellOutlined,
   SyncOutlined,
   RollbackOutlined,
-  RobotOutlined
+  RobotOutlined,
+  ApiOutlined
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import Profile from './Profile'
@@ -23,15 +24,17 @@ import Devices from './Devices'
 import Notifications from './Notifications'
 import Update from './Update'
 import SettingsModels from './Models'
+import SettingsLlmIntegrations from './LlmIntegrations'
 import styles from './styles.module.css'
 
-type SettingsTab = 'profile' | 'password' | 'apikeys' | 'models' | 'devices' | 'notifications' | 'update'
+type SettingsTab = 'profile' | 'password' | 'apikeys' | 'models' | 'llms' | 'devices' | 'notifications' | 'update'
 
 const MENU_ITEMS: Array<{ key: SettingsTab; label: string; icon: React.ReactNode }> = [
   { key: 'profile', label: '资料编辑', icon: <UserOutlined /> },
   { key: 'password', label: '修改密码', icon: <LockOutlined /> },
   { key: 'apikeys', label: 'API Key', icon: <KeyOutlined /> },
   { key: 'models', label: '模型设置', icon: <RobotOutlined /> },
+  { key: 'llms', label: '大模型接入', icon: <ApiOutlined /> },
   { key: 'devices', label: '设备管理', icon: <DesktopOutlined /> },
   { key: 'notifications', label: '通知设置', icon: <BellOutlined /> },
   { key: 'update', label: '检查更新', icon: <SyncOutlined /> }
@@ -81,6 +84,7 @@ export default function Settings() {
           {active === 'password' && <Password />}
           {active === 'apikeys' && <ApiKeys />}
           {active === 'models' && <SettingsModels />}
+          {active === 'llms' && <SettingsLlmIntegrations />}
           {active === 'devices' && <Devices />}
           {active === 'notifications' && <Notifications />}
           {active === 'update' && <Update />}

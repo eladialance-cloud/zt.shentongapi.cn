@@ -6,7 +6,7 @@ from urllib.parse import quote
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 
 from api.schemas.pipelines import (
     ActionTransferPipelineRequest,
@@ -31,8 +31,7 @@ TEMPLATE_SIZES = {
     "1080x1080": {"ratio": "1:1", "width": 1080, "height": 1080},
     "1920x1080": {"ratio": "16:9", "width": 1920, "height": 1080},
 }
-PLACEHOLDER_IMAGE_FALLBACK = (
-    "data:image/svg+xml;utf8,"
+PLACEHOLDER_SVG = (
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'>"
     "<defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>"
     "<stop stop-color='%2388b7ff'/><stop offset='1' stop-color='%23f8d58a'/>"
@@ -42,14 +41,21 @@ PLACEHOLDER_IMAGE_FALLBACK = (
     "<path d='M90 820 360 520l170 170 130-150 270 280Z' fill='%23ffffff' fill-opacity='.55'/>"
     "</svg>"
 )
+# 回退图用 base64 编码的合法 data URI（旧实现未做 URL 编码，demo 图缺失时可能整图不渲染）
+PLACEHOLDER_IMAGE_FALLBACK = (
+    "data:image/svg+xml;base64,"
+    + base64.b64encode(PLACEHOLDER_SVG.encode("utf-8")).decode("ascii")
+)
+# 预览图统一走静态路由：避免每个预览页内嵌大 base64（default_image.png 约 1.7MB），
+# PNG 缺失时回退到合法 SVG，保证「精品模版」卡片图片始终可渲染
+DEMO_IMAGE_URL = "/api/pipelines/standard/templates/demo-image"
 
 
-def _demo_image_data_uri() -> str:
+def _demo_image_bytes() -> tuple[bytes, str]:
     if os.path.exists(DEMO_IMAGE_PATH):
         with open(DEMO_IMAGE_PATH, "rb") as f:
-            encoded = base64.b64encode(f.read()).decode("ascii")
-        return f"data:image/png;base64,{encoded}"
-    return PLACEHOLDER_IMAGE_FALLBACK
+            return f.read(), "image/png"
+    return PLACEHOLDER_SVG.encode("utf-8"), "image/svg+xml"
 
 
 def _template_label(filename: str) -> str:
@@ -72,11 +78,10 @@ def _template_path(size: str, filename: str) -> str:
 
 
 def _render_preview_html(raw: str) -> str:
-    demo_image = _demo_image_data_uri()
     replacements = {
         **TEMPLATE_FIELD_DEFAULTS,
-        "image": demo_image,
-        "media": f'<img class="template-media" style="width:100%;height:100%;object-fit:cover;display:block;" src="{demo_image}" alt="">',
+        "image": DEMO_IMAGE_URL,
+        "media": f'<img class="template-media" style="width:100%;height:100%;object-fit:cover;display:block;" src="{DEMO_IMAGE_URL}" alt="">',
     }
 
     def repl(match: re.Match) -> str:
@@ -241,6 +246,13 @@ async def preview_standard_template(size: str, filename: str):
     path = _template_path(size, filename)
     with open(path, "r", encoding="utf-8") as f:
         return HTMLResponse(_render_preview_html(f.read()))
+
+
+@router.get("/api/pipelines/standard/templates/demo-image")
+async def demo_template_image():
+    """精品模版预览占位图：优先返回本地 default_image.png，缺失时回退合法 SVG。"""
+    content, media_type = _demo_image_bytes()
+    return Response(content=content, media_type=media_type)
 
 
 @router.post("/api/pipelines/standard/tasks")
