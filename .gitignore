@@ -60,7 +60,8 @@ desktop/pack_runtime.ps1
 desktop/electron.vite.config.ts.new
 desktop/check_build*.js
 desktop/check_updater.js
-desktop/runtime/
+desktop/runtime/*
+!desktop/runtime/manifest.json
 check_db*.sh
 check_files.js
 fix_frontend_0.5*.py
