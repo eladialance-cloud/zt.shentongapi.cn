@@ -29,14 +29,14 @@ if ($LASTEXITCODE -ne 0) { Write-Host "[ERROR] scp 上传失败"; exit 1 }
 
 # ---- 2. 服务器落位 + 结构校验 ----
 # 注意: 远程命令用单引号单行字符串，且避免引号/反斜杠/正则元字符（PS5.1 传参给 ssh 会被 CommandLineToArgvW 二次解析破坏）
-$serverCmd = 'sudo mkdir -p /opt/shentong/runtime/video-claw/0.1.0 && sudo mv /tmp/video-claw-win-x64.tar.gz /opt/shentong/runtime/video-claw/0.1.0/ && sudo chown -R www-data:www-data /opt/shentong/runtime/video-claw && ls -la /opt/shentong/runtime/video-claw/0.1.0 && cd /tmp && rm -rf vc-chk && mkdir vc-chk && tar -xzf /opt/shentong/runtime/video-claw/0.1.0/video-claw-win-x64.tar.gz -C vc-chk && test -f vc-chk/video-claw.cmd && test -f vc-chk/video-claw-server.js && test -f vc-chk/node/node.exe && test -f vc-chk/python/python.exe && test -f vc-chk/video-claw/video-claw/backend/api_server.py && test -f vc-chk/video-claw/video-claw/frontend/.next/BUILD_ID && echo STRUCTURE_OK && rm -rf vc-chk'
+$serverCmd = 'sudo mkdir -p /opt/shentong/runtime/video-claw/0.1.0 && sudo mv /tmp/video-claw-win-x64.tar.gz /opt/shentong/runtime/video-claw/0.1.0/ && sudo chown -R www-data:www-data /opt/shentong/runtime/video-claw && sudo mkdir -p /opt/shentong/cdn/video-claw/0.1.0 && sudo cp /opt/shentong/runtime/video-claw/0.1.0/video-claw-win-x64.tar.gz /opt/shentong/cdn/video-claw/0.1.0/ && sudo mkdir -p /opt/shentong/updates/runtime/video-claw/0.1.0 && sudo cp /opt/shentong/runtime/video-claw/0.1.0/video-claw-win-x64.tar.gz /opt/shentong/updates/runtime/video-claw/0.1.0/ && sudo chown -R www-data:www-data /opt/shentong/cdn/video-claw /opt/shentong/updates/runtime/video-claw && ls -la /opt/shentong/runtime/video-claw/0.1.0 && cd /tmp && rm -rf vc-chk && mkdir vc-chk && tar -xzf /opt/shentong/runtime/video-claw/0.1.0/video-claw-win-x64.tar.gz -C vc-chk && test -f vc-chk/video-claw.cmd && test -f vc-chk/video-claw-server.js && test -f vc-chk/node/node.exe && test -f vc-chk/python/python.exe && test -f vc-chk/video-claw/video-claw/backend/api_server.py && test -f vc-chk/video-claw/video-claw/frontend/.next/BUILD_ID && echo STRUCTURE_OK && rm -rf vc-chk'
 Write-Host "服务器部署 + 结构校验..."
 & ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=accept-new "$SSH_USER@${SERVER}" "$serverCmd"
 if ($LASTEXITCODE -ne 0) { Write-Host "[WARN] 服务器部署失败，请手动检查"; exit 1 }
 
 # ---- 3. 验证 CDN 可下载 ----
 Write-Host "验证 CDN: $url"
-$curlCmd = 'curl -sI https://zt.shentongapi.cn/runtime/video-claw/0.1.0/video-claw-win-x64.tar.gz | head -3'
+$curlCmd = 'curl -sI https://zt.shentongapi.cn/runtime/video-claw/0.1.0/video-claw-win-x64.tar.gz | grep -iE "HTTP/|content-length"'
 & ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=accept-new "$SSH_USER@${SERVER}" "$curlCmd"
 
 Write-Host ""

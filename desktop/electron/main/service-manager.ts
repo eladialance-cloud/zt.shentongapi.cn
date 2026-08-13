@@ -950,7 +950,8 @@ export class ServiceManager extends EventEmitter {
         ensureOpenClawConfig()
       }
       if (name === 'video-claw') {
-        void ensureVideoClawConfigSafe()
+        // 等待 config.yaml 写完再启动 ST-Claw（避免 fetchPlatformModels 异步竞态导致进程读到旧/缺失配置）
+        await ensureVideoClawConfigSafe()
       }
 
       spawnArgs =
