@@ -40,6 +40,12 @@ export interface ToolCallInfo {
   duration: number
   creditsCost: number
   status: 'running' | 'success' | 'failed'
+  /** 视频生成进度 0-100（对话内实时进度条） */
+  progress?: number
+  /** 视频任务阶段/状态标签 */
+  stage?: string
+  /** 完成后成片 URL（对话内直接播放） */
+  videoUrl?: string
 }
 
 /** Token 用量 */

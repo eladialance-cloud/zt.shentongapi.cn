@@ -13,7 +13,7 @@ CONFIG_PATH = BASE_DIR / "config.yaml"
 CONFIG_EXAMPLE_PATH = BASE_DIR / "config.yaml.example"
 
 DEFAULT_CONFIG: Dict[str, Any] = {
-    "project_name": "Video-Claw",
+    "project_name": "ST-Claw",
     "server": {
         "host": "127.0.0.1",
         "port": 8000,
@@ -24,6 +24,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "common": {
             "print_model_input": False,
             "proxy": "",
+            "show_third_party_models": False,
         },
         "openai": {
             "api_key": "",
@@ -240,6 +241,7 @@ class Config:
     LLMPROXY_API_KEY = _get(CONFIG, "api_providers.llmproxy.api_key")
     LLMPROXY_BASE_URL = _get(CONFIG, "api_providers.llmproxy.base_url")
     LLMPROXY_MODELS = set(_get(CONFIG, "api_providers.llmproxy.models") or [])
+    SHOW_THIRD_PARTY_MODELS = _as_bool(_get(CONFIG, "api_providers.common.show_third_party_models", False))
 
     @classmethod
     def is_llmproxy_model(cls, model: str) -> bool:
@@ -322,6 +324,7 @@ class Config:
         cls.LLMPROXY_API_KEY = _get(clean, "api_providers.llmproxy.api_key")
         cls.LLMPROXY_BASE_URL = _get(clean, "api_providers.llmproxy.base_url")
         cls.LLMPROXY_MODELS = set(_get(clean, "api_providers.llmproxy.models") or [])
+        cls.SHOW_THIRD_PARTY_MODELS = _as_bool(_get(clean, "api_providers.common.show_third_party_models", False))
 
         cls.LLM_API_KEY = cls.DASHSCOPE_API_KEY
         cls.LLM_BASE_URL = ""

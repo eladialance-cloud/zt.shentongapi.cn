@@ -34,7 +34,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'office', label: 'AI 办公室', icon: '🏢', path: '/office' },
       { key: 'chat', label: '对话', icon: '💬', path: '/chat' },
       { key: 'automation', label: '自动化', icon: '⚡', path: '/automation' },
-      { key: 'video-claw', label: 'AI 视频', icon: '🎬', path: '/video-claw' }
+      { key: 'video-claw', label: 'ST-Claw', icon: '🎬', path: '/video-claw' }
     ]
   },
   {

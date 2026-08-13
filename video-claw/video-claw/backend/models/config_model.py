@@ -13,6 +13,7 @@ if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
 from copy import deepcopy
+import time
 from typing import Any, Optional
 
 MODEL_CONFIG: dict[str, Any] = {'models': {
@@ -615,12 +616,151 @@ MODEL_CONFIG: dict[str, Any] = {'models': {
 
 
 def load_model_config() -> dict[str, Any]:
-    return MODEL_CONFIG
+    return _merged_model_config()
+
+
+# ==================== 平台 llm-proxy 模型动态注册 ====================
+# 可选模型 = 管理后台 models 表（isActive）通过 llm-proxy /v1/models 下发；
+# 后台没有上架的模型不会出现在桌面端「修改配置」里。
+
+_PLATFORM_CACHE: dict[str, Any] = {"ts": 0.0, "models": None}
+_PLATFORM_TTL = 60.0
+
+_PLATFORM_TYPE_MAP: dict[str, list[str]] = {
+    "chat": ["llm", "vlm"],
+    "reasoning": ["llm"],
+    "vision": ["llm", "vlm"],
+    "image": ["t2i", "i2i"],
+    "image_edit": ["t2i", "i2i"],
+    "image_generation": ["t2i", "i2i"],
+    "video": ["video"],
+    "t2v": ["video"],
+    "i2v": ["video"],
+    "r2v": ["video"],
+}
+
+
+def _platform_capabilities(types: list[str]) -> dict[str, Any]:
+    """为平台模型生成能力标签（按 video-claw 能力体系映射）。"""
+    base = {"api_contract_verified": True}
+    if "video" in types:
+        return {
+            **base,
+            "ability_type": "image_to_video",
+            "ability_types": ["image_to_video"],
+            "adapter_ability_types": ["first_frame_i2v", "start_end_frame_i2v", "reference_to_video"],
+            "input_modalities": ["text", "image"],
+            "adapter_input_modalities": ["text", "image"],
+            "duration": {"min": 3, "max": 15, "integer": True, "verified": True},
+        }
+    if "t2i" in types or "i2i" in types or "image" in types:
+        return {
+            **base,
+            "ability_type": "image_generation",
+            "ability_types": ["text_to_image", "image_to_image"],
+            "adapter_ability_types": ["text_to_image", "image_to_image"],
+            "input_modalities": ["text", "image"],
+            "adapter_input_modalities": ["text", "image"],
+        }
+    if "vlm" in types:
+        return {
+            **base,
+            "ability_type": "vision_language",
+            "ability_types": ["vision_language", "image_understanding"],
+            "adapter_ability_types": ["vision_language", "image_understanding"],
+            "input_modalities": ["text", "image"],
+            "adapter_input_modalities": ["text", "image"],
+        }
+    return {
+        **base,
+        "ability_type": "text_generation",
+        "ability_types": ["text_generation"],
+        "adapter_ability_types": ["text_generation"],
+        "input_modalities": ["text"],
+        "adapter_input_modalities": ["text"],
+    }
+
+
+def fetch_platform_models() -> Optional[list[dict[str, Any]]]:
+    """从平台 llm-proxy /v1/models 拉取后台启用的模型列表（失败返回 None）。"""
+    from config import Config  # 延迟导入避免循环
+
+    now = time.time()
+    if now - _PLATFORM_CACHE["ts"] < _PLATFORM_TTL:
+        return _PLATFORM_CACHE["models"]
+    _PLATFORM_CACHE["ts"] = now
+    if not Config.LLMPROXY_BASE_URL or not Config.LLMPROXY_API_KEY:
+        _PLATFORM_CACHE["models"] = None
+        return None
+    try:
+        import requests
+        resp = requests.get(
+            Config.LLMPROXY_BASE_URL.rstrip("/") + "/models",
+            headers={"Authorization": "Bearer " + Config.LLMPROXY_API_KEY},
+            timeout=8,
+        )
+        if resp.status_code != 200:
+            _PLATFORM_CACHE["models"] = None
+            return None
+        data = resp.json() or {}
+        models = data.get("data") or data.get("models") or []
+        _PLATFORM_CACHE["models"] = [m for m in models if isinstance(m, dict) and m.get("id")]
+        return _PLATFORM_CACHE["models"]
+    except Exception:
+        _PLATFORM_CACHE["models"] = None
+        return None
+
+
+def _provider_visible(provider: str) -> bool:
+    """provider 是否对用户可见：llmproxy 恒可见；第三方仅当显式开启且已配置 Key。"""
+    from config import Config
+    if provider == "llmproxy":
+        return bool(Config.LLMPROXY_BASE_URL)
+    if not getattr(Config, "SHOW_THIRD_PARTY_MODELS", False):
+        return False
+    key_map = {
+        "openai": Config.OPENAI_API_KEY,
+        "deepseek": Config.DEEPSEEK_API_KEY,
+        "gemini": Config.GEMINI_API_KEY,
+        "dashscope": Config.DASHSCOPE_API_KEY,
+        "ark": Config.ARK_API_KEY,
+        "kling": Config.KLING_API_KEY,
+    }
+    return bool(key_map.get(provider))
+
+
+def _merged_model_config() -> dict[str, Any]:
+    """合并配置：平台 llm-proxy 启用模型（优先）+ 可见的静态模型（降级）。"""
+    models = dict(MODEL_CONFIG.get("models", {}))
+    platform = fetch_platform_models()
+    if platform is not None:
+        # 平台拉取成功：以平台为准，后台没有的 llmproxy 静态条目不再显示
+        models = {mid: meta for mid, meta in models.items() if meta.get("provider") != "llmproxy"}
+        for item in platform:
+            mid = str(item.get("id") or "")
+            if not mid or mid == "deep-shentong":
+                continue
+            mtype = str(item.get("type") or "chat").lower()
+            types = _PLATFORM_TYPE_MAP.get(mtype)
+            if not types:
+                continue
+            models[mid] = {
+                "name": item.get("name") or mid,
+                "provider": "llmproxy",
+                "family": "platform",
+                "type": types,
+                "concurrency": 3,
+                "price_per_image": 0,
+                "api_contract_verified": True,
+                "capabilities": _platform_capabilities(types),
+            }
+    # 失败降级：保留静态表（含 llmproxy 默认条目），保证功能可用
+    return {"models": {mid: meta for mid, meta in models.items() if _provider_visible(meta.get("provider", ""))}}
 
 
 def get_model_config(model: str) -> dict[str, Any]:
     """Get metadata for one model, with a loose fallback for provider aliases."""
-    models = MODEL_CONFIG.get("models", {})
+    models = _merged_model_config().get("models", {})
     if model in models:
         return models[model]
 
@@ -645,7 +785,7 @@ def get_max_concurrency(model: str, enable_concurrency: bool = False) -> int:
 
 def get_models_by_type(model_type: str) -> list[dict[str, Any]]:
     result = []
-    for model_id, metadata in MODEL_CONFIG.get("models", {}).items():
+    for model_id, metadata in _merged_model_config().get("models", {}).items():
         if model_type in (metadata.get("type") or []):
             result.append({"id": model_id, **metadata})
     return result
@@ -679,7 +819,7 @@ def model_type_capabilities(model_type: str, metadata: Optional[dict[str, Any]] 
 
 def model_records(media_type: Optional[str] = None) -> list[dict[str, Any]]:
     records = []
-    for model_id, metadata in MODEL_CONFIG.get("models", {}).items():
+    for model_id, metadata in _merged_model_config().get("models", {}).items():
         resolved_media_type = _resolve_media_type(metadata.get("type") or [])
         if media_type and resolved_media_type != media_type:
             continue
@@ -708,14 +848,14 @@ def parse_api_model(model: str, media_type: str) -> tuple[str, str]:
         _, provider, model_id = model.split("/", 2)
         return provider, model_id
 
-    metadata = MODEL_CONFIG.get("models", {}).get(model)
+    metadata = _merged_model_config().get("models", {}).get(model)
     if metadata and _resolve_media_type(metadata.get("type") or []) == media_type:
         return metadata.get("provider", ""), model
     return "", model
 
 
 def media_capabilities(provider: str, model: str, media_type: str) -> dict[str, Any]:
-    metadata = MODEL_CONFIG.get("models", {}).get(model, {})
+    metadata = _merged_model_config().get("models", {}).get(model, {})
     capabilities = metadata.get("capabilities")
     if capabilities:
         return deepcopy(capabilities)

@@ -32,13 +32,13 @@ from api.routers import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting Video-Claw API")
+    logger.info("Starting ST-Claw API")
     logger.info("Code directory mounted at /code: %s", settings.CODE_DIR)
     yield
-    logger.info("Video-Claw API shutdown complete")
+    logger.info("ST-Claw API shutdown complete")
 
 
-app = FastAPI(title="Video-Claw", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="ST-Claw", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -65,4 +65,4 @@ logger.info("API routers registered")
 
 @app.get("/")
 async def root():
-    return {"service": "Video-Claw", "version": "2.0.0", "health": "/api/health"}
+    return {"service": "ST-Claw", "version": "2.0.0", "health": "/api/health"}

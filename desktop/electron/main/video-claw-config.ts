@@ -2,8 +2,9 @@
  * VideoClaw 本地服务配置生成
  *
  * 职责：
- * - 生成 VideoClaw 后端 backend/config.yaml：所有 provider 指向平台 llm-proxy
+ * - 生成 ST-Claw 后端 backend/config.yaml：所有 provider 指向平台 llm-proxy
  *   （base_url + 用户静态 Key），模型名 = 平台后台 modelId，用户零配置。
+ * - llmproxy.models 白名单 = 管理后台 models 表启用模型（后台没有的不出现）。
  * - 幂等写入：文件已存在则不覆盖（保留用户/系统既有配置）。
  * 纯函数，便于 jest 单测（不依赖 electron）。
  */
@@ -30,6 +31,8 @@ export interface VideoClawConfigOptions {
   videoStartEndModel: string
   /** 参考图生视频模型 modelId（如 wan2.7-r2v） */
   videoReferenceModel: string
+  /** 管理后台启用模型列表（llm-proxy /v1/models 返回；用于 llmproxy.models 白名单） */
+  platformModels?: Array<{ id: string; type?: string; name?: string; supportsVision?: boolean }>
   style?: string
   videoRatio?: string
   videoResolution?: string
@@ -45,6 +48,20 @@ export const DEFAULT_VIDEO_CLAW_MODELS = {
   videoStartEndModel: 'wan2.7-i2v',
   videoReferenceModel: 'wan2.7-r2v',
 } as const
+
+/** llmproxy.models 白名单：优先使用管理后台启用模型；后台拉取为空时降级默认模型 */
+function platformWhitelistLines(
+  platformModels: Array<{ id: string; type?: string; name?: string; supportsVision?: boolean }>,
+  defaults: string[],
+): string[] {
+  const ids: string[] = []
+  for (const m of platformModels) {
+    const id = m?.id
+    if (id && !ids.includes(id)) ids.push(id)
+  }
+  const list = ids.length > 0 ? ids : defaults
+  return list.map((id) => '      - ' + yamlScalar(id))
+}
 
 function yamlScalar(value: string): string {
   // YAML 需引号场景：空值、以 # - ~ ! 开头、含冒号+空格或换行；URL/模型名保持原样
@@ -70,7 +87,7 @@ export function buildVideoClawConfigYaml(opts: VideoClawConfigOptions): string {
   } = opts
   const q = (v: string) => yamlScalar(v)
   return [
-    'project_name: Video-Claw',
+    'project_name: ST-Claw',
     'server:',
     '  host: 127.0.0.1',
     '  port: 8000',
@@ -105,13 +122,10 @@ export function buildVideoClawConfigYaml(opts: VideoClawConfigOptions): string {
     '    base_url: ' + q(llmProxyBaseUrl),
     '    enable_proxy: false',
     '    models:',
-    '      - ' + q(llmModel),
-    '      - ' + q(vlmModel),
-    '      - ' + q(imageT2iModel),
-    '      - ' + q(imageIt2iModel),
-    '      - ' + q(videoFirstFrameModel),
-    '      - ' + q(videoStartEndModel),
-    '      - ' + q(videoReferenceModel),
+    ...platformWhitelistLines(opts.platformModels ?? [], [
+      llmModel, vlmModel, imageT2iModel, imageIt2iModel,
+      videoFirstFrameModel, videoStartEndModel, videoReferenceModel,
+    ]),
     'models:',
     '  llm: ' + q(llmModel),
     '  vlm: ' + q(vlmModel),
@@ -128,6 +142,70 @@ export function buildVideoClawConfigYaml(opts: VideoClawConfigOptions): string {
     '  video_generation_mode: first_frame',
     '',
   ].join('\n')
+}
+
+/** 平台模型条目 */
+export interface PlatformModel {
+  id: string
+  type?: string
+  name?: string
+  supportsVision?: boolean
+}
+
+/**
+ * 拉取管理后台启用模型列表（llm-proxy /v1/models）。
+ * 失败返回 null（调用方降级为默认模型）。
+ */
+export async function fetchPlatformModels(
+  baseUrl: string,
+  apiKey: string,
+): Promise<PlatformModel[] | null> {
+  if (!apiKey) return null
+  try {
+    const resp = await fetch(baseUrl.replace(/\/+$/, '') + '/models', {
+      headers: { Authorization: 'Bearer ' + apiKey },
+      signal: AbortSignal.timeout(10000),
+    })
+    if (!resp.ok) return null
+    const data = (await resp.json()) as { data?: Array<Record<string, unknown>> }
+    const list = data?.data ?? []
+    return list
+      .filter((m) => m && typeof m.id === 'string' && m.id !== 'deep-shentong')
+      .map((m) => ({
+        id: m.id as string,
+        type: (m.type as string) || 'chat',
+        name: (m.name as string) || (m.id as string),
+        supportsVision: !!m.supports_vision,
+      }))
+  } catch {
+    return null
+  }
+}
+
+/** 按类型从平台模型里挑选默认值（无则回退默认映射） */
+export function pickPlatformModels(
+  platformModels: PlatformModel[] | null | undefined,
+  defaults: typeof DEFAULT_VIDEO_CLAW_MODELS,
+): Pick<
+    VideoClawConfigOptions,
+    'llmModel' | 'vlmModel' | 'imageT2iModel' | 'imageIt2iModel' | 'videoFirstFrameModel' | 'videoStartEndModel' | 'videoReferenceModel'
+  > {
+  const list = platformModels ?? []
+  const byType = (types: string[]) => list.find((m) => types.includes(String(m.type || '').toLowerCase()))
+  const llm = byType(['chat', 'reasoning'])
+  const vlm = byType(['chat', 'reasoning', 'vision']) || llm
+  const image = byType(['image', 'image_edit', 'image_generation'])
+  const video = byType(['video', 't2v', 'i2v', 'r2v'])
+  return {
+    ...defaults,
+    llmModel: llm?.id || defaults.llmModel,
+    vlmModel: vlm?.id || defaults.vlmModel,
+    imageT2iModel: image?.id || defaults.imageT2iModel,
+    imageIt2iModel: image?.id || defaults.imageIt2iModel,
+    videoFirstFrameModel: video?.id || defaults.videoFirstFrameModel,
+    videoStartEndModel: video?.id || defaults.videoStartEndModel,
+    videoReferenceModel: video?.id || defaults.videoReferenceModel,
+  }
 }
 
 /** 幂等写入 backend/config.yaml；已存在则不覆盖。返回配置文件绝对路径。 */

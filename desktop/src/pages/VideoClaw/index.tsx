@@ -1,5 +1,5 @@
 /**
- * VideoClaw — AI 视频（本地视频生成工作台，Task 4）
+ * ST-Claw — 深瞳 AI 视频（本地视频生成工作台，Task 4）
  * 状态机：stopped -> 引导卡（启动/安装）-> starting -> running(iframe)
  * 通过 IPC 实时订阅状态变更，无需手动刷新
  */
@@ -95,7 +95,7 @@ export default function VideoClaw() {
         }}
       >
         <VideoCameraOutlined style={{ color: "#ec4899", fontSize: 18 }} />
-        <Typography.Text strong>AI 视频（VideoClaw）</Typography.Text>
+        <Typography.Text strong>ST-Claw（深瞳 AI 视频）</Typography.Text>
         <Tag
           color={
             status === "running"
@@ -150,7 +150,7 @@ export default function VideoClaw() {
               {status === "error" ? (
                 <Result
                   status="error"
-                  title="AI 视频服务启动失败"
+                  title="ST-Claw 服务启动失败"
                   subTitle={svc?.error || "请点击重试，或到「服务」页安装/修复运行时。"}
                   extra={[
                     <Button
@@ -177,7 +177,7 @@ export default function VideoClaw() {
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
                   description={
                     <Typography.Text type="secondary">
-                      AI 视频服务尚未启动，启动后即可在本地生成文生视频 / 图生视频
+                      ST-Claw 服务尚未启动，启动后即可在本地生成文生视频 / 图生视频
                     </Typography.Text>
                   }
                 >

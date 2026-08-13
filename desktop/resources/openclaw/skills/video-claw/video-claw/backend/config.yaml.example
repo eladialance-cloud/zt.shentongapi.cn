@@ -1,4 +1,4 @@
-project_name: Video-Claw
+project_name: ST-Claw
 server:
   host: 127.0.0.1
   port: 8000

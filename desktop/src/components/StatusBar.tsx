@@ -21,7 +21,7 @@ const SERVICE_LABELS: Record<ServiceName, string> = {
   n8n: 'N8N',
   mcp: 'MCP',
   hermes: 'Hermes',
-  'video-claw': 'AI 视频'
+  'video-claw': 'ST-Claw'
 }
 
 /** 状态点颜色 */

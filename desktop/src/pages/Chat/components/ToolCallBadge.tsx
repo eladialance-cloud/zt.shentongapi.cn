@@ -2,6 +2,7 @@
 // 显示工具调用标签：工具名称
 // 展开后显示：输入参数、输出结果、执行耗时、积分消耗
 // 状态：running（转圈）/ success（绿色对勾）/ failed（红色叉）
+// 视频任务：运行中显示实时进度条 + 阶段文案，完成后内嵌成片播放器
 
 import { useState } from "react";
 import { Tooltip } from "antd";
@@ -51,6 +52,19 @@ function safeStringify(value: unknown): string {
   }
 }
 
+/** 视频任务阶段文案：英文状态映射为中文 */
+function stageText(stage: string): string {
+  const map: Record<string, string> = {
+    queued: "排队中",
+    pending: "排队中",
+    running: "生成中",
+    generating: "生成中",
+    completed: "已完成",
+    failed: "生成失败",
+  };
+  return map[stage] || stage;
+}
+
 export function ToolCallBadge({
   toolCall,
   defaultExpanded = false,
@@ -63,6 +77,15 @@ export function ToolCallBadge({
       : toolCall.status === "success"
         ? "执行完成"
         : "执行失败";
+
+  const hasProgress =
+    toolCall.status === "running" &&
+    typeof toolCall.progress === "number" &&
+    toolCall.progress >= 0;
+
+  const percent = hasProgress
+    ? Math.min(100, Math.max(0, Math.round(toolCall.progress as number)))
+    : 0;
 
   return (
     <div className={styles.toolCallBadge}>
@@ -82,10 +105,18 @@ export function ToolCallBadge({
         <ToolOutlined />
         <span className={styles.toolCallName}>{toolCall.name}</span>
         <StatusIcon status={toolCall.status} />
-        <span style={{ color: 'var(--color-text-tertiary)' }}>{statusText}</span>
+        <span style={{ color: "var(--color-text-tertiary)" }}>{statusText}</span>
+        {toolCall.stage && toolCall.status === "running" && (
+          <span style={{ color: "var(--color-text-tertiary)" }}>
+            · {stageText(toolCall.stage)}
+          </span>
+        )}
+        {hasProgress && (
+          <span style={{ color: "var(--color-brand)" }}>· {percent}%</span>
+        )}
         {toolCall.status !== "running" && (
           <Tooltip title="执行耗时">
-            <span style={{ color: 'var(--color-text-tertiary)' }}>
+            <span style={{ color: "var(--color-text-tertiary)" }}>
               · {formatDuration(toolCall.duration)}
             </span>
           </Tooltip>
@@ -98,6 +129,22 @@ export function ToolCallBadge({
           </Tooltip>
         )}
       </div>
+      {hasProgress && (
+        <div className={styles.toolCallProgressWrap}>
+          <div
+            className={styles.toolCallProgressTrack}
+            role="progressbar"
+            aria-valuenow={percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <div
+              className={styles.toolCallProgressFill}
+              style={{ width: `${percent}%` }}
+            />
+          </div>
+        </div>
+      )}
       {expanded && (
         <div className={styles.toolCallBody}>
           <div className={styles.toolCallRow}>
@@ -106,6 +153,18 @@ export function ToolCallBadge({
               {safeStringify(toolCall.input)}
             </pre>
           </div>
+          {toolCall.videoUrl && (
+            <div className={styles.toolCallRow}>
+              <span className={styles.toolCallRowLabel}>成片:</span>
+              <video
+                className={styles.toolCallVideo}
+                src={toolCall.videoUrl}
+                controls
+                playsInline
+                preload="metadata"
+              />
+            </div>
+          )}
           {toolCall.status !== "running" && (
             <div className={styles.toolCallRow}>
               <span className={styles.toolCallRowLabel}>输出:</span>

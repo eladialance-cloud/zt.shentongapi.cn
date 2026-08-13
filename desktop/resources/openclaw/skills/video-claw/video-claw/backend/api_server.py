@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Compatibility entrypoint for the Video-Claw FastAPI server.
+Compatibility entrypoint for the ST-Claw FastAPI server.
 """
 
 import os

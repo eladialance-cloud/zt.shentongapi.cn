@@ -381,6 +381,33 @@
   color: var(--color-text-tertiary);
   margin-right: 6px;
 }
+.toolCallProgressWrap {
+  padding: 2px 10px 8px;
+}
+
+.toolCallProgressTrack {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(99, 102, 241, 0.15);
+  overflow: hidden;
+}
+
+.toolCallProgressFill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  transition: width 0.3s ease;
+}
+
+.toolCallVideo {
+  display: block;
+  margin-top: 4px;
+  max-width: 360px;
+  max-height: 240px;
+  border-radius: 8px;
+  background: #000;
+  border: 1px solid var(--color-border-secondary);
+}
 
 /* ===== 计费徽标 ===== */
 .creditsBadge {

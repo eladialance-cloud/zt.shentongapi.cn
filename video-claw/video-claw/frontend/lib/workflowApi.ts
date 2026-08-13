@@ -203,10 +203,18 @@ export async function fetchApiModels(params: {
 }
 
 export async function fetchStandardTemplates(): Promise<StandardTemplateOption[]> {
-  const resp = await fetch('/api/pipelines/standard/templates');
-  if (!resp.ok) throw new Error('获取模版列表失败');
-  const data = await resp.json();
-  return data.templates || [];
+  const load = async (base: string) => {
+    const resp = await fetch(`${base}/api/pipelines/standard/templates`);
+    if (!resp.ok) throw new Error('获取模版列表失败');
+    const data = await resp.json();
+    return data.templates || [];
+  };
+  try {
+    return await load('');
+  } catch {
+    // 代理（Next rewrite）暂不可用时回退直连后端，避免模版区永久为空
+    return load(DIRECT_API_BASE);
+  }
 }
 
 export async function uploadMedia(file: File): Promise<{ filename: string; file_path: string }> {

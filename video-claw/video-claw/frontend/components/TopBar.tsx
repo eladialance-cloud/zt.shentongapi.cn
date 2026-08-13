@@ -342,7 +342,7 @@ export default function TopBar({
         />
         <div className="flex flex-col leading-tight">
           <span className="font-bold text-sm text-gray-800 tracking-tight">
-            Video-Claw
+            ST-Claw
           </span>
         </div>
       </button>

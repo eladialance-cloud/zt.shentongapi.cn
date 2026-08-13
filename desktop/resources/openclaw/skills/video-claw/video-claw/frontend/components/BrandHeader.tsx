@@ -13,7 +13,7 @@ export default function BrandHeader() {
             className="w-8 h-8 rounded-lg object-contain"
           />
           <span className="font-bold text-sm text-gray-800 tracking-tight">
-            Video-Claw
+            ST-Claw
           </span>
         </Link>
       </header>

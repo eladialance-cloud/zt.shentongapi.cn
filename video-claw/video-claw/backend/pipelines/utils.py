@@ -24,7 +24,7 @@ TEMPLATE_FIELD_DEFAULTS = {
     "text": "心之所向，素履而往",
     "author": "HITsz-TMG",
     "describe": "开源视频生成智能体",
-    "brand": "Video-Claw",
+    "brand": "ST-Claw",
     "signature": "HITsz-TMG",
     "subtitle": "这是一个副标题",
 }

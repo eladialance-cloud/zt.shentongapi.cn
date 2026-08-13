@@ -1,1 +1,1 @@
-"""FastAPI application package for Video-Claw."""
+"""FastAPI application package for ST-Claw."""

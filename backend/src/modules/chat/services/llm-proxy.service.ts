@@ -83,6 +83,8 @@ export class LlmProxyService {
         object: 'model',
         owned_by: 'shentong-ai',
         type: m.modelType || 'chat',
+        name: m.name,
+        supports_vision: !!m.supportsVision,
       })),
     ];
   }

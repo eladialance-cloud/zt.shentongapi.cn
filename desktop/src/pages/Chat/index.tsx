@@ -3,7 +3,7 @@
 // 使用 antd Layout + Sider + Content
 // 样式：赛博科技深色风格
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Button, Select, Tooltip, message } from 'antd'
 import type { SelectProps } from 'antd'
 import {
@@ -20,16 +20,23 @@ import { MessageInput } from './components/MessageInput'
 import { MediaGenerationModal } from './components/MediaGenerationModal'
 import type { MediaJob } from '@/api/media-generation-api'
 import * as chatApi from '@/api/chat-api'
-import * as marketApi from '@/api/market-api'
-import { createOpenClawChat, type OpenClawChatHandle } from '@/api/openclaw-chat-api'
-import type { OpenClawChatMessage, OpenClawToolCall } from '@shared/types'
+import type { OpenClawChatMessage } from '@shared/types'
+import {
+  subscribeChatStream,
+  getChatStreamSnapshot,
+  startChatSend,
+  abortChatSend,
+  loadChatDraft,
+  clearChatDraft,
+  consumePendingVideos,
+  consumePendingCompletions,
+} from '@/store/chat-stream'
 import { listMarketAgents } from '@/api/agent-api'
 import { listKnowledgeBases, listOfficialKnowledgeBases } from '@/api/knowledge-api'
 import { officeBridge, isRetrieveTool } from '@/pages/Office/services/officeBridge'
 import type {
   ChatSession,
   ChatMessage,
-  ToolCallInfo,
   UploadResult,
   ModelOption,
   AgentOption,
@@ -51,18 +58,8 @@ const MODEL_TYPE_GROUP_LABEL: Record<string, string> = {
 /** 知识库选择器「全局搜索」的固定 value */
 const GLOBAL_KB_VALUE = '__global__'
 
-/** WS 网关工具调用 → 前端工具卡状态映射（老 SSE 链路无 state，默认 running） */
-function toToolCallInfo(tc: OpenClawToolCall): ToolCallInfo {
-  return {
-    id: tc.id,
-    name: tc.name,
-    input: tc.input,
-    output: tc.output ?? undefined,
-    duration: 0,
-    creditsCost: 0,
-    status: tc.state === 'done' ? 'success' : tc.state === 'error' ? 'failed' : 'running'
-  }
-}
+/** 当前会话本地记忆 Key：切页/切窗口后回到对话页自动恢复上次会话 */
+const CHAT_ACTIVE_SESSION_KEY = 'chat:active-session'
 
 export default function Chat() {
   // ===== 侧边栏折叠状态 =====
@@ -76,42 +73,18 @@ export default function Chat() {
   const [generationOpen, setGenerationOpen] = useState(false)
   const [generationType, setGenerationType] = useState<'image' | 'video'>('image')
 
-  // ===== 流式状态 =====
-  const [streaming, setStreaming] = useState(false)
-  const [streamingContent, setStreamingContent] = useState('')
-  const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCallInfo[]>([])
-
-  // 用 ref 保存流式期间的最新值，避免回调闭包 stale 问题
-  const streamingContentRef = useRef('')
-  const streamingToolCallsRef = useRef<ToolCallInfo[]>([])
-
-  // ===== Agent 生命周期（OpenClaw WS 网关事件：start → finishing → end/error） =====
-  const [agentPhase, setAgentPhase] = useState<'idle' | 'start' | 'finishing' | 'end' | 'error'>('idle')
-  const agentPhaseRef = useRef<'idle' | 'start' | 'finishing' | 'end' | 'error'>('idle')
-  useEffect(() => {
-    agentPhaseRef.current = agentPhase
-  }, [agentPhase])
-  // OpenClaw 本地直达对话句柄 + 中断标记（扣费由云端 llm-proxy 完成）
-  const openClawChatRef = useRef<OpenClawChatHandle | null>(null)
-  const abortRequestedRef = useRef(false)
-  const replyGeneratedRef = useRef(false)
-  const activeSessionRef = useRef<ChatSession | null>(null)
-  const messagesRef = useRef<ChatMessage[]>([])
+  // ===== 流式状态（全局对话流桥：切页不丢、完成后自动落库、视频任务实时进度） =====
+  const chatStream = useSyncExternalStore(subscribeChatStream, getChatStreamSnapshot)
+  const streaming = chatStream.streaming
+  const streamingContent = chatStream.content
+  const streamingToolCalls = chatStream.toolCalls
+  const agentPhase = chatStream.phase as 'idle' | 'start' | 'finishing' | 'end' | 'error'
   const knowledgeBaseIdRef = useRef<number | undefined>(undefined)
-
-  // 同步 ref 与 state
+  const activeSessionIdRef = useRef<number | null>(null)
+  const lastCompletionTickRef = useRef(0)
   useEffect(() => {
-    streamingContentRef.current = streamingContent
-  }, [streamingContent])
-  useEffect(() => {
-    streamingToolCallsRef.current = streamingToolCalls
-  }, [streamingToolCalls])
-  useEffect(() => {
-    activeSessionRef.current = activeSession
+    activeSessionIdRef.current = activeSession?.id ?? null
   }, [activeSession])
-  useEffect(() => {
-    messagesRef.current = messages
-  }, [messages])
 
   // ===== 顶部选择器 =====
   const [modelId, setModelId] = useState<string>('')
@@ -128,153 +101,7 @@ export default function Chat() {
   const [agentPriceMap, setAgentPriceMap] = useState<Record<number, Agent>>({})
   const [kbOptions, setKbOptions] = useState<KnowledgeBaseOption[]>([])
 
-  /** 挂载时创建 OpenClaw 对话通道（IPC），流式事件在此监听（渲染进程不直接碰本地/云端） */
-  useEffect(() => {
-    let handle: OpenClawChatHandle
-    try {
-      handle = createOpenClawChat()
-    } catch (err) {
-      console.error('[Chat] openclaw chat unavailable:', err)
-      return
-    }
-    openClawChatRef.current = handle
-
-    const offMessage = handle.onMessage((chunk) => {
-      streamingContentRef.current = streamingContentRef.current + chunk
-      setStreamingContent(streamingContentRef.current)
-      if (!replyGeneratedRef.current) {
-        replyGeneratedRef.current = true
-        officeBridge.onReplyGenerated()
-      }
-    })
-
-    // 终审/来源标注完成：用最终文本覆盖流式内容（工具结果与数据来源由主进程聚合）
-    const offFinalize = handle.onFinalize((finalContent) => {
-      streamingContentRef.current = finalContent
-      setStreamingContent(finalContent)
-    })
-
-    const offLifecycle = handle.onLifecycle((info) => {
-      agentPhaseRef.current = info.phase
-      setAgentPhase(info.phase)
-      if (info.phase === 'error' && info.error) {
-        console.warn('[Chat] OpenClaw Agent 执行失败:', info.error)
-      }
-    })
-
-    const offToolCall = handle.onToolCall((toolCall) => {
-      const prev = streamingToolCallsRef.current
-      const idx = prev.findIndex((t) => t.id === toolCall.id)
-      const mapped = toToolCallInfo(toolCall)
-      if (idx >= 0) {
-        const next = [...prev]
-        // 保留首帧的耗时/积分，仅更新状态与输出（start → done/error 多次推送）
-        next[idx] = {
-          ...prev[idx],
-          ...mapped,
-          duration: prev[idx].duration || mapped.duration,
-          creditsCost: prev[idx].creditsCost || mapped.creditsCost,
-        }
-        streamingToolCallsRef.current = next
-      } else {
-        streamingToolCallsRef.current = [...prev, mapped]
-      }
-      setStreamingToolCalls(streamingToolCallsRef.current)
-      // officeBridge: 工具调用 → 市场员去技能墙
-      officeBridge.onToolCall(toolCall.name)
-      if (isRetrieveTool(toolCall.name)) {
-        officeBridge.onAgentRetrieve()
-      }
-    })
-
-    const offDone = handle.onDone(() => {
-      const session = activeSessionRef.current
-      const content =
-        streamingContentRef.current +
-        (abortRequestedRef.current ? '\n\n[已停止]' : '')
-      const toolCalls =
-        streamingToolCallsRef.current.length > 0
-          ? streamingToolCallsRef.current
-          : undefined
-      // 没有任何生成内容时不再追加空助手消息
-      if (session && (content.trim() || (toolCalls && toolCalls.length > 0))) {
-        const assistantMsg: ChatMessage = {
-          id: Date.now() + 1,
-          sessionId: session.id,
-          userId: 0,
-          role: 'assistant',
-          content,
-          toolCalls,
-          status: 'done',
-          createdAt: new Date(),
-        }
-        setMessages((prev) => [...prev, assistantMsg])
-        persistMessage(session.id, assistantMsg)
-      }
-      setStreaming(false)
-      setStreamingContent('')
-      setStreamingToolCalls([])
-      streamingContentRef.current = ''
-      streamingToolCallsRef.current = []
-      abortRequestedRef.current = false
-      setAgentPhase('idle')
-      agentPhaseRef.current = 'idle'
-      // OpenClaw 对话安装的内容自动同步进「我的」(同一本地清单)
-      void marketApi.syncChat().catch(() => undefined)
-      // officeBridge: 回复完成 → 审核员审核 → 所有人切 IDLE
-      officeBridge.onReview()
-      setTimeout(() => officeBridge.onTaskComplete(), 1500)
-    })
-
-    const offError = handle.onError((err) => {
-      // 用户主动停止时忽略错误（等待 done 事件固化）
-      if (abortRequestedRef.current) return
-      console.error('[Chat] openclaw error:', err)
-      message.error('生成失败: ' + err.message)
-      // officeBridge: 系统错误 → 主管弹出错误气泡
-      officeBridge.onSystemError(err.message)
-      if (streamingContentRef.current) {
-        const session = activeSessionRef.current
-        if (session) {
-          const assistantMsg: ChatMessage = {
-            id: Date.now() + 1,
-            sessionId: session.id,
-            userId: 0,
-            role: 'assistant',
-            content: streamingContentRef.current + '\n\n[生成中断]',
-            toolCalls:
-              streamingToolCallsRef.current.length > 0
-                ? streamingToolCallsRef.current
-                : undefined,
-            status: 'error',
-            createdAt: new Date(),
-          }
-          setMessages((prev) => [...prev, assistantMsg])
-          persistMessage(session.id, assistantMsg)
-        }
-      }
-      setStreaming(false)
-      setStreamingContent('')
-      setStreamingToolCalls([])
-      setAgentPhase('idle')
-      agentPhaseRef.current = 'idle'
-      // OpenClaw 对话安装的内容自动同步进「我的」(同一本地清单)
-      void marketApi.syncChat().catch(() => undefined)
-      streamingContentRef.current = ''
-      streamingToolCallsRef.current = []
-      abortRequestedRef.current = false
-    })
-
-    return () => {
-      offMessage()
-      offFinalize()
-      offLifecycle()
-      offToolCall()
-      offDone()
-      offError()
-      openClawChatRef.current = null
-    }
-  }, [])
+  /** 流式事件由全局对话流桥（store/chat-stream）常驻监听：切页不丢、完成后自动落库。 */
 
   /** 加载市场 Agent 列表（用于顶部 Agent 选择器 + 价格提示） */
   useEffect(() => {
@@ -363,6 +190,90 @@ export default function Chat() {
     }
   }, [])
 
+  /** 挂载恢复：回到对话页自动恢复上次会话 + 草稿/视频完成消费 */
+  useEffect(() => {
+    // 恢复上次会话（切页不丢）
+    try {
+      const raw = localStorage.getItem(CHAT_ACTIVE_SESSION_KEY)
+      if (raw) {
+        const saved = JSON.parse(raw) as ChatSession
+        if (saved && saved.id) {
+          void handleSelectSession(saved)
+        }
+      }
+    } catch {
+      /* 忽略 */
+    }
+
+    // 草稿恢复（崩溃/刷新兜底）：上次流式未完成的会话提示用户
+    const draft = loadChatDraft()
+    if (draft && draft.sessionId) {
+      const rawSession = localStorage.getItem(CHAT_ACTIVE_SESSION_KEY)
+      let sid: number | null = null
+      try {
+        sid = rawSession ? (JSON.parse(rawSession) as ChatSession).id : null
+      } catch {
+        sid = null
+      }
+      if (sid === draft.sessionId || sid == null) {
+        message.info('检测到上次未完成的回复，内容已保留', 3)
+      }
+      clearChatDraft()
+    }
+
+    // 消费视频完成队列：把 ST-Claw 成片插入消息区（仅当前会话）
+    const timer = setInterval(() => {
+      const pending = consumePendingVideos()
+      if (pending.length === 0) return
+      const sid = activeSessionIdRef.current
+      if (sid == null) return
+      setMessages((prev) => {
+        let next = prev
+        for (const item of pending) {
+          const assistantMsg: ChatMessage = {
+            id: Date.now() + Math.floor(Math.random() * 1000),
+            sessionId: sid,
+            userId: 0,
+            role: 'assistant',
+            content: '🎬 视频生成完成\n' + item.url,
+            status: 'done',
+            createdAt: new Date(),
+          }
+          next = [...next, assistantMsg]
+          persistMessage(sid, assistantMsg)
+        }
+        return next
+      })
+    }, 2000)
+    return () => clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /** 完成回填：全局桥 done/error 固化后把助手回复追加进消息区（完成后不消失） */
+  const completionTick = chatStream.completionTick
+  useEffect(() => {
+    if (completionTick === lastCompletionTickRef.current) return
+    lastCompletionTickRef.current = completionTick
+    const items = consumePendingCompletions()
+    if (items.length === 0) return
+    const sid = activeSessionIdRef.current
+    if (sid == null) return
+    for (const item of items) {
+      if (item.sessionId !== sid) continue
+      const assistantMsg: ChatMessage = {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        sessionId: sid,
+        userId: 0,
+        role: 'assistant',
+        content: item.content,
+        toolCalls: item.toolCalls,
+        status: item.status,
+        createdAt: new Date(),
+      }
+      setMessages((prev) => [...prev, assistantMsg])
+    }
+  }, [completionTick])
+
   /** 切换会话 */
 
   const handleSelectSession = useCallback(async (session: ChatSession | null) => {
@@ -375,6 +286,7 @@ export default function Chat() {
     setModelId(session.modelId || '')
     setAgentId(session.agentId)
     setKnowledgeBaseId(session.knowledgeBaseId)
+    localStorage.setItem(CHAT_ACTIVE_SESSION_KEY, JSON.stringify(session))
     // 加载历史消息
     try {
       const result = await chatApi.listMessages(session.id, { pageSize: 100 })
@@ -389,17 +301,12 @@ export default function Chat() {
   /** 发送消息（OpenClaw 本地直达：云端预扣 → 本地 OpenClaw 流式 → 云端结算） */
   const handleSend = useCallback(
     async (content: string, attachments: UploadResult[]) => {
-      const session = activeSessionRef.current
+      const session = activeSession
       if (!session) {
         message.warning('请先选择或创建一个对话')
         return
       }
       if (!content.trim() && attachments.length === 0) return
-      const handle = openClawChatRef.current
-      if (!handle) {
-        message.error('OpenClaw 对话通道不可用，请升级桌面端版本')
-        return
-      }
 
       // 1. 立即追加用户消息到列表
       const userMsg: ChatMessage = {
@@ -436,28 +343,17 @@ export default function Chat() {
           .updateSession(session.id, { title })
           .then(() => {
             const updated = { ...session, title }
-            activeSessionRef.current = updated
             setActiveSession(updated)
+            localStorage.setItem(CHAT_ACTIVE_SESSION_KEY, JSON.stringify(updated))
           })
           .catch((err) => console.error('[Chat] update session title failed:', err))
       }
 
-      // 2. 重置流式状态
-      setStreaming(true)
-      setStreamingContent('')
-      setStreamingToolCalls([])
-      setAgentPhase('start')
-      agentPhaseRef.current = 'start'
-      streamingContentRef.current = ''
-      streamingToolCallsRef.current = []
-      abortRequestedRef.current = false
-      replyGeneratedRef.current = false
-
       // officeBridge: 用户发送消息 → 主管深度工作
       officeBridge.onChatMessageSent()
 
-      // 3. 最近上下文（最近 10 条文本消息，消息不出本机）
-      const history: OpenClawChatMessage[] = messagesRef.current
+      // 2. 最近上下文（最近 10 条文本消息，消息不出本机）
+      const history: OpenClawChatMessage[] = messages
         .filter(
           (m) =>
             m.content &&
@@ -469,38 +365,15 @@ export default function Chat() {
           content: m.content,
         }))
 
-      // 4. 发送（本地 OpenClaw 未配置/未登录 → 抛错并推 error 事件；扣费由云端 llm-proxy 完成）
-      try {
-        await handle.send(content, history, knowledgeBaseIdRef.current, session.id)
-      } catch (err) {
-        const messageText = err instanceof Error ? err.message : String(err)
-        message.error('生成失败: ' + messageText)
-        officeBridge.onSystemError(messageText)
-        if (streamingContentRef.current) {
-          const assistantMsg: ChatMessage = {
-            id: Date.now() + 1,
-            sessionId: session.id,
-            userId: 0,
-            role: 'assistant',
-            content: streamingContentRef.current + '\n\n[生成中断]',
-            toolCalls:
-              streamingToolCallsRef.current.length > 0
-                ? streamingToolCallsRef.current
-                : undefined,
-            status: 'error',
-            createdAt: new Date(),
-          }
-          setMessages((prev) => [...prev, assistantMsg])
-          persistMessage(session.id, assistantMsg)
-        }
-        setStreaming(false)
-        setStreamingContent('')
-        setStreamingToolCalls([])
-        streamingContentRef.current = ''
-        streamingToolCallsRef.current = []
-      }
+      // 3. 交给全局对话流桥发送（IPC 常驻：切页后回复仍会完成并落库；视频任务自动拉起 ST-Claw 并实时回传进度）
+      await startChatSend({
+        sessionId: session.id,
+        content,
+        history,
+        knowledgeBaseId: knowledgeBaseIdRef.current,
+      })
     },
-    []
+    [activeSession, messages]
   )
 
   /** 持久化消息到云端（切换会话/重启后历史仍可恢复） */
@@ -548,8 +421,7 @@ export default function Chat() {
 
   /** 中断 OpenClaw 对话（本地 abort → 云端退款 → done 事件固化消息） */
   const handleAbort = useCallback(() => {
-    abortRequestedRef.current = true
-    openClawChatRef.current?.abort()
+    abortChatSend()
   }, [])
 
   /** 修改模型时同步到会话 + 云端用户默认模型（OpenClaw llm-proxy 解析用） */

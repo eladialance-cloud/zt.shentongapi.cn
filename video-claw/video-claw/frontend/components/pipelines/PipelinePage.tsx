@@ -685,6 +685,8 @@ export default function PipelinePage({ pipeline, title, subtitle }: PipelinePage
   const [templateMode, setTemplateMode] = useState(false);
   const [templateMediaKind, setTemplateMediaKind] = useState<'image' | 'video'>('image');
   const [templates, setTemplates] = useState<StandardTemplateOption[]>([]);
+  const [templateLoading, setTemplateLoading] = useState(true);
+  const [templateReloadKey, setTemplateReloadKey] = useState(0);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [templateFieldValues, setTemplateFieldValues] = useState<Record<string, string>>({});
   const [titleValue, setTitleValue] = useState('');
@@ -754,13 +756,29 @@ export default function PipelinePage({ pipeline, title, subtitle }: PipelinePage
 
   useEffect(() => {
     if (pipeline !== 'standard') return;
-    fetchStandardTemplates()
-      .then(items => {
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 6;
+    setTemplateLoading(true);
+    const attempt = async () => {
+      try {
+        const items = await fetchStandardTemplates();
+        if (cancelled) return;
         setTemplates(items);
         setSelectedTemplateId(current => current || items.find(item => item.ratio === ratio)?.id || items[0]?.id || '');
-      })
-      .catch(() => {});
-  }, [pipeline, ratio]);
+        setTemplateLoading(false);
+      } catch {
+        attempts += 1;
+        if (!cancelled && attempts < maxAttempts) {
+          setTimeout(() => { void attempt(); }, 800 * attempts);
+          return;
+        }
+        if (!cancelled) setTemplateLoading(false);
+      }
+    };
+    void attempt();
+    return () => { cancelled = true; };
+  }, [pipeline, ratio, templateReloadKey]);
 
   useEffect(() => {
     if (!templateMode) return;
@@ -995,8 +1013,24 @@ export default function PipelinePage({ pipeline, title, subtitle }: PipelinePage
                       />
                     ))
                   ) : (
-                    <div className="flex h-28 min-w-0 flex-1 items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 text-xs text-gray-400">
-                      暂无 1080x1920 模版
+                    <div className="flex h-28 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-gray-200 bg-gray-50 text-xs text-gray-400">
+                      {templateLoading ? (
+                        <span className="flex items-center gap-1">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          正在加载模版...
+                        </span>
+                      ) : (
+                        <>
+                          <span>暂无 1080x1920 模版</span>
+                          <button
+                            type="button"
+                            onClick={() => setTemplateReloadKey(key => key + 1)}
+                            className="rounded-md border border-gray-200 bg-white px-2 py-1 text-gray-500 hover:text-blue-600"
+                          >
+                            重新加载
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1036,8 +1070,24 @@ export default function PipelinePage({ pipeline, title, subtitle }: PipelinePage
                               />
                             ))
                           ) : (
-                            <div className="flex h-28 min-w-0 flex-1 items-center justify-center rounded-xl border border-dashed border-gray-200 bg-white text-xs text-gray-400">
-                              当前比例暂无模版
+                            <div className="flex h-28 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-gray-200 bg-white text-xs text-gray-400">
+                              {templateLoading ? (
+                                <span className="flex items-center gap-1">
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  正在加载模版...
+                                </span>
+                              ) : (
+                                <>
+                                  <span>当前比例暂无模版</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setTemplateReloadKey(key => key + 1)}
+                                    className="rounded-md border border-gray-200 bg-white px-2 py-1 text-gray-500 hover:text-blue-600"
+                                  >
+                                    重新加载
+                                  </button>
+                                </>
+                              )}
                             </div>
                           )}
                         </div>

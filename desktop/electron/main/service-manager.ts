@@ -27,6 +27,8 @@ import {
   ensureVideoClawConfig,
   resolveVideoClawBackendDir,
   DEFAULT_VIDEO_CLAW_MODELS,
+  fetchPlatformModels,
+  pickPlatformModels,
 } from './video-claw-config'
 import treeKill from 'tree-kill'
 import { getRuntimeRoot } from './runtime-config'
@@ -42,8 +44,11 @@ const SERVICE_DEFS: Record<ServiceName, ServiceDef> = {
   n8n: { displayName: 'N8N', port: 5678 },
   mcp: { displayName: 'MCP Gateway', port: 3100 },
   hermes: { displayName: 'Hermes Agent', port: 8642 },
-  'video-claw': { displayName: 'AI 视频', port: 8000 }
+  'video-claw': { displayName: 'ST-Claw', port: 8000 }
 }
+
+/** AI 视频前端端口（iframe 加载地址；就绪判定需同时等后端与前端） */
+const VIDEO_CLAW_FRONTEND_PORT = 3000
 
 /** N8N API Key（生成并持久化到 userData/n8n-api-key，供本地 REST API 导入工作流） */
 function getOrCreateN8nApiKey(): string {
@@ -200,17 +205,20 @@ function buildVideoClawEnv(): NodeJS.ProcessEnv {
   }
 }
 
-/** VideoClaw 启动前自动生成 config.yaml（未安装运行时/未登录时跳过，不抛错） */
-function ensureVideoClawConfigSafe(): void {
+/** ST-Claw 启动前自动生成 config.yaml（未安装运行时/未登录时跳过，不抛错；llmproxy.models=管理后台启用模型） */
+async function ensureVideoClawConfigSafe(): Promise<void> {
   if (!openclawProxyKey) return
   try {
     const resolved = resolve('video-claw')
     if (!resolved) return
     const backendDir = resolveVideoClawBackendDir(path.dirname(resolved.cmd))
+    const platformModels = await fetchPlatformModels(OPENCLAW_LLM_PROXY_BASE, openclawProxyKey)
+    const opts = pickPlatformModels(platformModels, DEFAULT_VIDEO_CLAW_MODELS)
     ensureVideoClawConfig(backendDir, {
       llmProxyBaseUrl: OPENCLAW_LLM_PROXY_BASE,
       apiKey: openclawProxyKey,
-      ...DEFAULT_VIDEO_CLAW_MODELS,
+      ...opts,
+      platformModels: platformModels ?? undefined,
     })
     console.log('[service-manager] video-claw config.yaml 已就绪: ' + backendDir)
   } catch (err) {
@@ -942,7 +950,7 @@ export class ServiceManager extends EventEmitter {
         ensureOpenClawConfig()
       }
       if (name === 'video-claw') {
-        ensureVideoClawConfigSafe()
+        void ensureVideoClawConfigSafe()
       }
 
       spawnArgs =
@@ -1081,6 +1089,11 @@ export class ServiceManager extends EventEmitter {
         result === true ||
         result === 'mcp-output-ready' ||
         (this.processes.has(name) && !child.killed)
+    } else if (name === 'video-claw') {
+      // AI 视频：后端(8000) + 前端(3000) 都监听后再标记运行中，
+      // 避免 iframe 过早加载导致页面/模板拉取失败
+      const backendReady = await waitForPort(info.port, portTimeoutMs, 1000)
+      ready = backendReady && (await waitForPort(VIDEO_CLAW_FRONTEND_PORT, portTimeoutMs, 1000))
     } else {
       ready = await waitForPort(info.port, portTimeoutMs, 1000)
     }
