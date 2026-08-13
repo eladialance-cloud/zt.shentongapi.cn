@@ -77,3 +77,9 @@ updates/
 
 # AI design reference (local only)
 desktop/design-system/
+
+# VideoClaw vendored 构建产物（不进 git，运行时由 CDN 下载安装）
+video-claw/video-claw/frontend/node_modules/
+video-claw/video-claw/frontend/.next/
+desktop/resources/openclaw/skills/video-claw/video-claw/frontend/node_modules/
+desktop/resources/openclaw/skills/video-claw/video-claw/frontend/.next/

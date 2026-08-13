@@ -23,6 +23,11 @@ import type {
   ResolvedRuntime
 } from '../shared/types'
 import { resolve, verifyAll, getServiceVersionGap, isServiceContentStale } from './runtime-resolver'
+import {
+  ensureVideoClawConfig,
+  resolveVideoClawBackendDir,
+  DEFAULT_VIDEO_CLAW_MODELS,
+} from './video-claw-config'
 import treeKill from 'tree-kill'
 import { getRuntimeRoot } from './runtime-config'
 
@@ -36,7 +41,8 @@ const SERVICE_DEFS: Record<ServiceName, ServiceDef> = {
   openclaw: { displayName: 'OpenClaw', port: 8080 },
   n8n: { displayName: 'N8N', port: 5678 },
   mcp: { displayName: 'MCP Gateway', port: 3100 },
-  hermes: { displayName: 'Hermes Agent', port: 8642 }
+  hermes: { displayName: 'Hermes Agent', port: 8642 },
+  'video-claw': { displayName: 'AI 视频', port: 8000 }
 }
 
 /** N8N API Key（生成并持久化到 userData/n8n-api-key，供本地 REST API 导入工作流） */
@@ -180,6 +186,37 @@ const OPENCLAW_LLM_PROXY_BASE = 'https://zt.shentongapi.cn/api/llm-proxy/v1'
 
 /** 用户 llm-proxy 静态 Key（登录后由主进程注入；空则 OpenClaw 不写 apiKey，聊天被 401 拦截） */
 let openclawProxyKey = ''
+
+/** VideoClaw 子进程环境变量：注入 llm-proxy 网关地址/静态 Key 与云端记账上下文 */
+function buildVideoClawEnv(): NodeJS.ProcessEnv {
+  const accountingDir = path.join(app.getPath('userData'), 'openclaw-chat')
+  return {
+    ...process.env,
+    VIDEO_CLAW_LLM_PROXY_BASE: OPENCLAW_LLM_PROXY_BASE,
+    VIDEO_CLAW_PROXY_KEY: openclawProxyKey || '',
+    ST_API_BASE,
+    ST_ACCOUNTING_FILE: path.join(accountingDir, 'current-accounting.json'),
+    ST_AUTH_FILE: path.join(accountingDir, 'auth.json'),
+  }
+}
+
+/** VideoClaw 启动前自动生成 config.yaml（未安装运行时/未登录时跳过，不抛错） */
+function ensureVideoClawConfigSafe(): void {
+  if (!openclawProxyKey) return
+  try {
+    const resolved = resolve('video-claw')
+    if (!resolved) return
+    const backendDir = resolveVideoClawBackendDir(path.dirname(resolved.cmd))
+    ensureVideoClawConfig(backendDir, {
+      llmProxyBaseUrl: OPENCLAW_LLM_PROXY_BASE,
+      apiKey: openclawProxyKey,
+      ...DEFAULT_VIDEO_CLAW_MODELS,
+    })
+    console.log('[service-manager] video-claw config.yaml 已就绪: ' + backendDir)
+  } catch (err) {
+    console.warn('[service-manager] video-claw config 生成失败（忽略）: ' + (err instanceof Error ? err.message : String(err)))
+  }
+}
 
 /**
  * OpenClaw 启动前配置注入（写入 <OPENCLAW_HOME>/.openclaw/openclaw.json）：
@@ -531,6 +568,7 @@ export class ServiceManager extends EventEmitter {
   setOpenClawProxyKey(key: string): void {
     openclawProxyKey = key || ''
     ensureOpenClawConfig()
+    ensureVideoClawConfigSafe()
     const info = this.services.get('openclaw')
     if (info && info.status === 'running') {
       console.log('[service-manager] llm-proxy Key 已更新，重启 OpenClaw 使其生效...')
@@ -893,6 +931,7 @@ export class ServiceManager extends EventEmitter {
         name === 'n8n' ? { ...resolved.env, ...buildN8nEnv() } :
         name === 'hermes' ? { ...resolved.env, ...buildHermesEnv() } :
         name === 'openclaw' ? { ...resolved.env, ...buildOpenClawEnv() } :
+        name === 'video-claw' ? { ...resolved.env, ...buildVideoClawEnv() } :
         resolved.env
 
       // 各服务启动参数：
@@ -902,13 +941,18 @@ export class ServiceManager extends EventEmitter {
       if (name === 'openclaw') {
         ensureOpenClawConfig()
       }
+      if (name === 'video-claw') {
+        ensureVideoClawConfigSafe()
+      }
 
       spawnArgs =
         name === 'openclaw'
           ? ['gateway', 'run', '--port', String(info.port), '--bind', 'loopback', '--auth', 'none', '--force', '--allow-unconfigured']
           : name === 'hermes'
             ? ['serve', '--port', String(info.port), '--host', '127.0.0.1', '--skip-build']
-            : resolved.args
+            : name === 'video-claw'
+              ? ['serve']
+              : resolved.args
 
       // Windows 下 .cmd/.bat 必须经 cmd.exe 执行；路径可能含空格/中文，
       // 用双引号包裹命令路径，避免 cmd.exe 将路径截断为不存在的命令

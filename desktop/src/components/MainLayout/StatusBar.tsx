@@ -47,7 +47,8 @@ const PLACEHOLDER_STATUS: Record<ServiceName, IndicatorStatus> = {
   openclaw: 'running',
   n8n: 'stopped',
   mcp: 'warning',
-  hermes: 'unknown'
+  hermes: 'unknown',
+  'video-claw': 'unknown'
 }
 
 const STATUS_COLOR: Record<IndicatorStatus, string> = {

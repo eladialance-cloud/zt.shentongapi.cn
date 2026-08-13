@@ -14,13 +14,14 @@ import {
 import type { ServiceName, ServiceStatus } from '@/types/service-manager'
 import StatusPanel from '@/components/MainLayout/StatusPanel'
 
-const SERVICE_ORDER: ServiceName[] = ['openclaw', 'n8n', 'mcp', 'hermes']
+const SERVICE_ORDER: ServiceName[] = ['openclaw', 'n8n', 'mcp', 'hermes', 'video-claw']
 
 const SERVICE_LABELS: Record<ServiceName, string> = {
   openclaw: 'OpenClaw',
   n8n: 'N8N',
   mcp: 'MCP',
-  hermes: 'Hermes'
+  hermes: 'Hermes',
+  'video-claw': 'AI 视频'
 }
 
 /** 状态点颜色 */
@@ -46,7 +47,8 @@ export default function StatusBar() {
     openclaw: 'unknown',
     n8n: 'unknown',
     mcp: 'unknown',
-    hermes: 'unknown'
+    hermes: 'unknown',
+    'video-claw': 'unknown'
   })
   const [version, setVersion] = useState<string>('0.1.0')
   const [panelOpen, setPanelOpen] = useState(false)

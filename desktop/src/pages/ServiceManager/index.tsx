@@ -26,6 +26,7 @@ import {
   ApiOutlined,
   DownloadOutlined,
   FolderOpenOutlined,
+  VideoCameraOutlined,
 } from "@ant-design/icons";
 import {
   listServices,
@@ -53,6 +54,7 @@ const SERVICE_ICONS: Record<ServiceName, React.ReactNode> = {
   n8n: <ApartmentOutlined style={{ color: "#8b5cf6" }} />,
   mcp: <ApiOutlined style={{ color: "#06b6d4" }} />,
   hermes: <ApiOutlined style={{ color: "#f59e0b" }} />,
+  "video-claw": <VideoCameraOutlined style={{ color: "#ec4899" }} />,
 };
 
 /** 状态展示配置 */

@@ -9,125 +9,153 @@
 
 import type { RuntimeManifest } from "../shared/types";
 
-export const EMBEDDED_MANIFEST: RuntimeManifest = 
-{
-    "version": "1.0.1",
-    "services": {
-      "n8n": {
-        "type": "local",
-        "version": "1.62.0",
-        "displayName": "N8N",
-        "port": 5678,
-        "entry": {
-          "win32": "n8n.exe.cmd",
-          "darwin": "n8n",
-          "linux": "n8n"
-        },
-        "downloadUrl": {
-          "win32-x64": "https://zt.shentongapi.cn/runtime/n8n/1.62.0/n8n-win-x64.tar.gz",
-          "darwin-x64": "",
-          "darwin-arm64": "",
-          "linux-x64": ""
-        },
-        "size": {
-          "win32-x64": 175978449,
-          "darwin-x64": 0,
-          "darwin-arm64": 0,
-          "linux-x64": 0
-        },
-        "sha256": {
-          "win32-x64": "86e5037279fd9448ea62d9a438bbc2abe982ff52a4ea62df1dc91a26aca08025",
-          "darwin-x64": "",
-          "darwin-arm64": "",
-          "linux-x64": ""
-        }
+export const EMBEDDED_MANIFEST: RuntimeManifest = {
+  "version": "1.0.1",
+  "services": {
+    "n8n": {
+      "type": "local",
+      "version": "1.62.0",
+      "displayName": "N8N",
+      "port": 5678,
+      "entry": {
+        "win32": "n8n.exe.cmd",
+        "darwin": "n8n",
+        "linux": "n8n"
       },
-      "openclaw": {
-        "type": "local",
-        "version": "2026.7.1",
-        "displayName": "OpenClaw",
-        "port": 8080,
-        "entry": {
-          "win32": "openclaw.exe.cmd",
-          "darwin": "openclaw",
-          "linux": "openclaw"
-        },
-        "downloadUrl": {
-          "win32-x64": "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-win-x64.tar.gz",
-          "darwin-x64": "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-mac-x64.tar.gz",
-          "darwin-arm64": "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-mac-arm64.tar.gz",
-          "linux-x64": "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-linux-x64.tar.gz"
-        },
-        "size": {
-          "win32-x64": 98008562,
-          "darwin-x64": 0,
-          "darwin-arm64": 0,
-          "linux-x64": 0
-        },
-        "sha256": {
-          "win32-x64": "185b701ee53a608bbbb70e708c17948cf98116fcb13b44f9cd7354dd0b3ea223",
-          "darwin-x64": "",
-          "darwin-arm64": "",
-          "linux-x64": ""
-        }
+      "downloadUrl": {
+        "win32-x64": "https://zt.shentongapi.cn/runtime/n8n/1.62.0/n8n-win-x64.tar.gz",
+        "darwin-x64": "",
+        "darwin-arm64": "",
+        "linux-x64": ""
       },
-      "mcp": {
-        "type": "local",
-        "version": "1.0.0",
-        "displayName": "MCP Gateway",
-        "port": 3100,
-        "entry": {
-          "win32": "mcp-gateway.exe.cmd",
-          "darwin": "mcp-gateway",
-          "linux": "mcp-gateway"
-        },
-        "downloadUrl": {
-          "win32-x64": "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-win-x64.tar.gz",
-          "darwin-x64": "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-mac-x64.tar.gz",
-          "darwin-arm64": "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-mac-arm64.tar.gz",
-          "linux-x64": "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-linux-x64.tar.gz"
-        },
-        "size": {
-          "win32-x64": 33060813,
-          "darwin-x64": 0,
-          "darwin-arm64": 0,
-          "linux-x64": 0
-        },
-        "sha256": {
-          "win32-x64": "36d94571f4abcb9c967bd657654e3c4a04a003bee1785ffefeec4ee8ddf4d848",
-          "darwin-x64": "",
-          "darwin-arm64": "",
-          "linux-x64": ""
-        }
+      "size": {
+        "win32-x64": 175978449,
+        "darwin-x64": 0,
+        "darwin-arm64": 0,
+        "linux-x64": 0
       },
-      "hermes": {
-        "type": "local",
-        "version": "0.19.0",
-        "displayName": "Hermes Agent",
-        "port": 8642,
-        "entry": {
-          "win32": "hermes.exe.cmd",
-          "darwin": "hermes",
-          "linux": "hermes"
-        },
-        "downloadUrl": {
-          "win32-x64": "https://zt.shentongapi.cn/runtime/hermes/0.19.0/hermes-win-x64.tar.gz",
-          "darwin-x64": "",
-          "darwin-arm64": "",
-          "linux-x64": ""
-        },
-        "size": {
-          "win32-x64": 130379671,
-          "darwin-x64": 0,
-          "darwin-arm64": 0,
-          "linux-x64": 0
-        },
-        "sha256": {
-          "win32-x64": "937be9e85acf513d47a819e5f61e9276f3151aa63e7f612e5854e6124adc6378",
-          "darwin-x64": "",
-          "darwin-arm64": "",
-          "linux-x64": ""
-        }
+      "sha256": {
+        "win32-x64": "86e5037279fd9448ea62d9a438bbc2abe982ff52a4ea62df1dc91a26aca08025",
+        "darwin-x64": "",
+        "darwin-arm64": "",
+        "linux-x64": ""
+      }
+    },
+    "openclaw": {
+      "type": "local",
+      "version": "2026.7.1",
+      "displayName": "OpenClaw",
+      "port": 8080,
+      "entry": {
+        "win32": "openclaw.exe.cmd",
+        "darwin": "openclaw",
+        "linux": "openclaw"
+      },
+      "downloadUrl": {
+        "win32-x64": "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-win-x64.tar.gz",
+        "darwin-x64": "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-mac-x64.tar.gz",
+        "darwin-arm64": "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-mac-arm64.tar.gz",
+        "linux-x64": "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-linux-x64.tar.gz"
+      },
+      "size": {
+        "win32-x64": 98008562,
+        "darwin-x64": 0,
+        "darwin-arm64": 0,
+        "linux-x64": 0
+      },
+      "sha256": {
+        "win32-x64": "185b701ee53a608bbbb70e708c17948cf98116fcb13b44f9cd7354dd0b3ea223",
+        "darwin-x64": "",
+        "darwin-arm64": "",
+        "linux-x64": ""
+      }
+    },
+    "mcp": {
+      "type": "local",
+      "version": "1.0.0",
+      "displayName": "MCP Gateway",
+      "port": 3100,
+      "entry": {
+        "win32": "mcp-gateway.exe.cmd",
+        "darwin": "mcp-gateway",
+        "linux": "mcp-gateway"
+      },
+      "downloadUrl": {
+        "win32-x64": "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-win-x64.tar.gz",
+        "darwin-x64": "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-mac-x64.tar.gz",
+        "darwin-arm64": "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-mac-arm64.tar.gz",
+        "linux-x64": "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-linux-x64.tar.gz"
+      },
+      "size": {
+        "win32-x64": 33060813,
+        "darwin-x64": 0,
+        "darwin-arm64": 0,
+        "linux-x64": 0
+      },
+      "sha256": {
+        "win32-x64": "36d94571f4abcb9c967bd657654e3c4a04a003bee1785ffefeec4ee8ddf4d848",
+        "darwin-x64": "",
+        "darwin-arm64": "",
+        "linux-x64": ""
+      }
+    },
+    "hermes": {
+      "type": "local",
+      "version": "0.19.0",
+      "displayName": "Hermes Agent",
+      "port": 8642,
+      "entry": {
+        "win32": "hermes.exe.cmd",
+        "darwin": "hermes",
+        "linux": "hermes"
+      },
+      "downloadUrl": {
+        "win32-x64": "https://zt.shentongapi.cn/runtime/hermes/0.19.0/hermes-win-x64.tar.gz",
+        "darwin-x64": "",
+        "darwin-arm64": "",
+        "linux-x64": ""
+      },
+      "size": {
+        "win32-x64": 130379671,
+        "darwin-x64": 0,
+        "darwin-arm64": 0,
+        "linux-x64": 0
+      },
+      "sha256": {
+        "win32-x64": "937be9e85acf513d47a819e5f61e9276f3151aa63e7f612e5854e6124adc6378",
+        "darwin-x64": "",
+        "darwin-arm64": "",
+        "linux-x64": ""
+      }
+    },
+    "video-claw": {
+      "type": "local",
+      "version": "0.1.0",
+      "displayName": "AI 视频",
+      "port": 8000,
+      "entry": {
+        "win32": "video-claw.cmd",
+        "darwin": "video-claw",
+        "linux": "video-claw"
+      },
+      "downloadUrl": {
+        "win32-x64": "https://zt.shentongapi.cn/runtime/video-claw/0.1.0/video-claw-win-x64.tar.gz",
+        "darwin-x64": "",
+        "darwin-arm64": "",
+        "linux-x64": ""
+      },
+      "size": {
+        "win32-x64": 242299951,
+        "darwin-x64": 0,
+        "darwin-arm64": 0,
+        "linux-x64": 0
+      },
+      "sha256": {
+        "win32-x64": "46257b7301cde3db4006c4b1cc2e8bd99a32a6a9cda58f7bf3ba5730485c088c",
+        "darwin-x64": "",
+        "darwin-arm64": "",
+        "linux-x64": ""
       }
     }
   }
+};

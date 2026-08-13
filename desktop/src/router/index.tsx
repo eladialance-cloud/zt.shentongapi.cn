@@ -43,6 +43,7 @@ import McpConfig from "@/pages/McpConfig";
 import TeamBoard from "@/pages/Team/Board";
 import Settings from "@/pages/Settings";
 import ServiceManager from "@/pages/ServiceManager";
+import VideoClaw from "@/pages/VideoClaw";
 import MainLayout from "@/components/MainLayout";
 import { useAuthStore } from "@/store";
 
@@ -133,6 +134,7 @@ const router = createHashRouter([
       { path: "/settings", element: <Settings /> },
       // ===== Task 16: 服务管理 =====
       { path: "/services", element: <ServiceManager /> },
+      { path: "/video-claw", element: <VideoClaw /> },
     ],
   },
 

@@ -33,7 +33,8 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'dashboard', label: '仪表盘', icon: '📊', path: '/dashboard' },
       { key: 'office', label: 'AI 办公室', icon: '🏢', path: '/office' },
       { key: 'chat', label: '对话', icon: '💬', path: '/chat' },
-      { key: 'automation', label: '自动化', icon: '⚡', path: '/automation' }
+      { key: 'automation', label: '自动化', icon: '⚡', path: '/automation' },
+      { key: 'video-claw', label: 'AI 视频', icon: '🎬', path: '/video-claw' }
     ]
   },
   {

@@ -66,7 +66,8 @@ const initialDownloads: Record<ServiceName, DownloadState> = {
   openclaw: { downloading: false, progress: null, error: null },
   n8n: { downloading: false, progress: null, error: null },
   mcp: { downloading: false, progress: null, error: null },
-  hermes: { downloading: false, progress: null, error: null }
+  hermes: { downloading: false, progress: null, error: null },
+  'video-claw': { downloading: false, progress: null, error: null }
 }
 
 /** 初始化安装状态（全部 pending） */
@@ -87,7 +88,8 @@ export default function Onboarding() {
     openclaw: null,
     n8n: null,
     mcp: null,
-    hermes: null
+    hermes: null,
+    'video-claw': null
   })
   const [verifying, setVerifying] = useState(false)
   const [allPassed, setAllPassed] = useState(false)

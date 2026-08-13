@@ -1,7 +1,7 @@
 // 主进程 / 渲染进程共享类型定义
 // 该文件同时被 tsconfig.node.json 与 tsconfig.web.json 包含
 
-export type ServiceName = "openclaw" | "n8n" | "mcp" | "hermes";
+export type ServiceName = "openclaw" | "n8n" | "mcp" | "hermes" | "video-claw";
 
 export type ServiceStatus =
   "running" | "stopped" | "starting" | "error" | "unknown";

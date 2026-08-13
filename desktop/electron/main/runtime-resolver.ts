@@ -30,6 +30,7 @@ const HOST_COMMANDS: Record<ServiceName, { cmd: string; args: string[] }> = {
   openclaw: { cmd: "openclaw", args: [] },
   mcp: { cmd: "mcp-gateway", args: [] },
   hermes: { cmd: "hermes", args: [] },
+  "video-claw": { cmd: "video-claw", args: [] },
 };
 
 /** 内置运行时根目录：打包后为 process.resourcesPath/runtime，开发环境为 cwd/runtime */
@@ -358,11 +359,12 @@ export async function verifyIntegrity(name: ServiceName): Promise<boolean> {
 
 /** 校验所有服务，返回各服务完整性 */
 export async function verifyAll(): Promise<Record<ServiceName, boolean>> {
-  const [n8n, openclaw, mcp, hermes] = await Promise.all([
+  const [n8n, openclaw, mcp, hermes, videoClaw] = await Promise.all([
     verifyIntegrity("n8n"),
     verifyIntegrity("openclaw"),
     verifyIntegrity("mcp"),
     verifyIntegrity("hermes"),
+    verifyIntegrity("video-claw"),
   ]);
-  return { n8n, openclaw, mcp, hermes };
+  return { n8n, openclaw, mcp, hermes, "video-claw": videoClaw };
 }

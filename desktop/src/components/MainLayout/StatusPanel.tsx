@@ -20,13 +20,14 @@ import { getTransactions } from '@/api/credits-api'
 import type { ServiceName, ServiceStatus } from '@/types/service-manager'
 import styles from './styles.module.css'
 
-const SERVICE_ORDER: ServiceName[] = ['openclaw', 'n8n', 'mcp', 'hermes']
+const SERVICE_ORDER: ServiceName[] = ['openclaw', 'n8n', 'mcp', 'hermes', 'video-claw']
 
 const SERVICE_LABELS: Record<ServiceName, string> = {
   openclaw: 'OpenClaw',
   n8n: 'N8N',
   mcp: 'MCP',
-  hermes: 'Hermes'
+  hermes: 'Hermes',
+  'video-claw': 'AI 视频'
 }
 
 const STATUS_COLOR: Record<ServiceStatus, string> = {
@@ -64,7 +65,8 @@ export default function StatusPanel({ open, onClose }: StatusPanelProps) {
     openclaw: 'unknown',
     n8n: 'unknown',
     mcp: 'unknown',
-    hermes: 'unknown'
+    hermes: 'unknown',
+    'video-claw': 'unknown'
   })
   const [busy, setBusy] = useState<Set<ServiceName>>(new Set())
   const [todayStats, setTodayStats] = useState<TodayStats>({
