@@ -9,6 +9,8 @@ import {
   inputTypesFromModelType,
   normalizeInputTypes,
   normalizeAdvancedCapabilities,
+  callModeFromModelType,
+  modelTypeFromCallMode,
 } from '../../src/modules/admin-model/utils/model-type-utils';
 
 describe('deriveModelType（输出类型 × 输入类型 -> 路由分类）', () => {
@@ -80,5 +82,26 @@ describe('normalizeInputTypes / normalizeAdvancedCapabilities', () => {
       ['function_calling'],
     );
     assert.deepEqual(normalizeAdvancedCapabilities(undefined), []);
+  });
+});
+
+describe('callModeFromModelType / modelTypeFromCallMode 互推', () => {
+  it('存量 6 类映射正确', () => {
+    assert.equal(callModeFromModelType('chat'), 'text_chat');
+    assert.equal(callModeFromModelType('vision'), 'vision');
+    assert.equal(callModeFromModelType('image'), 'image');
+    assert.equal(callModeFromModelType('image_edit'), 'image_edit');
+    assert.equal(callModeFromModelType('video'), 'video');
+    assert.equal(callModeFromModelType('tts'), 'tts');
+  });
+  it('未知 model_type 回退 text_chat', () => {
+    assert.equal(callModeFromModelType(undefined), 'text_chat');
+    assert.equal(callModeFromModelType('unknown'), 'text_chat');
+  });
+  it('新模式可反推兼容 model_type', () => {
+    assert.equal(modelTypeFromCallMode('ocr'), 'vision');
+    assert.equal(modelTypeFromCallMode('music'), 'tts');
+    assert.equal(modelTypeFromCallMode('video_edit'), 'video');
+    assert.equal(modelTypeFromCallMode('stt'), 'chat');
   });
 });

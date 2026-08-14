@@ -1,4 +1,4 @@
-﻿import { Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 /**
@@ -785,6 +785,16 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
     for (const [colName, colDef] of legacyModelCols) {
       await ensureColumn('models', colName, colDef);
     }
+    // models 表：调用模式/场景标签/计费方式等新列（实体新增，历史库缺列时自动补齐）
+    await ensureColumn('models', 'call_mode', "VARCHAR(32) NOT NULL DEFAULT 'text_chat' COMMENT '调用模式(14种字典)'");
+    await ensureColumn('models', 'scenario_tags', "JSON NULL COMMENT '场景标签(固定字典多选)'");
+    await ensureColumn('models', 'pricing_mode', "VARCHAR(16) NULL COMMENT '计费方式: token/per_image/per_call/per_minute/per_second'");
+    await ensureColumn('models', 'video_per_second', "JSON NULL COMMENT '视频按分辨率档积分/秒'");
+    await ensureColumn('models', 'specs', "JSON NULL COMMENT '动态规格字段值'");
+    await ensureColumn('models', 'icon_url', "VARCHAR(512) NULL COMMENT '模型图标URL'");
+    await ensureColumn('models', 'cost_price', "DECIMAL(10,4) NULL COMMENT '成本价(元)'");
+    await ensureColumn('models', 'remark', "VARCHAR(512) NULL COMMENT '管理员备注'");
+    await ensureColumn('models', 'price_per_minute', "DECIMAL(10,4) NULL COMMENT '按分钟计费积分(积分/分钟)'");
 
     // agents 表补充缺失列（实体新增，历史库缺列时自动补齐）
     const agentCols: Array<[string, string]> = [
@@ -982,6 +992,16 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
 
     // model_providers 表：全局中转标志（严格单全局，唯一索引；幂等）
     await ensureColumn('model_providers', 'is_global', "TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否全局中转(全站至多1条=1)'");
+    // model_providers 表：API 风格/限流/余额监控列（实体新增，幂等）
+    await ensureColumn('model_providers', 'api_style', "VARCHAR(32) NULL COMMENT 'API风格: openai_compatible/dashscope_native/anthropic/custom'");
+    await ensureColumn('model_providers', 'rate_limit_per_minute', "INT NULL COMMENT '每分钟限流'");
+    await ensureColumn('model_providers', 'concurrency_limit', "INT NULL COMMENT '并发上限'");
+    await ensureColumn('model_providers', 'balance_url', "VARCHAR(512) NULL COMMENT '余额查询接口'");
+    await ensureColumn('model_providers', 'balance_headers', "JSON NULL COMMENT '余额接口请求头'");
+    await ensureColumn('model_providers', 'balance_extra', "JSON NULL COMMENT '余额接口附加参数'");
+    await ensureColumn('model_providers', 'last_balance', "DECIMAL(12,2) NULL COMMENT '最近一次余额'");
+    await ensureColumn('model_providers', 'balance_checked_at', "DATETIME NULL COMMENT '最近余额检查时间'");
+    await ensureColumn('model_providers', 'balance_alert_threshold', "DECIMAL(12,2) NULL COMMENT '余额告警阈值'");
     const [globalIdx] = await queryRunner.query(
       `SELECT COUNT(*) AS c FROM information_schema.STATISTICS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'model_providers' AND INDEX_NAME = 'uk_model_providers_global'`
@@ -1014,7 +1034,7 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
           user_id BIGINT UNSIGNED NOT NULL,
           session_id BIGINT UNSIGNED DEFAULT NULL,
           model_id VARCHAR(64) NOT NULL,
-          type VARCHAR(8) NOT NULL COMMENT 'image|video',
+          type VARCHAR(64) NOT NULL COMMENT '任务类型(调用模式)',
           prompt MEDIUMTEXT NOT NULL,
           params JSON DEFAULT NULL,
           status VARCHAR(16) NOT NULL DEFAULT 'pending' COMMENT 'pending|processing|done|failed',
@@ -1030,6 +1050,32 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文生图/文生视频生成任务'
       `);
       logger.log('Created table: media_jobs');
+    }
+    // media_jobs 表：调用模式冗余列（实体新增，便于任务列表筛选，幂等）
+    await ensureColumn('media_jobs', 'call_mode', "VARCHAR(32) NULL COMMENT '调用模式(冗余存储)'");
+    // media_jobs 表：type 列加宽（实体已放宽为 VARCHAR(64)，幂等 MODIFY）
+    await queryRunner.query("ALTER TABLE media_jobs MODIFY COLUMN type VARCHAR(64) COMMENT '任务类型(调用模式)'");
+    // llm_files 表（专用文本模型两步式：用户上传文件 -> 上游 file_id 映射）
+    const [llmFilesTable] = await queryRunner.query(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'llm_files'`
+    );
+    if (!llmFilesTable) {
+      await queryRunner.query(`
+        CREATE TABLE IF NOT EXISTS llm_files (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          user_id BIGINT UNSIGNED NOT NULL,
+          model_id VARCHAR(64) NOT NULL,
+          upstream_file_id VARCHAR(128) NOT NULL,
+          file_name VARCHAR(255) DEFAULT NULL,
+          file_size INT DEFAULT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          KEY idx_llm_files_user_id (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户上传到上游的文件映射(专用文本模型两步式)'
+      `);
+      logger.log('Created table: llm_files');
     }
 
 
@@ -1179,6 +1225,72 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       await ensureColumn(table, 'params', 'json NULL');
     };
     await ensureAssetImportJobsTable();
+
+    // models 表：按 model_type 回填 call_mode（只回填空值/默认值，保留管理员手工定制，幂等）
+    await queryRunner.query(
+      `UPDATE models SET call_mode = CASE model_type
+        WHEN 'vision' THEN 'vision' WHEN 'image' THEN 'image'
+        WHEN 'image_edit' THEN 'image_edit' WHEN 'video' THEN 'video'
+        WHEN 'tts' THEN 'tts' WHEN 'embedding' THEN 'embedding' WHEN 'audio' THEN 'tts' ELSE 'text_chat' END
+       WHERE model_type IS NOT NULL AND model_type <> 'chat'
+         AND (call_mode IS NULL OR call_mode = 'text_chat')`
+    );
+    logger.log('Backfilled models.call_mode from model_type');
+
+    // models 表：按 call_mode 回填 pricing_mode（只填空值，幂等；映射依据 constants/call-modes.ts recommendedBilling）
+    await queryRunner.query(
+      `UPDATE models SET pricing_mode = CASE call_mode
+        WHEN 'text_chat' THEN 'token' WHEN 'vision' THEN 'token'
+        WHEN 'image' THEN 'per_image' WHEN 'image_edit' THEN 'per_image' WHEN 'ocr' THEN 'per_image'
+        WHEN 'video' THEN 'per_second' WHEN 'video_edit' THEN 'per_second'
+        WHEN 'stt' THEN 'per_minute' WHEN 'voice_conversion' THEN 'per_minute' WHEN 'realtime' THEN 'per_minute'
+        WHEN 'embedding' THEN 'per_call' WHEN 'rerank' THEN 'per_call' WHEN 'music' THEN 'per_call' WHEN 'tts' THEN 'per_call'
+        ELSE 'token' END
+       WHERE call_mode IS NOT NULL AND (pricing_mode IS NULL OR pricing_mode = '')`
+    );
+    logger.log('Backfilled models.pricing_mode from call_mode');
+
+    // models 表：video_prices -> video_per_second 折算回填（仅补空且为视频模型；取各分辨率最短时长单价折算积分/秒，幂等）
+    const videoRows = await queryRunner.query(
+      `SELECT id, video_prices FROM models
+       WHERE (model_type IN ('video','video_edit') OR call_mode IN ('video','video_edit'))
+         AND video_prices IS NOT NULL AND video_per_second IS NULL`
+    );
+    for (const row of videoRows ?? []) {
+      const raw = row?.video_prices;
+      if (raw == null) continue;
+      let prices: unknown = raw;
+      if (typeof raw === 'string') {
+        try {
+          prices = JSON.parse(raw);
+        } catch {
+          continue;
+        }
+      }
+      if (!prices || typeof prices !== 'object' || Array.isArray(prices)) continue;
+      const perSecond: Record<string, number> = {};
+      for (const [resolution, durationMap] of Object.entries(prices as Record<string, unknown>)) {
+        if (!durationMap || typeof durationMap !== 'object' || Array.isArray(durationMap)) continue;
+        const entries = Object.entries(durationMap as Record<string, number>).filter(
+          ([, v]) => typeof v === 'number' && Number.isFinite(v) && v >= 0,
+        );
+        if (!entries.length) continue;
+        entries.sort((a, b) => Number(a[0]) - Number(b[0]));
+        const [shortestDuration, unitPrice] = entries[0];
+        const seconds = Number(shortestDuration);
+        if (!(seconds > 0)) continue;
+        const resKey = resolution.trim().toLowerCase();
+        const normalized =
+          resKey === '720p' ? '720P' : resKey === '1080p' ? '1080P' : resKey === '2k' ? '2K' : resKey === '4k' ? '4K' : resolution;
+        perSecond[normalized] = Math.round((unitPrice / seconds) * 100) / 100;
+      }
+      if (Object.keys(perSecond).length === 0) continue;
+      await queryRunner.query(`UPDATE models SET video_per_second = ? WHERE id = ?`, [
+        JSON.stringify(perSecond),
+        row.id,
+      ]);
+    }
+    logger.log('Backfilled models.video_per_second from video_prices (shortest-duration rate)');
 
     logger.log('Startup migrations completed');
   } catch (err) {

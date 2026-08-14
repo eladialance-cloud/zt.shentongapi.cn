@@ -7,7 +7,8 @@ const idColumnOptions = {
   transformer: bigintTransformer,
 };
 
-export type MediaJobType = 'image' | 'video';
+/** 任务类型：旧值 image/video，保留字面量自动补全，同时允许扩展为任意调用模式字符串 */
+export type MediaJobType = 'image' | 'video' | (string & {});
 export type MediaJobStatus = 'pending' | 'processing' | 'done' | 'failed';
 
 /** 文生图/文生视频生成任务 */
@@ -26,8 +27,12 @@ export class MediaJobEntity {
   @Column({ name: 'model_id', length: 64 })
   modelId: string;
 
-  @Column({ type: 'varchar', length: 8 })
+  @Column({ type: 'varchar', length: 64 })
   type: MediaJobType;
+
+  /** 调用模式（冗余存储，便于任务列表筛选） */
+  @Column({ name: 'call_mode', length: 32, nullable: true })
+  callMode?: string;
 
   @Column({ type: 'mediumtext' })
   prompt: string;
@@ -39,7 +44,7 @@ export class MediaJobEntity {
   @Column({ type: 'varchar', length: 16, default: 'pending' })
   status: MediaJobStatus;
 
-  /** 产物相对路径（/uploads/files/generated/xxx） */
+  /** 产物 URL 数组：OSS 启用时为云 URL，本地回退时为相对路径（/uploads/files/generated/xxx） */
   @Column({ name: 'result_urls', type: 'json', nullable: true })
   resultUrls?: string[] | null;
 

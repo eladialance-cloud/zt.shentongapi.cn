@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { SysOssConfigEntity } from './entities/sys-oss-config.entity';
 import { AdminOssController } from './admin-oss.controller';
 import { AdminOssService } from './admin-oss.service';
+import { OssUploadService } from './oss-upload.service';
 import { AdminAuthModule } from '../admin-auth/admin-auth.module';
 import { CommonModule } from '../../common/common.module';
 
@@ -19,7 +20,7 @@ import { CommonModule } from '../../common/common.module';
     CommonModule,
   ],
   controllers: [AdminOssController],
-  providers: [AdminOssService],
-  exports: [AdminOssService],
+  providers: [AdminOssService, OssUploadService],
+  exports: [AdminOssService, OssUploadService],
 })
 export class AdminOssModule {}

@@ -16,6 +16,16 @@ export interface GenerationAdapterConfig {
   resultUrlPath?: string;
   resultB64Path?: string;
   timeoutMs?: number;
+  /** 图片请求形状：json=JSON 内嵌图（占位符）/ multipart=multipart 文件字段（默认 json）*/
+  imagesStyle?: 'json' | 'multipart';
+  /** multipart 图片字段名（位置对应 inputImages；默认第 1 张 image，第 n 张 image_n）*/
+  imageFields?: string[];
+  /** multipart 文本字段名（默认 prompt / model / size）*/
+  promptField?: string;
+  modelField?: string;
+  sizeField?: string;
+  /** multipart 静态额外字段（如 negative_prompt）*/
+  multipartFields?: Record<string, unknown>;
 }
 
 /**
@@ -74,6 +84,99 @@ export class GenerationClientService {
     return path.startsWith('http') ? path : `${base}${path.startsWith('/') ? path : '/' + path}`;
   }
 
+  /** 输入图解析为 Buffer：data URI 直接解码 / http(s) 下载（URL 已由 service 层 SSRF 校验）*/
+  private async resolveInputImageBuffer(img: string): Promise<Buffer> {
+    if (/^data:image\//i.test(img)) {
+      const comma = img.indexOf(',');
+      if (comma < 0) throw new BadRequestException('data URI 格式无效');
+      return Buffer.from(img.slice(comma + 1), 'base64');
+    }
+    const res = await fetch(img, { signal: AbortSignal.timeout(60000) });
+    if (!res.ok) throw new BadRequestException(`输入图片下载失败(${res.status})`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > 20 * 1024 * 1024) throw new BadRequestException('输入图片超过 20MB 限制');
+    return buf;
+  }
+
+  private mimeOfInputImage(img: string): string {
+    const m = img.match(/^data:(image\/[a-z0-9.+-]+)/i);
+    return m ? m[1].toLowerCase() : 'image/png';
+  }
+
+  /** 按适配配置构造图片请求：JSON 内嵌（占位符）或 multipart（文件字段），返回 { url, headers, body } */
+  async buildImageRequest(cfg: {
+    endpoint: string;
+    adapter: GenerationAdapterConfig;
+    model: string;
+    prompt: string;
+    size?: string;
+    inputImages?: string[];
+  }): Promise<{ url: string; headers: Record<string, string>; body: string | FormData }> {
+    const { endpoint, adapter, model, prompt, size, inputImages = [] } = cfg;
+    const url = this.buildUrl(endpoint, adapter.imagesPath || '/images/generations');
+    const wantMultipart =
+      adapter.imagesStyle === 'multipart' ||
+      (inputImages.length > 0 && !adapter.requestTemplate && !adapter.imagesStyle);
+    if (wantMultipart) {
+      const form = new FormData();
+      form.append(adapter.modelField || 'model', model);
+      form.append(adapter.promptField || 'prompt', prompt);
+      if (size) form.append(adapter.sizeField || 'size', size);
+      for (const [k, v] of Object.entries(adapter.multipartFields ?? {})) {
+        form.append(k, String(v));
+      }
+      const fields = adapter.imageFields?.length ? adapter.imageFields : [];
+      for (let i = 0; i < inputImages.length; i++) {
+        const fieldName = fields[i] || (i === 0 ? 'image' : `image_${i + 1}`);
+        const buf = await this.resolveInputImageBuffer(inputImages[i]);
+        const mime = this.mimeOfInputImage(inputImages[i]);
+        form.append(fieldName, new Blob([new Uint8Array(buf)], { type: mime }), `input-${i + 1}`);
+      }
+      return { url, headers: {}, body: form };
+    }
+    // JSON 分支：imageUrlN=仅 http(s) URL；imageB64N=仅 data URI；imageCount=张数
+    const urls = inputImages.map((v) => (/^https?:\/\//i.test(v) ? v : ''));
+    const b64s = inputImages.map((v) => (/^data:image\//i.test(v) ? v : ''));
+    const vars: Record<string, string | number> = { upstreamModelId: model, prompt, size: size ?? '' };
+    vars.imageCount = inputImages.length;
+    vars.imageUrl = urls[0] || '';
+    vars.imageB64 = b64s[0] || '';
+    inputImages.forEach((_v, i) => {
+      vars[`imageUrl${i}`] = urls[i] || '';
+      vars[`imageB64${i}`] = b64s[i] || '';
+    });
+    let body = this.buildBody(adapter.requestTemplate, vars);
+    if (Object.keys(body).length === 0) {
+      body = { model, prompt, response_format: 'b64_json' };
+      if (size) body.size = size;
+      if (inputImages[0]) body.image = urls[0] || b64s[0];
+    }
+    return { url, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+  }
+
+  /** multipart 上传（不手动设置 Content-Type，fetch 自动带 boundary） */
+  private async postFormData(
+    url: string,
+    apiKey: string,
+    form: FormData,
+    headers: Record<string, string> = {},
+    timeoutMs = 120000,
+  ): Promise<any> {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, ...headers },
+      body: form,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const text = await res.text();
+    let json: any = null;
+    try { json = JSON.parse(text); } catch { /* 非 JSON 响应 */ }
+    if (!res.ok) {
+      throw new BadRequestException(`上游接口错误(${res.status}): ${text.slice(0, 300)}`);
+    }
+    return json;
+  }
+
   private async postJson(url: string, apiKey: string, body: unknown, headers: Record<string, string> = {}, timeoutMs = 60000): Promise<any> {
     const res = await fetch(url, {
       method: 'POST',
@@ -103,7 +206,7 @@ export class GenerationClientService {
     return json;
   }
 
-  /** 文生图（同步） */
+  /** 文生图 / 图生图（同步；请求形状由适配配置决定：JSON 内嵌 或 multipart） */
   async generateImage(cfg: {
     endpoint: string;
     apiKey: string;
@@ -111,23 +214,20 @@ export class GenerationClientService {
     model: string;
     prompt: string;
     size?: string;
+    inputImages?: string[];
   }): Promise<{ b64?: string; url?: string }> {
     const { endpoint, apiKey, adapter } = cfg;
-    let body = this.buildBody(adapter.requestTemplate, {
-      upstreamModelId: cfg.model,
-      prompt: cfg.prompt,
-      size: cfg.size ?? '',
-    });
-    if (Object.keys(body).length === 0) {
-      body = { model: cfg.model, prompt: cfg.prompt, response_format: 'b64_json' };
-      if (cfg.size) body.size = cfg.size;
+    const req = await this.buildImageRequest(cfg);
+    let json: any;
+    if (req.body instanceof FormData) {
+      json = await this.postFormData(req.url, apiKey, req.body, adapter.extraHeaders, adapter.timeoutMs || 120000);
+    } else {
+      json = await this.postJson(req.url, apiKey, JSON.parse(req.body as string), adapter.extraHeaders, adapter.timeoutMs || 120000);
     }
-    const url = this.buildUrl(endpoint, adapter.imagesPath || '/images/generations');
-    const json = await this.postJson(url, apiKey, body, adapter.extraHeaders, adapter.timeoutMs || 120000);
     const b64 = this.getByPath(json, adapter.resultB64Path || 'data[0].b64_json') as string | undefined;
     const u = this.getByPath(json, adapter.resultUrlPath || 'data[0].url') as string | undefined;
     if (!b64 && !u) {
-      this.logger.warn(`文生图上游未返回数据: ${JSON.stringify(json).slice(0, 300)}`);
+      this.logger.warn(`图片生成上游未返回数据: ${JSON.stringify(json).slice(0, 300)}`);
       throw new BadRequestException('上游未返回图片数据（无 b64_json / url）');
     }
     return { b64, url: u };

@@ -42,6 +42,35 @@ export class ModelProviderEntity extends BaseEntity {
   @Column({ name: 'is_builtin', type: 'boolean', default: false })
   isBuiltin: boolean;
 
+  /** API 风格：openai_compatible / dashscope_native / anthropic / custom */
+  @Column({ name: 'api_style', length: 32, nullable: true })
+  apiStyle?: string;
+
+  @Column({ name: 'rate_limit_per_minute', type: 'int', nullable: true })
+  rateLimitPerMinute?: number;
+
+  @Column({ name: 'concurrency_limit', type: 'int', nullable: true })
+  concurrencyLimit?: number;
+
+  /** 余额监控：余额接口与阈值 */
+  @Column({ name: 'balance_url', length: 512, nullable: true })
+  balanceUrl?: string;
+
+  @Column({ name: 'balance_headers', type: 'json', nullable: true })
+  balanceHeaders?: Record<string, unknown> | null;
+
+  @Column({ name: 'balance_extra', type: 'json', nullable: true })
+  balanceExtra?: Record<string, unknown> | null;
+
+  @Column({ name: 'last_balance', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  lastBalance?: number;
+
+  @Column({ name: 'balance_checked_at', type: 'datetime', nullable: true })
+  balanceCheckedAt?: Date;
+
+  @Column({ name: 'balance_alert_threshold', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  balanceAlertThreshold?: number;
+
   @Column({ name: 'model_count', type: 'int', default: 0 })
   modelCount: number;
 }

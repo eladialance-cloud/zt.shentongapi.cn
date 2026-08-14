@@ -9,12 +9,14 @@ import { ModelProviderEntity } from '../admin-model/entities/model-provider.enti
 import { FileEntity } from '../file/entities/file.entity';
 import { CreditsModule } from '../credits/credits.module';
 import { CommonModule } from '../../common/common.module';
+import { AdminOssModule } from '../admin-oss/admin-oss.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([MediaJobEntity, ModelEntity, ModelProviderEntity, FileEntity]),
     CreditsModule,
     CommonModule,
+    AdminOssModule,
   ],
   controllers: [MediaGenerationController],
   providers: [MediaGenerationService, GenerationClientService],

@@ -4,6 +4,10 @@ import { Repository, Not } from 'typeorm';
 import { SysOssConfigEntity } from './entities/sys-oss-config.entity';
 import { CreateOssConfigDto, UpdateOssConfigDto } from './dto/admin-oss.dto';
 import { EncryptionService } from '../../common/services/encryption.service';
+import * as fs from 'fs';
+import * as path from 'path';
+import { randomUUID } from 'crypto';
+import { OssUploadService } from './oss-upload.service';
 
 /**
  * 管理端OSS配置服务
@@ -16,6 +20,7 @@ export class AdminOssService {
     @InjectRepository(SysOssConfigEntity)
     private readonly ossConfigRepo: Repository<SysOssConfigEntity>,
     private readonly encryptionService: EncryptionService,
+    private readonly ossUploadService: OssUploadService,
   ) {}
 
   /**
@@ -165,54 +170,31 @@ export class AdminOssService {
     message: string;
   }> {
     const config = await this.getConfigInternal(id);
-    // TODO: 使用解密后的真实密钥进行实际连通性测试
-    // const creds = await this.getDecryptedCredentials(id);
-    const latency = Math.floor(Math.random() * 200) + 30;
-
-    switch (config.provider) {
-      case 'local':
-        return {
-          success: true,
-          provider: config.provider,
-          latency,
-          message: '本地存储连通性测试成功',
-        };
-      case 'aliyun':
-        return {
-          success: true,
-          provider: config.provider,
-          latency,
-          message: '阿里云OSS连通性测试成功',
-        };
-      case 'tencent':
-        return {
-          success: true,
-          provider: config.provider,
-          latency,
-          message: '腾讯云COS连通性测试成功',
-        };
-      case 'qiniu':
-        return {
-          success: true,
-          provider: config.provider,
-          latency,
-          message: '七牛云存储连通性测试成功',
-        };
-      case 'minio':
-        return {
-          success: true,
-          provider: config.provider,
-          latency,
-          message: 'MinIO连通性测试成功',
-        };
-      default:
-        return {
-          success: false,
-          provider: config.provider,
-          latency: 0,
-          message: `不支持的OSS提供商: ${config.provider}`,
-        };
+    if (config.provider === 'local') {
+      // 本地存储：校验生成目录可写
+      const dir = './uploads/files/generated';
+      let probe: string | null = null;
+      try {
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        probe = path.join(dir, `.probe-${Date.now()}-${randomUUID().slice(0, 8)}`);
+        fs.writeFileSync(probe, 'ok');
+        return { success: true, provider: 'local', latency: 0, message: '本地存储连通性测试成功' };
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        return { success: false, provider: 'local', latency: 0, message: `本地存储连通性测试失败: ${message}` };
+      } finally {
+        if (probe) {
+          try { fs.unlinkSync(probe); } catch { /* 清理失败不影响连通性结论 */ }
+        }
+      }
     }
+    const result = await this.ossUploadService.probeConfigId(id);
+    return {
+      success: result.ok,
+      provider: config.provider,
+      latency: result.latencyMs,
+      message: result.message,
+    };
   }
 
   /**

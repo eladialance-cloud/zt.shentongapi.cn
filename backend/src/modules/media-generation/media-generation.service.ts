@@ -7,12 +7,14 @@ import { lookup as dnsLookup } from 'dns/promises';
 import { MediaJobEntity, MediaJobType } from './entities/media-job.entity';
 import { GenerateImageDto, GenerateVideoDto, MediaJobQueryDto } from './dto/generate-media.dto';
 import { GenerationClientService, GenerationAdapterConfig } from './generation-client.service';
+import { computeVideoCharge } from './billing';
 import { ModelEntity } from '../model/entities/model.entity';
 import { ModelProviderEntity } from '../admin-model/entities/model-provider.entity';
 import { FileEntity } from '../file/entities/file.entity';
 import { EncryptionService } from '../../common/services/encryption.service';
 import { CreditsService } from '../credits/services/credits.service';
 import { PricingService } from '../credits/services/pricing.service';
+import { OssUploadService } from '../admin-oss/oss-upload.service';
 import { resolveRelay } from '../admin-model/utils/relay-resolver';
 
 const DEFAULT_IMAGE_PRICE = 10; // 积分/张（模型未配置时）
@@ -42,6 +44,7 @@ export class MediaGenerationService implements OnModuleInit {
     private readonly encryptionService: EncryptionService,
     private readonly creditsService: CreditsService,
     private readonly pricingService: PricingService,
+    private readonly ossUpload: OssUploadService,
   ) {}
 
   health() { return { status: 'ok', module: 'media-generation' }; }
@@ -100,10 +103,12 @@ export class MediaGenerationService implements OnModuleInit {
 
   private async resolveModel(modelId: string, type: MediaJobType): Promise<{ model: ModelEntity; provider: ModelProviderEntity; adapter: GenerationAdapterConfig; decryptedKey: string }> {
     const model = await this.modelRepo.findOne({ where: { modelId, isActive: true } });
-    if (!model || (model.modelType !== 'image' && model.modelType !== 'video')) {
+    if (!model || (model.modelType !== 'image' && model.modelType !== 'image_edit' && model.modelType !== 'video')) {
       throw new BadRequestException('生成模型不存在或未上架');
     }
-    if (model.modelType !== type) {
+    // type='image' 时允许 image_edit（listGenerationModels 已把 image_edit 以 type:'image' 下发给用户端）
+    const typeMatched = type === 'image' ? (model.modelType === 'image' || model.modelType === 'image_edit') : model.modelType === type;
+    if (!typeMatched) {
       throw new BadRequestException(`模型类型不匹配：${model.modelType}`);
     }
     // 1) 模型绑定供应商优先；2) 无绑定/停用 → 全局中转（严格单全局，老数据回退第一个 active 供应商）
@@ -127,6 +132,15 @@ export class MediaGenerationService implements OnModuleInit {
       ...baseAdapter,
       ...(gen.video_submit_path ? { videosPath: String(gen.video_submit_path) } : {}),
       ...(gen.video_query_path ? { taskPath: String(gen.video_query_path) } : {}),
+      ...(gen.images_path ? { imagesPath: String(gen.images_path) } : {}),
+      ...(gen.images_style === 'json' || gen.images_style === 'multipart' ? { imagesStyle: gen.images_style } : {}),
+      ...(Array.isArray(gen.image_fields) ? { imageFields: (gen.image_fields as unknown[]).map(String) } : {}),
+      ...(gen.prompt_field ? { promptField: String(gen.prompt_field) } : {}),
+      ...(gen.model_field ? { modelField: String(gen.model_field) } : {}),
+      ...(gen.size_field ? { sizeField: String(gen.size_field) } : {}),
+      ...(gen.multipart_fields && typeof gen.multipart_fields === 'object'
+        ? { multipartFields: gen.multipart_fields as Record<string, unknown> }
+        : {}),
     };
     return { model, provider, adapter, decryptedKey: decrypted };
   }
@@ -139,16 +153,19 @@ export class MediaGenerationService implements OnModuleInit {
     sourceId: string,
   ): Promise<{ price: number; frozenTxnId: number | null }> {
     let base = 0;
-    if (model.modelType === 'image') {
+    if (model.modelType === 'image' || model.modelType === 'image_edit') {
       base = model.pricePerImage ?? DEFAULT_IMAGE_PRICE;
     } else {
-      // 视频价格严格按 分辨率×时长 矩阵扣费：未配置的规格直接拒绝，避免静默扣默认价
-      const matrix = model.videoPrices?.[opts.resolution ?? ''];
-      const priceAt = matrix?.[String(opts.duration ?? 5)];
-      if (priceAt === undefined) {
+      // 视频按秒计费：per_second 取 video_per_second[分辨率]x时长，未配置档直接拒绝；否则回退旧价格矩阵
+      const price = computeVideoCharge(model, { resolution: opts.resolution, duration: opts.duration ?? 5 });
+      if (model.pricingMode === 'per_second') {
+        if (model.videoPerSecond?.[opts.resolution ?? ''] == null) {
+          throw new BadRequestException(`该模型未配置 ${opts.resolution ?? ''} 分辨率档的视频每秒价格`);
+        }
+      } else if (model.videoPrices?.[opts.resolution ?? '']?.[String(opts.duration ?? 5)] === undefined) {
         throw new BadRequestException(`该模型未配置 ${opts.resolution ?? ''}/${opts.duration ?? 5} 秒的视频生成价格`);
       }
-      base = priceAt;
+      base = price;
     }
     const level = await this.pricingService.getUserLevel(userId);
     const price = this.pricingService.applyDiscount(Math.round(base), level);
@@ -202,10 +219,34 @@ export class MediaGenerationService implements OnModuleInit {
     return rawUrl;
   }
 
+  /** 校验输入图（仅 http(s) URL 或 data:image 数据 URI，最多 4 张），URL 复用 SSRF 校验 */
+  async validateInputImages(images: string[] | undefined): Promise<string[]> {
+    if (!images?.length) return [];
+    if (images.length > 4) throw new BadRequestException('输入图片最多 4 张');
+    const out: string[] = [];
+    for (const img of images) {
+      if (typeof img !== 'string' || !img.trim()) {
+        throw new BadRequestException('输入图片格式无效');
+      }
+      const v = img.trim();
+      if (/^data:image\//i.test(v)) {
+        out.push(v);
+        continue;
+      }
+      if (/^https?:\/\//i.test(v)) {
+        out.push(await this.validateResultUrl(v));
+        continue;
+      }
+      throw new BadRequestException('输入图片仅支持 http(s) URL 或 data:image 数据 URI');
+    }
+    return out;
+  }
+
   /** 产物落盘并登记文件记录 */
   private async saveGeneratedMedia(
     userId: number,
     kind: 'image' | 'video',
+    callMode: string,
     result: { b64?: string; url?: string },
   ): Promise<string> {
     if (!fs.existsSync(GENERATED_DIR)) fs.mkdirSync(GENERATED_DIR, { recursive: true });
@@ -238,23 +279,45 @@ export class MediaGenerationService implements OnModuleInit {
     }
 
     const fileName = `${name}.${ext}`;
-    fs.writeFileSync(path.join(GENERATED_DIR, fileName), buffer);
-    const relPath = `/uploads/files/generated/${fileName}`;
+    let targetPath: string;
+    let storageType: 'minio' | 'oss' | 'cos' = 'minio';
+    try {
+      const oss = await this.ossUpload.upload(buffer, { userId, callMode, ext, mime });
+      if (oss) {
+        targetPath = oss.url;
+        storageType = oss.storageType;
+      } else {
+        // 未配置 OSS / provider=local：回退本地落盘（与上传失败降级共用 saveLocalFallback）
+        this.logger.debug(`OSS 未启用（upload 返回 null），回退本地落盘: ${fileName}`);
+        targetPath = this.saveLocalFallback(fileName, buffer);
+      }
+    } catch (e) {
+      // OSS 上传失败降级本地，避免产物丢失
+      this.logger.warn(`OSS 上传失败，回退本地落盘: ${(e as Error).message}`);
+      targetPath = this.saveLocalFallback(fileName, buffer);
+    }
     await this.fileRepo.save(this.fileRepo.create({
       userId,
       name: fileName,
-      path: relPath,
+      path: targetPath,
       size: buffer.length,
       mimeType: mime,
-      storageType: 'minio',
+      storageType,
     } as Partial<FileEntity>));
-    return relPath;
+    return targetPath;
+  }
+
+  /** 本地落盘回退：写入 GENERATED_DIR 并返回相对 URL（OSS 未配置 / 上传失败共用） */
+  private saveLocalFallback(fileName: string, buffer: Buffer): string {
+    fs.writeFileSync(path.join(GENERATED_DIR, fileName), buffer);
+    return `/uploads/files/generated/${fileName}`;
   }
 
   // ============ 文生图 ============
 
   async generateImage(userId: number, dto: GenerateImageDto) {
     const { model, provider, adapter, decryptedKey } = await this.resolveModel(dto.modelId, 'image');
+    const inputImages = await this.validateInputImages(dto.inputImages);
     const sourceId = `media-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const { price, frozenTxnId } = await this.charge(userId, model, {}, sourceId);
 
@@ -262,8 +325,9 @@ export class MediaGenerationService implements OnModuleInit {
       userId,
       modelId: dto.modelId,
       type: 'image',
+      callMode: 'image',
       prompt: dto.prompt,
-      params: { size: dto.size ?? null },
+      params: { size: dto.size ?? null, inputImages: inputImages.map((v) => v.slice(0, 128)) },
       status: 'processing',
       creditsCost: price,
       frozenTxnId,
@@ -277,8 +341,9 @@ export class MediaGenerationService implements OnModuleInit {
         model: model.upstreamModelId || model.modelId,
         prompt: dto.prompt,
         size: dto.size,
+        inputImages,
       });
-      const relPath = await this.saveGeneratedMedia(userId, 'image', result);
+      const relPath = await this.saveGeneratedMedia(userId, 'image', 'image', result);
       job.status = 'done';
       job.resultUrls = [relPath];
       job = await this.jobRepo.save(job);
@@ -304,6 +369,7 @@ export class MediaGenerationService implements OnModuleInit {
       userId,
       modelId: dto.modelId,
       type: 'video',
+      callMode: 'video',
       prompt: dto.prompt,
       params: { resolution: dto.resolution ?? null, duration: dto.duration ?? 5, fps: dto.fps ?? null },
       status: 'pending',
@@ -321,6 +387,26 @@ export class MediaGenerationService implements OnModuleInit {
       duration: dto.duration ?? 5,
       fps: dto.fps,
     });
+    return this.toJobItem(job);
+  }
+
+  /** 通用调用模式任务登记（P1 仅创建任务记录；执行器/计费 P5 接入） */
+  async createCallModeJob(
+    userId: number,
+    dto: { modelId: string; prompt?: string; params?: Record<string, unknown> },
+    callMode: string,
+  ) {
+    const job = await this.jobRepo.save(this.jobRepo.create({
+      userId,
+      modelId: dto.modelId,
+      type: callMode,
+      callMode,
+      prompt: dto.prompt ?? '',
+      params: dto.params ?? {},
+      status: 'pending',
+      creditsCost: 0,
+      frozenTxnId: null,
+    }));
     return this.toJobItem(job);
   }
 
@@ -349,7 +435,7 @@ export class MediaGenerationService implements OnModuleInit {
           const job = await this.jobRepo.findOne({ where: { id: jobId } });
           if (!job) return;
           try {
-            const relPath = await this.saveGeneratedMedia(job.userId, 'video', { url });
+            const relPath = await this.saveGeneratedMedia(job.userId, 'video', job.callMode ?? 'video', { url });
             job.status = 'done';
             job.resultUrls = [relPath];
             await this.jobRepo.save(job);
@@ -422,6 +508,7 @@ export class MediaGenerationService implements OnModuleInit {
       id: job.id,
       modelId: job.modelId,
       type: job.type,
+      callMode: job.callMode ?? null,
       prompt: job.prompt,
       params: job.params ?? {},
       status: job.status,

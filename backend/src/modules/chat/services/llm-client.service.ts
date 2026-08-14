@@ -20,6 +20,8 @@ export interface StreamChatOptions {
     toolName: string,
     args: Record<string, unknown>,
   ) => Promise<unknown>;
+  /** 上游请求体附加字段（专用模型参数：files / target_lang / enable_search 等） */
+  extraBody?: Record<string, unknown>;
 }
 
 export interface StreamChatCallbacks {
@@ -132,6 +134,13 @@ export class LlmClientService {
         ...options.messages,
       ],
     };
+
+    // 专用模型参数合并（qwen-long file_ids、翻译 target_lang、联网搜索等；仅补充字段，基础字段优先级更高）
+    if (options.extraBody) {
+      for (const [k, v] of Object.entries(options.extraBody)) {
+        if (!(k in body)) body[k] = v;
+      }
+    }
 
     // 如果有工具定义，加入 tools 参数
     if (options.tools && options.tools.length > 0) {

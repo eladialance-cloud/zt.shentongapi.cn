@@ -6,6 +6,7 @@ import { AdminAuthModule } from '../admin-auth/admin-auth.module';
 import { CommonModule } from '../../common/common.module';
 import { AdminModelController } from './admin-model.controller';
 import { AdminModelService } from './admin-model.service';
+import { GenerationClientService } from '../media-generation/generation-client.service';
 
 /**
  * 管理端大模型配置模块
@@ -21,7 +22,7 @@ import { AdminModelService } from './admin-model.service';
 @Module({
   imports: [TypeOrmModule.forFeature([ModelEntity, ModelProviderEntity]), AdminAuthModule, CommonModule],
   controllers: [AdminModelController],
-  providers: [AdminModelService],
+  providers: [AdminModelService, GenerationClientService],
   exports: [AdminModelService],
 })
 export class AdminModelModule {}

@@ -2,11 +2,13 @@
  * 模型「类型=输出类型、能力=输入类型」语义工具
  * - 输出类型(OutputType)：text 文本 / image 图片 / video 视频 / audio 语音
  * - 输入类型(InputType，多选)：text 文字 / image 图片 / video 视频 / audio 语音
- * - 高级能力(AdvancedCapability，多选)：function_calling / streaming / reasoning / json_mode
+ * - 高级能力(AdvancedCapability，多选)：由调用模式字典 advancedCaps 定义（含 function_calling / streaming / reasoning / json_mode 及提示词改写等扩展能力）
  *
  * model_type 仍为路由/计费分类（chat/vision/image/image_edit/video/tts），
  * 由「输出类型 × 输入类型」自动推导，调用路径逻辑无需改动。
  */
+
+import { CALL_MODE_TO_MODEL_TYPE, MODEL_TYPE_TO_CALL_MODE } from '../constants/call-modes';
 
 export type OutputType = 'text' | 'image' | 'video' | 'audio';
 export type InputType = 'text' | 'image' | 'video' | 'audio';
@@ -14,7 +16,26 @@ export type AdvancedCapability =
   | 'function_calling'
   | 'streaming'
   | 'reasoning'
-  | 'json_mode';
+  | 'json_mode'
+  | 'prefix_completion'
+  | 'web_search'
+  | 'multi_turn'
+  | 'context_cache'
+  | 'batch'
+  | 'multi_image'
+  | 'video_input'
+  | 'prompt_rewrite'
+  | 'enhanced_reasoning'
+  | 'custom_palette'
+  | 'album_mode'
+  | 'multi_shot'
+  | 'audio_sync'
+  | 'custom_audio'
+  | 'realtime_streaming'
+  | 'speaker_diarization'
+  | 'punctuation'
+  | 'multi_voice'
+  | 'emotion';
 
 export const INPUT_TYPE_ALL: InputType[] = ['text', 'image', 'video', 'audio'];
 export const ADVANCED_CAP_ALL: AdvancedCapability[] = [
@@ -22,6 +43,25 @@ export const ADVANCED_CAP_ALL: AdvancedCapability[] = [
   'streaming',
   'reasoning',
   'json_mode',
+  'prefix_completion',
+  'web_search',
+  'multi_turn',
+  'context_cache',
+  'batch',
+  'multi_image',
+  'video_input',
+  'prompt_rewrite',
+  'enhanced_reasoning',
+  'custom_palette',
+  'album_mode',
+  'multi_shot',
+  'audio_sync',
+  'custom_audio',
+  'realtime_streaming',
+  'speaker_diarization',
+  'punctuation',
+  'multi_voice',
+  'emotion',
 ];
 
 /** 输出类型 × 输入类型 -> 路由分类（model_type） */
@@ -103,4 +143,15 @@ export function normalizeAdvancedCapabilities(
       ),
     ),
   );
+}
+
+/** model_type -> call_mode（未知回退 text_chat） */
+export function callModeFromModelType(modelType?: string): string {
+  const key = MODEL_TYPE_TO_CALL_MODE[(modelType || 'chat').toLowerCase()];
+  return key || 'text_chat';
+}
+
+/** call_mode -> 兼容 model_type（路由/计费沿用旧分类） */
+export function modelTypeFromCallMode(callMode?: string): string {
+  return CALL_MODE_TO_MODEL_TYPE[(callMode || 'text_chat') as keyof typeof CALL_MODE_TO_MODEL_TYPE] || 'chat';
 }

@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ChatGroupEntity } from './entities/chat-group.entity';
 import { ChatMessageEntity } from './entities/chat-message.entity';
 import { ChatSessionEntity } from './entities/chat-session.entity';
+import { LlmFileEntity } from './entities/llm-file.entity';
 import { AgentEntity } from '../agent/entities/agent.entity';
 import { ModelEntity } from '../model/entities/model.entity';
 import { ModelProviderEntity } from '../admin-model/entities/model-provider.entity';
@@ -44,6 +45,7 @@ import { MediaGenerationModule } from '../media-generation/media-generation.modu
       ChatGroupEntity,
       ChatMessageEntity,
       ChatSessionEntity,
+      LlmFileEntity,
       UserEntity,
       AgentEntity,
       ModelEntity,

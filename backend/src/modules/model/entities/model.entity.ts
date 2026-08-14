@@ -114,6 +114,41 @@ export class ModelEntity extends BaseEntity {
   /** 按次计费积分（tts 等单次调用消耗点数，0 表示免费） */
   @Column({ name: 'price_per_call', type: 'decimal', precision: 10, scale: 4, nullable: true })
   pricePerCall?: number;
+  /** 按分钟计费积分（stt/tts 等，积分/分钟） */
+  @Column({ name: 'price_per_minute', type: 'decimal', precision: 10, scale: 4, nullable: true })
+  pricePerMinute?: number;
+
+  /** 调用模式（14 种字典，默认按 model_type 回填） */
+  @Column({ name: 'call_mode', length: 32, default: 'text_chat' })
+  callMode: string;
+
+  /** 场景标签（固定字典多选） */
+  @Column({ name: 'scenario_tags', type: 'json', nullable: true })
+  scenarioTags?: string[] | null;
+
+  /** 计费方式：token / per_image / per_call / per_minute / per_second */
+  @Column({ name: 'pricing_mode', length: 16, nullable: true })
+  pricingMode?: string;
+
+  /** 视频按分辨率档积分/秒：{ "720P": 2, "1080P": 4 } */
+  @Column({ name: 'video_per_second', type: 'json', nullable: true })
+  videoPerSecond?: Record<string, number> | null;
+
+  /** 动态规格字段值（按 call_mode 的 specFields 存储） */
+  @Column({ type: 'json', nullable: true })
+  specs?: Record<string, unknown> | null;
+
+  /** 模型图标 URL */
+  @Column({ name: 'icon_url', length: 512, nullable: true })
+  iconUrl?: string;
+
+  /** 成本价（人民币元，后台算毛利率） */
+  @Column({ name: 'cost_price', type: 'decimal', precision: 10, scale: 4, nullable: true })
+  costPrice?: number;
+
+  /** 管理员备注（用户不可见） */
+  @Column({ length: 512, nullable: true })
+  remark?: string;
 
   @Index()
   @Column({ name: 'is_active', type: 'boolean', default: true })

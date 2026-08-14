@@ -20,10 +20,15 @@ import type {
   AdminModelItem,
   AdminModelQuery,
   AdminProviderItem,
+  BatchUpdateResult,
+  CallModesMeta,
   CreateProviderDto,
   FetchProviderModelsResult,
+  ImportModelsJsonResult,
   ImportProviderModelsDto,
   ImportProviderModelsResult,
+  ModelTemplateItem,
+  ProviderBalanceResult,
   TestProviderDto,
   TestProviderResult,
   UpdateAdminModelDto,
@@ -140,6 +145,81 @@ export async function importProviderModels(
   )
 }
 
+// ===== P2：动态表单 / 模板 / 批量 / 余额 =====
+
+/** 动态表单元数据（14 模式 + 规格 schema + 场景标签 + 能力标签） */
+export async function fetchCallModesMeta(): Promise<CallModesMeta> {
+  return adminRequest<CallModesMeta>('get', '/admin/models/call-modes')
+}
+
+/** 模板库列表 */
+export async function listModelTemplates(): Promise<ModelTemplateItem[]> {
+  return adminRequest<ModelTemplateItem[]>('get', '/admin/models/templates')
+}
+
+/** 从模板创建模型（默认下架） */
+export async function createModelFromTemplate(dto: {
+  templateKey: string
+  modelId?: string
+  displayName?: string
+  providerId?: number
+}): Promise<AdminModelItem> {
+  return adminRequest<AdminModelItem>('post', '/admin/models/from-template', { data: dto })
+}
+
+/** 批量上架/下架 */
+export async function batchEnableModels(dto: {
+  ids: number[]
+  enabled: boolean
+}): Promise<BatchUpdateResult> {
+  return adminRequest<BatchUpdateResult>('post', '/admin/models/batch-enable', { data: dto })
+}
+
+/** 批量改价 */
+export async function batchUpdateModelPrice(dto: {
+  ids: number[]
+  pricePerCall?: number
+  pricePerImage?: number
+  pricePerMinute?: number
+  inputPricePerToken?: number
+  outputPricePerToken?: number
+  videoPerSecond?: Record<string, number>
+}): Promise<BatchUpdateResult> {
+  return adminRequest<BatchUpdateResult>('post', '/admin/models/batch-price', { data: dto })
+}
+
+/** 导出配置 JSON */
+export async function exportModels(
+  query?: AdminModelQuery
+): Promise<AdminModelItem[]> {
+  return adminRequest<AdminModelItem[]>(
+    'get',
+    '/admin/models/export',
+    { params: query as Record<string, unknown> }
+  )
+}
+
+/** 批量导入配置 JSON */
+export async function importModelsJson(
+  items: Array<Record<string, unknown>>
+): Promise<ImportModelsJsonResult> {
+  return adminRequest<ImportModelsJsonResult>(
+    'post',
+    '/admin/models/import',
+    { data: { items } }
+  )
+}
+
+/** 立即检查供应商余额 */
+export async function checkProviderBalance(
+  providerId: number
+): Promise<ProviderBalanceResult> {
+  return adminRequest<ProviderBalanceResult>(
+    'post',
+    `/admin/models/providers/${providerId}/check-balance`
+  )
+}
+
 export default {
   listAdminModels,
   updateAdminModel,
@@ -153,5 +233,13 @@ export default {
   removeAdminProvider,
   testAdminProvider,
   fetchProviderModels,
-  importProviderModels
+  importProviderModels,
+  fetchCallModesMeta,
+  listModelTemplates,
+  createModelFromTemplate,
+  batchEnableModels,
+  batchUpdateModelPrice,
+  exportModels,
+  importModelsJson,
+  checkProviderBalance
 }

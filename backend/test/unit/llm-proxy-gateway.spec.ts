@@ -1,15 +1,21 @@
 /** llm-proxy 多模态网关单元测试（分类路由 / 模型解析 / 按次预扣）
  * 运行: node -r ts-node/register --test test/unit/llm-proxy-gateway.spec.ts
  */
-import { describe, it } from 'node:test';
+import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { BadRequestException } from '@nestjs/common';
 import { LlmProxyService } from '../../src/modules/chat/services/llm-proxy.service';
+import { LlmProxyController } from '../../src/modules/chat/controllers/llm-proxy.controller';
 
 function buildService() {
   const modelRepo: any = {
     find: async () => [],
     findOne: async () => null,
+  };
+  const llmFileRepo: any = {
+    findOne: async () => null,
+    save: async (e: any) => e,
+    create: (e: any) => e,
   };
   const svc = new LlmProxyService(
     {} as any,
@@ -25,8 +31,9 @@ function buildService() {
       refundCredits: async () => undefined,
     } as any,
     {} as any,
+    llmFileRepo,
   );
-  return { svc, modelRepo };
+  return { svc, modelRepo, llmFileRepo };
 }
 
 describe('LlmProxyService.typeMatches 分类匹配', () => {
@@ -103,5 +110,339 @@ describe('LlmProxyService.freezePerCall 按次预扣', () => {
     const r = await (svc as any).freezePerCall(1, 10, 'src');
     assert.equal(r.price, 9);
     assert.equal(r.frozenTxnId, 777);
+  });
+});
+
+describe('LlmProxyService.embeddings / rerank 端点', () => {
+  it('embeddings 解析 embedding 模型并直连上游', async () => {
+    const { svc, modelRepo } = buildService();
+    const captured: any = {};
+    modelRepo.findOne = async () => ({ modelId: 'emb-1', modelType: 'embedding', callMode: 'embedding', isActive: true });
+    (svc as any).resolveUpstreamTarget = async () => ({ endpoint: 'https://api.example.com/v1', upstreamModelId: 'emb-1', apiKey: 'k', providerSlug: 't' });
+    (svc as any).callUpstreamJson = async (url: string, key: string, body: unknown) => { captured.url = url; captured.body = body; return { data: [[0.1, 0.2]] }; };
+    const out = await svc.embeddings('sk-shentong-test', { model: 'emb-1', input: ['hi'] });
+    assert.deepEqual(out.data, [[0.1, 0.2]]);
+    assert.ok(captured.url.includes('/embeddings'));
+    assert.equal(captured.body.model, 'emb-1');
+  });
+  it('rerank 解析 rerank 模型并直连上游', async () => {
+    const { svc, modelRepo } = buildService();
+    const captured: any = {};
+    modelRepo.findOne = async () => ({ modelId: 'rr-1', modelType: 'rerank', callMode: 'rerank', isActive: true });
+    (svc as any).resolveUpstreamTarget = async () => ({ endpoint: 'https://api.example.com/v1', upstreamModelId: 'rr-1', apiKey: 'k', providerSlug: 't' });
+    (svc as any).callUpstreamJson = async (url: string, key: string, body: unknown) => { captured.body = body; return { results: [{ index: 1, score: 0.9 }] }; };
+    const out = await svc.rerank('sk-shentong-test', { model: 'rr-1', query: 'q', documents: ['a', 'b'] });
+    assert.equal(out.results[0].index, 1);
+    assert.equal(captured.body.query, 'q');
+  });
+});
+
+describe('LlmProxyService 专用端点（ocr/stt/voice-conversion/music）', () => {
+  it('ocr 转发到专用路径并返回文本', async () => {
+    const { svc } = buildService();
+    const captured: any = {};
+    (svc as any).callUpstreamJson = async (url: string, key: string, body: unknown) => { captured.url = url; captured.body = body; return { text: '提取结果' }; };
+    const out = await svc.ocr('sk-shentong-test', { model: 'ocr-1', imageUrl: 'https://x.com/a.png' });
+    assert.equal(out.text, '提取结果');
+    assert.ok(captured.url.includes('/ocr'));
+    assert.equal(captured.body.imageUrl, 'https://x.com/a.png');
+  });
+  it('stt 转发到 transcriptions 路径', async () => {
+    const { svc } = buildService();
+    const captured: any = {};
+    (svc as any).callUpstreamJson = async (url: string, key: string, body: unknown) => { captured.url = url; captured.body = body; return { text: '识别文本' }; };
+    const out = await svc.stt('sk-shentong-test', { model: 'asr-1', audioUrl: 'https://x.com/a.mp3', language: 'zh' });
+    assert.equal(out.text, '识别文本');
+    assert.ok(captured.url.includes('/audio/transcriptions'));
+    assert.equal(captured.body.audioUrl, 'https://x.com/a.mp3');
+    assert.equal(captured.body.language, 'zh');
+  });
+  it('voiceConversion 转发到 voice-conversion 路径', async () => {
+    const { svc } = buildService();
+    const captured: any = {};
+    (svc as any).callUpstreamJson = async (url: string, key: string, body: unknown) => { captured.url = url; captured.body = body; return { url: 'https://x.com/out.wav' }; };
+    const out = await svc.voiceConversion('sk-shentong-test', { model: 'vc-1', audioUrl: 'https://x.com/in.wav', referenceUrl: 'https://x.com/ref.wav' });
+    assert.equal(out.url, 'https://x.com/out.wav');
+    assert.ok(captured.url.includes('/audio/voice-conversion'));
+    assert.equal(captured.body.audioUrl, 'https://x.com/in.wav');
+    assert.equal(captured.body.referenceUrl, 'https://x.com/ref.wav');
+  });
+  it('musicGeneration 转发到 music/generations 路径', async () => {
+    const { svc } = buildService();
+    const captured: any = {};
+    (svc as any).callUpstreamJson = async (url: string, key: string, body: unknown) => { captured.url = url; captured.body = body; return { url: 'https://x.com/music.mp3' }; };
+    const out = await svc.musicGeneration('sk-shentong-test', { model: 'music-1', prompt: 'lofi piano', duration: 30 });
+    assert.equal(out.url, 'https://x.com/music.mp3');
+    assert.ok(captured.url.includes('/music/generations'));
+    assert.equal(captured.body.prompt, 'lofi piano');
+    assert.equal(captured.body.duration, 30);
+  });
+});
+
+describe('LlmProxyService.uploadLlmFile 两步式文件上传', () => {
+  const originalFetch = globalThis.fetch;
+
+  after(() => {
+    (globalThis as any).fetch = originalFetch;
+  });
+
+  function stubFetch(handler: (url: string, opts: any) => any) {
+    (globalThis as any).fetch = async (url: string, opts: any) => handler(url, opts);
+  }
+
+  const dummyFile = () => ({
+    buffer: Buffer.from('hello'), originalname: 'a.pdf',
+    size: 5, mimetype: 'application/pdf',
+  }) as Express.Multer.File;
+
+  it('按模型 submit_path 代理上传并落映射表，返回上游 file_id', async () => {
+    const { svc, modelRepo, llmFileRepo } = buildService();
+    modelRepo.findOne = async () => ({
+      modelId: 'qwen-long', modelType: 'chat', callMode: 'text_chat', isActive: true,
+      generationParams: { file_id_required: true, submit_path: '/compatible-mode/v1/file-uploads', file_id_path: 'file_id' },
+    });
+    (svc as any).resolveModelId = async () => 'qwen-long';
+    (svc as any).resolveUpstreamTarget = async () => ({ endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1', upstreamModelId: 'qwen-long', apiKey: 'k', providerSlug: 'qwen' });
+    const saved: any[] = [];
+    llmFileRepo.save = async (e: any) => { saved.push(e); return e; };
+    llmFileRepo.create = (e: any) => e;
+    let capturedUrl = '';
+    stubFetch((url: string, opts: any) => {
+      capturedUrl = url;
+      assert.ok(opts.body instanceof FormData, '请求体应为 multipart FormData');
+      assert.equal(opts.headers.Authorization, 'Bearer k');
+      assert.ok(!opts.headers['Content-Type'], 'multipart 不应手动设置 Content-Type');
+      return { ok: true, status: 200, text: async () => JSON.stringify({ file_id: 'file-fe-abc', name: 'a.pdf' }), json: async () => ({ file_id: 'file-fe-abc' }), headers: new Headers() };
+    });
+    const out = await (svc as any).uploadLlmFile(1, 'qwen-long', dummyFile());
+    assert.equal(out.id, 'file-fe-abc');
+    assert.equal(out.object, 'file');
+    assert.equal(capturedUrl, 'https://dashscope.aliyuncs.com/compatible-mode/v1/file-uploads');
+    assert.equal(saved[0].userId, 1);
+    assert.equal(saved[0].upstreamFileId, 'file-fe-abc');
+  });
+
+  it('模型未配置 submit_path 时明确报错', async () => {
+    const { svc, modelRepo } = buildService();
+    modelRepo.findOne = async () => ({ modelId: 'qwen-plus', generationParams: {}, isActive: true });
+    (svc as any).resolveModelId = async () => 'qwen-plus';
+    await assert.rejects(
+      (svc as any).uploadLlmFile(1, 'qwen-plus', dummyFile()),
+      (e: any) => e instanceof BadRequestException && /submit_path/.test(e.message),
+    );
+  });
+
+  it('上游未返回 file_id 时报错', async () => {
+    const { svc, modelRepo } = buildService();
+    modelRepo.findOne = async () => ({ modelId: 'qwen-long', generationParams: { submit_path: '/file-uploads' }, isActive: true });
+    (svc as any).resolveModelId = async () => 'qwen-long';
+    (svc as any).resolveUpstreamTarget = async () => ({ endpoint: 'https://x.com', upstreamModelId: 'qwen-long', apiKey: 'k', providerSlug: 'qwen' });
+    stubFetch(() => ({ ok: true, status: 200, text: async () => '{"name":"a.pdf"}', json: async () => ({ name: 'a.pdf' }), headers: new Headers() }));
+    await assert.rejects(
+      (svc as any).uploadLlmFile(1, 'qwen-long', dummyFile()),
+      (e: any) => e instanceof BadRequestException && /文件 ID/.test(e.message),
+    );
+  });
+});
+
+describe('LlmProxyController.uploadFile 路由', () => {
+  it('解析 Bearer token 并转发到 service', async () => {
+    const svc = {
+      uploadLlmFileByToken: async (token: string, model: string | undefined, file: Express.Multer.File) => {
+        assert.equal(token, 'sk-shentong-valid');
+        assert.equal(model, 'qwen-long');
+        assert.equal(file.size, 5);
+        return { id: 'file-fe-1', object: 'file' as const, bytes: 5, filename: 'a.pdf', created_at: 1 };
+      },
+    };
+    const ctrl = new LlmProxyController(svc as any);
+    const out = await ctrl.uploadFile(
+      'Bearer sk-shentong-valid',
+      'qwen-long',
+      { buffer: Buffer.from('x'), originalname: 'a.pdf', size: 5, mimetype: 'application/pdf' } as any,
+    );
+    assert.equal(out.id, 'file-fe-1');
+  });
+
+  it('缺少 Authorization 报错', async () => {
+    const ctrl = new LlmProxyController({ uploadLlmFileByToken: async () => ({}) } as any);
+    await assert.rejects(
+      (ctrl as any).uploadFile(undefined, 'qwen-long', {} as any),
+      (e: any) => e instanceof BadRequestException,
+    );
+  });
+});
+describe('LlmProxyService.chatCompletions 专用参数注入', () => {
+  function buildChatService() {
+    const modelRepo: any = {
+      findOne: async () => null,
+      find: async () => [],
+    };
+    const llmFileRepo: any = {
+      findOne: async () => null,
+      save: async (e: any) => e,
+      create: (e: any) => e,
+    };
+    const llmClient: any = {
+      streamChat: async () => ({ fullResponse: '', usage: { input: 0, output: 0, total: 0 } }),
+    };
+    const svc = new LlmProxyService(
+      {
+        findOne: async () => ({ id: 1, status: 'active', llmProxyKey: 'sk-shentong-test', defaultChatModel: null }),
+      } as any,
+      modelRepo,
+      {} as any,
+      {} as any,
+      {} as any,
+      llmClient,
+      { getUserLevel: async () => 0, applyDiscount: (p: number) => p } as any,
+      {
+        freezeCredits: async () => ({ id: 777 }),
+        settleCredits: async () => undefined,
+        refundCredits: async () => undefined,
+      } as any,
+      {} as any,
+      llmFileRepo,
+    );
+    return { svc, modelRepo, llmFileRepo, llmClient };
+  }
+
+  it('files 校验归属后按 chat_files_field 注入，chat_body_extra 合并', async () => {
+    const { svc, modelRepo, llmFileRepo, llmClient } = buildChatService();
+    modelRepo.findOne = async ({ where }: any) => {
+      if (where.modelId === 'qwen-long') {
+        return {
+          modelId: 'qwen-long', modelType: 'chat', isActive: true, supportsVision: false,
+          generationParams: { file_id_required: true, chat_files_field: 'files', chat_body_extra: { target_lang: 'zh' } },
+        };
+      }
+      if (where.id === 1) return { id: 1, status: 'active', llmProxyKey: 'sk-shentong-test' };
+      return null;
+    };
+    (svc as any).resolveModelId = async () => 'qwen-long';
+    (svc as any).resolveUpstreamTarget = async () => ({ endpoint: 'https://x.com', upstreamModelId: 'qwen-long', apiKey: 'k', providerSlug: 'qwen' });
+    (svc as any).pricingService.calculateModelCost = async () => 5;
+    llmFileRepo.findOne = async ({ where }: any) =>
+      where.upstreamFileId === 'file-fe-1' && where.userId === 1
+        ? { userId: 1, modelId: 'qwen-long', upstreamFileId: 'file-fe-1' }
+        : null;
+    const captured: any = {};
+    llmClient.streamChat = async (opts: any, callbacks: any) => {
+      captured.extraBody = opts.extraBody;
+      callbacks.onDone?.({ input: 1, output: 1, total: 2 }, {});
+      return { fullResponse: 'ok', usage: { input: 1, output: 1, total: 2 } };
+    };
+    const result = await svc.chatCompletions('sk-shentong-test', {
+      model: 'qwen-long',
+      messages: [{ role: 'user', content: 'hi' }],
+      files: ['file-fe-1'],
+    });
+    for await (const chunk of result.iterator) { assert.ok(typeof chunk === 'string'); }
+    assert.deepEqual(captured.extraBody.files, ['file-fe-1']);
+    assert.equal(captured.extraBody.target_lang, 'zh');
+  });
+
+  it('他人文件 ID 报错', async () => {
+    const { svc, modelRepo, llmFileRepo } = buildChatService();
+    modelRepo.findOne = async ({ where }: any) => {
+      if (where.modelId === 'qwen-long') {
+        return { modelId: 'qwen-long', modelType: 'chat', isActive: true, supportsVision: false, generationParams: {} };
+      }
+      if (where.id === 1) return { id: 1, status: 'active', llmProxyKey: 'sk-shentong-test' };
+      return null;
+    };
+    (svc as any).resolveModelId = async () => 'qwen-long';
+    llmFileRepo.findOne = async () => null;
+    await assert.rejects(
+      svc.chatCompletions('sk-shentong-test', {
+        model: 'qwen-long',
+        messages: [{ role: 'user', content: 'hi' }],
+        files: ['file-fe-9'],
+      }),
+      (e: any) => e instanceof BadRequestException && /不属于当前用户|不存在/.test(e.message),
+    );
+  });
+
+  it('file_id_required 且未带 files 时报错', async () => {
+    const { svc, modelRepo } = buildChatService();
+    modelRepo.findOne = async ({ where }: any) => {
+      if (where.modelId === 'qwen-long') {
+        return { modelId: 'qwen-long', modelType: 'chat', isActive: true, supportsVision: false, generationParams: { file_id_required: true } };
+      }
+      if (where.id === 1) return { id: 1, status: 'active', llmProxyKey: 'sk-shentong-test' };
+      return null;
+    };
+    (svc as any).resolveModelId = async () => 'qwen-long';
+    await assert.rejects(
+      svc.chatCompletions('sk-shentong-test', {
+        model: 'qwen-long',
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+      (e: any) => e instanceof BadRequestException && /该模型要求先上传文件/.test(e.message),
+    );
+  });
+
+  it('file_id_required 且带 files 正常放行', async () => {
+    const { svc, modelRepo, llmFileRepo, llmClient } = buildChatService();
+    modelRepo.findOne = async ({ where }: any) => {
+      if (where.modelId === 'qwen-long') {
+        return { modelId: 'qwen-long', modelType: 'chat', isActive: true, supportsVision: false, generationParams: { file_id_required: true, chat_files_field: 'files' } };
+      }
+      if (where.id === 1) return { id: 1, status: 'active', llmProxyKey: 'sk-shentong-test' };
+      return null;
+    };
+    (svc as any).resolveModelId = async () => 'qwen-long';
+    (svc as any).resolveUpstreamTarget = async () => ({ endpoint: 'https://x.com', upstreamModelId: 'qwen-long', apiKey: 'k', providerSlug: 'qwen' });
+    (svc as any).pricingService.calculateModelCost = async () => 5;
+    llmFileRepo.findOne = async ({ where }: any) =>
+      where.upstreamFileId === 'file-fe-1' && where.userId === 1
+        ? { userId: 1, modelId: 'qwen-long', upstreamFileId: 'file-fe-1' }
+        : null;
+    const captured: any = {};
+    llmClient.streamChat = async (opts: any, callbacks: any) => {
+      captured.extraBody = opts.extraBody;
+      callbacks.onDone?.({ input: 1, output: 1, total: 2 }, {});
+      return { fullResponse: 'ok', usage: { input: 1, output: 1, total: 2 } };
+    };
+    const result = await svc.chatCompletions('sk-shentong-test', {
+      model: 'qwen-long',
+      messages: [{ role: 'user', content: 'hi' }],
+      files: ['file-fe-1'],
+    });
+    for await (const chunk of result.iterator) { assert.ok(typeof chunk === 'string'); }
+    assert.deepEqual(captured.extraBody.files, ['file-fe-1']);
+  });
+
+  it('files 非数组（字符串）时报错', async () => {
+    const { svc, modelRepo } = buildChatService();
+    modelRepo.findOne = async ({ where }: any) => {
+      if (where.modelId === 'qwen-long') {
+        return { modelId: 'qwen-long', modelType: 'chat', isActive: true, supportsVision: false, generationParams: {} };
+      }
+      if (where.id === 1) return { id: 1, status: 'active', llmProxyKey: 'sk-shentong-test' };
+      return null;
+    };
+    (svc as any).resolveModelId = async () => 'qwen-long';
+    await assert.rejects(
+      svc.chatCompletions('sk-shentong-test', {
+        model: 'qwen-long',
+        messages: [{ role: 'user', content: 'hi' }],
+        files: 'file-fe-1' as any,
+      }),
+      (e: any) => e instanceof BadRequestException && /files 必须为数组/.test(e.message),
+    );
+  });
+});
+
+describe('LlmProxyService.getByPathValue 路径取值', () => {
+  it('data.file_id 嵌套路径取值', () => {
+    const { svc } = buildService();
+    assert.equal((svc as any).getByPathValue({ data: { file_id: 'file-a' } }, 'data.file_id'), 'file-a');
+    assert.equal((svc as any).getByPathValue({ data: { other: 1 } }, 'data.file_id'), undefined);
+  });
+  it('files[0].id 数组下标路径取值', () => {
+    const { svc } = buildService();
+    assert.equal((svc as any).getByPathValue({ files: [{ id: 'file-b' }, { id: 'file-c' }] }, 'files[0].id'), 'file-b');
+    assert.equal((svc as any).getByPathValue({ files: [] }, 'files[0].id'), undefined);
   });
 });

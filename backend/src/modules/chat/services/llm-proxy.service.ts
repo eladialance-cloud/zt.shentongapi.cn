@@ -15,6 +15,7 @@ import { CreditsService } from '../../credits/services/credits.service';
 import { UserEntity } from '../../user/entities/user.entity';
 import { ModelEntity } from '../../model/entities/model.entity';
 import { ModelProviderEntity } from '../../admin-model/entities/model-provider.entity';
+import { LlmFileEntity } from '../entities/llm-file.entity';
 import { resolveRelay } from '../../admin-model/utils/relay-resolver';
 import { MediaGenerationService } from '../../media-generation/media-generation.service';
 import * as crypto from 'crypto';
@@ -34,6 +35,7 @@ export class LlmProxyService {
     private readonly pricingService: PricingService,
     private readonly creditsService: CreditsService,
     private readonly mediaGeneration: MediaGenerationService,
+    @InjectRepository(LlmFileEntity) private readonly llmFileRepo: Repository<LlmFileEntity>,
   ) {}
 
   generateLlmProxyKey(): string {
@@ -98,6 +100,8 @@ export class LlmProxyService {
       temperature?: number;
       max_tokens?: number;
       tools?: unknown[];
+      /** 两步式专用模型：本用户此前上传得到的上游文件 ID 列表 */
+      files?: string[];
     },
     onCost?: (finalCost: number) => void,
   ): Promise<{ stream: boolean; iterator: AsyncGenerator<string, void, unknown> }> {
@@ -137,6 +141,30 @@ export class LlmProxyService {
 
     // v0.7.0 供应商体系：优先使用模型所属供应商的 Base URL + API Key + upstreamModelId 直连上游，
     // 费用在第三方 API 侧扣除；未配置供应商时回退到 API Key 池
+    // 专用文本模型适配：读取模型 generationParams（qwen-long 两步式 / 翻译 / 联网等）
+    const chatModel = await this.modelRepository.findOne({ where: { modelId, isActive: true } });
+    const gen = ((chatModel?.generationParams ?? {}) as Record<string, unknown>);
+    const extraBody: Record<string, unknown> = {};
+    if (gen.chat_body_extra && typeof gen.chat_body_extra === 'object') {
+      Object.assign(extraBody, gen.chat_body_extra as Record<string, unknown>);
+    }
+    let resolvedFileIds: string[] = [];
+    if (body.files != null) {
+      if (!Array.isArray(body.files)) {
+        throw new BadRequestException('files 必须为数组');
+      }
+      if (body.files.length > 0) {
+        resolvedFileIds = await this.resolveChatFileIds(userId, body.files);
+      }
+    }
+    if (gen.file_id_required === true && resolvedFileIds.length === 0) {
+      throw new BadRequestException('该模型要求先上传文件（files）');
+    }
+    if (resolvedFileIds.length > 0) {
+      const field = gen.chat_files_field ? String(gen.chat_files_field) : 'files';
+      extraBody[field] = resolvedFileIds;
+    }
+
     const upstreamTarget = await this.resolveUpstreamTarget(modelId);
     let decryptedKey = '';
     let upstreamModel = modelId;
@@ -253,6 +281,7 @@ export class LlmProxyService {
               systemPrompt: '',
               messages: body.messages as any,
               tools: body.tools as any,
+              extraBody,
             },
             {
               onMessage: (chunk: string) => {
@@ -317,6 +346,108 @@ export class LlmProxyService {
     }
 
     return { stream: isStream, iterator: generate() };
+  }
+
+  /** 通用上游 JSON 调用（验证 token 后直连模型所属供应商） */
+  private async callUpstreamJson(
+    path: string,
+    model: string,
+    body: Record<string, unknown>,
+    token: string,
+  ): Promise<any> {
+    const { userId } = await this.verifyApiKey(token);
+    const modelId = await this.resolveModelId(model, userId);
+    const target = await this.resolveUpstreamTarget(modelId);
+    if (!target) throw new BadRequestException('模型未配置供应商，无法直连');
+    const url = target.endpoint.replace(/\/+$/, '') + path;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${target.apiKey}` },
+      body: JSON.stringify({ ...body, model: target.upstreamModelId || modelId }),
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new BadRequestException(`上游接口错误(${res.status}): ${text.slice(0, 300)}`);
+    }
+    return res.json();
+  }
+
+  /** 向量嵌入（OpenAI 兼容 v1/embeddings） */
+  async embeddings(
+    token: string,
+    body: { model: string; input: string | string[] },
+  ): Promise<{ data: unknown; usage?: unknown }> {
+    const out = await this.callUpstreamJson(
+      '/embeddings',
+      body.model,
+      { model: body.model, input: body.input },
+      token,
+    );
+    return { data: out.data, usage: out.usage };
+  }
+
+  /** 重排序（OpenAI 兼容 v1/rerank） */
+  async rerank(
+    token: string,
+    body: { model: string; query: string; documents: string[]; top_n?: number },
+  ): Promise<{ results: Array<{ index: number; score?: number }> }> {
+    const out = await this.callUpstreamJson(
+      '/rerank',
+      body.model,
+      { model: body.model, query: body.query, documents: body.documents, top_n: body.top_n ?? 10 },
+      token,
+    );
+    return { results: out.results };
+  }
+
+  /** OCR 文字提取（专用接口，图片/PDF -> 文本） */
+  async ocr(
+    token: string,
+    body: { model: string; imageUrl?: string; fileUrl?: string },
+  ): Promise<{ text: string }> {
+    const out = await this.callUpstreamJson('/ocr', body.model, { imageUrl: body.imageUrl, fileUrl: body.fileUrl }, token);
+    return { text: String(out.text ?? '') };
+  }
+
+  /** 语音识别（audio -> 文本） */
+  async stt(
+    token: string,
+    body: { model: string; audioUrl: string; language?: string },
+  ): Promise<{ text: string }> {
+    const out = await this.callUpstreamJson('/audio/transcriptions', body.model, { audioUrl: body.audioUrl, language: body.language }, token);
+    return { text: String(out.text ?? '') };
+  }
+
+  /** 语音转语音（音频 + 参考音色 -> 音频 URL） */
+  async voiceConversion(
+    token: string,
+    body: { model: string; audioUrl: string; referenceUrl?: string },
+  ): Promise<{ url: string }> {
+    const out = await this.callUpstreamJson('/audio/voice-conversion', body.model, { audioUrl: body.audioUrl, referenceUrl: body.referenceUrl }, token);
+    return { url: String(out.url ?? out.audio_url ?? '') };
+  }
+
+  /** 音乐生成（P1 同步降级直连；P5 接入异步任务框架） */
+  async musicGeneration(
+    token: string,
+    body: { model?: string; prompt: string; duration?: number },
+  ): Promise<{ url?: string }> {
+    const out = await this.callUpstreamJson('/music/generations', body.model || '', { prompt: body.prompt, duration: body.duration }, token);
+    return { url: String(out.url ?? out.audio_url ?? '') };
+  }
+
+
+  /** 点号路径取值（file_id_path 配置支持 data.file_id 等嵌套路径） */
+  private getByPathValue(obj: unknown, path: string): unknown {
+    if (!path || obj == null) return undefined;
+    let cur: any = obj;
+    for (const part of path.split('.')) {
+      if (cur == null) return undefined;
+      const m = part.match(/^(\w+)\[(\d+)\]$/);
+      cur = m ? cur?.[m[1]]?.[Number(m[2])] : cur?.[part];
+    }
+    return cur;
   }
 
   /** 解析模型所属供应商直连目标（model -> provider.baseUrl + apiKey + upstreamModelId） */
@@ -559,6 +690,97 @@ export class LlmProxyService {
   async videoJob(apiKey: string, id: number) {
     const { userId } = await this.verifyApiKey(apiKey);
     return this.mediaGeneration.getJob(userId, id);
+  }
+
+
+  /** 两步式专用文本模型：上传文件到模型配置的 submit_path，返回上游 file_id 并落映射表 */
+  async uploadLlmFile(
+    userId: number,
+    modelName: string | undefined,
+    file: Express.Multer.File,
+  ): Promise<{ id: string; object: 'file'; bytes: number; filename: string; created_at: number }> {
+    const modelId = await this.resolveModelId(modelName || '', userId);
+    const model = await this.modelRepository.findOne({ where: { modelId, isActive: true } });
+    if (!model) throw new BadRequestException('模型不存在或未上架');
+    const gen = (model.generationParams ?? {}) as Record<string, unknown>;
+    const submitPath = gen.submit_path ? String(gen.submit_path) : '';
+    if (!submitPath) {
+      throw new BadRequestException('该模型未配置文件上传接口（请在模型高级参数 generationParams.submit_path 中配置）');
+    }
+    const target = await this.resolveUpstreamTarget(modelId);
+    if (!target) throw new BadRequestException('模型无可用中转凭据（Base URL / API Key）');
+    const base = target.endpoint.replace(/\/+$/, '');
+    // 防路径重复：base 已含 submit_path 前缀段时去重（如 base=.../compatible-mode/v1 + submit=/compatible-mode/v1/file-uploads）
+    let url: string;
+    if (submitPath.startsWith('http')) {
+      url = submitPath;
+    } else {
+      const submit = submitPath.startsWith('/') ? submitPath : '/' + submitPath;
+      let basePath = '/';
+      try { basePath = new URL(base).pathname.replace(/\/+$/, '') || '/'; } catch { /* 忽略解析失败 */ }
+      url = basePath !== '/' && submit.startsWith(basePath + '/') ? base + submit.slice(basePath.length) : base + submit;
+    }
+    const form = new FormData();
+    form.append(
+      'file',
+      new Blob([new Uint8Array(file.buffer)], { type: file.mimetype || 'application/octet-stream' }),
+      file.originalname || 'file.bin',
+    );
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${target.apiKey}` },
+      body: form,
+      signal: AbortSignal.timeout(120000),
+    });
+    const text = await res.text();
+    let json: any = null;
+    try { json = JSON.parse(text); } catch { /* 非 JSON 响应 */ }
+    if (!res.ok) {
+      throw new BadRequestException(`文件上传上游错误(${res.status}): ${text.slice(0, 300)}`);
+    }
+    const idPath = gen.file_id_path ? String(gen.file_id_path) : 'file_id';
+    const upstreamFileId = this.getByPathValue(json, idPath) ?? json?.id;
+    if (!upstreamFileId) {
+      throw new BadRequestException(`上游未返回文件 ID: ${text.slice(0, 300)}`);
+    }
+    await this.llmFileRepo.save(this.llmFileRepo.create({
+      userId,
+      modelId,
+      upstreamFileId: String(upstreamFileId),
+      fileName: file.originalname || undefined,
+      fileSize: file.size || undefined,
+    }));
+    this.logger.log(`两步式文件上传成功: user=${userId} model=${modelId} file=${String(upstreamFileId)}`);
+    return {
+      id: String(upstreamFileId),
+      object: 'file',
+      bytes: file.size,
+      filename: file.originalname,
+      created_at: Math.floor(Date.now() / 1000),
+    };
+  }
+
+  /** 校验 chat 请求中的文件 ID 归属当前用户并返回上游 ID 列表 */
+  private async resolveChatFileIds(userId: number, fileIds: string[]): Promise<string[]> {
+    const resolved: string[] = [];
+    for (const fid of fileIds) {
+      const rec = await this.llmFileRepo.findOne({ where: { upstreamFileId: fid, userId } });
+      if (!rec) {
+        throw new BadRequestException(`文件不存在或不属于当前用户: ${String(fid).slice(0, 64)}`);
+      }
+      resolved.push(rec.upstreamFileId);
+    }
+    return resolved;
+  }
+
+  /** 按 llm-proxy token 上传两步式文件（控制器入口） */
+  async uploadLlmFileByToken(
+    token: string,
+    model: string | undefined,
+    file: Express.Multer.File,
+  ) {
+    const { userId } = await this.verifyApiKey(token);
+    return this.uploadLlmFile(userId, model, file);
   }
 
   health() { return { status: 'ok', module: 'llm-proxy' }; }

@@ -5,12 +5,14 @@
  * - GenerationClientService 纯逻辑（占位符替换 / 路径取值 / 默认模板）
  * - MediaGenerationService.charge 定价矩阵计算（图片固定积分 / 视频矩阵 / 会员折扣）
  */
-import { describe, it } from 'node:test';
+import * as fs from 'fs';
+import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { BadRequestException } from '@nestjs/common';
 import { GenerationClientService, GenerationAdapterConfig } from '../../src/modules/media-generation/generation-client.service';
 import { MediaGenerationService } from '../../src/modules/media-generation/media-generation.service';
 import { PricingService } from '../../src/modules/credits/services/pricing.service';
+import { MediaJobEntity } from '../../src/modules/media-generation/entities/media-job.entity';
 
 // 不触发网络：仅测纯方法
 const client = new GenerationClientService();
@@ -79,8 +81,9 @@ describe('MediaGenerationService.charge 定价与冻结', () => {
       settleCredits: async () => undefined,
       refundCredits: async () => undefined,
     };
+    const ossUpload: any = { upload: async () => null };
     const svc = new MediaGenerationService(
-      jobRepo, modelRepo, providerRepo, fileRepo, genClient, {} as any, credits, pricing,
+      jobRepo, modelRepo, providerRepo, fileRepo, genClient, {} as any, credits, pricing, ossUpload,
     );
     return { svc, jobRepo, credits };
   }
@@ -133,6 +136,58 @@ describe('MediaGenerationService.charge 定价与冻结', () => {
       (e: any) => e instanceof BadRequestException,
     );
   });
+
+  it('image_edit：按 pricePerImage 计费（不落入视频计费分支）', async () => {
+    const { svc } = buildService();
+    const res = await (svc as any).charge(
+      1,
+      { modelType: 'image_edit', pricePerImage: 25.5, videoPrices: null, videoPerSecond: null },
+      {},
+      'src-1',
+    );
+    assert.equal(res.price, 26);
+    assert.ok(res.frozenTxnId);
+  });
+});
+
+describe('MediaGenerationService.resolveModel 类型校验（image_edit）', () => {
+  function buildResolveService() {
+    const userService = { findById: async () => ({ id: 1, level: 0 }) };
+    const pricing = new PricingService({} as any, {} as any, {} as any, {} as any, userService as any);
+    const jobRepo: any = { find: async () => [], save: async (e: any) => e };
+    const provider: any = {
+      id: 1, status: 'active', baseUrl: 'https://api.example.com/v1',
+      apiKey: 'enc-key', config: { generation: {} },
+    };
+    const modelRepo: any = { findOne: async () => null };
+    const providerRepo: any = { findOne: async () => provider };
+    const fileRepo: any = {};
+    const genClient: any = {};
+    const encryption: any = { decryptAes: (s: string) => s };
+    const credits: any = {};
+    const ossUpload: any = {};
+    const svc = new MediaGenerationService(
+      jobRepo, modelRepo, providerRepo, fileRepo, genClient, encryption, credits, pricing, ossUpload,
+    );
+    return { svc, modelRepo };
+  }
+
+  it("image_edit 模型在 type='image' 下解析通过", async () => {
+    const { svc, modelRepo } = buildResolveService();
+    modelRepo.findOne = async () => ({ modelId: 'edit-1', modelType: 'image_edit', isActive: true, providerId: 1, generationParams: null });
+    const r = await (svc as any).resolveModel('edit-1', 'image');
+    assert.equal(r.model.modelType, 'image_edit');
+    assert.ok(r.decryptedKey);
+  });
+
+  it("image_edit 模型在 type='video' 下被拒绝", async () => {
+    const { svc, modelRepo } = buildResolveService();
+    modelRepo.findOne = async () => ({ modelId: 'edit-1', modelType: 'image_edit', isActive: true, providerId: 1 });
+    await assert.rejects(
+      (svc as any).resolveModel('edit-1', 'video'),
+      (e: any) => e instanceof BadRequestException && /模型类型不匹配/.test(e.message || ''),
+    );
+  });
 });
 
 describe('MediaGenerationService 失败退款与启动回收', () => {
@@ -160,8 +215,9 @@ describe('MediaGenerationService 失败退款与启动回收', () => {
       settleCredits: async () => undefined,
       refundCredits: async () => undefined,
     };
+    const ossUpload: any = { upload: async () => null };
     const svc = new MediaGenerationService(
-      jobRepo, modelRepo, providerRepo, fileRepo, genClient, {} as any, credits, pricing,
+      jobRepo, modelRepo, providerRepo, fileRepo, genClient, {} as any, credits, pricing, ossUpload,
     );
     return { svc, jobRepo, credits };
   }
@@ -253,5 +309,468 @@ describe('GenerationAdapterConfig 模板解析（文档示例）', () => {
     const resp = { data: { task_status: 'succeed', task_result: { videos: [{ url: 'https://x/k.mp4' }] } } };
     assert.equal(client.getByPath(resp, adapter.statusPath), 'succeed');
     assert.equal(client.getByPath(resp, adapter.resultUrlPath), 'https://x/k.mp4');
+  });
+});
+
+
+describe('media_jobs 泛化（createCallModeJob）', () => {
+  function buildService() {
+    const userService = { findById: async () => ({ id: 1, level: 0 }) };
+    const pricing = new PricingService({} as any, {} as any, {} as any, {} as any, userService as any);
+    const jobRepo: any = {
+      find: async () => [],
+      findOne: async () => null,
+      findAndCount: async () => [[], 0],
+      save: async (e: any) => e,
+      update: async () => ({ affected: 1 }),
+      create: (e: any) => e,
+    };
+    const modelRepo: any = { find: async () => [], findOne: async () => null };
+    const providerRepo: any = { findOne: async () => null };
+    const fileRepo: any = { save: async (e: any) => e, create: (e: any) => e };
+    const genClient: any = {
+      generateImage: async () => ({ b64: 'x' }),
+      submitVideo: async () => ({ taskId: 't' }),
+      pollVideoTask: async () => ({ status: 'processing' }),
+    };
+    const credits: any = {
+      freezeCredits: async () => ({ id: 777 }),
+      settleCredits: async () => undefined,
+      refundCredits: async () => undefined,
+    };
+    const ossUpload: any = { upload: async () => null };
+    const svc = new MediaGenerationService(
+      jobRepo, modelRepo, providerRepo, fileRepo, genClient, {} as any, credits, pricing, ossUpload,
+    );
+    return { svc, jobRepo, credits };
+  }
+
+  it('type 可存任意调用模式字符串', () => {
+    const job = new MediaJobEntity();
+    job.type = 'music';
+    job.callMode = 'music';
+    assert.equal(job.type, 'music');
+    assert.equal(job.callMode, 'music');
+  });
+  it('createCallModeJob 登记任意调用模式任务并记录 callMode', async () => {
+    const { svc, jobRepo } = buildService();
+    const created: any[] = [];
+    jobRepo.create = (e: any) => { created.push(e); return e; };
+    jobRepo.save = async (e: any) => e;
+    const item = await svc.createCallModeJob(9, { modelId: 'm-1', prompt: 'lofi', params: { duration: 30 } }, 'music');
+    assert.equal(created[0].type, 'music');
+    assert.equal(created[0].callMode, 'music');
+    assert.equal(created[0].status, 'pending');
+    assert.equal(item.type, 'music');
+    assert.equal(item.callMode, 'music');
+  });
+});
+
+describe('saveGeneratedMedia OSS 管线', () => {
+  function buildService() {
+    const userService = { findById: async () => ({ id: 1, level: 0 }) };
+    const pricing = new PricingService({} as any, {} as any, {} as any, {} as any, userService as any);
+    const jobRepo: any = {
+      find: async () => [], findOne: async () => null, findAndCount: async () => [[], 0],
+      save: async (e: any) => e, update: async () => ({ affected: 1 }), create: (e: any) => e,
+    };
+    const modelRepo: any = { find: async () => [], findOne: async () => null };
+    const providerRepo: any = { findOne: async () => null };
+    const fileRepo: any = { save: async (e: any) => e, create: (e: any) => e };
+    const genClient: any = {
+      generateImage: async () => ({ b64: 'x' }),
+      submitVideo: async () => ({ taskId: 't' }),
+      pollVideoTask: async () => ({ status: 'processing' }),
+    };
+    const credits: any = {
+      freezeCredits: async () => ({ id: 777 }),
+      settleCredits: async () => undefined,
+      refundCredits: async () => undefined,
+    };
+    const ossUpload: any = { upload: async () => null };
+    const svc = new MediaGenerationService(
+      jobRepo, modelRepo, providerRepo, fileRepo, genClient, {} as any, credits, pricing, ossUpload,
+    );
+    return { svc, jobRepo, credits, fileRepo, ossUpload };
+  }
+
+  const GENERATED_DIR = './uploads/files/generated';
+
+  function localPathOf(url: string): string {
+    return url.replace(/^\//, '');
+  }
+
+  function snapshotLocalDir(): string[] {
+    return fs.existsSync(GENERATED_DIR) ? fs.readdirSync(GENERATED_DIR).sort() : [];
+  }
+
+  it('配置 OSS 时上传云 URL 并写回 files.storageType（不触碰本地磁盘）', async () => {
+    const { svc, fileRepo } = buildService();
+    const saved: any[] = [];
+    fileRepo.save = async (e: any) => { saved.push(e); return e; };
+    (svc as any).ossUpload.upload = async () => ({
+      url: 'https://cdn.x.com/generated/9/image/20260814/abc.png',
+      storageType: 'oss',
+      objectKey: 'generated/9/image/20260814/abc.png',
+    });
+    const before = snapshotLocalDir();
+    const url = await (svc as any).saveGeneratedMedia(9, 'image', 'image', { b64: 'aGVsbG8=' });
+    assert.equal(url, 'https://cdn.x.com/generated/9/image/20260814/abc.png');
+    assert.equal(saved[0].storageType, 'oss');
+    assert.equal(saved[0].path, url);
+    assert.deepEqual(snapshotLocalDir(), before);
+  });
+
+  it('未配置 OSS 时回退本地落盘（storageType 保持占位 minio）并记录 debug 日志', async () => {
+    const { svc, fileRepo } = buildService();
+    const saved: any[] = [];
+    const debugMsgs: string[] = [];
+    fileRepo.save = async (e: any) => { saved.push(e); return e; };
+    (svc as any).ossUpload.upload = async () => null;
+    (svc as any).logger = { debug: (m: string) => debugMsgs.push(m), warn: () => undefined };
+    let url = '';
+    try {
+      url = await (svc as any).saveGeneratedMedia(9, 'video', 'video', { b64: 'aGVsbG8=' });
+      assert.match(url, /^\/uploads\/files\/generated\//);
+      assert.equal(saved[0].storageType, 'minio');
+      assert.equal(saved[0].path, url);
+      assert.ok(debugMsgs.some((m) => m.includes('回退本地落盘')));
+    } finally {
+      if (url) fs.rmSync(localPathOf(url), { force: true });
+    }
+  });
+
+  it('OSS 上传抛错时降级本地落盘并记录 warn 日志', async () => {
+    const { svc, fileRepo } = buildService();
+    const saved: any[] = [];
+    const warnMsgs: string[] = [];
+    fileRepo.save = async (e: any) => { saved.push(e); return e; };
+    (svc as any).ossUpload.upload = async () => { throw new Error('sdk not installed'); };
+    (svc as any).logger = { debug: () => undefined, warn: (m: string) => warnMsgs.push(m) };
+    let url = '';
+    try {
+      url = await (svc as any).saveGeneratedMedia(9, 'video', 'video', { b64: 'aGVsbG8=' });
+      assert.match(url, /^\/uploads\/files\/generated\//);
+      assert.equal(saved[0].storageType, 'minio');
+      assert.equal(saved[0].path, url);
+      assert.ok(warnMsgs.some((m) => m.includes('OSS 上传失败') && m.includes('sdk not installed')));
+    } finally {
+      if (url) fs.rmSync(localPathOf(url), { force: true });
+    }
+  });
+});
+
+describe('validateInputImages 输入图校验', () => {
+  function buildSvc() {
+    const svc = new MediaGenerationService(
+      { find: async () => [], findOne: async () => null, findAndCount: async () => [[], 0], save: async (e: any) => e, update: async () => ({ affected: 1 }), create: (e: any) => e } as any,
+      { find: async () => [], findOne: async () => null } as any,
+      { findOne: async () => null } as any,
+      { save: async (e: any) => e, create: (e: any) => e } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+    return svc;
+  }
+
+  it('undefined / 空数组返回空', async () => {
+    const svc = buildSvc();
+    assert.deepEqual(await (svc as any).validateInputImages(undefined), []);
+    assert.deepEqual(await (svc as any).validateInputImages([]), []);
+  });
+  it('data:image 数据 URI 放行', async () => {
+    const svc = buildSvc();
+    const out = await (svc as any).validateInputImages(['data:image/png;base64,aGVsbG8=']);
+    assert.equal(out.length, 1);
+    assert.ok(out[0].startsWith('data:image/png'));
+  });
+  it('公网 http(s) URL 放行（复用 SSRF 校验，IP 形式避免 DNS）', async () => {
+    const svc = buildSvc();
+    const out = await (svc as any).validateInputImages(['https://8.8.8.8/a.png']);
+    assert.equal(out[0], 'https://8.8.8.8/a.png');
+  });
+  it('内网 URL 拒绝', async () => {
+    const svc = buildSvc();
+    await assert.rejects(
+      (svc as any).validateInputImages(['https://127.0.0.1/a.png']),
+      (e: any) => e instanceof BadRequestException && /内网/.test(e.message),
+    );
+  });
+  it('非法协议拒绝', async () => {
+    const svc = buildSvc();
+    await assert.rejects(
+      (svc as any).validateInputImages(['ftp://x/a.png']),
+      (e: any) => e instanceof BadRequestException && /仅支持/.test(e.message),
+    );
+  });
+  it('超过 4 张拒绝', async () => {
+    const svc = buildSvc();
+    const many = Array.from({ length: 5 }, (_, i) => `data:image/png;base64,${i}`);
+    await assert.rejects(
+      (svc as any).validateInputImages(many),
+      (e: any) => e instanceof BadRequestException && /最多 4/.test(e.message),
+    );
+  });
+});
+
+describe('GenerationClientService.buildImageRequest 请求形状构造', () => {
+  const client2 = new GenerationClientService();
+
+  it('JSON 分支：模板占位符 imageUrl0 / imageB640 / imageCount 替换', async () => {
+    const req = await client2.buildImageRequest({
+      endpoint: 'https://x.com/v1',
+      adapter: {
+        imagesPath: '/images/edits',
+        requestTemplate: {
+          model: '{upstreamModelId}',
+          prompt: '{prompt}',
+          sketch: '{imageUrl0}',
+          sketch_b64: '{imageB640}',
+          n: '{imageCount}',
+        },
+      },
+      model: 'sketch-1',
+      prompt: '上色',
+      inputImages: ['data:image/png;base64,aGVsbG8='],
+    });
+    const body = JSON.parse(req.body as string) as Record<string, unknown>;
+    assert.equal(req.url, 'https://x.com/v1/images/edits');
+    assert.equal(body.model, 'sketch-1');
+    assert.equal(body.sketch, ''); // data URI 不会进入 imageUrl 占位
+    assert.equal(body.sketch_b64, 'data:image/png;base64,aGVsbG8=');
+    assert.equal(body.n, 1);
+  });
+
+  it('JSON 分支：http URL 进入 imageUrl 占位', async () => {
+    const req = await client2.buildImageRequest({
+      endpoint: 'https://x.com/v1',
+      adapter: { requestTemplate: { image: '{imageUrl0}' } },
+      model: 'm',
+      prompt: 'p',
+      inputImages: ['https://cdn.x.com/a.png'],
+    });
+    const body = JSON.parse(req.body as string) as Record<string, unknown>;
+    assert.equal(body.image, 'https://cdn.x.com/a.png');
+  });
+
+  it('JSON 分支：无模板且无输入图 → 默认文生图体（向后兼容）', async () => {
+    const req = await client2.buildImageRequest({
+      endpoint: 'https://x.com/v1',
+      adapter: {},
+      model: 'm',
+      prompt: 'cat',
+      size: '1024x1024',
+    });
+    const body = JSON.parse(req.body as string) as Record<string, unknown>;
+    assert.equal(body.model, 'm');
+    assert.equal(body.prompt, 'cat');
+    assert.equal(body.response_format, 'b64_json');
+    assert.equal(body.size, '1024x1024');
+    assert.equal(body.image, undefined);
+  });
+
+  it('multipart 分支：imagesStyle=multipart 时 FormData 含文本字段与 Blob 文件', async () => {
+    const req = await client2.buildImageRequest({
+      endpoint: 'https://x.com/v1',
+      adapter: {
+        imagesStyle: 'multipart',
+        imageFields: ['sketch', 'ref'],
+        multipartFields: { negative_prompt: 'blurry' },
+      },
+      model: 'edit-1',
+      prompt: '上色',
+      size: '1024x1024',
+      inputImages: ['data:image/png;base64,aGVsbG8=', 'data:image/png;base64,d29ybGQ='],
+    });
+    const form = req.body as FormData;
+    assert.ok(form instanceof FormData);
+    assert.equal(form.get('model'), 'edit-1');
+    assert.equal(form.get('prompt'), '上色');
+    assert.equal(form.get('size'), '1024x1024');
+    assert.equal(form.get('negative_prompt'), 'blurry');
+    const f0 = form.get('sketch') as Blob;
+    const f1 = form.get('ref') as Blob;
+    assert.ok(f0 instanceof Blob);
+    assert.ok(f1 instanceof Blob);
+    assert.equal(Buffer.from(await f0.arrayBuffer()).toString('utf8'), 'hello');
+    assert.equal(Buffer.from(await f1.arrayBuffer()).toString('utf8'), 'world');
+    assert.ok(!req.headers['Content-Type'], 'multipart 不应设置 Content-Type（fetch 自动带 boundary）');
+  });
+
+  it('multipart 分支：无模板但有输入图 → 默认 multipart（OpenAI 兼容 image 字段）', async () => {
+    const req = await client2.buildImageRequest({
+      endpoint: 'https://x.com/v1',
+      adapter: {},
+      model: 'edit-1',
+      prompt: 'p',
+      inputImages: ['data:image/png;base64,aGVsbG8='],
+    });
+    const form = req.body as FormData;
+    assert.ok(form instanceof FormData);
+    assert.equal(form.get('model'), 'edit-1');
+    assert.equal(form.get('prompt'), 'p');
+    const f = form.get('image') as Blob;
+    assert.ok(f instanceof Blob);
+  });
+});
+describe('GenerationClientService.generateImage 端到端请求构造', () => {
+  const client3 = new GenerationClientService();
+  const originalFetch = globalThis.fetch;
+
+  after(() => {
+    (globalThis as any).fetch = originalFetch;
+  });
+
+  it('multipart 输入图：fetch 收到 FormData，响应 b64_json 返回 b64', async () => {
+    let capturedBody: any = null;
+    (globalThis as any).fetch = async (url: string, opts: any) => {
+      capturedBody = opts.body;
+      assert.ok(capturedBody instanceof FormData);
+      assert.equal(opts.headers.Authorization, 'Bearer k');
+      assert.ok(!opts.headers['Content-Type']);
+      return {
+        ok: true, status: 200,
+        text: async () => JSON.stringify({ data: [{ b64_json: 'aGVsbG8=' }] }),
+        json: async () => ({ data: [{ b64_json: 'aGVsbG8=' }] }),
+        headers: new Headers(),
+      };
+    };
+    const out = await client3.generateImage({
+      endpoint: 'https://x.com/v1',
+      apiKey: 'k',
+      adapter: { imagesStyle: 'multipart' },
+      model: 'edit-1',
+      prompt: '上色',
+      inputImages: ['data:image/png;base64,aGVsbG8='],
+    });
+    assert.equal(out.b64, 'aGVsbG8=');
+    assert.ok(capturedBody instanceof FormData);
+  });
+
+  it('JSON 输入图：fetch 收到 JSON 字符串体且占位符已替换', async () => {
+    let capturedBody = '';
+    let capturedHeaders: any = null;
+    (globalThis as any).fetch = async (url: string, opts: any) => {
+      capturedBody = opts.body;
+      capturedHeaders = opts.headers;
+      return {
+        ok: true, status: 200,
+        text: async () => JSON.stringify({ data: [{ url: 'https://cdn.x.com/out.png' }] }),
+        json: async () => ({ data: [{ url: 'https://cdn.x.com/out.png' }] }),
+        headers: new Headers(),
+      };
+    };
+    const out = await client3.generateImage({
+      endpoint: 'https://x.com/v1',
+      apiKey: 'k',
+      adapter: { requestTemplate: { model: '{upstreamModelId}', prompt: '{prompt}', sketch: '{imageB640}' } },
+      model: 'sketch-1',
+      prompt: '上色',
+      inputImages: ['data:image/png;base64,aGVsbG8='],
+    });
+    assert.equal(out.url, 'https://cdn.x.com/out.png');
+    const parsed = JSON.parse(capturedBody);
+    assert.equal(parsed.sketch, 'data:image/png;base64,aGVsbG8=');
+    assert.match(capturedHeaders['Content-Type'], /application\/json/);
+  });
+
+  it('无输入图：默认 JSON 文生图体（向后兼容）', async () => {
+    let capturedBody = '';
+    (globalThis as any).fetch = async (url: string, opts: any) => {
+      capturedBody = opts.body;
+      return {
+        ok: true, status: 200,
+        text: async () => JSON.stringify({ data: [{ b64_json: 'eA==' }] }),
+        json: async () => ({ data: [{ b64_json: 'eA==' }] }),
+        headers: new Headers(),
+      };
+    };
+    const out = await client3.generateImage({
+      endpoint: 'https://x.com/v1',
+      apiKey: 'k',
+      adapter: {},
+      model: 'img-1',
+      prompt: 'cat',
+    });
+    assert.equal(out.b64, 'eA==');
+    const parsed = JSON.parse(capturedBody);
+    assert.equal(parsed.model, 'img-1');
+    assert.equal(parsed.response_format, 'b64_json');
+    assert.equal(parsed.image, undefined);
+  });
+});
+describe('MediaGenerationService image_edit 适配合入与传参', () => {
+  function buildEditSvc() {
+    const encryption: any = { decryptAes: () => 'decrypted-key' };
+    const jobRepo: any = {
+      find: async () => [], findOne: async () => null, findAndCount: async () => [[], 0],
+      save: async (e: any) => e, update: async () => ({ affected: 1 }), create: (e: any) => e,
+    };
+    const modelRepo: any = { find: async () => [], findOne: async () => null };
+    const providerRepo: any = { findOne: async () => null };
+    const fileRepo: any = { save: async (e: any) => e, create: (e: any) => e };
+    const genClient: any = {
+      generateImage: async () => ({ b64: 'x' }),
+      submitVideo: async () => ({ taskId: 't' }),
+      pollVideoTask: async () => ({ status: 'processing' }),
+    };
+    const credits: any = {
+      freezeCredits: async () => ({ id: 777 }),
+      settleCredits: async () => undefined,
+      refundCredits: async () => undefined,
+    };
+    const pricing: any = { getUserLevel: async () => 0, applyDiscount: (p: number) => p };
+    const ossUpload: any = { upload: async () => null };
+    const svc = new MediaGenerationService(
+      jobRepo, modelRepo, providerRepo, fileRepo, genClient, encryption, credits, pricing, ossUpload,
+    );
+    return { svc, jobRepo, modelRepo, providerRepo, genClient };
+  }
+
+  it('resolveModel 把模型 generationParams 的 image 适配键合入 adapter', async () => {
+    const { svc, modelRepo, providerRepo } = buildEditSvc();
+    modelRepo.findOne = async () => ({
+      modelId: 'sketch-1', modelType: 'image_edit', isActive: true,
+      providerId: 5, upstreamModelId: 'wanx-sketch',
+      generationParams: {
+        images_style: 'json', images_path: '/images/edits',
+        image_fields: ['sketch'], prompt_field: 'prompt', model_field: 'model',
+        multipart_fields: { negative_prompt: 'blurry' },
+      },
+    });
+    providerRepo.findOne = async () => ({ id: 5, status: 'active', slug: 'qwen', baseUrl: 'https://x.com/v1', apiKey: 'enc', config: {} });
+    const resolved = await (svc as any).resolveModel('sketch-1', 'image');
+    assert.equal(resolved.adapter.imagesStyle, 'json');
+    assert.equal(resolved.adapter.imagesPath, '/images/edits');
+    assert.deepEqual(resolved.adapter.imageFields, ['sketch']);
+    assert.equal(resolved.adapter.promptField, 'prompt');
+    assert.equal(resolved.adapter.modelField, 'model');
+    assert.deepEqual(resolved.adapter.multipartFields, { negative_prompt: 'blurry' });
+  });
+
+  it('generateImage 传 inputImages 给 genClient 并记录 params', async () => {
+    const { svc, modelRepo, providerRepo, genClient, jobRepo } = buildEditSvc();
+    modelRepo.findOne = async () => ({
+      modelId: 'sketch-1', modelType: 'image_edit', isActive: true,
+      providerId: 5, upstreamModelId: 'wanx-sketch',
+      pricePerImage: 10, generationParams: { images_style: 'multipart' },
+    });
+    providerRepo.findOne = async () => ({ id: 5, status: 'active', slug: 'qwen', baseUrl: 'https://x.com/v1', apiKey: 'enc', config: {} });
+    const created: any[] = [];
+    jobRepo.create = (e: any) => { created.push(e); return e; };
+    jobRepo.save = async (e: any) => e;
+    const captured: any = {};
+    genClient.generateImage = async (cfg: any) => { captured.inputImages = cfg.inputImages; return { b64: 'aGVsbG8=' }; };
+    (svc as any).saveGeneratedMedia = async () => 'https://cdn.x.com/out.png';
+    await svc.generateImage(1, {
+      modelId: 'sketch-1',
+      prompt: '上色',
+      inputImages: ['data:image/png;base64,aGVsbG8='],
+    });
+    assert.deepEqual(captured.inputImages, ['data:image/png;base64,aGVsbG8=']);
+    assert.ok(created[0].params.inputImages);
   });
 });

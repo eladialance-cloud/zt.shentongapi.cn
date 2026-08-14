@@ -23,6 +23,12 @@ import { CreateProviderDto } from './dto/create-provider.dto';
 import { UpdateProviderDto } from './dto/update-provider.dto';
 import { TestProviderDto } from './dto/test-provider.dto';
 import { ImportProviderModelsDto } from './dto/import-provider-models.dto';
+import {
+  BatchEnableDto,
+  BatchPriceDto,
+  CreateFromTemplateDto,
+  ImportModelsJsonDto,
+} from './dto/batch-model.dto';
 
 /**
  * 管理端大模型配置控制器
@@ -37,6 +43,10 @@ import { ImportProviderModelsDto } from './dto/import-provider-models.dto';
  *   POST   /admin/models/:id/disable          下架
  *   POST   /admin/models/:id/test             测试模型
  *   POST   /admin/models/:id/sync             手动同步 OpenClaw
+ *   POST   /admin/models/batch-enable         批量上架/下架
+ *   POST   /admin/models/batch-price          批量改价
+ *   GET    /admin/models/export               导出配置 JSON
+ *   POST   /admin/models/import               批量导入配置 JSON
  *
  * 供应商端点（v0.7.0+ 新流程）：
  *   GET    /admin/models/providers            供应商列表
@@ -70,6 +80,54 @@ export class AdminModelController {
     return this.service.list(query as any);
   }
 
+  /** 动态表单元数据：调用模式 + 规格字段 schema + 场景标签 + 高级能力标签 */
+  @Get('call-modes')
+  @ApiOperation({ summary: '调用模式元数据（动态表单）' })
+  callModesMeta() {
+    return this.service.callModesMeta();
+  }
+
+  /** 模板库列表 */
+  @Get('templates')
+  @ApiOperation({ summary: '模板库列表' })
+  templateList() {
+    return this.service.templateList();
+  }
+
+  /** 从模板创建模型 */
+  @Post('from-template')
+  @ApiOperation({ summary: '从模板创建模型' })
+  createFromTemplate(@Body() dto: CreateFromTemplateDto) {
+    return this.service.createFromTemplate(dto);
+  }
+
+  /** 批量上架/下架 */
+  @Post('batch-enable')
+  @ApiOperation({ summary: '批量上架/下架' })
+  batchEnable(@Body() dto: BatchEnableDto) {
+    return this.service.batchEnable(dto);
+  }
+
+  /** 批量改价 */
+  @Post('batch-price')
+  @ApiOperation({ summary: '批量改价' })
+  batchUpdatePrice(@Body() dto: BatchPriceDto) {
+    return this.service.batchUpdatePrice(dto);
+  }
+
+  /** 导出配置 JSON */
+  @Get('export')
+  @ApiOperation({ summary: '导出配置 JSON' })
+  exportModels(@Query() query: any) {
+    return this.service.exportModels(query);
+  }
+
+  /** 批量导入配置 JSON */
+  @Post('import')
+  @ApiOperation({ summary: '批量导入配置 JSON' })
+  importModelsJson(@Body() dto: ImportModelsJsonDto) {
+    return this.service.importModelsJson(dto);
+  }
   @Get('providers')
   @ApiOperation({ summary: '供应商列表' })
   async providerList() {
@@ -103,6 +161,13 @@ export class AdminModelController {
   @ApiOperation({ summary: '测试供应商连接' })
   async testProvider(@Body() dto: TestProviderDto) {
     return this.service.testProvider(dto);
+  }
+
+  /** 立即检查供应商余额 */
+  @Post('providers/:id/check-balance')
+  @ApiOperation({ summary: '立即检查供应商余额' })
+  checkProviderBalance(@Param('id', ParseIntPipe) id: number) {
+    return this.service.checkProviderBalance(id);
   }
 
   @Post('providers/:id/fetch-models')

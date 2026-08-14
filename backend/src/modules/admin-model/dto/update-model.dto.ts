@@ -122,4 +122,46 @@ export class UpdateModelDto {
   @IsNumber()
   @Min(0)
   pricePerCall?: number;
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  callMode?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  scenarioTags?: string[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  pricingMode?: string;
+
+  @IsOptional()
+  @IsObject()
+  videoPerSecond?: Record<string, number>;
+
+  @IsOptional()
+  @IsObject()
+  specs?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  iconUrl?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  costPrice?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  remark?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  pricePerMinute?: number;
 }

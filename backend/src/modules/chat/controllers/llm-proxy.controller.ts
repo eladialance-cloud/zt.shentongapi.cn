@@ -1,8 +1,10 @@
 import {
-  Controller, Get, Post, Body, Headers, Param, Res, BadRequestException,
+  Controller, Get, Post, Body, Headers, Param, Res, BadRequestException, UploadedFile, UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../../../common/decorators/public.decorator';
 import { LlmProxyService } from '../services/llm-proxy.service';
 
@@ -33,6 +35,7 @@ export class LlmProxyController {
       temperature?: number;
       max_tokens?: number;
       tools?: unknown[];
+      files?: string[];
     },
     @Res() res: Response,
   ) {
@@ -103,6 +106,94 @@ export class LlmProxyController {
     const jobId = Number(id);
     if (!Number.isInteger(jobId) || jobId <= 0) throw new BadRequestException('无效的任务 ID');
     return this.llmProxyService.videoJob(token, jobId);
+  }
+
+  @Public()
+  @Post('v1/files')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        model: { type: 'string', description: '模型 ID（可选，缺省用用户默认对话模型）' },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 50 * 1024 * 1024 },
+    }),
+  )
+  async uploadFile(
+    @Headers('authorization') auth: string,
+    @Body('model') model: string | undefined,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('请上传文件（multipart 字段名 file）');
+    return this.llmProxyService.uploadLlmFileByToken(this.extractToken(auth), model, file);
+  }
+
+  @Public()
+  @Post('v1/embeddings')
+  async embeddings(
+    @Headers('authorization') auth: string,
+    @Body() body: { model: string; input: string | string[] },
+  ) {
+    return this.llmProxyService.embeddings(this.extractToken(auth), body);
+  }
+
+  @Public()
+  @Post('v1/rerank')
+  async rerank(
+    @Headers('authorization') auth: string,
+    @Body() body: { model: string; query: string; documents: string[]; top_n?: number },
+  ) {
+    return this.llmProxyService.rerank(this.extractToken(auth), body);
+  }
+
+  @Public()
+  @Post('v1/ocr')
+  async ocr(
+    @Headers('authorization') auth: string,
+    @Body() body: { model: string; imageUrl?: string; fileUrl?: string },
+  ) {
+    return this.llmProxyService.ocr(this.extractToken(auth), body);
+  }
+
+  @Public()
+  @Post('v1/audio/transcriptions')
+  async audioTranscriptions(
+    @Headers('authorization') auth: string,
+    @Body() body: { model: string; audioUrl: string; language?: string },
+  ) {
+    return this.llmProxyService.stt(this.extractToken(auth), body);
+  }
+
+  @Public()
+  @Post('v1/audio/voice-conversion')
+  async audioVoiceConversion(
+    @Headers('authorization') auth: string,
+    @Body() body: { model: string; audioUrl: string; referenceUrl?: string },
+  ) {
+    return this.llmProxyService.voiceConversion(this.extractToken(auth), body);
+  }
+
+  @Public()
+  @Post('v1/music/generations')
+  async musicGenerations(
+    @Headers('authorization') auth: string,
+    @Body() body: { model?: string; prompt: string; duration?: number },
+  ) {
+    const token = this.extractToken(auth);
+    return this.llmProxyService.musicGeneration(token, body);
+  }
+
+  @Public()
+  @Get('v1/realtime')
+  realtimeStub() {
+    throw new BadRequestException('实时语音对话尚未开放（P5 预留路由桩）');
   }
 
   private extractToken(auth: string): string {

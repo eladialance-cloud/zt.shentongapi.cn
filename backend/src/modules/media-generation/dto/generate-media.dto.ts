@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min, Max } from 'class-validator';
+import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min, Max, IsArray, ArrayMaxSize } from 'class-validator';
 
 /** 生成图片 DTO */
 export class GenerateImageDto {
@@ -15,6 +15,13 @@ export class GenerateImageDto {
   @IsString()
   @MaxLength(32)
   size?: string;
+  /** 创意工具输入图（image_edit 等）：http(s) URL 或 data:image 数据 URI，最多 4 张 */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(4)
+  @IsString({ each: true })
+  @MaxLength(4000, { each: true })
+  inputImages?: string[];
 }
 
 /** 生成视频 DTO */

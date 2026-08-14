@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Not, QueryDeepPartialEntity, Repository } from 'typeorm';
 import { ModelEntity } from '../model/entities/model.entity';
 import { ModelProviderEntity } from './entities/model-provider.entity';
 import { EncryptionService } from '../../common/services/encryption.service';
@@ -16,17 +16,29 @@ import { UpdateProviderDto } from './dto/update-provider.dto';
 import { TestProviderDto } from './dto/test-provider.dto';
 import { ImportProviderModelsDto } from './dto/import-provider-models.dto';
 import {
+  BatchEnableDto,
+  BatchPriceDto,
+  CreateFromTemplateDto,
+  ImportModelsJsonDto,
+} from './dto/batch-model.dto';
+import {
   buildSlug,
   buildUniqueModelId,
   parseUpstreamModels,
 } from './utils/provider-utils';
 import {
+  callModeFromModelType,
   deriveModelType,
   inputTypesFromModelType,
   normalizeAdvancedCapabilities,
   normalizeInputTypes,
   outputTypeFromModelType,
 } from './utils/model-type-utils';
+import { shouldAlertBalance } from './utils/balance-utils';
+import { CALL_MODES, CALL_MODE_TO_MODEL_TYPE, SCENARIO_TAGS } from './constants/call-modes';
+import { SPEC_FIELD_SCHEMAS, ADVANCED_CAP_LABELS } from './constants/form-meta';
+import { MODEL_TEMPLATES } from './constants/model-templates';
+import { GenerationClientService, GenerationAdapterConfig } from '../media-generation/generation-client.service';
 
 /** 模型查询参数 */
 interface ModelQuery {
@@ -48,14 +60,31 @@ interface ModelQuery {
  * - 上游真实调用凭据(baseUrl + apiKey)归属 model_providers，模型表只存 provider_id + upstream_model_id
  */
 @Injectable()
-export class AdminModelService {
+export class AdminModelService implements OnModuleInit {
   constructor(
     @InjectRepository(ModelEntity)
     private modelRepo: Repository<ModelEntity>,
     @InjectRepository(ModelProviderEntity)
     private providerRepo: Repository<ModelProviderEntity>,
     private encryption: EncryptionService,
+    private generationClient: GenerationClientService,
   ) {}
+
+  private readonly logger = new Logger(AdminModelService.name);
+
+  private balancePollTimer?: NodeJS.Timeout;
+
+  async onModuleInit(): Promise<void> {
+    if (this.balancePollTimer) return;
+    this.balancePollTimer = this.startBalancePolling();
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    if (this.balancePollTimer) {
+      clearInterval(this.balancePollTimer);
+      this.balancePollTimer = undefined;
+    }
+  }
 
   // ============ 模型列表与详情 ============
 
@@ -182,11 +211,39 @@ export class AdminModelService {
         : '';
     const endpoint = provider?.baseUrl || model.apiEndpoint || '';
     const upstreamModelId = model.upstreamModelId || model.modelId;
+    const callMode = model.callMode || callModeFromModelType(model.modelType);
+    const def = CALL_MODES.find((m) => m.key === callMode);
+    if (!def) {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, `未知调用模式: ${callMode}`);
+    }
+    if (callMode === 'realtime') {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '该模式暂不支持测试');
+    }
     if (!apiKey || !endpoint) {
       BusinessException.throw(ErrorCode.VALIDATION_FAILED, '模型未关联供应商凭据，无法测试');
     }
     try {
-      const response = await this.callModelApi(endpoint, apiKey, upstreamModelId, dto.input);
+      let response: string | Record<string, unknown>;
+      if (callMode === 'video' || callMode === 'video_edit') {
+        const adapter = (provider?.config?.generation ?? {}) as GenerationAdapterConfig;
+        const { taskId } = await this.generationClient.submitVideo({
+          endpoint,
+          apiKey,
+          adapter,
+          model: upstreamModelId,
+          prompt: dto.input,
+          duration: 5,
+        });
+        response = { taskId, message: `视频任务已提交（异步），taskId=${taskId}` };
+      } else {
+        const body = this.buildTestBody(callMode, upstreamModelId, dto.input);
+        const out = await this.callUpstreamRaw(
+          this.normalizeEndpoint(endpoint) + def.apiPath,
+          apiKey,
+          body,
+        );
+        response = this.formatTestOutput(callMode, out);
+      }
       model.connectionStatus = 'connected';
       model.lastTestedAt = new Date();
       await this.modelRepo.save(model);
@@ -220,6 +277,259 @@ export class AdminModelService {
 
   // ============ 供应商体系 ============
 
+  /** 动态表单元数据（14 种模式 + 规格字段 schema + 高级能力标签 + 场景标签） */
+  async callModesMeta() {
+    return {
+      callModes: CALL_MODES,
+      specFieldSchemas: SPEC_FIELD_SCHEMAS,
+      advancedCapLabels: ADVANCED_CAP_LABELS,
+      scenarioTags: SCENARIO_TAGS,
+    };
+  }
+
+  /** 模板库列表 */
+  async templateList() {
+    return MODEL_TEMPLATES;
+  }
+
+  /** 从模板创建模型（默认下架，管理员确认后上架；无 providerId 时走全局中转） */
+  async createFromTemplate(dto: CreateFromTemplateDto) {
+    const tpl = MODEL_TEMPLATES.find((t) => t.key === dto.templateKey);
+    if (!tpl) {
+      BusinessException.throw(ErrorCode.NOT_FOUND, `模板不存在: ${dto.templateKey}`);
+    }
+    const def = CALL_MODES.find((m) => m.key === tpl.callMode);
+    if (!def) {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, `模板调用模式非法: ${tpl.callMode}`);
+    }
+    const entity = new ModelEntity();
+    entity.provider = dto.providerId ? '' : 'global';
+    entity.modelId = dto.modelId || tpl.key;
+    entity.upstreamModelId = dto.modelId || tpl.key;
+    entity.name = dto.displayName || tpl.name;
+    entity.callMode = tpl.callMode;
+    entity.modelType = CALL_MODE_TO_MODEL_TYPE[tpl.callMode];
+    entity.inputTypes = def.inputs;
+    entity.advancedCapabilities = normalizeAdvancedCapabilities(def.advancedCaps);
+    entity.supportsVision = def.inputs.includes('image');
+    entity.supportsFunctions = (entity.advancedCapabilities || []).includes('function_calling');
+    entity.specs = tpl.specValues ? structuredClone(tpl.specValues) : null;
+    entity.generationParams = tpl.generationParams ? structuredClone(tpl.generationParams) : null;
+    entity.scenarioTags = tpl.recommendedScenarioTags
+      ? structuredClone(tpl.recommendedScenarioTags)
+      : [];
+    entity.pricingMode = def.recommendedBilling;
+    entity.pricePer1kInput = tpl.referencePrice?.inputPricePerToken ?? 0;
+    entity.pricePer1kOutput = tpl.referencePrice?.outputPricePerToken ?? 0;
+    entity.pricePerImage = tpl.referencePrice?.pricePerImage;
+    entity.pricePerCall = tpl.referencePrice?.pricePerCall;
+    entity.pricePerMinute = tpl.referencePrice?.pricePerMinute;
+    entity.videoPerSecond = tpl.referencePrice?.videoPerSecond
+      ? structuredClone(tpl.referencePrice.videoPerSecond)
+      : null;
+    entity.isActive = false;
+    if (dto.providerId) entity.providerId = dto.providerId;
+    const saved = await this.modelRepo.save(entity);
+    await this.refreshProviderModelCount(saved.providerId);
+    return this.toAdminModelItem(saved);
+  }
+  // ============ 批量操作 ============
+
+  /** 批量上架/下架 */
+  async batchEnable(dto: BatchEnableDto) {
+    if (dto.ids.length === 0) {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '请至少选择一个模型');
+    }
+    const result = await this.modelRepo.update({ id: In(dto.ids) }, { isActive: dto.enabled });
+    return { updated: result.affected ?? dto.ids.length };
+  }
+
+  /** 批量改价（仅更新传入字段；不传或传 null 的字段保持不变） */
+  async batchUpdatePrice(dto: BatchPriceDto) {
+    if (dto.ids.length === 0) {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '请至少选择一个模型');
+    }
+    const patch: QueryDeepPartialEntity<ModelEntity> = {};
+    if (dto.pricePerCall != null) patch.pricePerCall = Number(dto.pricePerCall);
+    if (dto.pricePerImage != null) patch.pricePerImage = Number(dto.pricePerImage);
+    if (dto.pricePerMinute != null) patch.pricePerMinute = Number(dto.pricePerMinute);
+    if (dto.videoPerSecond != null) patch.videoPerSecond = dto.videoPerSecond;
+    if (dto.inputPricePerToken != null) patch.pricePer1kInput = Number(dto.inputPricePerToken);
+    if (dto.outputPricePerToken != null) patch.pricePer1kOutput = Number(dto.outputPricePerToken);
+    if (Object.keys(patch).length === 0) {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '至少提供一个价格字段');
+    }
+    const result = await this.modelRepo.update({ id: In(dto.ids) }, patch);
+    return { updated: result.affected ?? dto.ids.length };
+  }
+
+  /** 导出配置 JSON（当前筛选条件下全部模型的管理端视图） */
+  async exportModels(query: ModelQuery) {
+    const qb = this.modelRepo.createQueryBuilder('m');
+    if (query.provider) {
+      qb.andWhere('m.provider = :provider', { provider: query.provider });
+    }
+    if (query.enabled === true || query.enabled === 'true') {
+      qb.andWhere('m.is_active = :active', { active: true });
+    } else if (query.enabled === false || query.enabled === 'false') {
+      qb.andWhere('m.is_active = :active', { active: false });
+    }
+    if (query.keyword) {
+      qb.andWhere('(m.model_id LIKE :kw OR m.name LIKE :kw OR m.upstream_model_id LIKE :kw)', {
+        kw: '%' + query.keyword + '%',
+      });
+    }
+    if (query.modelType) {
+      qb.andWhere('m.model_type = :mt', { mt: String(query.modelType) });
+    }
+    qb.orderBy('m.sort_order', 'ASC').addOrderBy('m.created_at', 'DESC');
+    const items = await qb.getMany();
+    const providerMap = await this.loadProviderNameMap(items);
+    return items.map((m) => this.toAdminModelItem(m, providerMap.get(m.providerId ?? -1)));
+  }
+
+  /** 批量导入配置 JSON（字段与 CreateModelDto 一致；同 modelId 已存在则合并更新，否则新建） */
+  async importModelsJson(dto: ImportModelsJsonDto) {
+    if (!Array.isArray(dto.items) || dto.items.length === 0) {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '导入项不能为空');
+    }
+    let imported = 0;
+    let updated = 0;
+    const errors: Array<{ index: number; error: string }> = [];
+    for (let i = 0; i < dto.items.length; i++) {
+      const item = dto.items[i];
+      try {
+        if (!item || typeof item !== 'object') {
+          throw new Error('导入项格式非法');
+        }
+        const createDto = Object.assign(new CreateModelDto(), item);
+        if (!createDto.modelId || !createDto.displayName || !createDto.provider) {
+          throw new Error('导入项缺少 modelId/displayName/provider');
+        }
+        createDto.capabilities = createDto.capabilities ?? [];
+        createDto.enabled = createDto.enabled ?? false;
+        createDto.minUserLevel = createDto.minUserLevel ?? 0;
+        const exists = await this.modelRepo.findOne({ where: { modelId: createDto.modelId } });
+        if (exists) {
+          const updateDto = Object.assign(new UpdateModelDto(), item);
+          this.applyUpdateDto(exists, updateDto);
+          if (item.videoPrices !== undefined) {
+            exists.videoPrices = item.videoPrices as Record<string, Record<string, number>>;
+          }
+          const saved = await this.modelRepo.save(exists);
+          await this.refreshProviderModelCount(saved.providerId);
+          updated++;
+        } else {
+          const entity = new ModelEntity();
+          this.applyCreateDto(entity, createDto);
+          if (item.videoPrices !== undefined) {
+            entity.videoPrices = item.videoPrices as Record<string, Record<string, number>>;
+          }
+          const saved = await this.modelRepo.save(entity);
+          await this.refreshProviderModelCount(saved.providerId);
+          imported++;
+        }
+      } catch (err: any) {
+        errors.push({ index: i, error: err?.message || String(err) });
+      }
+    }
+    return { imported, updated, errors };
+  }
+
+  // ============ 供应商余额监控 ============
+
+  /** 立即检查供应商余额：POST balance_url（headers/extra 来自供应商配置），余额取值支持嵌套路径 balancePath */
+  async checkProviderBalance(providerId: number) {
+    const provider = await this.providerRepo.findOne({ where: { id: providerId } });
+    if (!provider) {
+      BusinessException.throw(ErrorCode.NOT_FOUND, '供应商不存在');
+    }
+    if (!provider.balanceUrl) {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '供应商未配置余额查询接口（balanceUrl）');
+    }
+    const headers: Record<string, string> = {};
+    const rawHeaders = provider.balanceHeaders as Record<string, unknown> | null | undefined;
+    if (rawHeaders && typeof rawHeaders === 'object') {
+      for (const [k, v] of Object.entries(rawHeaders)) {
+        headers[k] = String(v).replace('{{apiKey}}', provider.apiKey ? this.encryption.decryptAes(provider.apiKey) : '');
+      }
+    }
+    const extra = (provider.balanceExtra as Record<string, unknown> | null | undefined) ?? {};
+    const balancePath = typeof extra.balancePath === 'string' ? extra.balancePath : 'balance';
+    let data: unknown;
+    try {
+      const resp = await fetch(provider.balanceUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify(extra.body ?? {}),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        BusinessException.throw(ErrorCode.THIRD_PARTY_ERROR, `余额接口错误(${resp.status}): ${text.slice(0, 200)}`);
+      }
+      data = await resp.json();
+    } catch (err: any) {
+      if (err instanceof BusinessException) throw err;
+      BusinessException.throw(ErrorCode.THIRD_PARTY_ERROR, `余额接口调用失败: ${err?.message || err}`);
+    }
+    const raw = this.pickByPath(data, balancePath);
+    if (raw == null || raw === '') {
+      BusinessException.throw(ErrorCode.THIRD_PARTY_ERROR, `余额接口返回无法解析: ${JSON.stringify(data).slice(0, 200)}`);
+    }
+    const balance = Number(raw);
+    if (Number.isNaN(balance)) {
+      BusinessException.throw(ErrorCode.THIRD_PARTY_ERROR, `余额接口返回无法解析: ${JSON.stringify(data).slice(0, 200)}`);
+    }
+    provider.lastBalance = balance;
+    provider.balanceCheckedAt = new Date();
+    await this.providerRepo.save(provider);
+    const threshold = provider.balanceAlertThreshold == null ? null : Number(provider.balanceAlertThreshold);
+    const alert = shouldAlertBalance(balance, threshold);
+    if (alert) {
+      this.logger.warn(`供应商余额不足: provider=${providerId} balance=${balance} threshold=${threshold}`);
+    }
+    return {
+      providerId,
+      balance,
+      checkedAt: provider.balanceCheckedAt,
+      alert,
+      threshold,
+    };
+  }
+
+  /** 嵌套路径取值（如 data.balance / data.account.credit） */
+  private pickByPath(obj: unknown, path: string): unknown {
+    return String(path)
+      .split('.')
+      .filter(Boolean)
+      .reduce<any>((acc, key) => (acc == null ? undefined : acc[key]), obj);
+  }
+
+  /** 定时轮询所有配置了 balanceUrl 的供应商（启动后每 BALANCE_CHECK_INTERVAL_MS 毫秒，默认 10 分钟） */
+  private startBalancePolling(): NodeJS.Timeout {
+    const intervalMs = Math.max(Number(process.env.BALANCE_CHECK_INTERVAL_MS) || 600000, 1000);
+    const timer = setInterval(async () => {
+      try {
+        const providers = await this.providerRepo.find({
+          where: { balanceUrl: Not('') },
+        });
+        for (const p of providers) {
+          if (!p.balanceUrl) continue;
+          try {
+            await this.checkProviderBalance(p.id);
+          } catch (e) {
+            this.logger.warn(`供应商余额检查失败 #${p.id}: ${(e as Error).message}`);
+          }
+        }
+      } catch (e) {
+        this.logger.warn(`余额轮询失败: ${(e as Error).message}`);
+      }
+    }, intervalMs);
+    timer.unref();
+    return timer;
+  }
+
   /** 供应商列表 */
   async providerList() {
     const providers = await this.providerRepo.find({
@@ -241,6 +551,13 @@ export class AdminModelService {
       connectionStatus: 'untested',
       isBuiltin: false,
       isGlobal: dto.isGlobal ?? false,
+      apiStyle: dto.apiStyle,
+      rateLimitPerMinute: dto.rateLimitPerMinute,
+      concurrencyLimit: dto.concurrencyLimit,
+      balanceUrl: dto.balanceUrl,
+      balanceHeaders: dto.balanceHeaders ?? null,
+      balanceExtra: dto.balanceExtra ?? null,
+      balanceAlertThreshold: dto.balanceAlertThreshold,
       modelCount: 0,
     });
     const saved = await this.providerRepo.save(entity);
@@ -264,6 +581,13 @@ export class AdminModelService {
     if (dto.config !== undefined) provider.config = dto.config;
     if (dto.status !== undefined) provider.status = dto.status;
     if (dto.isGlobal !== undefined) provider.isGlobal = dto.isGlobal;
+    if (dto.apiStyle !== undefined) provider.apiStyle = dto.apiStyle;
+    if (dto.rateLimitPerMinute !== undefined) provider.rateLimitPerMinute = dto.rateLimitPerMinute;
+    if (dto.concurrencyLimit !== undefined) provider.concurrencyLimit = dto.concurrencyLimit;
+    if (dto.balanceUrl !== undefined) provider.balanceUrl = dto.balanceUrl;
+    if (dto.balanceHeaders !== undefined) provider.balanceHeaders = dto.balanceHeaders;
+    if (dto.balanceExtra !== undefined) provider.balanceExtra = dto.balanceExtra;
+    if (dto.balanceAlertThreshold !== undefined) provider.balanceAlertThreshold = dto.balanceAlertThreshold;
     await this.providerRepo.save(provider);
     if (dto.isGlobal) {
       await this.clearOtherGlobal(provider.id);
@@ -546,6 +870,29 @@ export class AdminModelService {
     if (dto.providerId) entity.providerId = dto.providerId;
     if (dto.apiKey) entity.apiKey = this.encryption.encryptAes(dto.apiKey);
     if (dto.apiEndpoint) entity.apiEndpoint = dto.apiEndpoint;
+    // P2：调用模式总开关 -> 自动归类（modelType/inputTypes/能力）
+    if (dto.callMode !== undefined) {
+      const def = CALL_MODES.find((m) => m.key === dto.callMode);
+      if (!def) {
+        BusinessException.throw(ErrorCode.VALIDATION_FAILED, `未知调用模式: ${dto.callMode}`);
+      }
+      entity.callMode = dto.callMode;
+      entity.modelType = CALL_MODE_TO_MODEL_TYPE[def.key];
+      entity.inputTypes = def.inputs;
+      entity.advancedCapabilities = normalizeAdvancedCapabilities(
+        dto.advancedCapabilities ?? def.advancedCaps,
+      );
+      entity.supportsVision = def.inputs.includes('image');
+      entity.supportsFunctions = (entity.advancedCapabilities || []).includes('function_calling');
+    }
+    if (dto.scenarioTags !== undefined) entity.scenarioTags = dto.scenarioTags;
+    if (dto.pricingMode !== undefined) entity.pricingMode = dto.pricingMode;
+    if (dto.videoPerSecond !== undefined) entity.videoPerSecond = dto.videoPerSecond ?? null;
+    if (dto.specs !== undefined) entity.specs = dto.specs ?? null;
+    if (dto.iconUrl !== undefined) entity.iconUrl = dto.iconUrl;
+    if (dto.costPrice !== undefined) entity.costPrice = Number(dto.costPrice);
+    if (dto.remark !== undefined) entity.remark = dto.remark;
+    if (dto.pricePerMinute !== undefined) entity.pricePerMinute = Number(dto.pricePerMinute);
   }
 
   /** 将 DTO 应用到已有实体（仅更新传入字段） */
@@ -597,6 +944,29 @@ export class AdminModelService {
     if (dto.apiKey) entity.apiKey = this.encryption.encryptAes(dto.apiKey);
     if (dto.apiEndpoint !== undefined) entity.apiEndpoint = dto.apiEndpoint;
     if (dto.minUserLevel !== undefined) entity.minUserLevel = dto.minUserLevel;
+    // P2：调用模式切换 -> 重新自动归类（未显式传能力时按新模式默认能力）
+    if (dto.callMode !== undefined) {
+      const def = CALL_MODES.find((m) => m.key === dto.callMode);
+      if (!def) {
+        BusinessException.throw(ErrorCode.VALIDATION_FAILED, `未知调用模式: ${dto.callMode}`);
+      }
+      entity.callMode = dto.callMode;
+      entity.modelType = CALL_MODE_TO_MODEL_TYPE[def.key];
+      entity.inputTypes = def.inputs;
+      entity.supportsVision = def.inputs.includes('image');
+      if (dto.advancedCapabilities === undefined) {
+        entity.advancedCapabilities = normalizeAdvancedCapabilities(def.advancedCaps);
+        entity.supportsFunctions = (entity.advancedCapabilities || []).includes('function_calling');
+      }
+    }
+    if (dto.scenarioTags !== undefined) entity.scenarioTags = dto.scenarioTags;
+    if (dto.pricingMode !== undefined) entity.pricingMode = dto.pricingMode;
+    if (dto.videoPerSecond !== undefined) entity.videoPerSecond = dto.videoPerSecond ?? null;
+    if (dto.specs !== undefined) entity.specs = dto.specs ?? null;
+    if (dto.iconUrl !== undefined) entity.iconUrl = dto.iconUrl;
+    if (dto.costPrice !== undefined) entity.costPrice = Number(dto.costPrice);
+    if (dto.remark !== undefined) entity.remark = dto.remark;
+    if (dto.pricePerMinute !== undefined) entity.pricePerMinute = Number(dto.pricePerMinute);
   }
 
   /** 实体 -> 管理端契约视图对象 */
@@ -640,6 +1010,15 @@ export class AdminModelService {
       generationParams: m.generationParams ?? {},
       sortOrder: m.sortOrder ?? 0,
       pricePerCall: m.pricePerCall ?? null,
+      callMode: m.callMode ?? callModeFromModelType(m.modelType),
+      scenarioTags: m.scenarioTags ?? [],
+      pricingMode: m.pricingMode ?? null,
+      videoPerSecond: m.videoPerSecond ?? null,
+      specs: m.specs ?? null,
+      iconUrl: m.iconUrl ?? null,
+      costPrice: m.costPrice ?? null,
+      remark: m.remark ?? null,
+      pricePerMinute: m.pricePerMinute ?? null,
       displayName: m.name,
       apiKeyMasked: m.apiKey ? this.encryption.maskKey(m.apiKey) : undefined,
       apiEndpoint: m.apiEndpoint,
@@ -675,6 +1054,15 @@ export class AdminModelService {
       lastTestedAt: p.lastTestedAt,
       isBuiltin: p.isBuiltin,
       isGlobal: Boolean(p.isGlobal),
+      apiStyle: p.apiStyle,
+      rateLimitPerMinute: p.rateLimitPerMinute,
+      concurrencyLimit: p.concurrencyLimit,
+      balanceUrl: p.balanceUrl,
+      balanceHeaders: p.balanceHeaders ?? null,
+      balanceExtra: p.balanceExtra ?? null,
+      lastBalance: p.lastBalance,
+      balanceCheckedAt: p.balanceCheckedAt,
+      balanceAlertThreshold: p.balanceAlertThreshold,
       modelCount: p.modelCount ?? 0,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
@@ -735,6 +1123,74 @@ export class AdminModelService {
       return parseFloat((upstreamPrice * 100 + add).toFixed(4));
     }
     return type === 'input' ? (dto.flatInputPrice ?? 0) : (dto.flatOutputPrice ?? 0);
+  }
+
+  /** 通用上游 JSON 调用（POST，按调用模式路由） */
+  private async callUpstreamRaw(
+    url: string,
+    apiKey: string,
+    body: Record<string, unknown>,
+  ): Promise<any> {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15000),
+    });
+    const text = await resp.text();
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status} (${url}): ${text.slice(0, 200)}`);
+    }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
+  }
+
+  /** 按调用模式构建测试请求体 */
+  private buildTestBody(
+    callMode: string,
+    model: string,
+    input: string,
+  ): Record<string, unknown> {
+    switch (callMode) {
+      case 'text_chat':
+      case 'vision':
+        return { model, messages: [{ role: 'user', content: input || 'Hello' }], max_tokens: 50 };
+      case 'embedding':
+        return { model, input: [input || 'Hello'] };
+      case 'rerank':
+        return { model, query: input || 'Hello', documents: [input || 'Hello'] };
+      case 'ocr':
+        return { model, fileUrl: input };
+      case 'stt':
+        return { model, audioUrl: input };
+      case 'tts':
+        return { model, input: input || '你好' };
+      case 'voice_conversion':
+        return { model, audioUrl: input };
+      case 'music':
+        return { model, prompt: input || 'lofi piano', duration: 30 };
+      case 'image':
+      case 'image_edit':
+        return { model, prompt: input, size: '1024x1024' };
+      default:
+        BusinessException.throw(ErrorCode.VALIDATION_FAILED, `未知调用模式: ${callMode}`);
+    }
+  }
+
+  /** 按调用模式格式化测试输出 */
+  private formatTestOutput(callMode: string, out: any): string {
+    if (callMode === 'image' || callMode === 'image_edit') {
+      return JSON.stringify(out);
+    }
+    if (typeof out?.text === 'string') return out.text;
+    if (typeof out?.choices?.[0]?.message?.content === 'string') {
+      return out.choices[0].message.content;
+    }
+    if (typeof out?.url === 'string') return out.url;
+    return JSON.stringify(out);
   }
 
   /** 调用模型 API 发起 chat/completions 测试请求 */

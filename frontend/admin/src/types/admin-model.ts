@@ -84,6 +84,24 @@ export interface AdminModelItem {
   lastSyncedAt?: string
   createdAt: string
   updatedAt: string
+  /** P2：调用模式（14 种字典 key） */
+  callMode?: CallModeKey
+  /** P2：场景标签（固定字典多选） */
+  scenarioTags?: string[]
+  /** P2：计费方式 token/per_image/per_call/per_minute/per_second */
+  pricingMode?: string | null
+  /** P2：视频分辨率档 × 积分/秒 */
+  videoPerSecond?: Record<string, number> | null
+  /** P2：动态规格字段值 */
+  specs?: Record<string, unknown> | null
+  /** P2：模型图标 URL */
+  iconUrl?: string | null
+  /** P2：成本价（元） */
+  costPrice?: number | null
+  /** P2：管理员备注 */
+  remark?: string | null
+  /** P2：按分钟计费积分 */
+  pricePerMinute?: number | null
 }
 
 /** 模型查询参数 */
@@ -114,6 +132,24 @@ export interface AdminProviderItem {
   isBuiltin: boolean
   /** 是否全局中转（全站唯一，优先用于所有模型的 BaseURL+Key） */
   isGlobal?: boolean
+  /** API 风格：openai_compatible / dashscope_native / anthropic / custom */
+  apiStyle?: string
+  /** 每分钟限流（0 = 不限制） */
+  rateLimitPerMinute?: number
+  /** 并发限制（0 = 不限制） */
+  concurrencyLimit?: number
+  /** 余额查询 URL（空字符串表示关闭余额监控） */
+  balanceUrl?: string
+  /** 余额查询请求头（JSON） */
+  balanceHeaders?: Record<string, unknown> | null
+  /** 余额查询附加参数（JSON） */
+  balanceExtra?: Record<string, unknown> | null
+  /** 最近一次余额（积分） */
+  lastBalance?: number
+  /** 最近一次余额检查时间 */
+  balanceCheckedAt?: string
+  /** 余额告警阈值（积分） */
+  balanceAlertThreshold?: number
   modelCount: number
   createdAt: string
   updatedAt: string
@@ -252,7 +288,104 @@ export interface UpdateAdminModelDto {
   pricePerCall?: number | null
   videoPrices?: Record<string, Record<string, number>>
   generationParams?: Record<string, unknown>
+  callMode?: CallModeKey
+  scenarioTags?: string[]
+  pricingMode?: string
+  videoPerSecond?: Record<string, number>
+  specs?: Record<string, unknown>
+  iconUrl?: string
+  costPrice?: number
+  remark?: string
+  pricePerMinute?: number
 }
 
 /** 复用通用分页结果 */
 export type { AdminPaginatedResult }
+
+// ===== P2：调用模式元数据（与后端 call-modes 字典同步） =====
+
+/** 调用模式 key（14 种字典 key，与后端 call-modes 字典同步） */
+export type CallModeKey = 'text_chat' | 'embedding' | 'rerank' | 'vision' | 'ocr' | 'image' | 'image_edit' | 'video' | 'video_edit' | 'music' | 'stt' | 'tts' | 'voice_conversion' | 'realtime'
+
+/** 计费方式 key（与后端计费字典同步） */
+export type BillingMode = 'token' | 'per_image' | 'per_call' | 'per_minute' | 'per_second'
+
+/** 调用模式定义（后端 GET /admin/models/call-modes 下发） */
+export interface CallModeDef {
+  key: CallModeKey
+  label: string
+  group: 'text' | 'multimodal' | 'generation' | 'voice'
+  apiPath: string
+  sync: boolean
+  async: boolean
+  streaming: boolean
+  output: ModelOutputType
+  inputs: ModelInputType[]
+  billingModes: BillingMode[]
+  recommendedBilling: BillingMode
+  specFields: string[]
+  advancedCaps: string[]
+  recommendedScenarioTags: string[]
+}
+
+/** 动态规格字段 schema */
+export interface SpecFieldSchema {
+  label: string
+  type: 'number' | 'text' | 'select' | 'multiselect' | 'json' | 'boolean'
+  options?: string[]
+  default?: unknown
+  placeholder?: string
+  min?: number
+  max?: number
+}
+
+/** 动态表单元数据（一次拉取，缓存到页面状态） */
+export interface CallModesMeta {
+  callModes: CallModeDef[]
+  specFieldSchemas: Record<string, SpecFieldSchema>
+  advancedCapLabels: Record<string, string>
+  scenarioTags: string[]
+}
+
+/** 模型模板参考价格（与后端 ReferencePrice 对齐） */
+export interface ModelTemplateReferencePrice {
+  inputPricePerToken?: number
+  outputPricePerToken?: number
+  pricePerImage?: number
+  pricePerCall?: number
+  pricePerMinute?: number
+  videoPerSecond?: Record<string, number>
+}
+
+/** 模型配置模板 */
+export interface ModelTemplateItem {
+  key: string
+  name: string
+  callMode: CallModeKey
+  description: string
+  specValues: Record<string, unknown>
+  generationParams: Record<string, unknown>
+  recommendedScenarioTags: string[]
+  referencePrice?: ModelTemplateReferencePrice
+}
+
+/** 供应商余额检查结果 */
+export interface ProviderBalanceResult {
+  providerId: number
+  balance: number
+  checkedAt: string
+  alert: boolean
+  threshold: number | null
+}
+
+/** 批量上架/改价结果 */
+export interface BatchUpdateResult {
+  updated: number
+}
+
+/** 批量导入配置 JSON 结果 */
+export interface ImportModelsJsonResult {
+  imported: number
+  updated: number
+  errors: Array<{ index: number; error: string }>
+}

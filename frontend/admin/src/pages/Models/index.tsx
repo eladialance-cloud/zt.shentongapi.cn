@@ -46,16 +46,28 @@ import {
   testAdminProvider,
   testModel,
   updateAdminModel,
-  updateAdminProvider
+  updateAdminProvider,
+  fetchCallModesMeta,
+  listModelTemplates,
+  createModelFromTemplate
 } from '@/api/admin-model-api'
 import ProviderImportModal from './ProviderImportModal'
+import CallModePicker from './components/CallModePicker'
+import DynamicSpecForm from './components/DynamicSpecForm'
+import ScenarioTagPicker from './components/ScenarioTagPicker'
+import PricingConfigForm from './components/PricingConfigForm'
+import TemplatePickerModal from './components/TemplatePickerModal'
+import BatchBar from './components/BatchBar'
 import VideoPriceMatrixEditor from '@/components/VideoPriceMatrixEditor'
 import type {
   AdminModelItem,
   AdminProviderItem,
   ConnectionStatus,
   UpdateAdminModelDto,
-  UpdateProviderDto
+  UpdateProviderDto,
+  CallModeKey,
+  CallModesMeta,
+  ModelTemplateItem
 } from '@/types/admin-model'
 import {
   ADVANCED_CAP_LABEL,
@@ -131,6 +143,14 @@ interface ModelFormValues {
   ttsSpeed?: number
   ttsVolume?: number
   ttsFormat?: string
+  callMode?: string
+  scenarioTags?: string[]
+  specs?: Record<string, unknown>
+  videoPerSecondList?: Array<{ resolution: string; rate: number }>
+  remark?: string
+  costPrice?: number
+  pricingMode?: string
+  pricePerMinute?: number
 }
 
 export default function AdminModels() {
@@ -158,6 +178,15 @@ export default function AdminModels() {
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<AdminModelItem | null>(null)
   const [form] = Form.useForm<ModelFormValues>()
+  const [meta, setMeta] = useState<CallModesMeta>()
+  const [templates, setTemplates] = useState<ModelTemplateItem[]>([])
+  const [templateOpen, setTemplateOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const callMode = Form.useWatch('callMode', form)
+  const callModeDef = useMemo(
+    () => meta?.callModes.find((m) => m.key === callMode),
+    [meta, callMode]
+  )
   const outputType = Form.useWatch('outputType', form)
   const inputTypes = Form.useWatch('inputTypes', form)
   // 输出类型 × 输入类型 -> 路由分类（自动归类）
@@ -209,6 +238,11 @@ export default function AdminModels() {
     void loadProviders()
   }, [loadProviders])
 
+  useEffect(() => {
+    fetchCallModesMeta().then(setMeta).catch(() => undefined)
+    listModelTemplates().then(setTemplates).catch(() => undefined)
+  }, [])
+
   const handleReset = () => {
     setProviderFilter('')
     setTypeFilter('')
@@ -222,6 +256,22 @@ export default function AdminModels() {
   const openEdit = (item: AdminModelItem) => {
     setEditing(item)
     const gen = item.generationParams || {}
+    const specSchemas = meta?.specFieldSchemas ?? {}
+    const specsBackfill: Record<string, unknown> = {}
+    if (item.specs && typeof item.specs === 'object') {
+      for (const [k, v] of Object.entries(item.specs)) {
+        specsBackfill[k] =
+          specSchemas[k]?.type === 'json' && typeof v !== 'string' ? JSON.stringify(v) : v
+      }
+    }
+    let videoPerSecondList: Array<{ resolution: string; rate: number }> | undefined
+    if (item.videoPerSecond && typeof item.videoPerSecond === 'object') {
+      videoPerSecondList = Object.entries(item.videoPerSecond).map(([resolution, rate]) => ({
+        resolution,
+        rate
+      }))
+    }
+    const editCallModeDef = meta?.callModes.find((m) => m.key === item.callMode)
     form.setFieldsValue({
       displayName: item.displayName,
       outputType: item.outputType ?? outputTypeFromModelType(item.modelType),
@@ -246,8 +296,16 @@ export default function AdminModels() {
       ttsSpeed: typeof gen.speed === 'number' ? gen.speed : undefined,
       ttsVolume: typeof gen.volume === 'number' ? gen.volume : undefined,
       ttsFormat: typeof gen.format === 'string' ? gen.format : undefined,
-      generationParamsText: Object.keys(gen).length ? JSON.stringify(gen, null, 2) : undefined
+      generationParamsText: Object.keys(gen).length ? JSON.stringify(gen, null, 2) : undefined,
+      callMode: item.callMode ?? 'text_chat',
+      scenarioTags: item.scenarioTags ?? [],
+      videoPerSecondList,
+      remark: item.remark ?? undefined,
+      costPrice: item.costPrice ?? undefined,
+      pricingMode: item.pricingMode ?? editCallModeDef?.recommendedBilling,
+      pricePerMinute: item.pricePerMinute ?? undefined
     })
+    form.setFieldValue('specs', specsBackfill ?? {})
     setEditOpen(true)
   }
 
@@ -255,28 +313,53 @@ export default function AdminModels() {
     try {
       const values = await form.validateFields()
       if (!editing) return
+      // meta 未加载时 specFields 为空，会把全部 specs 过滤清空，先拦截
+      if (!meta) {
+        message.warning('模型配置元数据加载中，请稍后再试')
+        return
+      }
       setSaving(true)
-      // 输出类型 × 输入类型 -> 路由分类（后端同样推导，此处用于专属计费字段显隐）
+      // 输出类型 × 输入类型 -> 路由分类（后端同样推导，仅作为无 pricingMode 时的 legacy 兜底）
       const mt = deriveModelType(values.outputType, values.inputTypes)
       const dto: UpdateAdminModelDto = {
         displayName: values.displayName,
         outputType: values.outputType,
         inputTypes: values.inputTypes,
         advancedCapabilities: values.advancedCapabilities ?? [],
-        inputPricePerToken: values.inputPricePerToken ?? 0,
-        outputPricePerToken: values.outputPricePerToken ?? 0,
         enabled: values.enabled,
         sortOrder: values.sortOrder ?? 0
       }
-      // 分类专属计费字段
+      // 计费字段组装：
+      // 1) mt 专属旧字段按 mt 无条件保留（legacy 兼容：旧版矩阵/单价不因新 pricingMode 分支丢失）
+      // 2) pricingMode 只决定新计费字段（pricePerImage/pricePerCall/pricePerMinute/videoPerSecond/token 单价）的写入
+      const pricingMode = values.pricingMode
+      // 1) mt 专属旧字段（chat/vision -> token 单价；image/image_edit -> pricePerImage；video -> videoPrices；tts -> pricePerCall）
+      if (mt === 'chat' || mt === 'vision') {
+        if (values.inputPricePerToken != null) dto.inputPricePerToken = values.inputPricePerToken
+        if (values.outputPricePerToken != null) dto.outputPricePerToken = values.outputPricePerToken
+      }
       if (mt === 'image' || mt === 'image_edit') {
         if (values.pricePerImage != null) dto.pricePerImage = values.pricePerImage
       }
       if (mt === 'video') {
-        dto.videoPrices = values.videoPrices
+        if (values.videoPrices != null) dto.videoPrices = values.videoPrices
       }
       if (mt === 'tts') {
         if (values.pricePerCall != null) dto.pricePerCall = values.pricePerCall
+      }
+      // 2) 新 pricingMode 字段：只写当前模式对应的字段（videoPerSecond 由下方 videoPerSecondList 转换写入）
+      if (pricingMode === 'per_image') {
+        if (values.pricePerImage != null) dto.pricePerImage = values.pricePerImage
+      } else if (pricingMode === 'per_call') {
+        if (values.pricePerCall != null) dto.pricePerCall = values.pricePerCall
+      } else if (pricingMode === 'per_minute') {
+        if (values.pricePerMinute != null) dto.pricePerMinute = values.pricePerMinute
+      } else if (pricingMode === 'per_second') {
+        // 无其他新字段
+      } else {
+        // token / 无 pricingMode（旧数据）：token 单价（原值，不写 0 强转）
+        if (values.inputPricePerToken != null) dto.inputPricePerToken = values.inputPricePerToken
+        if (values.outputPricePerToken != null) dto.outputPricePerToken = values.outputPricePerToken
       }
       // 分类专属生成参数（动态字段覆盖 JSON 中同名 key）
       const managedKeys = [
@@ -321,6 +404,39 @@ export default function AdminModels() {
         if (values.ttsFormat) gen.format = values.ttsFormat.trim()
       }
       if (Object.keys(gen).length > 0) dto.generationParams = gen
+      // P2：调用模式 / 场景标签 / 计费 / 成本价 / 备注 合并进 dto
+      if (values.callMode) dto.callMode = values.callMode as CallModeKey
+      if (values.scenarioTags && values.scenarioTags.length) dto.scenarioTags = values.scenarioTags
+      if (values.pricingMode) dto.pricingMode = values.pricingMode
+      if (values.costPrice != null) dto.costPrice = values.costPrice
+      if (values.remark != null) dto.remark = values.remark
+      if (values.pricePerMinute != null) dto.pricePerMinute = values.pricePerMinute
+      // 动态规格：仅保留当前调用模式的 specFields，json 类型值解析为对象
+      if (values.specs) {
+        const specKeys = callModeDef?.specFields ?? []
+        const specs = { ...values.specs }
+        for (const k of Object.keys(specs)) {
+          if (!specKeys.includes(k)) delete specs[k]
+        }
+        for (const f of specKeys) {
+          const schema = meta?.specFieldSchemas[f]
+          if (schema?.type === 'json' && typeof specs[f] === 'string') {
+            try {
+              specs[f] = JSON.parse(specs[f] as string)
+            } catch {
+              message.error('规格字段「' + schema.label + '」JSON 格式错误')
+              return
+            }
+          }
+        }
+        dto.specs = specs
+      }
+      // 视频按秒计费：videoPerSecondList -> videoPerSecond（dto 显式构造，不含 list 字段）
+      if (values.videoPerSecondList && values.videoPerSecondList.length) {
+        dto.videoPerSecond = Object.fromEntries(
+          values.videoPerSecondList.map((row) => [row.resolution, row.rate])
+        )
+      }
       await updateAdminModel(editing.id, dto)
       message.success('模型已更新')
       setEditOpen(false)
@@ -751,7 +867,23 @@ export default function AdminModels() {
           >
             添加第三方供应商
           </Button>
+          <Button onClick={() => setTemplateOpen(true)}>从模板创建</Button>
         </Space>
+        <TemplatePickerModal
+          open={templateOpen}
+          templates={templates}
+          onCancel={() => setTemplateOpen(false)}
+          onPick={async (tpl) => {
+            setTemplateOpen(false)
+            try {
+              await createModelFromTemplate({ templateKey: tpl.key })
+              message.success('已从模板创建 ' + tpl.name + '（默认下架，请在列表中编辑定价后上架）')
+              void loadList()
+            } catch (err) {
+              message.error((err as Error)?.message || '从模板创建失败')
+            }
+          }}
+        />
       </div>
 
       <div className={styles.toolbar}>
@@ -797,6 +929,8 @@ export default function AdminModels() {
         </Button>
       </div>
 
+      <BatchBar selectedIds={selectedIds} onChanged={loadList} />
+
       <Spin spinning={loading}>
         {items.length === 0 && !loading ? (
           <Empty
@@ -812,6 +946,10 @@ export default function AdminModels() {
               pagination={false}
               size="middle"
               scroll={{ x: 1500 }}
+              rowSelection={{
+                selectedRowKeys: selectedIds,
+                onChange: (keys) => setSelectedIds(keys as number[])
+              }}
             />
           </div>
         )}
@@ -871,6 +1009,46 @@ export default function AdminModels() {
             <Tag color={MODEL_TYPE_COLOR[derivedType] || 'default'}>
               {MODEL_TYPE_LABEL[derivedType] || derivedType || '文本对话'}
             </Tag>
+          </Form.Item>
+          <Form.Item name="callMode" label="调用模式（14 种总开关）" initialValue="text_chat">
+            <CallModePicker
+              callModes={meta?.callModes ?? []}
+              onChange={(key) => {
+                const def = meta?.callModes.find((m) => m.key === key)
+                form.setFieldsValue({ pricingMode: def?.recommendedBilling })
+                for (const name of [
+                  'inputPricePerToken',
+                  'outputPricePerToken',
+                  'pricePerImage',
+                  'pricePerCall',
+                  'pricePerMinute'
+                ]) {
+                  form.setFieldValue(name, undefined)
+                }
+              }}
+            />
+          </Form.Item>
+          {callModeDef && (
+            <Form.Item label="自动归类">
+              <span>
+                {callModeDef.label} → 输出 {callModeDef.output} / 输入 {callModeDef.inputs.join('+')}
+              </span>
+            </Form.Item>
+          )}
+          {callModeDef && (
+            <Form.Item label="动态规格">
+              <DynamicSpecForm specFields={callModeDef.specFields} schemas={meta?.specFieldSchemas ?? {}} />
+            </Form.Item>
+          )}
+          <Form.Item name="scenarioTags" label="场景标签（第一个作为展示标签）" initialValue={[]}>
+            <ScenarioTagPicker
+              scenarioTags={meta?.scenarioTags ?? []}
+              displayName={form.getFieldValue('displayName')}
+              priceText={callModeDef?.recommendedBilling}
+            />
+          </Form.Item>
+          <Form.Item label="计费配置" style={{ marginBottom: 0 }}>
+            <PricingConfigForm def={callModeDef} />
           </Form.Item>
           <Form.Item name="sortOrder" label="排序权重" extra="越小越靠前（用户端默认模型与下拉排序）">
             <InputNumber min={0} step={1} style={{ width: '100%' }} placeholder="如 0" />
@@ -948,6 +1126,9 @@ export default function AdminModels() {
           )}
           <Form.Item name="enabled" label="上架" valuePropName="checked">
             <Switch checkedChildren="上架" unCheckedChildren="下架" />
+          </Form.Item>
+          <Form.Item name="remark" label="备注（用户不可见）">
+            <Input.TextArea rows={2} />
           </Form.Item>
         </Form>
       </Modal>

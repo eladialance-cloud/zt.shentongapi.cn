@@ -1,10 +1,13 @@
 import {
   IsBoolean,
+  IsInt,
   IsNotEmpty,
+  IsNumber,
   IsObject,
   IsOptional,
   IsString,
   MaxLength,
+  Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -42,4 +45,44 @@ export class CreateProviderDto {
   @IsOptional()
   @IsBoolean()
   isGlobal?: boolean;
+
+  @ApiPropertyOptional({ description: 'API 风格：openai_compatible / dashscope_native / anthropic / custom' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  apiStyle?: string;
+
+  @ApiPropertyOptional({ description: '每分钟限流（0 = 不限制）' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  rateLimitPerMinute?: number;
+
+  @ApiPropertyOptional({ description: '并发限制（0 = 不限制）' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  concurrencyLimit?: number;
+
+  @ApiPropertyOptional({ description: '余额查询 URL（空字符串表示关闭余额监控）' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  balanceUrl?: string;
+
+  @ApiPropertyOptional({ description: '余额查询请求头（JSON，可含鉴权头）' })
+  @IsOptional()
+  @IsObject()
+  balanceHeaders?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ description: '余额查询附加参数（balancePath / body 等）' })
+  @IsOptional()
+  @IsObject()
+  balanceExtra?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ description: '余额告警阈值（积分，低于该值告警）' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  balanceAlertThreshold?: number;
 }

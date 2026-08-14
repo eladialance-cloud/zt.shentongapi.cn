@@ -127,3 +127,39 @@ describe('LlmClientService 工具调用透传', () => {
     assert.equal(toolCallsDone, 0);
   });
 });
+
+describe('LlmClientService extraBody 合并', () => {
+  it('extraBody 字段合并进上游请求体（不覆盖既有字段）', async () => {
+    let capturedBody = '';
+    const base = await startSseMock((body, res) => {
+      capturedBody = body;
+      res.write('data: {"choices":[{"delta":{"content":"ok"}}]}\n\n');
+      res.write('data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\n');
+      res.write('data: [DONE]\n\n');
+      res.end();
+    });
+    const svc = new LlmClientService();
+    const callbacks: StreamChatCallbacks = {
+      onMessage: () => {},
+      onDone: async () => {},
+      onError: async () => {},
+    };
+    await svc.streamChat(
+      {
+        model: 'test-model',
+        apiKey: 'sk-test',
+        endpoint: base,
+        systemPrompt: '',
+        messages: [{ role: 'user', content: 'hi' }],
+        extraBody: { files: ['file-fe-1'], target_lang: 'zh', stream: false, model: 'evil', messages: [{ role: 'user', content: 'overwrite' }] },
+      },
+      callbacks,
+    );
+    const parsed = JSON.parse(capturedBody);
+    assert.deepEqual(parsed.files, ['file-fe-1']);
+    assert.equal(parsed.target_lang, 'zh');
+    assert.equal(parsed.model, 'test-model'); // 基础字段优先
+    assert.equal(parsed.stream, true);        // 基础字段优先
+    assert.deepEqual(parsed.messages, [{ role: 'system', content: '' }, { role: 'user', content: 'hi' }]); // 未被覆盖
+  });
+});
