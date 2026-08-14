@@ -1,4 +1,4 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
@@ -30,4 +30,9 @@ export class TestProviderDto {
   @IsString()
   @MaxLength(128)
   model?: string;
+
+  @ApiPropertyOptional({ description: '高级配置 JSON（chatPath / modelsPath 等；未保存供应商直测时可用）' })
+  @IsOptional()
+  @IsObject()
+  config?: Record<string, unknown>;
 }

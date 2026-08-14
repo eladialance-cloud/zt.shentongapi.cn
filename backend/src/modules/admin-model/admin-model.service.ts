@@ -38,7 +38,7 @@ import { shouldAlertBalance } from './utils/balance-utils';
 import { CALL_MODES, CALL_MODE_TO_MODEL_TYPE, SCENARIO_TAGS } from './constants/call-modes';
 import { SPEC_FIELD_SCHEMAS, ADVANCED_CAP_LABELS } from './constants/form-meta';
 import { MODEL_TEMPLATES } from './constants/model-templates';
-import { GenerationClientService, GenerationAdapterConfig } from '../media-generation/generation-client.service';
+import { GenerationClientService, GenerationAdapterConfig, mergeGenerationAdapter } from '../media-generation/generation-client.service';
 
 /** 模型查询参数 */
 interface ModelQuery {
@@ -225,7 +225,10 @@ export class AdminModelService implements OnModuleInit {
     try {
       let response: string | Record<string, unknown>;
       if (callMode === 'video' || callMode === 'video_edit') {
-        const adapter = (provider?.config?.generation ?? {}) as GenerationAdapterConfig;
+        const adapter = mergeGenerationAdapter(
+          (provider?.config?.generation ?? {}) as GenerationAdapterConfig,
+          model.generationParams ?? {},
+        );
         const { taskId } = await this.generationClient.submitVideo({
           endpoint,
           apiKey,
@@ -235,10 +238,35 @@ export class AdminModelService implements OnModuleInit {
           duration: 5,
         });
         response = { taskId, message: `视频任务已提交（异步），taskId=${taskId}` };
+      } else if (callMode === 'image' || callMode === 'image_edit') {
+        const adapter = mergeGenerationAdapter(
+          (provider?.config?.generation ?? {}) as GenerationAdapterConfig,
+          model.generationParams ?? {},
+        );
+        if (adapter.imagesPath || adapter.requestTemplate) {
+          // 配置了生成适配（如 DashScope 原生图片端点）→ 走与运行时一致的 generateImage
+          const result = await this.generationClient.generateImage({
+            endpoint,
+            apiKey,
+            adapter,
+            model: upstreamModelId,
+            prompt: dto.input,
+            size: '1024x1024',
+          });
+          response = JSON.stringify(result);
+        } else {
+          const body = this.buildTestBody(callMode, upstreamModelId, dto.input);
+          const out = await this.callUpstreamRaw(
+            this.buildApiUrl(endpoint, def.apiPath),
+            apiKey,
+            body,
+          );
+          response = this.formatTestOutput(callMode, out);
+        }
       } else {
         const body = this.buildTestBody(callMode, upstreamModelId, dto.input);
         const out = await this.callUpstreamRaw(
-          this.normalizeEndpoint(endpoint) + def.apiPath,
+          this.buildApiUrl(endpoint, def.apiPath),
           apiKey,
           body,
         );
@@ -628,16 +656,19 @@ export class AdminModelService implements OnModuleInit {
     }
     try {
       const model = dto.model?.trim() || 'gpt-3.5-turbo';
+      const config: Record<string, unknown> | null = provider?.config ?? dto.config ?? null;
       let response: string;
       try {
-        response = await this.callModelApi(baseUrl, apiKey, model, 'ping');
+        response = await this.callModelApi(baseUrl, apiKey, model, 'ping', config);
       } catch (chatErr: any) {
-        // 部分供应商不支持默认测试模型 gpt-3.5-turbo（如 DeepSeek 仅支持 deepseek-*），
-        // 此时连接本身有效：回退 GET /v1/models 验证 URL + Key
-        if (!this.isModelUnsupportedError(chatErr)) throw chatErr;
-        const list = await this.fetchModelList(baseUrl, apiKey, undefined);
+        // chat 探测失败但连接本身可能有效：
+        // 1) 供应商不支持默认测试模型 gpt-3.5-turbo（如 DeepSeek 仅支持 deepseek-*）
+        // 2) 端点无 chat 能力（如 DashScope 原生媒体端点，报 No static resource）
+        // 此时回退 GET 模型列表验证 URL + Key（config.modelsPath / config.chatPath 可覆盖默认路径）
+        if (!this.isChatProbeFallbackable(chatErr)) throw chatErr;
+        const list = await this.fetchModelList(baseUrl, apiKey, config ?? undefined);
         const listData = Array.isArray(list) ? list : (list?.data ?? []);
-        response = `连接成功（chat 测试模型 ${model} 不受当前供应商支持，已通过模型列表验证 ${listData.length} 个模型）`;
+        response = `连接成功（chat 测试模型 ${model} 不受当前端点支持，已通过模型列表验证 ${listData.length} 个模型）`;
       }
       if (provider) {
         provider.connectionStatus = 'connected';
@@ -1194,8 +1225,18 @@ export class AdminModelService implements OnModuleInit {
   }
 
   /** 调用模型 API 发起 chat/completions 测试请求 */
-  private async callModelApi(endpoint: string, apiKey: string, modelId: string, input: string): Promise<string> {
-    const url = this.normalizeEndpoint(endpoint) + '/chat/completions';
+  private async callModelApi(
+    endpoint: string,
+    apiKey: string,
+    modelId: string,
+    input: string,
+    config?: Record<string, unknown> | null,
+  ): Promise<string> {
+    const chatPath =
+      typeof config?.chatPath === 'string' && config.chatPath.trim()
+        ? config.chatPath.trim()
+        : '/chat/completions';
+    const url = this.buildApiUrl(endpoint, chatPath);
     const body = JSON.stringify({
       model: modelId,
       messages: [{ role: 'user', content: input || 'Hello' }],
@@ -1220,9 +1261,8 @@ export class AdminModelService implements OnModuleInit {
 
   /** 拉取模型列表 (GET /models) */
   private async fetchModelList(endpoint: string, apiKey: string, config?: Record<string, unknown> | null): Promise<any> {
-    const base = this.normalizeEndpoint(endpoint);
     const modelsPath = (config?.modelsPath as string) || '/models';
-    const url = modelsPath.startsWith('http') ? modelsPath : base + modelsPath;
+    const url = this.buildApiUrl(endpoint, modelsPath);
     const headers: Record<string, string> = { Authorization: `Bearer ${apiKey}` };
     if (config?.headers && typeof config.headers === 'object') {
       Object.assign(headers, config.headers as Record<string, string>);
@@ -1238,15 +1278,35 @@ export class AdminModelService implements OnModuleInit {
     return resp.json();
   }
 
-  /** 判断错误是否为「模型名不受支持」（连接有效，仅测试模型名无效） */
-  private isModelUnsupportedError(err: unknown): boolean {
+  /** 判断 chat 探测失败是否可回退到模型列表验证（连接本身可能有效） */
+  private isChatProbeFallbackable(err: unknown): boolean {
     const msg = String((err as Error)?.message || err || '').toLowerCase();
-    if (!/http (400|404|422)[:\s]/.test(msg)) return false;
-    return /model/.test(msg);
+    if (!/http (400|401|403|404|405|422)[:\s]/.test(msg)) return false;
+    if (/model/.test(msg)) return true;
+    return (
+      /no static resource|resource not found|path not found|not found|不存在|无效路径/.test(msg) ||
+      /no such (path|endpoint|url)|invalid (path|endpoint|url)/.test(msg) ||
+      /\b404\b/.test(msg)
+    );
   }
 
-  /** 保证端点以 /v1 结尾 */
-  private normalizeEndpoint(endpoint: string): string {
-    return endpoint.replace(/\/v1\/?$/, '').replace(/\/+$/, '') + '/v1';
+  /** 拼接上游 API URL：
+   * - path 为完整 http(s) URL 时直接使用
+   * - endpoint 为裸域名（无业务路径）且不以 /vN 结尾时补 /v1（OpenAI 兼容）
+   * - 其余（如 DashScope /api/v1/services/... 原生端点）原样保留，不强制拼 /v1
+   */
+  private buildApiUrl(endpoint: string, path: string): string {
+    if (/^https?:\/\//i.test(path)) return path;
+    const base = endpoint.replace(/\/+$/, '');
+    try {
+      const u = new URL(base);
+      const bare = !u.pathname || u.pathname === '/' || u.pathname === '';
+      if (bare && !/\/v\d+$/i.test(base)) {
+        return `${base}/v1${path.startsWith('/') ? '' : '/'}${path}`;
+      }
+    } catch {
+      /* 非 URL 原样拼接 */
+    }
+    return `${base}${path.startsWith('/') ? '' : '/'}${path}`;
   }
 }

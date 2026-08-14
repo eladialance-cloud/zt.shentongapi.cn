@@ -682,7 +682,9 @@ export default function AdminModels() {
       baseUrl: p.baseUrl,
       status: p.status,
       isGlobal: p.isGlobal === true,
-      generationTemplate: p.config?.generation ? JSON.stringify(p.config.generation, null, 2) : undefined
+      generationTemplate: p.config?.generation ? JSON.stringify(p.config.generation, null, 2) : undefined,
+      chatPath: p.config?.chatPath ? String(p.config.chatPath) : undefined,
+      modelsPath: p.config?.modelsPath ? String(p.config.modelsPath) : undefined
     })
   }
 
@@ -707,12 +709,14 @@ export default function AdminModels() {
         isGlobal: values.isGlobal === true
       }
       if (values.apiKey && String(values.apiKey).trim()) dto.apiKey = String(values.apiKey).trim()
-      if (templateText) {
-        dto.config = { ...(editProvider.config || {}), generation: JSON.parse(templateText) }
-      } else if (editProvider.config?.generation) {
-        const { generation: _removed, ...restConfig } = editProvider.config
-        dto.config = restConfig
-      }
+      const chatPath = values.chatPath != null ? String(values.chatPath).trim() : ''
+      const modelsPath = values.modelsPath != null ? String(values.modelsPath).trim() : ''
+      const { generation: _removed, chatPath: _oldChat, modelsPath: _oldModels, ...restConfig } = editProvider.config || {}
+      const nextConfig: Record<string, unknown> = { ...restConfig }
+      if (templateText) nextConfig.generation = JSON.parse(templateText)
+      if (chatPath) nextConfig.chatPath = chatPath
+      if (modelsPath) nextConfig.modelsPath = modelsPath
+      if (Object.keys(nextConfig).length > 0) dto.config = nextConfig
       await updateAdminProvider(editProvider.id, dto)
       message.success('供应商已更新')
       setEditProvider(null)
@@ -1227,6 +1231,21 @@ export default function AdminModels() {
               rows={8}
               placeholder={'{\n  \"imagesPath\": \"/v1/images/generations\",\n  \"videosPath\": \"/v1/videos/generations\",\n  \"async\": true,\n  \"requestTemplate\": { \"model\": \"{upstreamModelId}\", \"prompt\": \"{prompt}\" }\n}'}
             />
+          </Form.Item>
+
+          <Form.Item
+            name="chatPath"
+            label="Chat 测试路径 (可选)"
+            extra="供应商连接测试用的聊天探测路径；DashScope 填 /compatible-mode/v1/chat/completions，留空默认 /chat/completions"
+          >
+            <Input placeholder="/compatible-mode/v1/chat/completions" />
+          </Form.Item>
+          <Form.Item
+            name="modelsPath"
+            label="模型列表路径 (可选)"
+            extra="读取上游模型列表的路径；DashScope 填 /compatible-mode/v1/models，留空默认 /models"
+          >
+            <Input placeholder="/compatible-mode/v1/models" />
           </Form.Item>
         </Form>
       </Modal>

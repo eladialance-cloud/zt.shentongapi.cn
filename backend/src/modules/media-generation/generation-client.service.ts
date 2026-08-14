@@ -28,6 +28,41 @@ export interface GenerationAdapterConfig {
   multipartFields?: Record<string, unknown>;
 }
 
+/** 合并供应商级适配模板与模型级 generationParams 覆盖（模型级优先；键名 snake_case）
+ * - admin-model 测试连接 与 media-generation 运行时共用，保证「测试 = 运行」
+ */
+export function mergeGenerationAdapter(
+  baseAdapter: GenerationAdapterConfig,
+  gen: Record<string, unknown> | null | undefined,
+): GenerationAdapterConfig {
+  const adapter: GenerationAdapterConfig = { ...baseAdapter };
+  const g = gen ?? {};
+  const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v : undefined);
+  const arr = (v: unknown): string[] | undefined => (Array.isArray(v) ? v.map(String) : undefined);
+  const obj = (v: unknown): Record<string, unknown> | undefined =>
+    v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+  const s = str(g.video_submit_path); if (s) adapter.videosPath = s;
+  const q = str(g.video_query_path); if (q) adapter.taskPath = q;
+  const img = str(g.images_path); if (img) adapter.imagesPath = img;
+  const tid = str(g.task_id_path); if (tid) adapter.taskIdPath = tid;
+  const st = str(g.task_status_path); if (st) adapter.statusPath = st;
+  const sv = arr(g.success_values); if (sv) adapter.successValues = sv;
+  const fv = arr(g.failed_values); if (fv) adapter.failedValues = fv;
+  const ru = str(g.result_url_path); if (ru) adapter.resultUrlPath = ru;
+  const rb = str(g.result_b64_path); if (rb) adapter.resultB64Path = rb;
+  const eh = obj(g.extra_headers); if (eh) adapter.extraHeaders = eh as Record<string, string>;
+  const rt = obj(g.request_template); if (rt) adapter.requestTemplate = rt;
+  if (typeof g.poll_interval === 'number' && g.poll_interval > 0) adapter.pollInterval = g.poll_interval;
+  if (typeof g.timeout_ms === 'number' && g.timeout_ms > 0) adapter.timeoutMs = g.timeout_ms;
+  if (g.images_style === 'json' || g.images_style === 'multipart') adapter.imagesStyle = g.images_style;
+  const ifields = arr(g.image_fields); if (ifields) adapter.imageFields = ifields;
+  const pf = str(g.prompt_field); if (pf) adapter.promptField = pf;
+  const mf = str(g.model_field); if (mf) adapter.modelField = mf;
+  const sf = str(g.size_field); if (sf) adapter.sizeField = sf;
+  const mp = obj(g.multipart_fields); if (mp) adapter.multipartFields = mp as Record<string, unknown>;
+  return adapter;
+}
+
 /**
  * 上游文生图/文生视频客户端
  * - 图片：OpenAI 兼容 /images/generations（同步返回 b64_json 或 url）

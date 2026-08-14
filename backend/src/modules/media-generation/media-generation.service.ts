@@ -6,7 +6,7 @@ import * as path from 'path';
 import { lookup as dnsLookup } from 'dns/promises';
 import { MediaJobEntity, MediaJobType } from './entities/media-job.entity';
 import { GenerateImageDto, GenerateVideoDto, MediaJobQueryDto } from './dto/generate-media.dto';
-import { GenerationClientService, GenerationAdapterConfig } from './generation-client.service';
+import { GenerationClientService, GenerationAdapterConfig, mergeGenerationAdapter } from './generation-client.service';
 import { computeVideoCharge } from './billing';
 import { ModelEntity } from '../model/entities/model.entity';
 import { ModelProviderEntity } from '../admin-model/entities/model-provider.entity';
@@ -124,24 +124,12 @@ export class MediaGenerationService implements OnModuleInit {
     let decrypted = '';
     try { decrypted = this.encryptionService.decryptAes(provider.apiKey as string); } catch { /* ignore */ }
     if (!decrypted) throw new BadRequestException('供应商 API Key 解密失败');
-    // 视频：模型级提交/查询后缀优先（generation_params.video_submit_path / video_query_path），
-    // 未配置时兼容老供应商 config.generation 适配模板
-    const baseAdapter = (provider.config?.generation ?? {}) as GenerationAdapterConfig;
-    const gen = (model.generationParams ?? {}) as Record<string, unknown>;
-    const adapter: GenerationAdapterConfig = {
-      ...baseAdapter,
-      ...(gen.video_submit_path ? { videosPath: String(gen.video_submit_path) } : {}),
-      ...(gen.video_query_path ? { taskPath: String(gen.video_query_path) } : {}),
-      ...(gen.images_path ? { imagesPath: String(gen.images_path) } : {}),
-      ...(gen.images_style === 'json' || gen.images_style === 'multipart' ? { imagesStyle: gen.images_style } : {}),
-      ...(Array.isArray(gen.image_fields) ? { imageFields: (gen.image_fields as unknown[]).map(String) } : {}),
-      ...(gen.prompt_field ? { promptField: String(gen.prompt_field) } : {}),
-      ...(gen.model_field ? { modelField: String(gen.model_field) } : {}),
-      ...(gen.size_field ? { sizeField: String(gen.size_field) } : {}),
-      ...(gen.multipart_fields && typeof gen.multipart_fields === 'object'
-        ? { multipartFields: gen.multipart_fields as Record<string, unknown> }
-        : {}),
-    };
+    // 模型级 generationParams 覆盖优先（video_submit_path / task_id_path / request_template 等），
+    // 未配置时兼容老供应商 config.generation 适配模板；与 admin 测试连接共用同一合并逻辑
+    const adapter: GenerationAdapterConfig = mergeGenerationAdapter(
+      (provider.config?.generation ?? {}) as GenerationAdapterConfig,
+      model.generationParams ?? {},
+    );
     return { model, provider, adapter, decryptedKey: decrypted };
   }
 
