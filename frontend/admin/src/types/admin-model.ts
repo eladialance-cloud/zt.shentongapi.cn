@@ -160,6 +160,8 @@ export interface CreateProviderDto {
   name: string
   baseUrl: string
   apiKey?: string
+  /** API 风格：openai_compatible / dashscope_native / anthropic / custom */
+  apiStyle?: string
   config?: Record<string, unknown>
   /** 是否设为全局中转（置 true 会取消其他供应商的全局标记） */
   isGlobal?: boolean
@@ -181,6 +183,8 @@ export interface TestProviderDto {
   baseUrl?: string
   apiKey?: string
   model?: string
+  /** 适配配置（chatPath/modelsPath/generation 等） */
+  config?: Record<string, unknown>
 }
 
 /** 测试结果 */
@@ -388,4 +392,52 @@ export interface ImportModelsJsonResult {
   imported: number
   updated: number
   errors: Array<{ index: number; error: string }>
+}
+
+// ===== 模型市场（P1）=====
+
+/** 市场厂商（含该厂商供应商是否已创建） */
+export interface MarketVendor {
+  vendor: string
+  nameSuggestion: string
+  baseUrl: string
+  chatPath: string
+  modelsPath: string
+  apiStyle: string
+  generation: Record<string, unknown>
+  hasProvider: boolean
+  providerId: number | null
+  presetCount: number
+}
+
+/** 市场预设条目 */
+export interface MarketPresetItem {
+  key: string
+  vendor: string
+  name: string
+  callMode: CallModeKey
+  description: string
+  upstreamModelId: string
+  specValues: Record<string, unknown>
+  generationParams: Record<string, unknown>
+  recommendedScenarioTags: string[]
+  referencePrice?: ModelTemplateReferencePrice
+  verified: boolean
+  requiresActivation?: boolean
+}
+
+/** 市场批量导入单条 */
+export interface MarketImportItem {
+  presetKey: string
+  displayName?: string
+  enabled?: boolean
+  scenarioTags?: string[]
+  priceOverrides?: Record<string, unknown>
+}
+
+/** 市场批量导入结果 */
+export interface MarketImportResult {
+  imported: number
+  failed: number
+  results: Array<{ presetKey: string; ok: boolean; modelId?: string; error?: string }>
 }

@@ -20,6 +20,7 @@ import { TestModelDto } from './dto/test-model.dto';
 import { FetchModelsDto } from './dto/fetch-models.dto';
 import { ImportModelsDto } from './dto/import-models.dto';
 import { CreateProviderDto } from './dto/create-provider.dto';
+import { MarketImportDto } from './dto/market-import.dto';
 import { UpdateProviderDto } from './dto/update-provider.dto';
 import { TestProviderDto } from './dto/test-provider.dto';
 import { ImportProviderModelsDto } from './dto/import-provider-models.dto';
@@ -47,6 +48,9 @@ import {
  *   POST   /admin/models/batch-price          批量改价
  *   GET    /admin/models/export               导出配置 JSON
  *   POST   /admin/models/import               批量导入配置 JSON
+ *   GET    /admin/models/market/vendors    模型市场：厂商列表
+ *   GET    /admin/models/market/presets    模型市场：厂商预设列表
+ *   POST   /admin/models/market/import     模型市场：批量创建模型
  *
  * 供应商端点（v0.7.0+ 新流程）：
  *   GET    /admin/models/providers            供应商列表
@@ -92,6 +96,27 @@ export class AdminModelController {
   @ApiOperation({ summary: '模板库列表' })
   templateList() {
     return this.service.templateList();
+  }
+
+  /** 模型市场：厂商列表（含是否已创建供应商） */
+  @Get('market/vendors')
+  @ApiOperation({ summary: '模型市场：厂商列表' })
+  async marketVendors() {
+    return this.service.marketVendors();
+  }
+
+  /** 模型市场：某厂商预设列表 */
+  @Get('market/presets')
+  @ApiOperation({ summary: '模型市场：厂商预设列表' })
+  async marketPresets(@Query('vendor') vendor: string) {
+    return this.service.marketPresets(vendor);
+  }
+
+  /** 模型市场：批量创建模型 */
+  @Post('market/import')
+  @ApiOperation({ summary: '模型市场：批量创建模型' })
+  async marketImport(@Body() dto: MarketImportDto) {
+    return this.service.marketImport(dto);
   }
 
   /** 从模板创建模型 */

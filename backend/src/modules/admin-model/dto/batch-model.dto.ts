@@ -28,6 +28,11 @@ export class CreateFromTemplateDto {
   @IsOptional() @IsString() @MaxLength(64) modelId?: string;
   @IsOptional() @IsString() @MaxLength(128) displayName?: string;
   @IsOptional() @IsInt() providerId?: number;
+
+  // ===== 模型市场批量创建扩展 =====
+  @IsOptional() @IsBoolean() enabled?: boolean;
+  @IsOptional() @IsArray() @IsString({ each: true }) scenarioTags?: string[];
+  @IsOptional() @IsObject() priceOverrides?: Record<string, unknown>;
 }
 
 export class ImportModelsJsonDto {

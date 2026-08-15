@@ -25,6 +25,7 @@ import {
   Switch,
   Table,
   Tag,
+  Tabs,
   message
 } from 'antd'
 import type { TableColumnsType } from 'antd'
@@ -52,6 +53,7 @@ import {
   createModelFromTemplate
 } from '@/api/admin-model-api'
 import ProviderImportModal from './ProviderImportModal'
+import MarketPanel from './components/MarketPanel'
 import CallModePicker from './components/CallModePicker'
 import DynamicSpecForm from './components/DynamicSpecForm'
 import ScenarioTagPicker from './components/ScenarioTagPicker'
@@ -123,6 +125,8 @@ const ENABLED_OPTIONS = [
 
 interface ModelFormValues {
   displayName: string
+  upstreamModelId?: string
+  apiEndpoint?: string
   outputType: ModelOutputType
   inputTypes: ModelInputType[]
   advancedCapabilities: AdvancedCapability[]
@@ -201,6 +205,9 @@ export default function AdminModels() {
   const [importProvider, setImportProvider] = useState<AdminProviderItem | null>(null)
   const [testingModelId, setTestingModelId] = useState<number | null>(null)
 
+  // ----- 页面模式 (模型列表 / 模型市场) -----
+  const [pageMode, setPageMode] = useState<'list' | 'market'>('list')
+
   const loadProviders = useCallback(async () => {
     try {
       const list = await listAdminProviders()
@@ -274,6 +281,8 @@ export default function AdminModels() {
     const editCallModeDef = meta?.callModes.find((m) => m.key === item.callMode)
     form.setFieldsValue({
       displayName: item.displayName,
+      upstreamModelId: item.upstreamModelId ?? undefined,
+      apiEndpoint: item.apiEndpoint ?? undefined,
       outputType: item.outputType ?? outputTypeFromModelType(item.modelType),
       inputTypes:
         item.inputTypes && item.inputTypes.length
@@ -323,6 +332,12 @@ export default function AdminModels() {
       const mt = deriveModelType(values.outputType, values.inputTypes)
       const dto: UpdateAdminModelDto = {
         displayName: values.displayName,
+        ...(values.upstreamModelId && values.upstreamModelId.trim()
+          ? { upstreamModelId: values.upstreamModelId.trim() }
+          : {}),
+        ...(values.apiEndpoint && values.apiEndpoint.trim()
+          ? { apiEndpoint: values.apiEndpoint.trim() }
+          : {}),
         outputType: values.outputType,
         inputTypes: values.inputTypes,
         advancedCapabilities: values.advancedCapabilities ?? [],
@@ -845,7 +860,17 @@ export default function AdminModels() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.header}>
+      <Tabs
+        activeKey={pageMode}
+        onChange={(k) => setPageMode(k as 'list' | 'market')}
+        items={[
+          { key: 'list', label: '模型列表' },
+          { key: 'market', label: '模型市场' },
+        ]}
+      />
+      {pageMode === 'list' ? (
+        <>
+          <div className={styles.header}>
         <div className={styles.titleArea}>
           <ApiOutlined className={styles.titleIcon} />
           <div>
@@ -987,6 +1012,20 @@ export default function AdminModels() {
             rules={[{ required: true, message: '请输入显示名' }]}
           >
             <Input maxLength={128} />
+          </Form.Item>
+          <Form.Item
+            name="upstreamModelId"
+            label="上游模型ID"
+            extra="真正发给上游 API 的模型名；模板创建后需改成 DashScope 真实模型名，如 wanx2.1-t2i-turbo / qwen-video-plus"
+          >
+            <Input maxLength={128} placeholder="上游真实模型名（模板默认是占位 ID，必须改）" />
+          </Form.Item>
+          <Form.Item
+            name="apiEndpoint"
+            label="接口地址 (可选)"
+            extra="模型级端点覆盖；留空用供应商 Base URL + 生成适配路径/高级参数里的路径"
+          >
+            <Input maxLength={512} placeholder="https://... 或 /api/v1/services/..." />
           </Form.Item>
           <Form.Item
             name="outputType"
@@ -1263,6 +1302,10 @@ export default function AdminModels() {
           void loadProviderList()
         }}
       />
+        </>
+      ) : (
+        <MarketPanel />
+      )}
     </div>
   )
 }

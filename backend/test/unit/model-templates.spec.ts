@@ -3,7 +3,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { MODEL_TEMPLATES } from '../../src/modules/admin-model/constants/model-templates';
+import { MODEL_TEMPLATES, PROVIDER_TEMPLATES } from '../../src/modules/admin-model/constants/model-templates';
 import { CALL_MODES, SCENARIO_TAGS } from '../../src/modules/admin-model/constants/call-modes';
 
 describe('模板库 seed', () => {
@@ -65,5 +65,43 @@ describe('模板库 image_edit 创意工具模板契约', () => {
     assert.equal(gen.prompt_field, 'prompt');
     assert.equal(gen.model_field, 'model');
     assert.ok(String(gen.images_path).startsWith('/'));
+  });
+});
+
+describe('模型市场预设库不变量', () => {
+  const vendors = new Set(PROVIDER_TEMPLATES.map((p) => p.vendor));
+  it('每个模板都有合法 vendor / 非空 upstreamModelId / boolean verified', () => {
+    for (const t of MODEL_TEMPLATES) {
+      assert.ok(vendors.has(t.vendor), `${t.key} vendor 非法: ${t.vendor}`);
+      assert.ok(t.upstreamModelId && t.upstreamModelId.trim().length > 0, `${t.key} 缺 upstreamModelId`);
+      assert.equal(typeof t.verified, 'boolean', `${t.key} verified 应为 boolean`);
+    }
+  });
+  it('厂商预设 URL/路径合法（relay 除外）', () => {
+    for (const p of PROVIDER_TEMPLATES) {
+      if (p.vendor === 'relay') continue;
+      assert.ok(p.baseUrl.startsWith('http'), `${p.vendor} baseUrl 非法`);
+      assert.ok(p.chatPath.startsWith('/'), `${p.vendor} chatPath 非法`);
+      assert.ok(p.modelsPath.startsWith('/'), `${p.vendor} modelsPath 非法`);
+      assert.ok(typeof p.apiStyle === 'string' && p.apiStyle.length > 0, `${p.vendor} 缺 apiStyle`);
+    }
+  });
+  it('openai / deepseek 预设已加入', () => {
+    for (const key of ['openai-gpt-4o', 'openai-gpt-4o-mini', 'openai-gpt-4.1', 'openai-dall-e-3', 'openai-whisper-1', 'openai-tts-1', 'deepseek-chat', 'deepseek-reasoner']) {
+      assert.ok(MODEL_TEMPLATES.some((t) => t.key === key), `缺少预设 ${key}`);
+    }
+  });
+
+  it('DashScope generation 模板与运行时适配器契约一致', () => {
+    const p = PROVIDER_TEMPLATES.find((x) => x.vendor === 'aliyun-dashscope')!;
+    const gen = p.generation as Record<string, unknown>;
+    const allowed = new Set(['imagesPath', 'videosPath', 'taskPath', 'extraHeaders', 'async', 'pollInterval', 'requestTemplate', 'taskIdPath', 'statusPath', 'successValues', 'failedValues', 'resultUrlPath', 'resultB64Path', 'timeoutMs', 'imagesStyle', 'imageFields', 'promptField', 'modelField', 'sizeField', 'multipartFields']);
+    for (const k of Object.keys(gen)) {
+      assert.ok(allowed.has(k), `generation 键 ${k} 不在 GenerationAdapterConfig 中`);
+    }
+    assert.ok(String(gen.taskPath).includes('{id}') || String(gen.taskPath).includes('{task_id}'), 'taskPath 必须含 {id}/{task_id} 占位符');
+    const rt = gen.requestTemplate as Record<string, unknown>;
+    assert.equal(rt.model, '{upstreamModelId}');
+    assert.ok((rt.input as Record<string, unknown>).prompt === '{prompt}', 'requestTemplate.input.prompt 缺失');
   });
 });

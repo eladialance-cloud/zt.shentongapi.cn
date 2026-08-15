@@ -27,6 +27,10 @@ import type {
   ImportModelsJsonResult,
   ImportProviderModelsDto,
   ImportProviderModelsResult,
+  MarketImportItem,
+  MarketImportResult,
+  MarketPresetItem,
+  MarketVendor,
   ModelTemplateItem,
   ProviderBalanceResult,
   TestProviderDto,
@@ -220,6 +224,32 @@ export async function checkProviderBalance(
   )
 }
 
+// ===== 模型市场（P1）=====
+
+/** 模型市场：厂商列表（含是否已创建供应商） */
+export async function fetchMarketVendors(): Promise<MarketVendor[]> {
+  return adminRequest<MarketVendor[]>('get', '/admin/models/market/vendors')
+}
+
+/** 模型市场：某厂商预设列表 */
+export async function fetchMarketPresets(
+  vendor: string
+): Promise<MarketPresetItem[]> {
+  return adminRequest<MarketPresetItem[]>('get', '/admin/models/market/presets', {
+    params: { vendor }
+  })
+}
+
+/** 模型市场：批量创建模型 */
+export async function marketImportModels(dto: {
+  providerId: number
+  items: MarketImportItem[]
+}): Promise<MarketImportResult> {
+  return adminRequest<MarketImportResult>('post', '/admin/models/market/import', {
+    data: dto
+  })
+}
+
 export default {
   listAdminModels,
   updateAdminModel,
@@ -241,5 +271,8 @@ export default {
   batchUpdateModelPrice,
   exportModels,
   importModelsJson,
-  checkProviderBalance
+  checkProviderBalance,
+  fetchMarketVendors,
+  fetchMarketPresets,
+  marketImportModels
 }

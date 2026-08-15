@@ -272,10 +272,10 @@ describe('callModesMeta 动态表单元数据', () => {
 });
 
 describe('模板库接口', () => {
-  it('templateList 返回 18 条模板', async () => {
+  it('templateList 返回 26 条模板', async () => {
     const { svc } = buildAdminService();
     const list = await svc.templateList();
-    assert.equal(list.length, 18);
+    assert.equal(list.length, 26);
     assert.ok(list.some((t: any) => t.key === 'qwen-plus'));
     assert.ok(list.some((t: any) => t.key === 'wanx-sketch'), '缺少 wanx-sketch 模板');
   });

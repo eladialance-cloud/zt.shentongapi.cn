@@ -37,7 +37,12 @@ import {
 import { shouldAlertBalance } from './utils/balance-utils';
 import { CALL_MODES, CALL_MODE_TO_MODEL_TYPE, SCENARIO_TAGS } from './constants/call-modes';
 import { SPEC_FIELD_SCHEMAS, ADVANCED_CAP_LABELS } from './constants/form-meta';
-import { MODEL_TEMPLATES } from './constants/model-templates';
+import { MODEL_TEMPLATES, PROVIDER_TEMPLATES } from './constants/model-templates';
+import { MarketImportDto } from './dto/market-import.dto';
+import {
+  marketPresetsForVendor,
+  resolvePricing,
+} from './utils/market-utils';
 import { GenerationClientService, GenerationAdapterConfig, mergeGenerationAdapter } from '../media-generation/generation-client.service';
 
 /** 模型查询参数 */
@@ -320,7 +325,80 @@ export class AdminModelService implements OnModuleInit {
     return MODEL_TEMPLATES;
   }
 
-  /** 从模板创建模型（默认下架，管理员确认后上架；无 providerId 时走全局中转） */
+  /** 模型市场：厂商列表 + 是否已创建该厂商供应商（config.vendorKey 关联） */
+  async marketVendors() {
+    const providers = await this.providerRepo.find();
+    return PROVIDER_TEMPLATES.map((pt) => {
+      const provider = providers.find(
+        (p) =>
+          (p.config as { vendorKey?: string } | null)?.vendorKey === pt.vendor,
+      );
+      return {
+        vendor: pt.vendor,
+        nameSuggestion: pt.nameSuggestion,
+        baseUrl: pt.baseUrl,
+        chatPath: pt.chatPath,
+        modelsPath: pt.modelsPath,
+        apiStyle: pt.apiStyle,
+        generation: pt.generation,
+        hasProvider: Boolean(provider),
+        providerId: provider?.id ?? null,
+        presetCount: MODEL_TEMPLATES.filter((t) => t.vendor === pt.vendor).length,
+      };
+    });
+  }
+
+  /** 模型市场：某厂商预设列表（relay 返回空数组） */
+  async marketPresets(vendor: string) {
+    if (!PROVIDER_TEMPLATES.some((p) => p.vendor === vendor)) {
+      BusinessException.throw(ErrorCode.NOT_FOUND, `未知厂商: ${vendor}`);
+    }
+    return marketPresetsForVendor(vendor).map((t) => ({
+      key: t.key,
+      vendor: t.vendor,
+      name: t.name,
+      callMode: t.callMode,
+      description: t.description,
+      upstreamModelId: t.upstreamModelId,
+      specValues: t.specValues,
+      generationParams: t.generationParams,
+      recommendedScenarioTags: t.recommendedScenarioTags,
+      referencePrice: t.referencePrice,
+      verified: t.verified,
+      requiresActivation: t.requiresActivation,
+    }));
+  }
+
+  /** 模型市场：批量创建（逐项复用 createFromTemplate，单项失败不中断） */
+  async marketImport(dto: MarketImportDto) {
+    const provider = await this.providerRepo.findOne({ where: { id: dto.providerId } });
+    if (!provider) {
+      BusinessException.throw(ErrorCode.NOT_FOUND, '供应商不存在');
+    }
+    const results: Array<{ presetKey: string; ok: boolean; modelId?: string; error?: string }> = [];
+    for (const item of dto.items) {
+      try {
+        const created = await this.createFromTemplate({
+          templateKey: item.presetKey,
+          providerId: dto.providerId,
+          displayName: item.displayName,
+          enabled: item.enabled ?? false,
+          scenarioTags: item.scenarioTags,
+          priceOverrides: item.priceOverrides,
+        });
+        results.push({ presetKey: item.presetKey, ok: true, modelId: created.modelId });
+      } catch (err: any) {
+        results.push({ presetKey: item.presetKey, ok: false, error: err?.message || String(err) });
+      }
+    }
+    return {
+      imported: results.filter((r) => r.ok).length,
+      failed: results.filter((r) => !r.ok).length,
+      results,
+    };
+  }
+
+  /** 从模板创建模型（默认下架；模型市场批量导入复用本方法） */
   async createFromTemplate(dto: CreateFromTemplateDto) {
     const tpl = MODEL_TEMPLATES.find((t) => t.key === dto.templateKey);
     if (!tpl) {
@@ -333,7 +411,7 @@ export class AdminModelService implements OnModuleInit {
     const entity = new ModelEntity();
     entity.provider = dto.providerId ? '' : 'global';
     entity.modelId = dto.modelId || tpl.key;
-    entity.upstreamModelId = dto.modelId || tpl.key;
+    entity.upstreamModelId = dto.modelId || tpl.upstreamModelId;
     entity.name = dto.displayName || tpl.name;
     entity.callMode = tpl.callMode;
     entity.modelType = CALL_MODE_TO_MODEL_TYPE[tpl.callMode];
@@ -343,24 +421,28 @@ export class AdminModelService implements OnModuleInit {
     entity.supportsFunctions = (entity.advancedCapabilities || []).includes('function_calling');
     entity.specs = tpl.specValues ? structuredClone(tpl.specValues) : null;
     entity.generationParams = tpl.generationParams ? structuredClone(tpl.generationParams) : null;
-    entity.scenarioTags = tpl.recommendedScenarioTags
-      ? structuredClone(tpl.recommendedScenarioTags)
-      : [];
+    entity.scenarioTags = dto.scenarioTags
+      ? structuredClone(dto.scenarioTags)
+      : tpl.recommendedScenarioTags
+        ? structuredClone(tpl.recommendedScenarioTags)
+        : [];
     entity.pricingMode = def.recommendedBilling;
-    entity.pricePer1kInput = tpl.referencePrice?.inputPricePerToken ?? 0;
-    entity.pricePer1kOutput = tpl.referencePrice?.outputPricePerToken ?? 0;
-    entity.pricePerImage = tpl.referencePrice?.pricePerImage;
-    entity.pricePerCall = tpl.referencePrice?.pricePerCall;
-    entity.pricePerMinute = tpl.referencePrice?.pricePerMinute;
-    entity.videoPerSecond = tpl.referencePrice?.videoPerSecond
-      ? structuredClone(tpl.referencePrice.videoPerSecond)
+    const pricing = resolvePricing(tpl, dto.priceOverrides);
+    entity.pricePer1kInput = pricing.pricePer1kInput ?? 0;
+    entity.pricePer1kOutput = pricing.pricePer1kOutput ?? 0;
+    entity.pricePerImage = pricing.pricePerImage ?? undefined;
+    entity.pricePerCall = pricing.pricePerCall ?? undefined;
+    entity.pricePerMinute = pricing.pricePerMinute ?? undefined;
+    entity.videoPerSecond = pricing.videoPerSecond
+      ? structuredClone(pricing.videoPerSecond)
       : null;
-    entity.isActive = false;
+    entity.isActive = dto.enabled ?? false;
     if (dto.providerId) entity.providerId = dto.providerId;
     const saved = await this.modelRepo.save(entity);
     await this.refreshProviderModelCount(saved.providerId);
     return this.toAdminModelItem(saved);
   }
+
   // ============ 批量操作 ============
 
   /** 批量上架/下架 */
