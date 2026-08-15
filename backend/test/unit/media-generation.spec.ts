@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { BadRequestException } from '@nestjs/common';
-import { GenerationClientService, GenerationAdapterConfig } from '../../src/modules/media-generation/generation-client.service';
+import { GenerationClientService, GenerationAdapterConfig, buildMediaGenerationAdapter } from '../../src/modules/media-generation/generation-client.service';
 import { MediaGenerationService } from '../../src/modules/media-generation/media-generation.service';
 import { PricingService } from '../../src/modules/credits/services/pricing.service';
 import { MediaJobEntity } from '../../src/modules/media-generation/entities/media-job.entity';
@@ -820,5 +820,44 @@ describe('MediaGenerationService image_edit 适配合入与传参', () => {
     });
     assert.deepEqual(captured.inputImages, ['data:image/png;base64,aGVsbG8=']);
     assert.ok(created[0].params.inputImages);
+  });
+});
+
+describe('buildMediaGenerationAdapter 厂商模板兜底合并（测试=运行）', () => {
+  it('存量 DashScope 供应商存旧图片端点时，自动采用最新模板端点', () => {
+    const adapter = buildMediaGenerationAdapter(
+      {
+        slug: 'qwen-dashscope',
+        config: {
+          vendorKey: 'aliyun-dashscope',
+          generation: {
+            imagesPath: 'https://dashscope.aliyuncs.com/compatible-mode/v1/images/generations',
+            videosPath: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis',
+          },
+        },
+      },
+      null,
+    );
+    assert.equal(adapter.imagesPath, 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis');
+    assert.equal(adapter.imageTaskPath, 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/task/{id}');
+    assert.equal(adapter.imageResultUrlPath, 'output.results[0].url');
+    assert.equal((adapter.imageRequestTemplate as Record<string, unknown>)?.model, '{upstreamModelId}');
+    assert.equal(adapter.async, true);
+    assert.equal(adapter.videosPath, 'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis');
+  });
+  it('供应商没有厂商模板时，存量 config 原样保留', () => {
+    const adapter = buildMediaGenerationAdapter(
+      { slug: 'custom', config: { generation: { imagesPath: 'https://g.example.com/gen' } } },
+      null,
+    );
+    assert.equal(adapter.imagesPath, 'https://g.example.com/gen');
+  });
+  it('模型级 generationParams 最后覆盖模板与存量', () => {
+    const adapter = buildMediaGenerationAdapter(
+      { slug: 'qwen', config: { vendorKey: 'aliyun-dashscope', generation: {} } },
+      { images_path: 'https://custom.example.com/text2image', poll_interval: 500 },
+    );
+    assert.equal(adapter.imagesPath, 'https://custom.example.com/text2image');
+    assert.equal(adapter.pollInterval, 500);
   });
 });

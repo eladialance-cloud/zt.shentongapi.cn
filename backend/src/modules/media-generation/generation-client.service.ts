@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { PROVIDER_TEMPLATES } from '../admin-model/constants/model-templates';
 
 /** 生成适配模板（存于 model_providers.config.generation） */
 export interface GenerationAdapterConfig {
@@ -70,6 +71,26 @@ export function mergeGenerationAdapter(
   const sf = str(g.size_field); if (sf) adapter.sizeField = sf;
   const mp = obj(g.multipart_fields); if (mp) adapter.multipartFields = mp as Record<string, unknown>;
   return adapter;
+}
+
+/**
+ * 构建媒体生成适配器（admin 测试连接 与 运行时 resolveModel 共用，保证「测试 = 运行」）：
+ * - 厂商最新预设模板优先（端点随上游演进，自动修复存量供应商 config 里存旧地址的问题）；
+ * - 供应商 config.generation 仅补齐模板没有的键（如用户自定义字段）；
+ * - 模型级 generationParams 最后覆盖（最高优先级）。
+ */
+export function buildMediaGenerationAdapter(
+  provider: { config?: Record<string, unknown> | null; slug?: string } | null | undefined,
+  modelGenerationParams?: Record<string, unknown> | null,
+): GenerationAdapterConfig {
+  const stored = ((provider?.config?.generation ?? {}) as Record<string, unknown>) || {};
+  const vendorKey = (provider?.config?.vendorKey as string) || provider?.slug || '';
+  const vendorTpl = PROVIDER_TEMPLATES.find((p) => p.vendor === vendorKey);
+  const base = (vendorTpl?.generation ?? {}) as Record<string, unknown>;
+  return mergeGenerationAdapter(
+    { ...stored, ...base } as GenerationAdapterConfig,
+    modelGenerationParams ?? {},
+  );
 }
 
 /**

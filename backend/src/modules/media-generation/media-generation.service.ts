@@ -6,7 +6,7 @@ import * as path from 'path';
 import { lookup as dnsLookup } from 'dns/promises';
 import { MediaJobEntity, MediaJobType } from './entities/media-job.entity';
 import { GenerateImageDto, GenerateVideoDto, MediaJobQueryDto } from './dto/generate-media.dto';
-import { GenerationClientService, GenerationAdapterConfig, mergeGenerationAdapter } from './generation-client.service';
+import { GenerationClientService, GenerationAdapterConfig, mergeGenerationAdapter, buildMediaGenerationAdapter } from './generation-client.service';
 import { computeVideoCharge } from './billing';
 import { ModelEntity } from '../model/entities/model.entity';
 import { ModelProviderEntity } from '../admin-model/entities/model-provider.entity';
@@ -126,9 +126,9 @@ export class MediaGenerationService implements OnModuleInit {
     if (!decrypted) throw new BadRequestException('供应商 API Key 解密失败');
     // 模型级 generationParams 覆盖优先（video_submit_path / task_id_path / request_template 等），
     // 未配置时兼容老供应商 config.generation 适配模板；与 admin 测试连接共用同一合并逻辑
-    const adapter: GenerationAdapterConfig = mergeGenerationAdapter(
-      (provider.config?.generation ?? {}) as GenerationAdapterConfig,
-      model.generationParams ?? {},
+    const adapter: GenerationAdapterConfig = buildMediaGenerationAdapter(
+      provider,
+      model.generationParams,
     );
     return { model, provider, adapter, decryptedKey: decrypted };
   }

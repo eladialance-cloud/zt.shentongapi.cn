@@ -44,7 +44,7 @@ import {
   resolvePricing,
 } from './utils/market-utils';
 import { presetsForProviderType } from './utils/provider-type-utils';
-import { GenerationClientService, GenerationAdapterConfig, mergeGenerationAdapter } from '../media-generation/generation-client.service';
+import { GenerationClientService, GenerationAdapterConfig, mergeGenerationAdapter, buildMediaGenerationAdapter } from '../media-generation/generation-client.service';
 
 /** 模型查询参数 */
 interface ModelQuery {
@@ -269,10 +269,7 @@ export class AdminModelService implements OnModuleInit {
     try {
       let response: string | Record<string, unknown>;
       if (callMode === 'video' || callMode === 'video_edit') {
-        const adapter = mergeGenerationAdapter(
-          (provider?.config?.generation ?? {}) as GenerationAdapterConfig,
-          model.generationParams ?? {},
-        );
+        const adapter = buildMediaGenerationAdapter(provider, model.generationParams);
         const { taskId } = await this.generationClient.submitVideo({
           endpoint,
           apiKey,
@@ -283,10 +280,7 @@ export class AdminModelService implements OnModuleInit {
         });
         response = { taskId, message: `视频任务已提交（异步），taskId=${taskId}` };
       } else if (callMode === 'image' || callMode === 'image_edit') {
-        const adapter = mergeGenerationAdapter(
-          (provider?.config?.generation ?? {}) as GenerationAdapterConfig,
-          model.generationParams ?? {},
-        );
+        const adapter = buildMediaGenerationAdapter(provider, model.generationParams);
         if (adapter.imagesPath || adapter.requestTemplate) {
           // 配置了生成适配（如 DashScope 原生图片端点）→ 走与运行时一致的 generateImage
           const result = await this.generationClient.generateImage({

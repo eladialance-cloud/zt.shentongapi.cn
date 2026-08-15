@@ -695,3 +695,34 @@ describe('AdminModelService 重复添加模型去重保护', () => {
     assert.equal(res.modelId, 'brand-new');
   });
 });
+
+describe('按 callMode 的测试调用 - 存量供应商模板兜底', () => {
+  it('image 模式：供应商存旧图片端点时自动用最新厂商模板（不再 404）', async () => {
+    const { svc, modelRepo, providerRepo, generationClient } = buildAdminService();
+    modelRepo.findOne = async () => ({
+      id: 1, providerId: 1, callMode: 'image', modelType: 'image',
+      modelId: 'qwen-image-3.0-pro', upstreamModelId: 'wanx2.1-t2i-turbo', isActive: true,
+    });
+    providerRepo.findOne = async () => ({
+      apiKey: 'enc-key',
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      config: {
+        vendorKey: 'aliyun-dashscope',
+        generation: { imagesPath: 'https://dashscope.aliyuncs.com/compatible-mode/v1/images/generations' },
+      },
+    });
+    (svc as any).encryption.decryptAes = () => 'sk-test';
+    let genCfg: any = null;
+    generationClient.generateImage = async (cfg: any) => { genCfg = cfg; return { url: 'https://x/1.png' }; };
+    const saved: any[] = [];
+    modelRepo.save = async (e: any) => { saved.push(e); return e; };
+    const r = await svc.test(1, { input: '一只猫' });
+    assert.equal(r.success, true);
+    assert.equal(
+      genCfg.adapter.imagesPath,
+      'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis',
+    );
+    assert.equal(genCfg.model, 'wanx2.1-t2i-turbo');
+    assert.equal(saved[0].connectionStatus, 'connected');
+  });
+});
