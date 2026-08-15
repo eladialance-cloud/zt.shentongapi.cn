@@ -274,6 +274,11 @@ export class AdminModelService implements OnModuleInit {
       BusinessException.throw(ErrorCode.VALIDATION_FAILED, '模型未关联供应商凭据，无法测试');
     }
     const cfg = (provider?.config ?? {}) as Record<string, unknown>;
+    // DashScope 兼容端点的文本/识图模型要求 content 为数组格式（qwen-image/qwen-vl 等）
+    const isDashScope =
+      cfg.vendorKey === 'aliyun-dashscope' ||
+      (provider?.slug ?? '').includes('dashscope') ||
+      endpoint.includes('dashscope.aliyuncs.com');
     const chatPath = typeof cfg.chatPath === 'string' && cfg.chatPath.trim() ? cfg.chatPath.trim() : '';
     const useChatPath = !!chatPath && (callMode === 'text_chat' || callMode === 'vision' || callMode === 'ocr');
     const apiPath = useChatPath ? chatPath : def.apiPath;
@@ -321,7 +326,7 @@ export class AdminModelService implements OnModuleInit {
           });
           response = JSON.stringify(result);
         } else {
-          const body = this.buildTestBody(callMode, upstreamModelId, dto.input);
+          const body = this.buildTestBody(callMode, upstreamModelId, dto.input, isDashScope);
           const out = await this.callUpstreamRaw(
             this.buildApiUrl(endpoint, apiPath),
             apiKey,
@@ -330,7 +335,7 @@ export class AdminModelService implements OnModuleInit {
           response = this.formatTestOutput(callMode, out);
         }
       } else {
-        const body = this.buildTestBody(callMode, upstreamModelId, dto.input);
+        const body = this.buildTestBody(callMode, upstreamModelId, dto.input, isDashScope);
         const out = await this.callUpstreamRaw(
           this.buildApiUrl(endpoint, apiPath),
           apiKey,
@@ -1356,11 +1361,23 @@ export class AdminModelService implements OnModuleInit {
     callMode: string,
     model: string,
     input: string,
+    contentAsList = false,
   ): Record<string, unknown> {
     switch (callMode) {
       case 'text_chat':
       case 'vision':
-        return { model, messages: [{ role: 'user', content: input || 'Hello' }], max_tokens: 50 };
+        return {
+          model,
+          messages: [
+            {
+              role: 'user',
+              content: contentAsList
+                ? [{ type: 'text', text: input || 'Hello' }]
+                : input || 'Hello',
+            },
+          ],
+          max_tokens: 50,
+        };
       case 'embedding':
         return { model, input: [input || 'Hello'] };
       case 'rerank':
@@ -1409,9 +1426,15 @@ export class AdminModelService implements OnModuleInit {
         ? config.chatPath.trim()
         : '/chat/completions';
     const url = this.buildApiUrl(endpoint, chatPath);
+    const isDashScope =
+      (config?.vendorKey === 'aliyun-dashscope') ||
+      String(endpoint || '').includes('dashscope.aliyuncs.com');
+    const content = isDashScope
+      ? [{ type: 'text', text: input || 'Hello' }]
+      : input || 'Hello';
     const body = JSON.stringify({
       model: modelId,
-      messages: [{ role: 'user', content: input || 'Hello' }],
+      messages: [{ role: 'user', content }],
       max_tokens: 50,
     });
     const resp = await fetch(url, {

@@ -147,6 +147,15 @@ export class LlmClientService {
       body['tools'] = options.tools;
       body['tool_choice'] = 'auto';
     }
+    // DashScope 兼容端点要求 content 为数组格式（qwen-image / qwen-vl / qwen-omni 等；纯文本模型同样兼容数组）
+    if (endpoint.includes('dashscope.aliyuncs.com')) {
+      const msgs = body.messages as Array<{ role: string; content: unknown }>;
+      body.messages = msgs.map((m) =>
+        typeof m.content === 'string'
+          ? { ...m, content: [{ type: 'text', text: m.content }] }
+          : m,
+      );
+    }
 
     this.logger.debug(
       `LLM streamChat 开始: model=${options.model}, provider=${provider}, key=${maskApiKey(options.apiKey)}`,
