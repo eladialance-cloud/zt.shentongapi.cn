@@ -60,10 +60,9 @@ describe('模板库 image_edit 创意工具模板契约', () => {
     assert.ok(t, '缺少 wanx-sketch 模板');
     assert.equal(t.callMode, 'image_edit');
     const gen = t.generationParams as Record<string, unknown>;
-    assert.equal(gen.images_style, 'multipart');
-    assert.deepEqual(gen.image_fields, ['sketch']);
-    assert.equal(gen.prompt_field, 'prompt');
-    assert.equal(gen.model_field, 'model');
+    assert.equal(gen.images_style, 'json');
+    assert.ok(String(gen.images_path).includes('/api/v1/services/aigc/image2image/image-synthesis'), '线稿生图应指向原生 image2image 端点');
+    assert.deepEqual((gen.image_request_template as Record<string, unknown>).input, { prompt: '{prompt}', base_image_url: '{imageUrl0}' });
     assert.ok(/^(\/|https?:\/\/)/.test(String(gen.images_path)));
   });
 });
@@ -97,7 +96,9 @@ describe('模型市场预设库不变量', () => {
       /^https:\/\/dashscope\.aliyuncs\.com\/api\/v1\/services\/aigc\/video-generation\/video-synthesis$/,
     );
     assert.match(String(g.taskPath), /^https:\/\/dashscope\.aliyuncs\.com\/api\/v1\/services\/aigc\/video-generation\/tasks\/\{id\}$/);
-    assert.match(String(g.imagesPath), /^https:\/\/dashscope\.aliyuncs\.com\/compatible-mode\/v1\/images\/generations$/);
+    assert.match(String(g.imagesPath), /^https:\/\/dashscope\.aliyuncs\.com\/api\/v1\/services\/aigc\/text2image\/image-synthesis$/);
+    assert.equal(String(g.imageTaskPath), 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/task/{id}');
+    assert.equal(String(g.imageResultUrlPath), 'output.results[0].url');
   });
 
   it('openai / deepseek 预设已加入', () => {
@@ -109,7 +110,7 @@ describe('模型市场预设库不变量', () => {
   it('DashScope generation 模板与运行时适配器契约一致', () => {
     const p = PROVIDER_TEMPLATES.find((x) => x.vendor === 'aliyun-dashscope')!;
     const gen = p.generation as Record<string, unknown>;
-    const allowed = new Set(['imagesPath', 'videosPath', 'taskPath', 'extraHeaders', 'async', 'pollInterval', 'requestTemplate', 'taskIdPath', 'statusPath', 'successValues', 'failedValues', 'resultUrlPath', 'resultB64Path', 'timeoutMs', 'imagesStyle', 'imageFields', 'promptField', 'modelField', 'sizeField', 'multipartFields']);
+    const allowed = new Set(['imagesPath', 'videosPath', 'taskPath', 'extraHeaders', 'async', 'pollInterval', 'requestTemplate', 'taskIdPath', 'statusPath', 'successValues', 'failedValues', 'resultUrlPath', 'resultB64Path', 'timeoutMs', 'imagesStyle', 'imageFields', 'promptField', 'modelField', 'sizeField', 'multipartFields', 'imageRequestTemplate', 'imageTaskPath', 'imageResultUrlPath']);
     for (const k of Object.keys(gen)) {
       assert.ok(allowed.has(k), `generation 键 ${k} 不在 GenerationAdapterConfig 中`);
     }

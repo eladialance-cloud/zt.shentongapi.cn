@@ -701,6 +701,54 @@ describe('GenerationClientService.generateImage 端到端请求构造', () => {
     assert.equal(parsed.response_format, 'b64_json');
     assert.equal(parsed.image, undefined);
   });
+
+  it('DashScope 原生异步文生图：提交 task_id 后轮询返回图片 URL', async () => {
+    let calls = 0;
+    let postBody = '';
+    (globalThis as any).fetch = async (url: string, opts: any) => {
+      if ((opts?.method || 'GET').toUpperCase() === 'POST') {
+        calls++;
+        postBody = opts.body;
+        assert.equal(String(url), 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis');
+        return {
+          ok: true, status: 200,
+          text: async () => JSON.stringify({ output: { task_id: 't1', task_status: 'PENDING' } }),
+          json: async () => ({ output: { task_id: 't1', task_status: 'PENDING' } }),
+          headers: new Headers(),
+        };
+      }
+      calls++;
+      assert.equal(String(url), 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/task/t1');
+      return {
+        ok: true, status: 200,
+        text: async () => JSON.stringify({ output: { task_status: 'SUCCEEDED', results: [{ url: 'https://cdn.x.com/1.png' }] } }),
+        json: async () => ({ output: { task_status: 'SUCCEEDED', results: [{ url: 'https://cdn.x.com/1.png' }] } }),
+        headers: new Headers(),
+      };
+    };
+    const out = await client3.generateImage({
+      endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      apiKey: 'k',
+      adapter: {
+        imagesPath: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis',
+        imageTaskPath: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/task/{id}',
+        imageResultUrlPath: 'output.results[0].url',
+        imageRequestTemplate: { model: '{upstreamModelId}', input: { prompt: '{prompt}' }, parameters: { n: 1 } },
+        async: true,
+        successValues: ['SUCCEEDED'],
+        failedValues: ['FAILED', 'CANCELED'],
+        pollInterval: 1,
+        timeoutMs: 5000,
+      },
+      model: 'wanx2.1-t2i-turbo',
+      prompt: '一只猫',
+    });
+    assert.equal(out.url, 'https://cdn.x.com/1.png');
+    assert.ok(calls >= 2, '应提交一次并至少轮询一次');
+    const parsed = JSON.parse(postBody);
+    assert.equal(parsed.model, 'wanx2.1-t2i-turbo');
+    assert.equal(parsed.input.prompt, '一只猫');
+  });
 });
 describe('MediaGenerationService image_edit 适配合入与传参', () => {
   function buildEditSvc() {

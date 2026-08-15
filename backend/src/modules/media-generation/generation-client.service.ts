@@ -5,6 +5,12 @@ export interface GenerationAdapterConfig {
   imagesPath?: string;
   videosPath?: string;
   taskPath?: string;
+  /** 文生图专用请求体模板（优先于通用 requestTemplate；如 DashScope text2image） */
+  imageRequestTemplate?: Record<string, unknown>;
+  /** 文生图异步任务查询路径（默认 endpoint + /text2image/task/{id}） */
+  imageTaskPath?: string;
+  /** 文生图异步结果地址字段路径（默认 output.results[0].url） */
+  imageResultUrlPath?: string;
   extraHeaders?: Record<string, string>;
   async?: boolean;
   pollInterval?: number;
@@ -52,6 +58,9 @@ export function mergeGenerationAdapter(
   const rb = str(g.result_b64_path); if (rb) adapter.resultB64Path = rb;
   const eh = obj(g.extra_headers); if (eh) adapter.extraHeaders = eh as Record<string, string>;
   const rt = obj(g.request_template); if (rt) adapter.requestTemplate = rt;
+  const irt = obj(g.image_request_template); if (irt) adapter.imageRequestTemplate = irt;
+  const itp = str(g.image_task_path); if (itp) adapter.imageTaskPath = itp;
+  const irp = str(g.image_result_url_path); if (irp) adapter.imageResultUrlPath = irp;
   if (typeof g.poll_interval === 'number' && g.poll_interval > 0) adapter.pollInterval = g.poll_interval;
   if (typeof g.timeout_ms === 'number' && g.timeout_ms > 0) adapter.timeoutMs = g.timeout_ms;
   if (g.images_style === 'json' || g.images_style === 'multipart') adapter.imagesStyle = g.images_style;
@@ -180,7 +189,7 @@ export class GenerationClientService {
       vars[`imageUrl${i}`] = urls[i] || '';
       vars[`imageB64${i}`] = b64s[i] || '';
     });
-    let body = this.buildBody(adapter.requestTemplate, vars);
+    let body = this.buildBody(adapter.imageRequestTemplate ?? adapter.requestTemplate, vars);
     if (Object.keys(body).length === 0) {
       body = { model, prompt, response_format: 'b64_json' };
       if (size) body.size = size;
@@ -207,7 +216,7 @@ export class GenerationClientService {
     let json: any = null;
     try { json = JSON.parse(text); } catch { /* 非 JSON 响应 */ }
     if (!res.ok) {
-      throw new BadRequestException(`上游接口错误(${res.status}): ${text.slice(0, 300)}`);
+      throw new BadRequestException(`上游接口错误(${res.status}) ${url}: ${text.slice(0, 300)}`);
     }
     return json;
   }
@@ -223,7 +232,7 @@ export class GenerationClientService {
     let json: any = null;
     try { json = JSON.parse(text); } catch { /* 非 JSON 响应 */ }
     if (!res.ok) {
-      throw new BadRequestException(`上游接口错误(${res.status}): ${text.slice(0, 300)}`);
+      throw new BadRequestException(`上游接口错误(${res.status}) ${url}: ${text.slice(0, 300)}`);
     }
     return json;
   }
@@ -237,7 +246,7 @@ export class GenerationClientService {
     const text = await res.text();
     let json: any = null;
     try { json = JSON.parse(text); } catch { /* ignore */ }
-    if (!res.ok) throw new BadRequestException(`上游任务查询错误(${res.status}): ${text.slice(0, 300)}`);
+    if (!res.ok) throw new BadRequestException(`上游任务查询错误(${res.status}) ${url}: ${text.slice(0, 300)}`);
     return json;
   }
 
@@ -258,6 +267,31 @@ export class GenerationClientService {
       json = await this.postFormData(req.url, apiKey, req.body, adapter.extraHeaders, adapter.timeoutMs || 120000);
     } else {
       json = await this.postJson(req.url, apiKey, JSON.parse(req.body as string), adapter.extraHeaders, adapter.timeoutMs || 120000);
+    }
+    // 原生异步任务（如 DashScope text2image/image-synthesis）：提交返回 task_id，轮询拿结果
+    if (adapter.async || adapter.taskIdPath) {
+      const taskId = this.getByPath(json, adapter.taskIdPath || 'output.task_id') as string | undefined;
+      if (taskId) {
+        const pollAdapter: GenerationAdapterConfig = {
+          ...adapter,
+          taskPath: adapter.imageTaskPath || adapter.taskPath,
+          resultUrlPath: adapter.imageResultUrlPath || adapter.resultUrlPath || 'output.results[0].url',
+          statusPath: adapter.statusPath || 'output.task_status',
+        };
+        const deadline = Date.now() + (adapter.timeoutMs || 120000);
+        while (Date.now() < deadline) {
+          const polled = await this.pollVideoTask({ endpoint, apiKey, adapter: pollAdapter, taskId });
+          if (polled.status === 'done') {
+            if (!polled.url) throw new BadRequestException('上游图片任务完成但未返回图片地址');
+            return { url: polled.url };
+          }
+          if (polled.status === 'failed') {
+            throw new BadRequestException(polled.message || '上游图片任务失败');
+          }
+          await new Promise((r) => setTimeout(r, adapter.pollInterval || 3000));
+        }
+        throw new BadRequestException('上游图片任务超时');
+      }
     }
     const b64 = this.getByPath(json, adapter.resultB64Path || 'data[0].b64_json') as string | undefined;
     const u = this.getByPath(json, adapter.resultUrlPath || 'data[0].url') as string | undefined;
