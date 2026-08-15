@@ -227,6 +227,10 @@ export class AdminModelService implements OnModuleInit {
     if (!apiKey || !endpoint) {
       BusinessException.throw(ErrorCode.VALIDATION_FAILED, '模型未关联供应商凭据，无法测试');
     }
+    const cfg = (provider?.config ?? {}) as Record<string, unknown>;
+    const chatPath = typeof cfg.chatPath === 'string' && cfg.chatPath.trim() ? cfg.chatPath.trim() : '';
+    const useChatPath = !!chatPath && (callMode === 'text_chat' || callMode === 'vision' || callMode === 'ocr');
+    const apiPath = useChatPath ? chatPath : def.apiPath;
     try {
       let response: string | Record<string, unknown>;
       if (callMode === 'video' || callMode === 'video_edit') {
@@ -262,7 +266,7 @@ export class AdminModelService implements OnModuleInit {
         } else {
           const body = this.buildTestBody(callMode, upstreamModelId, dto.input);
           const out = await this.callUpstreamRaw(
-            this.buildApiUrl(endpoint, def.apiPath),
+            this.buildApiUrl(endpoint, apiPath),
             apiKey,
             body,
           );
@@ -271,7 +275,7 @@ export class AdminModelService implements OnModuleInit {
       } else {
         const body = this.buildTestBody(callMode, upstreamModelId, dto.input);
         const out = await this.callUpstreamRaw(
-          this.buildApiUrl(endpoint, def.apiPath),
+          this.buildApiUrl(endpoint, apiPath),
           apiKey,
           body,
         );
@@ -1383,7 +1387,7 @@ export class AdminModelService implements OnModuleInit {
     try {
       const u = new URL(base);
       const bare = !u.pathname || u.pathname === '/' || u.pathname === '';
-      if (bare && !/\/v\d+$/i.test(base)) {
+      if (bare && !/\/v\d+$/i.test(base) && !/\/v\d+(\/|$)/i.test(path)) {
         return `${base}/v1${path.startsWith('/') ? '' : '/'}${path}`;
       }
     } catch {

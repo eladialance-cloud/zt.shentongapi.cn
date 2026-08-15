@@ -55,6 +55,34 @@ describe('buildApiUrl 不再强制 /v1（修复 DashScope 原生端点被拼成�
       'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis/chat/completions',
     );
   });
+  it('DashScope compatible-mode 完整端点原样保留（chat/models）', () => {
+    const { svc } = buildAdminService();
+    assert.equal(
+      (svc as any).buildApiUrl('https://dashscope.aliyuncs.com/compatible-mode/v1', '/chat/completions'),
+      'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+    );
+    assert.equal(
+      (svc as any).buildApiUrl('https://dashscope.aliyuncs.com/compatible-mode/v1', '/models'),
+      'https://dashscope.aliyuncs.com/compatible-mode/v1/models',
+    );
+    assert.equal(
+      (svc as any).buildApiUrl('https://dashscope.aliyuncs.com/compatible-mode/v1', '/embeddings'),
+      'https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings',
+    );
+  });
+
+  it('裸域名 + 路径已含版本段（DashScope compatible-mode）不再补 /v1', () => {
+    const { svc } = buildAdminService();
+    assert.equal(
+      (svc as any).buildApiUrl('https://dashscope.aliyuncs.com', '/compatible-mode/v1/models'),
+      'https://dashscope.aliyuncs.com/compatible-mode/v1/models',
+    );
+    assert.equal(
+      (svc as any).buildApiUrl('https://dashscope.aliyuncs.com', '/compatible-mode/v1/chat/completions'),
+      'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+    );
+  });
+
   it('绝对路径直接使用', () => {
     const { svc } = buildAdminService();
     assert.equal(

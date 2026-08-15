@@ -450,6 +450,25 @@ export class LlmProxyService {
     return cur;
   }
 
+  /**
+   * 计算直连 endpoint（追加 /chat/completions 即为 chat URL）：
+   * - 供应商 config.chatPath 含路径前缀（如 /compatible-mode/v1）而 baseUrl 未含时补前缀
+   * - 兼容新旧两种存储：baseUrl 裸域名 + chatPath 完整路径均可
+   */
+  private chatBaseOf(provider: { baseUrl?: string; config?: Record<string, unknown> | null }): string {
+    const base = (provider.baseUrl || '').replace(/\/+$/, '');
+    const chatPath = provider.config?.chatPath;
+    if (typeof chatPath === 'string' && chatPath.startsWith('/')) {
+      const p = chatPath.replace(/\/+$/, '');
+      const suffix = '/chat/completions';
+      if (p.endsWith(suffix) && p.length > suffix.length) {
+        const prefix = p.slice(0, -suffix.length);
+        if (prefix && !base.endsWith(prefix)) return base + prefix;
+      }
+    }
+    return base;
+  }
+
   /** 解析模型所属供应商直连目标（model -> provider.baseUrl + apiKey + upstreamModelId） */
   private async resolveUpstreamTarget(
     modelId: string,
@@ -469,7 +488,7 @@ export class LlmProxyService {
           const decrypted = this.encryptionService.decryptAes(provider.apiKey);
           if (decrypted) {
             return {
-              endpoint: provider.baseUrl,
+              endpoint: this.chatBaseOf(provider),
               apiKey: decrypted,
               upstreamModelId: model.upstreamModelId || model.modelId,
               providerSlug: provider.slug,
@@ -484,7 +503,7 @@ export class LlmProxyService {
         const decrypted = this.encryptionService.decryptAes(relay.apiKey);
         if (decrypted) {
           return {
-            endpoint: relay.baseUrl,
+            endpoint: this.chatBaseOf(relay),
             apiKey: decrypted,
             upstreamModelId: model.upstreamModelId || model.modelId,
             providerSlug: relay.slug,

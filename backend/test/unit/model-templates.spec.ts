@@ -64,7 +64,7 @@ describe('模板库 image_edit 创意工具模板契约', () => {
     assert.deepEqual(gen.image_fields, ['sketch']);
     assert.equal(gen.prompt_field, 'prompt');
     assert.equal(gen.model_field, 'model');
-    assert.ok(String(gen.images_path).startsWith('/'));
+    assert.ok(/^(\/|https?:\/\/)/.test(String(gen.images_path)));
   });
 });
 
@@ -86,6 +86,20 @@ describe('模型市场预设库不变量', () => {
       assert.ok(typeof p.apiStyle === 'string' && p.apiStyle.length > 0, `${p.vendor} 缺 apiStyle`);
     }
   });
+  it('DashScope 预设：baseUrl 为完整 OpenAI 兼容端点，视频/图片生成路径为绝对 URL', () => {
+    const dash = PROVIDER_TEMPLATES.find((p) => p.vendor === 'aliyun-dashscope')!;
+    assert.equal(dash.baseUrl, 'https://dashscope.aliyuncs.com/compatible-mode/v1');
+    assert.equal(dash.chatPath, '/chat/completions');
+    assert.equal(dash.modelsPath, '/models');
+    const g = dash.generation as Record<string, unknown>;
+    assert.match(
+      String(g.videosPath),
+      /^https:\/\/dashscope\.aliyuncs\.com\/api\/v1\/services\/aigc\/video-generation\/video-synthesis$/,
+    );
+    assert.match(String(g.taskPath), /^https:\/\/dashscope\.aliyuncs\.com\/api\/v1\/services\/aigc\/video-generation\/tasks\/\{id\}$/);
+    assert.match(String(g.imagesPath), /^https:\/\/dashscope\.aliyuncs\.com\/compatible-mode\/v1\/images\/generations$/);
+  });
+
   it('openai / deepseek 预设已加入', () => {
     for (const key of ['openai-gpt-4o', 'openai-gpt-4o-mini', 'openai-gpt-4.1', 'openai-dall-e-3', 'openai-whisper-1', 'openai-tts-1', 'deepseek-chat', 'deepseek-reasoner']) {
       assert.ok(MODEL_TEMPLATES.some((t) => t.key === key), `缺少预设 ${key}`);

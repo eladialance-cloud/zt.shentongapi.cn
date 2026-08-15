@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Badge,
   Button,
@@ -139,6 +139,15 @@ export default function MarketPanel() {
   }
 
   const vendor = vendors.find((v) => v.vendor === vendorKey)
+  const autoPromptedVendor = useRef('')
+
+  useEffect(() => {
+    if (!vendor) return
+    if (!vendor.hasProvider && autoPromptedVendor.current !== vendor.vendor) {
+      autoPromptedVendor.current = vendor.vendor
+      setProviderModalOpen(true)
+    }
+  }, [vendor])
 
   return (
     <div className={styles.market}>
