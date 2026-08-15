@@ -43,6 +43,7 @@ import {
   marketPresetsForVendor,
   resolvePricing,
 } from './utils/market-utils';
+import { presetsForProviderType } from './utils/provider-type-utils';
 import { GenerationClientService, GenerationAdapterConfig, mergeGenerationAdapter } from '../media-generation/generation-client.service';
 
 /** 模型查询参数 */
@@ -352,12 +353,16 @@ export class AdminModelService implements OnModuleInit {
     });
   }
 
-  /** 模型市场：某厂商预设列表（relay 返回空数组） */
-  async marketPresets(vendor: string) {
+  /** 模型市场：某厂商预设列表（relay 返回空数组；type=image/video 时按类型过滤，供供应商导入弹窗按类型读取预设） */
+  async marketPresets(vendor: string, type?: string) {
     if (!PROVIDER_TEMPLATES.some((p) => p.vendor === vendor)) {
       BusinessException.throw(ErrorCode.NOT_FOUND, `未知厂商: ${vendor}`);
     }
-    return marketPresetsForVendor(vendor).map((t) => ({
+    const templates =
+      type === 'image' || type === 'video'
+        ? presetsForProviderType(marketPresetsForVendor(vendor), type, CALL_MODES)
+        : marketPresetsForVendor(vendor);
+    return templates.map((t) => ({
       key: t.key,
       vendor: t.vendor,
       name: t.name,

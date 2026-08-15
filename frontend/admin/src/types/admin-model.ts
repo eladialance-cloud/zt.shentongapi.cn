@@ -17,6 +17,9 @@ export type ModelCapability =
 /** 模型类型标签（路由/计费分类，由输出类型×输入类型推导）：chat 文本对话 / vision 图片识图 / image 文生图 / image_edit 图生图 / video 视频生成 / tts 语音合成 */
 export type ModelType = 'chat' | 'vision' | 'image' | 'image_edit' | 'video' | 'tts' | string
 
+/** 供应商读取类型：对话 / 图片 / 视频（同一 Key，URL 后缀由厂商模板自动匹配） */
+export type ProviderType = 'chat' | 'image' | 'video'
+
 /** 模型输出类型：text 文本 / image 图片 / video 视频 / audio 语音 */
 export type ModelOutputType = 'text' | 'image' | 'video' | 'audio'
 
@@ -241,7 +244,7 @@ export interface ImportProviderModelsResult {
   errors: Array<{ modelId: string; error: string }>
 }
 
-/** 新增模型 DTO（兼容旧接口，新流程请用供应商导入） */
+/** 新增模型 DTO（支持 P2 调用模式/规格/计费全字段） */
 export interface CreateAdminModelDto {
   provider: string
   modelId: string
@@ -263,6 +266,17 @@ export interface CreateAdminModelDto {
   pricePerCall?: number | null
   videoPrices?: Record<string, Record<string, number>>
   generationParams?: Record<string, unknown>
+  outputType?: ModelOutputType
+  inputTypes?: ModelInputType[]
+  advancedCapabilities?: AdvancedCapability[]
+  callMode?: CallModeKey
+  scenarioTags?: string[]
+  pricingMode?: string
+  videoPerSecond?: Record<string, number>
+  specs?: Record<string, unknown>
+  costPrice?: number
+  remark?: string
+  pricePerMinute?: number
 }
 
 /** 更新模型 DTO */

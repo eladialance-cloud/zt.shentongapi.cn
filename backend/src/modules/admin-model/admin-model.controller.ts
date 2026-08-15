@@ -108,8 +108,8 @@ export class AdminModelController {
   /** 模型市场：某厂商预设列表 */
   @Get('market/presets')
   @ApiOperation({ summary: '模型市场：厂商预设列表' })
-  async marketPresets(@Query('vendor') vendor: string) {
-    return this.service.marketPresets(vendor);
+  async marketPresets(@Query('vendor') vendor: string, @Query('type') type?: string) {
+    return this.service.marketPresets(vendor, type);
   }
 
   /** 模型市场：批量创建模型 */

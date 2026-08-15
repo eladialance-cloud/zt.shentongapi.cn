@@ -22,6 +22,7 @@ import type {
   AdminProviderItem,
   BatchUpdateResult,
   CallModesMeta,
+  CreateAdminModelDto,
   CreateProviderDto,
   FetchProviderModelsResult,
   ImportModelsJsonResult,
@@ -48,6 +49,15 @@ export async function listAdminModels(
     '/admin/models',
     { params: query as Record<string, unknown> }
   )
+}
+
+/** 新增模型（单模型添加窗口；P2 全字段） */
+export async function createAdminModel(
+  dto: CreateAdminModelDto
+): Promise<AdminModelItem> {
+  return adminRequest<AdminModelItem>('post', '/admin/models', {
+    data: dto
+  })
 }
 
 /** 编辑模型 */
@@ -167,6 +177,9 @@ export async function createModelFromTemplate(dto: {
   modelId?: string
   displayName?: string
   providerId?: number
+  enabled?: boolean
+  scenarioTags?: string[]
+  priceOverrides?: Record<string, unknown>
 }): Promise<AdminModelItem> {
   return adminRequest<AdminModelItem>('post', '/admin/models/from-template', { data: dto })
 }
@@ -233,10 +246,11 @@ export async function fetchMarketVendors(): Promise<MarketVendor[]> {
 
 /** 模型市场：某厂商预设列表 */
 export async function fetchMarketPresets(
-  vendor: string
+  vendor: string,
+  type?: string
 ): Promise<MarketPresetItem[]> {
   return adminRequest<MarketPresetItem[]>('get', '/admin/models/market/presets', {
-    params: { vendor }
+    params: { vendor, ...(type ? { type } : {}) }
   })
 }
 
@@ -252,6 +266,7 @@ export async function marketImportModels(dto: {
 
 export default {
   listAdminModels,
+  createAdminModel,
   updateAdminModel,
   removeAdminModel,
   enableAdminModel,
