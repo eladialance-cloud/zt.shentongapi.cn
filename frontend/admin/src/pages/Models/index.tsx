@@ -1,23 +1,25 @@
-// 大模型配置管理页 (v0.10.0 重构)
+// 大模型配置管理页 (v0.11.0 按原型重构)
 //
-// 两个 Tab：
-//   Tab1 模型管理：模型列表(分类/计费/上下架/批量) + 顶部【添加第三方供应商】【添加大模型】
-//   Tab2 供应商管理：供应商列表 + 新增/编辑(厂商模板自动匹配后缀)/测试/删除
+// 界面结构（与用户确认的原型一致）：
+//   顶部：标题「模型管理」 + 右侧【🔑 凭据管理】【＋ 添加模型】
+//   Tab：文案模型 | 图片模型 | 视频模型 | 语音模型（按输出大类过滤，复用后端 modelType 查询）
+//   表格：模型ID / 显示名 / 场景标签 / 积分 / 状态 / 操作（测试·编辑·删除）
+//   底部提示：各类模型的积分单位
 //
-// 添加路径（收敛为两条，模型市场已删除）：
-//   1. 添加第三方供应商向导：供应商 URL+Key -> 测试 -> 读取上游(对话) / 官方预设(图片/视频) -> 逐项设置参数与积分
-//   2. 添加大模型（单模型）：选已有供应商(自动带 URL+Key)或新建 -> 模型类型 -> 调用模式 -> 分类标签 -> 参数配置 -> 积分扣除
+// 添加模型 -> AddModelModal（单模型向导：选/新建凭据 -> 模型类型 -> 调用模式 -> 参数与积分）
+// 凭据管理 -> 右侧抽屉：凭据列表 + 测试/读取模型/编辑/删除 + 新建凭据（ProviderImportModal 向导）
 //
-// API:
-//   GET/PATCH/DELETE /admin/models, POST /admin/models/:id/{enable,disable,test}, POST /admin/models
+// API（复用后端，未改动）：
+//   GET/PATCH/DELETE /admin/models, POST /admin/models/:id/{enable,disable,test}
 //   GET/POST/PATCH/DELETE /admin/models/providers, POST /admin/models/providers/test
 //   POST /admin/models/providers/:id/{fetch-models,import}
-//   GET /admin/models/market/vendors（厂商模板，供应商编辑自动匹配后缀）
+//   GET /admin/models/market/vendors（厂商模板）
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Button,
+  Drawer,
   Empty,
   Form,
   Input,
@@ -39,6 +41,7 @@ import {
   ApiOutlined,
   DeleteOutlined,
   EditOutlined,
+  KeyOutlined,
   PlusOutlined,
   ShopOutlined,
   ThunderboltOutlined
@@ -63,7 +66,6 @@ import CallModePicker from './components/CallModePicker'
 import DynamicSpecForm from './components/DynamicSpecForm'
 import ScenarioTagPicker from './components/ScenarioTagPicker'
 import PricingConfigForm from './components/PricingConfigForm'
-import BatchBar from './components/BatchBar'
 import type {
   AdminModelItem,
   AdminProviderItem,
@@ -75,32 +77,57 @@ import type {
   MarketVendor
 } from '@/types/admin-model'
 import {
-  ADVANCED_CAP_LABEL,
   ADVANCED_CAP_OPTIONS,
-  INPUT_TYPE_LABEL,
   INPUT_TYPE_OPTIONS,
   MODEL_TYPE_LABEL,
   deriveModelType,
   inputTypesFromModelType,
   type AdvancedCapability,
-  type ModelInputType
+  type ModelInputType,
+  type ModelOutputType
 } from '@/utils/model-type'
 import type { AdminPaginatedResult } from '@/types/admin-auth'
 import styles from './styles.module.css'
+
 const PAGE_SIZE = 20
 
-const MODEL_TYPE_OPTIONS: Array<{ label: string; value: string }> = [
-  { label: '文案（文本输出）', value: 'chat,vision,embedding,rerank' },
-  { label: '图片（文生图/图生图/编辑）', value: 'image,image_edit' },
-  { label: '视频（文生视频/图生视频）', value: 'video' },
-  { label: '语音（识别/合成/转语音）', value: 'tts,stt,audio' }
+type CatKey = 'text' | 'image' | 'video' | 'voice'
+
+const CATEGORY_TABS: Array<{ key: CatKey; label: string; sub: string; modelTypes: string }> = [
+  {
+    key: 'text',
+    label: '文案模型',
+    sub: '对话/翻译/OCR/向量等文本输出',
+    modelTypes: 'chat,vision,embedding,rerank,reasoning'
+  },
+  {
+    key: 'image',
+    label: '图片模型',
+    sub: '文生图 / 图生图 / 局部重绘 / 虚拟试衣 / 创意海报',
+    modelTypes: 'image,image_edit'
+  },
+  { key: 'video', label: '视频模型', sub: '文生视频 / 图生视频', modelTypes: 'video' },
+  { key: 'voice', label: '语音模型', sub: '识别 / 合成 / 转语音', modelTypes: 'tts,stt,audio' }
 ]
+
+const PRICE_HINTS: Record<CatKey, string> = {
+  text: '文案：输入/输出积分 · 千token',
+  image: '图片：x积分/张',
+  video: '视频：x积分/秒（按分辨率自动跳档）',
+  voice: '语音：x积分/次 或 x积分/分钟'
+}
 
 const CONNECTION_TAG: Record<string, { color: string; text: string }> = {
   untested: { color: 'default', text: '未测试' },
   connected: { color: 'green', text: '已连接' },
   failed: { color: 'red', text: '连接失败' }
 }
+
+const ENABLED_OPTIONS = [
+  { label: '全部', value: '' },
+  { label: '已上架', value: 'true' },
+  { label: '已下架', value: 'false' }
+]
 
 const MODEL_TYPE_COLOR: Record<string, string> = {
   chat: 'geekblue',
@@ -114,13 +141,7 @@ const MODEL_TYPE_COLOR: Record<string, string> = {
   audio: 'gold'
 }
 
-const ENABLED_OPTIONS = [
-  { label: '全部', value: '' },
-  { label: '已上架', value: 'true' },
-  { label: '已下架', value: 'false' }
-]
-
-/** 模型编辑表单值（v0.10：调用模式驱动，旧字段已清理） */
+/** 模型编辑表单值（调用模式驱动） */
 interface ModelFormValues {
   displayName: string
   upstreamModelId?: string
@@ -143,72 +164,110 @@ interface ModelFormValues {
   pricingMode?: string
   pricePerMinute?: number
 }
+
+/** 按模型类型格式化积分展示（与用户端选择框口径一致） */
+function formatPrice(m: AdminModelItem): string {
+  const t = (m.modelType || 'chat').toLowerCase()
+  if (m.pricingMode === 'per_image') return `${m.pricePerImage ?? 0} 积分/张`
+  if (m.pricingMode === 'per_call') return `按次 ${m.pricePerCall ?? 0} 积分`
+  if (m.pricingMode === 'per_minute') return `按分钟 ${m.pricePerMinute ?? 0} 积分`
+  if (m.pricingMode === 'per_second') {
+    const vps = m.videoPerSecond
+    if (vps && Object.keys(vps).length) {
+      return Object.entries(vps)
+        .map(([k, v]) => `${k} ${v} 积分/秒`)
+        .join(' · ')
+    }
+    return '积分待设'
+  }
+  if (t === 'image' || t === 'image_edit') return `${m.pricePerImage ?? 0} 积分/张`
+  if (t === 'video') {
+    const vps = m.videoPerSecond
+    if (vps && Object.keys(vps).length) {
+      return Object.entries(vps)
+        .map(([k, v]) => `${k} ${v} 积分/秒`)
+        .join(' · ')
+    }
+    return '积分待设'
+  }
+  if (t === 'tts' || t === 'audio' || t === 'music') {
+    const parts: string[] = []
+    if (m.pricePerCall != null) parts.push(`按次 ${m.pricePerCall} 积分`)
+    if (m.pricePerMinute != null) parts.push(`按分钟 ${m.pricePerMinute} 积分`)
+    return parts.length ? parts.join(' · ') : '积分待设'
+  }
+  return `输入 ${m.inputPricePerToken ?? 0} / 输出 ${m.outputPricePerToken ?? 0} · 千token`
+}
+
 export default function AdminModels() {
+  // ----- 分类 Tab（文案/图片/视频/语音）-----
+  const [activeCat, setActiveCat] = useState<CatKey>('text')
+  const activeDef = CATEGORY_TABS.find((c) => c.key === activeCat) ?? CATEGORY_TABS[0]
+
   // ----- 模型列表 -----
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<AdminModelItem[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
-  const [providerFilter, setProviderFilter] = useState<string | ''>('')
-  const [typeFilter, setTypeFilter] = useState<string | ''>('')
   const [enabledFilter, setEnabledFilter] = useState<'' | 'true' | 'false'>('')
   const [keyword, setKeyword] = useState('')
   const [searchKeyword, setSearchKeyword] = useState('')
-const [testModalOpen, setTestModalOpen] = useState(false)
-const [testRefImage, setTestRefImage] = useState('')
-const [pendingTestItem, setPendingTestItem] = useState<AdminModelItem | null>(null)
+  const [testModalOpen, setTestModalOpen] = useState(false)
+  const [testRefImage, setTestRefImage] = useState('')
+  const [pendingTestItem, setPendingTestItem] = useState<AdminModelItem | null>(null)
 
-  // ----- 供应商（Tab2）-----
+  // ----- 凭据（供应商）-----
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const [providers, setProviders] = useState<AdminProviderItem[]>([])
   const [providerLoading, setProviderLoading] = useState(false)
   const [editProvider, setEditProvider] = useState<AdminProviderItem | null>(null)
   const [providerForm] = Form.useForm()
   const [providerSaving, setProviderSaving] = useState(false)
   const [providerTestingId, setProviderTestingId] = useState<number | null>(null)
-  // 厂商模板（供应商编辑：自动匹配后缀/生成适配参数）
   const [vendorList, setVendorList] = useState<MarketVendor[]>([])
+  const [importOpen, setImportOpen] = useState(false)
+  const [importProvider, setImportProvider] = useState<AdminProviderItem | null>(null)
+
   // ----- 模型编辑 -----
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<AdminModelItem | null>(null)
   const [form] = Form.useForm<ModelFormValues>()
   const [meta, setMeta] = useState<CallModesMeta>()
-  const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [saving, setSaving] = useState(false)
   const callMode = Form.useWatch('callMode', form)
   const callModeDef = useMemo(
     () => meta?.callModes.find((m) => m.key === callMode),
     [meta, callMode]
   )
-  // 类型标签 = 输出类型 × 输入类型（由调用模式推导，能力标签可调整）
   const derivedType = useMemo(() => {
     if (!callModeDef) return 'chat'
     return deriveModelType(callModeDef.output, callModeDef.inputs)
   }, [callModeDef])
 
-  // ----- 导入向导 / 单模型添加 -----
-  const [importOpen, setImportOpen] = useState(false)
-  const [importProvider, setImportProvider] = useState<AdminProviderItem | null>(null)
-  const [testingModelId, setTestingModelId] = useState<number | null>(null)
+  // ----- 添加模型 -----
   const [addModelOpen, setAddModelOpen] = useState(false)
-
-  // ----- 页面模式 (模型列表 / 供应商管理) -----
-  const [pageMode, setPageMode] = useState<'list' | 'providers'>('list')
+  const [testingModelId, setTestingModelId] = useState<number | null>(null)
 
   const loadProviders = useCallback(async () => {
+    setProviderLoading(true)
     try {
       const list = await listAdminProviders()
       setProviders(list || [])
-    } catch (err) {
-      console.error('[AdminModels] load providers failed:', err)
+    } catch (err: any) {
+      message.error('加载凭据列表失败: ' + (err?.message || ''))
+    } finally {
+      setProviderLoading(false)
     }
   }, [])
 
   const loadList = useCallback(async () => {
     setLoading(true)
     try {
-      const query: Record<string, unknown> = { page, pageSize: PAGE_SIZE }
-      if (providerFilter) query.provider = providerFilter
-      if (typeFilter) query.modelType = typeFilter
+      const query: Record<string, unknown> = {
+        page,
+        pageSize: PAGE_SIZE,
+        modelType: activeDef.modelTypes
+      }
       if (enabledFilter) query.enabled = enabledFilter === 'true'
       if (searchKeyword) query.keyword = searchKeyword
       const result = await listAdminModels(query)
@@ -221,7 +280,7 @@ const [pendingTestItem, setPendingTestItem] = useState<AdminModelItem | null>(nu
     } finally {
       setLoading(false)
     }
-  }, [page, providerFilter, typeFilter, enabledFilter, searchKeyword])
+  }, [page, activeDef.modelTypes, enabledFilter, searchKeyword])
 
   useEffect(() => {
     void loadList()
@@ -236,9 +295,12 @@ const [pendingTestItem, setPendingTestItem] = useState<AdminModelItem | null>(nu
     fetchMarketVendors().then(setVendorList).catch(() => undefined)
   }, [])
 
+  const handleCatChange = (key: string) => {
+    setActiveCat(key as CatKey)
+    setPage(1)
+  }
+
   const handleReset = () => {
-    setProviderFilter('')
-    setTypeFilter('')
     setEnabledFilter('')
     setKeyword('')
     setSearchKeyword('')
@@ -315,14 +377,12 @@ const [pendingTestItem, setPendingTestItem] = useState<AdminModelItem | null>(nu
         ...(values.apiEndpoint && values.apiEndpoint.trim()
           ? { apiEndpoint: values.apiEndpoint.trim() }
           : {}),
-        // 类型由调用模式推导（输出类型 = def.output；能力标签可调整）
         outputType: def.output,
         inputTypes: values.inputTypes && values.inputTypes.length ? values.inputTypes : def.inputs,
         advancedCapabilities: values.advancedCapabilities ?? [],
         enabled: values.enabled,
         sortOrder: values.sortOrder ?? 0
       }
-      // 计费：按 pricingMode 只写当前模式对应字段（token / 张 / 次 / 分钟 / 秒）
       const pricingMode = values.pricingMode
       if (pricingMode === 'per_image') {
         if (values.pricePerImage != null) dto.pricePerImage = values.pricePerImage
@@ -331,13 +391,11 @@ const [pendingTestItem, setPendingTestItem] = useState<AdminModelItem | null>(nu
       } else if (pricingMode === 'per_minute') {
         if (values.pricePerMinute != null) dto.pricePerMinute = values.pricePerMinute
       } else if (pricingMode === 'per_second') {
-        // 无其他字段；videoPerSecond 由下方 videoPerSecondList 写入
+        // videoPerSecond 由下方 videoPerSecondList 写入
       } else {
-        // token / 无 pricingMode（旧数据兜底）
         if (values.inputPricePerToken != null) dto.inputPricePerToken = values.inputPricePerToken
         if (values.outputPricePerToken != null) dto.outputPricePerToken = values.outputPricePerToken
       }
-      // 高级参数（JSON 透传；供应商级生成适配模板仍生效，模型级覆盖同名 key）
       if (values.generationParamsText?.trim()) {
         try {
           dto.generationParams = JSON.parse(values.generationParamsText) as Record<string, unknown>
@@ -346,14 +404,12 @@ const [pendingTestItem, setPendingTestItem] = useState<AdminModelItem | null>(nu
           return
         }
       }
-      // P2：调用模式 / 场景标签 / 计费 / 成本价 / 备注 合并进 dto
       dto.callMode = values.callMode as CallModeKey
       if (values.scenarioTags && values.scenarioTags.length) dto.scenarioTags = values.scenarioTags
       if (values.pricingMode) dto.pricingMode = values.pricingMode
       if (values.costPrice != null) dto.costPrice = values.costPrice
       if (values.remark != null) dto.remark = values.remark
       if (values.pricePerMinute != null) dto.pricePerMinute = values.pricePerMinute
-      // 动态规格：仅保留当前调用模式的 specFields，json 类型值解析为对象
       if (values.specs) {
         const specKeys = callModeDef?.specFields ?? []
         const specs = { ...values.specs }
@@ -373,7 +429,6 @@ const [pendingTestItem, setPendingTestItem] = useState<AdminModelItem | null>(nu
         }
         dto.specs = specs
       }
-      // 视频按秒计费：videoPerSecondList -> videoPerSecond
       if (values.videoPerSecondList && values.videoPerSecondList.length) {
         dto.videoPerSecond = Object.fromEntries(
           values.videoPerSecondList.map((row) => [row.resolution, row.rate])
@@ -460,110 +515,44 @@ const [pendingTestItem, setPendingTestItem] = useState<AdminModelItem | null>(nu
     {
       title: '模型 ID',
       key: 'modelId',
-      width: 220,
+      width: 260,
       render: (_, m) => (
         <div>
           <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{m.modelId}</div>
-          {m.upstreamModelId && m.upstreamModelId !== m.modelId && (
-            <div style={{ fontSize: 12, color: '#8b949e' }}>上游: {m.upstreamModelId}</div>
-          )}
+          <div style={{ fontSize: 12, color: '#8b949e' }}>
+            {m.providerName || m.provider}
+            {m.upstreamModelId && m.upstreamModelId !== m.modelId
+              ? ` · 上游 ${m.upstreamModelId}`
+              : ''}
+          </div>
         </div>
       )
     },
-    { title: '显示名', dataIndex: 'displayName', key: 'displayName', width: 160 },
+    { title: '显示名', dataIndex: 'displayName', key: 'displayName', width: 180 },
     {
-      title: '供应商',
-      key: 'provider',
-      width: 160,
-      render: (_, m) => (
-        <Space size={4} direction="vertical" style={{ gap: 0 }}>
-          <span>{m.providerName || m.provider}</span>
-          <span style={{ fontSize: 12, color: '#8b949e' }}>{m.provider}</span>
-        </Space>
-      )
-    },
-    {
-      title: '类型标签',
-      dataIndex: 'modelType',
-      key: 'modelType',
-      width: 120,
-      render: (t: string) => (
-        <Tag color={MODEL_TYPE_COLOR[t] || 'default'}>{MODEL_TYPE_LABEL[t] || t || 'chat'}</Tag>
-      )
-    },
-    {
-      title: '排序',
-      dataIndex: 'sortOrder',
-      key: 'sortOrder',
-      width: 70,
-      render: (v: number) => <Tag>{v ?? 0}</Tag>
-    },
-    {
-      title: '计费',
-      key: 'price',
-      width: 190,
+      title: '场景标签',
+      key: 'scenarioTags',
+      width: 220,
       render: (_, m) => {
-        const t = m.modelType || 'chat'
-        if (t === 'image' || t === 'image_edit') {
-          return <span style={{ color: '#c7d2fe' }}>{m.pricePerImage ?? 10} 积分/张</span>
-        }
-        if (t === 'video') {
-          const vps = m.videoPerSecond
-          if (vps && Object.keys(vps).length) {
-            return (
-              <span style={{ color: '#c7d2fe', fontSize: 12 }}>
-                {Object.entries(vps)
-                  .map(([k, v]) => `${k} ${v}分/秒`)
-                  .join(' · ')}
-              </span>
-            )
-          }
-          return <Tag color="purple">视频计费</Tag>
-        }
-        if (t === 'tts') {
-          return <span style={{ color: '#c7d2fe' }}>{m.pricePerCall ?? 1} 积分/次</span>
-        }
-        return (
-          <span style={{ color: '#c7d2fe' }}>
-            {m.inputPricePerToken ?? 0} / {m.outputPricePerToken ?? 0}
-          </span>
-        )
-      }
-    },
-    {
-      title: '能力（输入类型）',
-      key: 'capabilities',
-      width: 200,
-      render: (_, m) => {
-        const inputs =
-          m.inputTypes && m.inputTypes.length
-            ? m.inputTypes
-            : inputTypesFromModelType(m.modelType)
-        const adv = m.advancedCapabilities || []
-        return (
+        const tags = m.scenarioTags ?? []
+        return tags.length ? (
           <Space size={4} wrap>
-            {inputs.map((t) => (
-              <Tag key={'in-' + t} color="blue" style={{ marginRight: 0 }}>
-                {INPUT_TYPE_LABEL[t] || t}
-              </Tag>
-            ))}
-            {adv.map((c) => (
-              <Tag key={'adv-' + c} color="purple" style={{ marginRight: 0 }}>
-                {ADVANCED_CAP_LABEL[c] || c}
+            {tags.map((t) => (
+              <Tag key={t} color="geekblue" style={{ marginRight: 0 }}>
+                {t}
               </Tag>
             ))}
           </Space>
+        ) : (
+          <span style={{ color: '#8b949e' }}>—</span>
         )
       }
     },
     {
-      title: '连接',
-      key: 'connection',
-      width: 100,
-      render: (_, m) => {
-        const c = CONNECTION_TAG[m.connectionStatus || 'untested'] || CONNECTION_TAG.untested
-        return <Tag color={c.color}>{c.text}</Tag>
-      }
+      title: '积分',
+      key: 'price',
+      width: 200,
+      render: (_, m) => <span style={{ color: '#c7d2fe' }}>{formatPrice(m)}</span>
     },
     {
       title: '状态',
@@ -581,7 +570,7 @@ const [pendingTestItem, setPendingTestItem] = useState<AdminModelItem | null>(nu
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 190,
       fixed: 'right',
       render: (_, m) => (
         <Space size={4}>
@@ -594,12 +583,7 @@ const [pendingTestItem, setPendingTestItem] = useState<AdminModelItem | null>(nu
           >
             测试
           </Button>
-          <Button
-            type="text"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => openEdit(m)}
-          >
+          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEdit(m)}>
             编辑
           </Button>
           <Popconfirm
@@ -615,31 +599,32 @@ const [pendingTestItem, setPendingTestItem] = useState<AdminModelItem | null>(nu
     }
   ]
 
-  // ----- 供应商管理 -----
-  const loadProviderList = useCallback(async () => {
-    setProviderLoading(true)
+  // ----- 凭据操作 -----
+  const handleTestProvider = async (p: AdminProviderItem) => {
+    setProviderTestingId(p.id)
     try {
-      const list = await listAdminProviders()
-      setProviders(list || [])
+      const r = await testAdminProvider({ providerId: p.id })
+      message.success('连接成功: ' + (r.response || '').slice(0, 60))
     } catch (err: any) {
-      message.error('加载供应商列表失败: ' + (err?.message || ''))
+      message.error('连接失败: ' + (err?.message || ''))
     } finally {
-      setProviderLoading(false)
+      setProviderTestingId(null)
+      void loadProviders()
     }
-  }, [])
-
-  const openAddProvider = () => {
-    setImportProvider(null)
-    setImportOpen(true)
   }
 
-  const openReadModels = (p: AdminProviderItem) => {
-    setImportProvider(p)
-    setImportOpen(true)
+  const handleDeleteProvider = async (p: AdminProviderItem) => {
+    try {
+      await removeAdminProvider(p.id)
+      message.success('凭据已删除')
+      void loadProviders()
+    } catch (err: any) {
+      message.error('删除失败: ' + (err?.message || ''))
+    }
   }
+
   const openEditProvider = (p: AdminProviderItem) => {
     setEditProvider(p)
-    // 已有厂商模板的供应商：自动选中对应厂商（用于界面提示，不强制改）
     const cfg = (p.config ?? {}) as Record<string, unknown>
     providerForm.setFieldsValue({
       name: p.name,
@@ -664,7 +649,6 @@ const [pendingTestItem, setPendingTestItem] = useState<AdminModelItem | null>(nu
         isGlobal: values.isGlobal === true
       }
       if (values.apiKey && String(values.apiKey).trim()) dto.apiKey = String(values.apiKey).trim()
-      // 厂商模板：选中后自动写入 vendorKey + chatPath + modelsPath + generation（后缀自动匹配）
       const vendor = vendorList.find((v) => v.vendor === values.vendorKey)
       const cfg = (editProvider.config ?? {}) as Record<string, unknown>
       const nextConfig: Record<string, unknown> = { ...cfg }
@@ -674,7 +658,6 @@ const [pendingTestItem, setPendingTestItem] = useState<AdminModelItem | null>(nu
         nextConfig.modelsPath = vendor.modelsPath
         nextConfig.generation = vendor.generation
       } else {
-        // 未选模板：保留原 vendorKey/生成配置，仅同步手填路径
         const chatPath = values.chatPath != null ? String(values.chatPath).trim() : ''
         const modelsPath = values.modelsPath != null ? String(values.modelsPath).trim() : ''
         if (chatPath) nextConfig.chatPath = chatPath
@@ -682,9 +665,9 @@ const [pendingTestItem, setPendingTestItem] = useState<AdminModelItem | null>(nu
       }
       if (Object.keys(nextConfig).length > 0) dto.config = nextConfig
       await updateAdminProvider(editProvider.id, dto)
-      message.success('供应商已更新')
+      message.success('凭据已更新')
       setEditProvider(null)
-      void loadProviderList()
+      void loadProviders()
     } catch (err) {
       if (err && typeof err === 'object' && 'errorFields' in err) return
       message.error('保存失败')
@@ -693,547 +676,495 @@ const [pendingTestItem, setPendingTestItem] = useState<AdminModelItem | null>(nu
     }
   }
 
-  const handleTestProvider = async (p: AdminProviderItem) => {
-    setProviderTestingId(p.id)
-    try {
-      const r = await testAdminProvider({ providerId: p.id })
-      message.success('连接成功: ' + (r.response || '').slice(0, 60))
-      void loadProviderList()
-    } catch (err: any) {
-      message.error('连接失败: ' + (err?.message || ''))
-      void loadProviderList()
-    } finally {
-      setProviderTestingId(null)
-    }
+  const openAddCredential = () => {
+    setImportProvider(null)
+    setImportOpen(true)
   }
 
-  const handleDeleteProvider = async (p: AdminProviderItem) => {
-    try {
-      await removeAdminProvider(p.id)
-      message.success('供应商已删除')
-      void loadProviderList()
-    } catch (err: any) {
-      message.error('删除失败: ' + (err?.message || ''))
-    }
+  const openReadModels = (p: AdminProviderItem) => {
+    setImportProvider(p)
+    setImportOpen(true)
   }
 
-  const providerColumns: TableColumnsType<AdminProviderItem> = [
-    { title: '名称', dataIndex: 'name', key: 'name', width: 160 },
-    {
-      title: 'Base URL',
-      dataIndex: 'baseUrl',
-      key: 'baseUrl',
-      ellipsis: true,
-      render: (v: string) => <span style={{ fontSize: 12 }}>{v}</span>
-    },
-    {
-      title: '连接状态',
-      key: 'conn',
-      width: 110,
-      render: (_, p) => {
-        const c = CONNECTION_TAG[p.connectionStatus || 'untested'] || CONNECTION_TAG.untested
-        return <Tag color={c.color}>{c.text}</Tag>
-      }
-    },
-    {
-      title: '全局中转',
-      key: 'isGlobal',
-      width: 100,
-      render: (_, p) =>
-        p.isGlobal ? <Tag color="gold">全局</Tag> : <Tag>—</Tag>
-    },
-    {
-      title: '模型数',
-      dataIndex: 'modelCount',
-      key: 'modelCount',
-      width: 80,
-      render: (v: number) => <Tag color="geekblue">{v ?? 0}</Tag>
-    },
-    {
-      title: '状态',
-      key: 'status',
-      width: 90,
-      render: (_, p) =>
-        p.status === 'active' ? <Tag color="green">启用</Tag> : <Tag color="red">停用</Tag>
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 260,
-      render: (_, p) => (
-        <Space size={4}>
-          <Button
-            type="text"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => openEditProvider(p)}
-          >
-            编辑
-          </Button>
-          <Button
-            type="text"
-            size="small"
-            icon={<ThunderboltOutlined />}
-            loading={providerTestingId === p.id}
-            onClick={() => void handleTestProvider(p)}
-          >
-            测试
-          </Button>
-          <Button
-            type="text"
-            size="small"
-            icon={<ApiOutlined />}
-            onClick={() => openReadModels(p)}
-          >
-            读取模型
-          </Button>
-          <Popconfirm
-            title="确认删除该供应商？"
-            description="供应商下存在模型时不允许删除"
-            onConfirm={() => void handleDeleteProvider(p)}
-            okText="删除"
-            cancelText="取消"
-          >
-            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      )
-    }
-  ]
+  const refreshAll = () => {
+    void loadList()
+    void loadProviders()
+  }
 
-  const providerFilterOptions = useMemo(
-    () => providers.map((p) => ({ label: p.name, value: p.slug })),
-    [providers]
-  )
-  const globalProvider = providers.find((p) => p.isGlobal)
+  const addInitialOutput: ModelOutputType =
+    activeCat === 'image'
+      ? 'image'
+      : activeCat === 'video'
+        ? 'video'
+        : activeCat === 'voice'
+          ? 'audio'
+          : 'text'
 
   return (
     <div className={styles.page}>
-      <Tabs
-        activeKey={pageMode}
-        onChange={(k) => setPageMode(k as 'list' | 'providers')}
-        items={[
-          { key: 'list', label: '模型管理' },
-          { key: 'providers', label: '供应商管理' },
-        ]}
-      />
-      {pageMode === 'list' ? (
-        <>
-          <div className={styles.header}>
-            <div className={styles.titleArea}>
-              <ApiOutlined className={styles.titleIcon} />
-              <div>
-                <h1 className={styles.title}>模型管理</h1>
-                <p className={styles.subtitle}>
-                  添加供应商 -&gt; 读取模型/加载预设 -&gt; 设置类型与积分导入；按类型计费：文本/千token、图片/张、视频/秒(分档)、语音/次或分钟
-                </p>
-              </div>
-            </div>
-            <Space>
-              <Button
-                type="primary"
-                className={styles.primaryBtn}
-                icon={<PlusOutlined />}
-                onClick={openAddProvider}
-              >
-                添加第三方供应商
-              </Button>
-              <Button
-                className={styles.ghostBtn}
-                icon={<PlusOutlined />}
-                onClick={() => setAddModelOpen(true)}
-              >
-                添加大模型
-              </Button>
-            </Space>
-          </div>
-
-          <div className={styles.toolbar}>
-            <div className={styles.toolbarLeft}>
-              <Select
-                placeholder="供应商"
-                value={providerFilter}
-                onChange={(v) => setProviderFilter(v as string | '')}
-                className={styles.filterSelect}
-                allowClear
-                options={providerFilterOptions}
-              />
-              <Select
-                placeholder="模型分类"
-                value={typeFilter}
-                onChange={(v) => setTypeFilter(v as string | '')}
-                className={styles.filterSelect}
-                allowClear
-                options={MODEL_TYPE_OPTIONS}
-              />
-              <Select
-                placeholder="上架状态"
-                value={enabledFilter}
-                onChange={(v) => setEnabledFilter((v ?? '') as '' | 'true' | 'false')}
-                className={styles.filterSelect}
-                allowClear
-                options={ENABLED_OPTIONS}
-              />
-              <Input.Search
-                placeholder="搜索模型 ID / 名称"
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                onSearch={(v) => {
-                  setSearchKeyword(v)
-                  setPage(1)
-                }}
-                className={styles.searchBox}
-                allowClear
-              />
-            </div>
-            <Button type="primary" className={styles.primaryBtn} onClick={handleReset}>
-              重置
-            </Button>
-          </div>
-
-          <BatchBar selectedIds={selectedIds} onChanged={loadList} />
-
-          <Spin spinning={loading}>
-            {items.length === 0 && !loading ? (
-              <Empty
-                description="暂无模型，请点击右上角「添加第三方供应商」或「添加大模型」"
-                style={{ marginTop: 80 }}
-              />
-            ) : (
-              <div className={styles.tableWrap}>
-                <Table<AdminModelItem>
-                  rowKey="id"
-                  columns={columns}
-                  dataSource={items}
-                  pagination={false}
-                  size="middle"
-                  scroll={{ x: 1500 }}
-                  rowSelection={{
-                    selectedRowKeys: selectedIds,
-                    onChange: (keys) => setSelectedIds(keys as number[])
-                  }}
-                />
-              </div>
-            )}
-            <div className={styles.paginationWrap}>
-              <Pagination
-                current={page}
-                pageSize={PAGE_SIZE}
-                total={total}
-                onChange={(p) => setPage(p)}
-                showSizeChanger={false}
-                showTotal={(t) => `共 ${t} 条`}
-              />
-            </div>
-          </Spin>
-
-          {/* 编辑模型（调用模式驱动：类型/规格/计费按 14 种调用模式动态） */}
-          <Modal
-            title={editing ? `编辑模型 - ${editing.displayName}` : '编辑模型'}
-            open={editOpen}
-            onCancel={() => setEditOpen(false)}
-            onOk={handleSave}
-            confirmLoading={saving}
-            okText="保存"
-            cancelText="取消"
-            width={720}
-          >
-            <Form<ModelFormValues> form={form} layout="vertical">
-              <Form.Item
-                name="displayName"
-                label="显示名"
-                rules={[{ required: true, message: '请输入显示名' }]}
-              >
-                <Input maxLength={128} />
-              </Form.Item>
-              <Form.Item
-                name="upstreamModelId"
-                label="上游模型 ID"
-                extra="真实发给上游 API 的 model 字段，如 qwen-plus / wanx2.1-t2i-turbo / qwen-video-plus"
-              >
-                <Input maxLength={128} placeholder="上游真实模型名" />
-              </Form.Item>
-              <Form.Item
-                name="apiEndpoint"
-                label="接口地址 (可选)"
-                extra="模型级端点覆盖；留空用供应商 Base URL + 生成适配路径"
-              >
-                <Input maxLength={512} placeholder="https://... 或 /api/v1/services/..." />
-              </Form.Item>
-              <Form.Item name="callMode" label="调用模式（14 种总开关）" initialValue="text_chat">
-                <CallModePicker
-                  callModes={meta?.callModes ?? []}
-                  onChange={(key) => {
-                    const def = meta?.callModes.find((m) => m.key === key)
-                    if (!def) return
-                    form.setFieldsValue({
-                      pricingMode: def.recommendedBilling,
-                      inputTypes: def.inputs,
-                      advancedCapabilities: (def.advancedCaps as AdvancedCapability[]) ?? [],
-                    })
-                    for (const name of [
-                      'inputPricePerToken',
-                      'outputPricePerToken',
-                      'pricePerImage',
-                      'pricePerCall',
-                      'pricePerMinute'
-                    ]) {
-                      form.setFieldValue(name, undefined)
-                    }
-                  }}
-                />
-              </Form.Item>
-              {callModeDef && (
-                <div style={{ marginBottom: 14 }}>
-                  <Space wrap size={6}>
-                    <Tag color={MODEL_TYPE_COLOR[derivedType] || 'default'}>
-                      类型标签：{MODEL_TYPE_LABEL[derivedType] || derivedType}
-                    </Tag>
-                    <Tag color="blue">输出 {callModeDef.output}</Tag>
-                    <Tag color="cyan">默认输入 {callModeDef.inputs.join('+')}</Tag>
-                  </Space>
-                </div>
-              )}
-              <Form.Item
-                name="inputTypes"
-                label="能力标签（输入类型，可调整）"
-                extra="模型能识别的输入：文字 / 图片 / 视频 / 语音"
-              >
-                <Select mode="multiple" options={INPUT_TYPE_OPTIONS} placeholder="选择模型支持的输入类型" />
-              </Form.Item>
-              <Form.Item name="advancedCapabilities" label="高级能力（多选）">
-                <Select mode="multiple" options={ADVANCED_CAP_OPTIONS} placeholder="函数调用 / 流式 / 推理 等" />
-              </Form.Item>
-              {callModeDef && (
-                <Form.Item label="参数配置（按类型动态）">
-                  <DynamicSpecForm specFields={callModeDef.specFields} schemas={meta?.specFieldSchemas ?? {}} />
-                </Form.Item>
-              )}
-              <Form.Item name="scenarioTags" label="场景标签（用户端显示，第一个作为展示）" initialValue={[]}>
-                <ScenarioTagPicker
-                  scenarioTags={meta?.scenarioTags ?? []}
-                  displayName={form.getFieldValue('displayName')}
-                  priceText={callModeDef?.recommendedBilling}
-                />
-              </Form.Item>
-              <Form.Item label="积分扣除设置" style={{ marginBottom: 0 }}>
-                <PricingConfigForm def={callModeDef} />
-              </Form.Item>
-              <Form.Item name="generationParamsText" label="高级参数（JSON，可选）" extra={'如 {"video_resolutions":["720p","1080p"]}；留空用供应商生成适配模板'}>
-                <Input.TextArea rows={3} placeholder='{"video_resolutions":["720p","1080p"]}' />
-              </Form.Item>
-              <Form.Item name="sortOrder" label="排序权重" extra="越小越靠前（用户端默认模型与下拉排序）">
-                <InputNumber min={0} step={1} style={{ width: '100%' }} placeholder="如 0" />
-              </Form.Item>
-              <Form.Item name="enabled" label="上架" valuePropName="checked">
-                <Switch checkedChildren="上架" unCheckedChildren="下架" />
-              </Form.Item>
-              <Form.Item name="remark" label="备注（用户不可见）">
-                <Input.TextArea rows={2} />
-              </Form.Item>
-            </Form>
-          </Modal>
-
-          {/* 添加供应商/读取模型导入向导 */}
-          <ProviderImportModal
-            open={importOpen}
-            existingProvider={importProvider}
-            onClose={() => {
-              setImportOpen(false)
-              setImportProvider(null)
-            }}
-            onRefresh={() => {
-              void loadList()
-              void loadProviderList()
-            }}
-          />
-
-          {/* 添加大模型（单模型） */}
-          <AddModelModal
-            open={addModelOpen}
-            providers={providers}
-            meta={meta}
-            onClose={() => setAddModelOpen(false)}
-            onSaved={() => {
-              setAddModelOpen(false)
-              void loadList()
-              void loadProviderList()
-            }}
-          />
-
-          {/* 图像编辑模型测试：需参考图 URL（图生图） */}
-          <Modal
-            title="测试图像编辑模型"
-            open={testModalOpen}
-            onCancel={() => setTestModalOpen(false)}
-            onOk={() => {
-              const url = testRefImage.trim()
-              if (!url) {
-                message.warning('图像编辑（图生图）测试需要一张公网可访问的参考图 URL')
-                return
-              }
-              setTestModalOpen(false)
-              if (pendingTestItem) void handleTestModel(pendingTestItem, url)
-            }}
-            okText="开始测试"
-            cancelText="取消"
-            width={520}
-          >
-            <p style={{ marginBottom: 8 }}>
-              该模型为图生图（图像编辑），上游要求 <code>base_image_url</code> 为公网可访问图片，请粘贴参考图 URL：
+      <div className={styles.header}>
+        <div className={styles.titleArea}>
+          <ApiOutlined className={styles.titleIcon} />
+          <div>
+            <h1 className={styles.title}>模型管理</h1>
+            <p className={styles.subtitle}>
+              按 文案 / 图片 / 视频 / 语音 四大类管理模型；一个凭据（供应商）一个 API Key 可挂多类模型，图片/视频生成地址由厂商模板自动匹配
             </p>
-            <Input
-              placeholder="https://cdn.example.com/sketch.png"
-              value={testRefImage}
-              onChange={(e) => setTestRefImage(e.target.value)}
-              onPressEnter={() => {
-                const url = testRefImage.trim()
-                if (url) {
-                  setTestModalOpen(false)
-                  if (pendingTestItem) void handleTestModel(pendingTestItem, url)
+          </div>
+        </div>
+        <Space>
+          <Button className={styles.ghostBtn} icon={<KeyOutlined />} onClick={() => setDrawerOpen(true)}>
+            🔑 凭据管理
+          </Button>
+          <Button
+            type="primary"
+            className={styles.primaryBtn}
+            icon={<PlusOutlined />}
+            onClick={() => setAddModelOpen(true)}
+          >
+            ＋ 添加模型
+          </Button>
+        </Space>
+      </div>
+
+      <Tabs
+        activeKey={activeCat}
+        onChange={handleCatChange}
+        items={CATEGORY_TABS.map((c) => ({ key: c.key, label: c.label }))}
+        tabBarExtraContent={
+          <span style={{ color: 'var(--color-text-tertiary, #8b949e)', fontSize: 13 }}>
+            {activeDef.sub} · 共 {total} 个模型
+          </span>
+        }
+      />
+
+      <div className={styles.toolbar}>
+        <div className={styles.toolbarLeft}>
+          <Select
+            placeholder="上架状态"
+            value={enabledFilter}
+            onChange={(v) => setEnabledFilter((v ?? '') as '' | 'true' | 'false')}
+            className={styles.filterSelect}
+            allowClear
+            options={ENABLED_OPTIONS}
+          />
+          <Input.Search
+            placeholder="搜索模型 ID / 名称"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            onSearch={(v) => {
+              setSearchKeyword(v)
+              setPage(1)
+            }}
+            className={styles.searchBox}
+            allowClear
+          />
+        </div>
+        <Button type="primary" className={styles.primaryBtn} onClick={handleReset}>
+          重置
+        </Button>
+      </div>
+
+      <Spin spinning={loading}>
+        {items.length === 0 && !loading ? (
+          <Empty
+            description="暂无该分类模型：可点右上角「＋ 添加模型」逐个添加，或在「🔑 凭据管理」新建凭据后「读取模型」批量导入"
+            style={{ marginTop: 80 }}
+          />
+        ) : (
+          <div className={styles.tableWrap}>
+            <Table<AdminModelItem>
+              rowKey="id"
+              columns={columns}
+              dataSource={items}
+              pagination={false}
+              size="middle"
+              scroll={{ x: 1150 }}
+            />
+          </div>
+        )}
+        <div className={styles.paginationWrap}>
+          <Pagination
+            current={page}
+            pageSize={PAGE_SIZE}
+            total={total}
+            onChange={(p) => setPage(p)}
+            showSizeChanger={false}
+            showTotal={(t) => `共 ${t} 条`}
+          />
+        </div>
+      </Spin>
+
+      <div
+        style={{
+          marginTop: 16,
+          padding: '10px 14px',
+          border: '1px dashed rgba(128,128,128,.35)',
+          borderRadius: 8,
+          fontSize: 12,
+          color: '#8b949e'
+        }}
+      >
+        <div style={{ marginBottom: 4 }}>
+          <b>用户端选择框显示原则：</b>模型ID＋场景标签＋积分
+        </div>
+        <div>{PRICE_HINTS[activeCat]}</div>
+      </div>
+
+      {/* 编辑模型（调用模式驱动：类型/规格/计费按 14 种调用模式动态） */}
+      <Modal
+        title={editing ? `编辑模型 - ${editing.displayName}` : '编辑模型'}
+        open={editOpen}
+        onCancel={() => setEditOpen(false)}
+        onOk={handleSave}
+        confirmLoading={saving}
+        okText="保存"
+        cancelText="取消"
+        width={720}
+      >
+        <Form<ModelFormValues> form={form} layout="vertical">
+          <Form.Item
+            name="displayName"
+            label="显示名"
+            rules={[{ required: true, message: '请输入显示名' }]}
+          >
+            <Input maxLength={128} />
+          </Form.Item>
+          <Form.Item
+            name="upstreamModelId"
+            label="上游模型 ID"
+            extra="真实发给上游 API 的 model 字段，如 qwen-plus / wanx2.1-t2i-turbo / qwen-video-plus"
+          >
+            <Input maxLength={128} placeholder="上游真实模型名" />
+          </Form.Item>
+          <Form.Item
+            name="apiEndpoint"
+            label="接口地址 (可选)"
+            extra="模型级端点覆盖；留空用供应商 Base URL + 生成适配路径"
+          >
+            <Input maxLength={512} placeholder="https://... 或 /api/v1/services/..." />
+          </Form.Item>
+          <Form.Item name="callMode" label="调用模式（14 种总开关）" initialValue="text_chat">
+            <CallModePicker
+              callModes={meta?.callModes ?? []}
+              onChange={(key) => {
+                const def = meta?.callModes.find((m) => m.key === key)
+                if (!def) return
+                form.setFieldsValue({
+                  pricingMode: def.recommendedBilling,
+                  inputTypes: def.inputs,
+                  advancedCapabilities: (def.advancedCaps as AdvancedCapability[]) ?? []
+                })
+                for (const name of [
+                  'inputPricePerToken',
+                  'outputPricePerToken',
+                  'pricePerImage',
+                  'pricePerCall',
+                  'pricePerMinute'
+                ]) {
+                  form.setFieldValue(name, undefined)
                 }
               }}
             />
-          </Modal>
-        </>
-      ) : (
-        <>
-          <div className={styles.header}>
-            <div className={styles.titleArea}>
-              <ShopOutlined className={styles.titleIcon} />
-              <div>
-                <h1 className={styles.title}>供应商管理</h1>
-                <p className={styles.subtitle}>
-                  一个供应商 = 一个 API Key，可同时挂对话/图片/视频/语音模型；编辑时选择厂商模板自动匹配 URL 后缀与生成适配参数
-                </p>
-              </div>
+          </Form.Item>
+          {callModeDef && (
+            <div style={{ marginBottom: 14 }}>
+              <Space wrap size={6}>
+                <Tag color={MODEL_TYPE_COLOR[derivedType] || 'default'}>
+                  类型标签：{MODEL_TYPE_LABEL[derivedType] || derivedType}
+                </Tag>
+                <Tag color="blue">输出 {callModeDef.output}</Tag>
+                <Tag color="cyan">默认输入 {callModeDef.inputs.join('+')}</Tag>
+              </Space>
             </div>
-            <Space>
-              <Button type="primary" className={styles.primaryBtn} icon={<PlusOutlined />} onClick={openAddProvider}>
-                添加供应商
-              </Button>
-            </Space>
-          </div>
-
-          {globalProvider && (
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginBottom: 12 }}
-              message={`全局中转：${globalProvider.name}（${globalProvider.baseUrl}）`}
-              description="全站唯一：所有模型默认使用该供应商的 BaseURL+Key 调用；可在下方编辑或新增供应商时调整"
-            />
           )}
-          <Spin spinning={providerLoading}>
-            <Table<AdminProviderItem>
-              rowKey="id"
-              columns={providerColumns}
-              dataSource={providers}
-              pagination={false}
-              size="middle"
-              scroll={{ x: 980 }}
-              locale={{ emptyText: <Empty description="暂无供应商，点击右上角添加" /> }}
-            />
-          </Spin>
-
-          {/* 编辑供应商（厂商模板自动匹配后缀） */}
-          <Modal
-            title={editProvider ? `编辑供应商 - ${editProvider.name}` : '编辑供应商'}
-            open={Boolean(editProvider)}
-            onCancel={() => setEditProvider(null)}
-            onOk={handleSaveProvider}
-            confirmLoading={providerSaving}
-            okText="保存"
-            cancelText="取消"
-            width={620}
+          <Form.Item
+            name="inputTypes"
+            label="能力标签（输入类型，可调整）"
+            extra="模型能识别的输入：文字 / 图片 / 视频 / 语音"
           >
-            <Form form={providerForm} layout="vertical">
-              <Form.Item
-                name="name"
-                label="供应商名称"
-                rules={[{ required: true, message: '请输入名称' }]}
-              >
-                <Input maxLength={64} />
-              </Form.Item>
-              <Form.Item
-                name="baseUrl"
-                label="Base URL"
-                rules={[{ required: true, message: '请输入 Base URL' }]}
-              >
-                <Input placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
-              </Form.Item>
-              <Form.Item
-                name="apiKey"
-                label="API Key"
-                extra={editProvider ? `当前: ${editProvider.apiKeyMasked || '未设置'}(留空不修改)` : undefined}
-              >
-                <Input.Password placeholder="sk-..." autoComplete="new-password" />
-              </Form.Item>
-              <Form.Item
-                name="vendorKey"
-                label="厂商模板（自动匹配地址后缀与生成适配参数）"
-                extra="选择后自动写入对话路径 / 模型列表路径 / 图片视频生成端点；不选则保留原配置"
-              >
-                <Select
-                  allowClear
-                  placeholder="选择厂商，如 阿里百炼 DashScope"
-                  options={vendorList.map((v) => ({ label: v.nameSuggestion, value: v.vendor }))}
-                />
-              </Form.Item>
-              {(() => {
-                const v = vendorList.find((x) => x.vendor === providerForm.getFieldValue('vendorKey'))
-                return v ? (
-                  <Alert
-                    type="success"
-                    showIcon
-                    style={{ marginBottom: 12 }}
-                    message="已匹配该厂商后缀"
-                    description={
-                      <div style={{ fontSize: 12 }}>
-                        <div>对话: {v.chatPath}</div>
-                        <div>模型列表: {v.modelsPath}</div>
-                        {Object.keys(v.generation || {}).length > 0 && (
-                          <div>生成适配: {Object.keys(v.generation).join('、')}</div>
+            <Select mode="multiple" options={INPUT_TYPE_OPTIONS} placeholder="选择模型支持的输入类型" />
+          </Form.Item>
+          <Form.Item name="advancedCapabilities" label="高级能力（多选）">
+            <Select mode="multiple" options={ADVANCED_CAP_OPTIONS} placeholder="函数调用 / 流式 / 推理 等" />
+          </Form.Item>
+          {callModeDef && (
+            <Form.Item label="参数配置（按类型动态）">
+              <DynamicSpecForm specFields={callModeDef.specFields} schemas={meta?.specFieldSchemas ?? {}} />
+            </Form.Item>
+          )}
+          <Form.Item name="scenarioTags" label="场景标签（用户端显示，第一个作为展示）" initialValue={[]}>
+            <ScenarioTagPicker
+              scenarioTags={meta?.scenarioTags ?? []}
+              displayName={form.getFieldValue('displayName')}
+              priceText={callModeDef?.recommendedBilling}
+            />
+          </Form.Item>
+          <Form.Item label="积分扣除设置" style={{ marginBottom: 0 }}>
+            <PricingConfigForm def={callModeDef} />
+          </Form.Item>
+          <Form.Item
+            name="generationParamsText"
+            label="高级参数（JSON，可选）"
+            extra={'如 {"video_resolutions":["720p","1080p"]}；留空用供应商生成适配模板'}
+          >
+            <Input.TextArea rows={3} placeholder='{"video_resolutions":["720p","1080p"]}' />
+          </Form.Item>
+          <Form.Item name="sortOrder" label="排序权重" extra="越小越靠前（用户端默认模型与下拉排序）">
+            <InputNumber min={0} step={1} style={{ width: '100%' }} placeholder="如 0" />
+          </Form.Item>
+          <Form.Item name="enabled" label="上架" valuePropName="checked">
+            <Switch checkedChildren="上架" unCheckedChildren="下架" />
+          </Form.Item>
+          <Form.Item name="remark" label="备注（用户不可见）">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 凭据管理抽屉 */}
+      <Drawer
+        title={
+          <Space size={6}>
+            <ShopOutlined />
+            <span>凭据管理</span>
+          </Space>
+        }
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        width={520}
+        extra={
+          <Button type="primary" size="small" icon={<PlusOutlined />} onClick={openAddCredential}>
+            新建凭据
+          </Button>
+        }
+      >
+        <Spin spinning={providerLoading}>
+          {providers.length === 0 ? (
+            <Empty description="暂无凭据，点击右上角「新建凭据」添加" style={{ marginTop: 60 }} />
+          ) : (
+            <Space direction="vertical" style={{ width: '100%' }} size={12}>
+              {providers.map((p) => {
+                const conn = CONNECTION_TAG[p.connectionStatus || 'untested'] || CONNECTION_TAG.untested
+                return (
+                  <div
+                    key={p.id}
+                    style={{
+                      border: '1px solid rgba(128,128,128,.25)',
+                      borderRadius: 8,
+                      padding: '10px 12px'
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: 6
+                      }}
+                    >
+                      <Space size={6} wrap>
+                        <span style={{ fontWeight: 600 }}>{p.name}</span>
+                        <Tag color={conn.color}>{conn.text}</Tag>
+                        {p.isGlobal && <Tag color="gold">全局</Tag>}
+                        {p.status === 'active' ? (
+                          <Tag color="green">启用</Tag>
+                        ) : (
+                          <Tag color="red">停用</Tag>
                         )}
-                      </div>
-                    }
-                  />
-                ) : null
-              })()}
-              <Form.Item name="status" label="状态">
-                <Select
-                  options={[
-                    { label: '启用', value: 'active' },
-                    { label: '停用', value: 'disabled' }
-                  ]}
-                />
-              </Form.Item>
-              <Form.Item
-                name="isGlobal"
-                label="设为全局中转"
-                valuePropName="checked"
-                extra="全站唯一：所有模型（文本/识图/绘画/语音/视频）默认使用该供应商的 BaseURL+Key 调用；置 true 会自动取消其他供应商的全局标记"
-              >
-                <Switch />
-              </Form.Item>
-              <Form.Item
-                name="chatPath"
-                label="Chat 测试路径 (可选，高级)"
-                extra="供应商连接测试用的聊天探测路径；留空用厂商模板或默认 /chat/completions"
-              >
-                <Input placeholder="/compatible-mode/v1/chat/completions" />
-              </Form.Item>
-              <Form.Item
-                name="modelsPath"
-                label="模型列表路径 (可选，高级)"
-                extra="读取上游模型列表的路径；留空用厂商模板或默认 /models"
-              >
-                <Input placeholder="/compatible-mode/v1/models" />
-              </Form.Item>
-            </Form>
-          </Modal>
-        </>
-      )}
+                      </Space>
+                      <Tag color="geekblue">{p.modelCount ?? 0} 个模型</Tag>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#8b949e', marginBottom: 4, wordBreak: 'break-all' }}>
+                      {p.baseUrl}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#8b949e', marginBottom: 8 }}>
+                      Key: {p.apiKeyMasked || '未设置'}
+                    </div>
+                    <Space size={4}>
+                      <Button
+                        size="small"
+                        icon={<ThunderboltOutlined />}
+                        loading={providerTestingId === p.id}
+                        onClick={() => void handleTestProvider(p)}
+                      >
+                        测试
+                      </Button>
+                      <Button size="small" icon={<ApiOutlined />} onClick={() => openReadModels(p)}>
+                        读取模型
+                      </Button>
+                      <Button size="small" icon={<EditOutlined />} onClick={() => openEditProvider(p)}>
+                        编辑
+                      </Button>
+                      <Popconfirm
+                        title="确认删除该凭据？"
+                        description="凭据下存在模型时不允许删除"
+                        onConfirm={() => void handleDeleteProvider(p)}
+                        okText="删除"
+                        cancelText="取消"
+                      >
+                        <Button size="small" danger icon={<DeleteOutlined />} />
+                      </Popconfirm>
+                    </Space>
+                  </div>
+                )
+              })}
+            </Space>
+          )}
+        </Spin>
+      </Drawer>
+
+      {/* 编辑凭据（厂商模板自动匹配后缀） */}
+      <Modal
+        title={editProvider ? `编辑凭据 - ${editProvider.name}` : '编辑凭据'}
+        open={Boolean(editProvider)}
+        onCancel={() => setEditProvider(null)}
+        onOk={handleSaveProvider}
+        confirmLoading={providerSaving}
+        okText="保存"
+        cancelText="取消"
+        width={620}
+      >
+        <Form form={providerForm} layout="vertical">
+          <Form.Item name="name" label="凭据名称" rules={[{ required: true, message: '请输入名称' }]}>
+            <Input maxLength={64} />
+          </Form.Item>
+          <Form.Item
+            name="baseUrl"
+            label="Base URL"
+            rules={[{ required: true, message: '请输入 Base URL' }]}
+          >
+            <Input placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
+          </Form.Item>
+          <Form.Item
+            name="apiKey"
+            label="API Key"
+            extra={editProvider ? `当前: ${editProvider.apiKeyMasked || '未设置'}(留空不修改)` : undefined}
+          >
+            <Input.Password placeholder="sk-..." autoComplete="new-password" />
+          </Form.Item>
+          <Form.Item
+            name="vendorKey"
+            label="厂商模板（自动匹配地址后缀与生成适配参数）"
+            extra="选择后自动写入对话路径 / 模型列表路径 / 图片视频生成端点；不选则保留原配置"
+          >
+            <Select
+              allowClear
+              placeholder="选择厂商，如 阿里百炼 DashScope"
+              options={vendorList.map((v) => ({ label: v.nameSuggestion, value: v.vendor }))}
+            />
+          </Form.Item>
+          {(() => {
+            const v = vendorList.find((x) => x.vendor === providerForm.getFieldValue('vendorKey'))
+            return v ? (
+              <Alert
+                type="success"
+                showIcon
+                style={{ marginBottom: 12 }}
+                message="已匹配该厂商后缀"
+                description={
+                  <div style={{ fontSize: 12 }}>
+                    <div>对话: {v.chatPath}</div>
+                    <div>模型列表: {v.modelsPath}</div>
+                    {Object.keys(v.generation || {}).length > 0 && (
+                      <div>生成适配: {Object.keys(v.generation).join('、')}</div>
+                    )}
+                  </div>
+                }
+              />
+            ) : null
+          })()}
+          <Form.Item name="status" label="状态">
+            <Select
+              options={[
+                { label: '启用', value: 'active' },
+                { label: '停用', value: 'disabled' }
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            name="isGlobal"
+            label="设为全局中转"
+            valuePropName="checked"
+            extra="全站唯一：所有模型（文本/识图/绘画/语音/视频）默认使用该供应商的 BaseURL+Key 调用；置 true 会自动取消其他供应商的全局标记"
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item
+            name="chatPath"
+            label="Chat 测试路径 (可选，高级)"
+            extra="供应商连接测试用的聊天探测路径；留空用厂商模板或默认 /chat/completions"
+          >
+            <Input placeholder="/compatible-mode/v1/chat/completions" />
+          </Form.Item>
+          <Form.Item
+            name="modelsPath"
+            label="模型列表路径 (可选，高级)"
+            extra="读取上游模型列表的路径；留空用厂商模板或默认 /models"
+          >
+            <Input placeholder="/compatible-mode/v1/models" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 新建凭据 / 读取上游模型 向导 */}
+      <ProviderImportModal
+        open={importOpen}
+        existingProvider={importProvider}
+        onClose={() => {
+          setImportOpen(false)
+          setImportProvider(null)
+        }}
+        onRefresh={refreshAll}
+      />
+
+      {/* 添加模型（单模型向导，按当前 Tab 预选类型） */}
+      <AddModelModal
+        open={addModelOpen}
+        providers={providers}
+        meta={meta}
+        initialOutput={addInitialOutput}
+        onClose={() => setAddModelOpen(false)}
+        onSaved={() => {
+          setAddModelOpen(false)
+          refreshAll()
+        }}
+      />
+
+      {/* 图像编辑模型测试：需参考图 URL（图生图） */}
+      <Modal
+        title="测试图像编辑模型"
+        open={testModalOpen}
+        onCancel={() => setTestModalOpen(false)}
+        onOk={() => {
+          const url = testRefImage.trim()
+          if (!url) {
+            message.warning('图像编辑（图生图）测试需要一张公网可访问的参考图 URL')
+            return
+          }
+          setTestModalOpen(false)
+          if (pendingTestItem) void handleTestModel(pendingTestItem, url)
+        }}
+        okText="开始测试"
+        cancelText="取消"
+        width={520}
+      >
+        <p style={{ marginBottom: 8 }}>
+          该模型为图生图（图像编辑），上游要求 <code>base_image_url</code> 为公网可访问图片，请粘贴参考图 URL：
+        </p>
+        <Input
+          placeholder="https://cdn.example.com/sketch.png"
+          value={testRefImage}
+          onChange={(e) => setTestRefImage(e.target.value)}
+          onPressEnter={() => {
+            const url = testRefImage.trim()
+            if (url) {
+              setTestModalOpen(false)
+              if (pendingTestItem) void handleTestModel(pendingTestItem, url)
+            }
+          }}
+        />
+      </Modal>
     </div>
   )
 }

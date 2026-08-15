@@ -91,10 +91,12 @@ export default function AddModelModal(props: {
   open: boolean
   providers: AdminProviderItem[]
   meta?: CallModesMeta
+  /** 打开时预选的输出大类（来自当前 Tab，如 图片模型 -> image） */
+  initialOutput?: ModelOutputType
   onClose: () => void
   onSaved: () => void
 }) {
-  const { open, providers, meta, onClose, onSaved } = props
+  const { open, providers, meta, initialOutput, onClose, onSaved } = props
   const [form] = Form.useForm<AddModelFormValues>()
   const [providerSelect, setProviderSelect] = useState<number | typeof NEW_PROVIDER | undefined>()
   // 新建供应商
@@ -133,15 +135,18 @@ export default function AddModelModal(props: {
     if (open) {
       form.resetFields()
       setProviderSelect(undefined)
-      setOutputGroup('text')
       setNewName('')
       setNewBaseUrl('')
       setNewApiKey('')
       setNewVendorKey('')
       setTestResult(null)
-      const def = meta?.callModes.find((m) => m.key === 'text_chat')
+      const group: ModelOutputType = initialOutput ?? 'text'
+      setOutputGroup(group)
+      const def =
+        (meta?.callModes ?? []).find((m) => m.output === group) ??
+        meta?.callModes.find((m) => m.key === 'text_chat')
       form.setFieldsValue({
-        callMode: 'text_chat',
+        callMode: def?.key ?? 'text_chat',
         displayName: '',
         upstreamModelId: '',
         inputTypes: def?.inputs ?? ['text'],
@@ -153,7 +158,7 @@ export default function AddModelModal(props: {
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, meta])
+  }, [open, meta, initialOutput])
 
   const selectedProvider = providers.find((p) => p.id === providerSelect) ?? null
   const derivedType = useMemo(() => {
