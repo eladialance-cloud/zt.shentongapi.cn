@@ -83,15 +83,16 @@ export async function disableAdminModel(id: number): Promise<void> {
   await adminRequest<void>('post', `/admin/models/${id}/disable`)
 }
 
-/** 测试模型 */
+/** 测试模型（图像编辑可传参考图 URL） */
 export async function testModel(
   id: number,
-  input = 'Hello'
+  input = 'Hello',
+  inputImage?: string
 ): Promise<{ success: boolean; response: string }> {
   return adminRequest<{ success: boolean; response: string }>(
     'post',
     `/admin/models/${id}/test`,
-    { data: { input } }
+    { data: { input, ...(inputImage ? { inputImages: [inputImage] } : {}) } }
   )
 }
 

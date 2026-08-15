@@ -7,7 +7,7 @@ import { lookup as dnsLookup } from 'dns/promises';
 import { MediaJobEntity, MediaJobType } from './entities/media-job.entity';
 import { GenerateImageDto, GenerateVideoDto, MediaJobQueryDto } from './dto/generate-media.dto';
 import { GenerationClientService, GenerationAdapterConfig, mergeGenerationAdapter, buildMediaGenerationAdapter } from './generation-client.service';
-import { computeVideoCharge } from './billing';
+import { computeVideoCharge, normalizeResolutionTier } from './billing';
 import { ModelEntity } from '../model/entities/model.entity';
 import { ModelProviderEntity } from '../admin-model/entities/model-provider.entity';
 import { FileEntity } from '../file/entities/file.entity';
@@ -146,12 +146,16 @@ export class MediaGenerationService implements OnModuleInit {
     } else {
       // 视频按秒计费：per_second 取 video_per_second[分辨率]x时长，未配置档直接拒绝；否则回退旧价格矩阵
       const price = computeVideoCharge(model, { resolution: opts.resolution, duration: opts.duration ?? 5 });
+      const tierKey = normalizeResolutionTier(opts.resolution ?? '');
       if (model.pricingMode === 'per_second') {
-        if (model.videoPerSecond?.[opts.resolution ?? ''] == null) {
-          throw new BadRequestException(`该模型未配置 ${opts.resolution ?? ''} 分辨率档的视频每秒价格`);
+        const hasTier = Object.keys(model.videoPerSecond ?? {}).some(
+          (k) => normalizeResolutionTier(k) === tierKey,
+        );
+        if (!hasTier) {
+          throw new BadRequestException(`该模型未配置 ${tierKey || '默认'} 分辨率档的视频每秒价格`);
         }
-      } else if (model.videoPrices?.[opts.resolution ?? '']?.[String(opts.duration ?? 5)] === undefined) {
-        throw new BadRequestException(`该模型未配置 ${opts.resolution ?? ''}/${opts.duration ?? 5} 秒的视频生成价格`);
+      } else if (!Object.keys(model.videoPrices ?? {}).some((k) => normalizeResolutionTier(k) === tierKey)) {
+        throw new BadRequestException(`该模型未配置 ${tierKey || '默认'}/${opts.duration ?? 5} 秒的视频生成价格`);
       }
       base = price;
     }
@@ -305,7 +309,37 @@ export class MediaGenerationService implements OnModuleInit {
 
   async generateImage(userId: number, dto: GenerateImageDto) {
     const { model, provider, adapter, decryptedKey } = await this.resolveModel(dto.modelId, 'image');
-    const inputImages = await this.validateInputImages(dto.inputImages);
+    const rawInputs = await this.validateInputImages(dto.inputImages);
+    if (model.modelType === 'image_edit' && rawInputs.length === 0) {
+      throw new BadRequestException('图像编辑需要上传一张参考图（图生图）');
+    }
+    // 模板内嵌图分支：data URI 参考图先传 OSS 换公网 URL（DashScope base_image_url 需公网可访问）
+    const adapter0 = adapter;
+    let inputImages = rawInputs;
+    if (
+      rawInputs.some((v) => /^data:image\//i.test(v)) &&
+      adapter0.imagesStyle !== 'multipart' &&
+      (adapter0.imageRequestTemplate || adapter0.requestTemplate)
+    ) {
+      const resolved: string[] = [];
+      for (const v of rawInputs) {
+        if (/^https?:\/\//i.test(v)) { resolved.push(v); continue; }
+        if (!/^data:image\//i.test(v)) throw new BadRequestException('参考图仅支持公网 URL 或 data:image 数据');
+        const m = v.match(/^data:([^;]+);base64,([\s\S]+)$/);
+        if (!m) throw new BadRequestException('参考图 data URI 格式无效');
+        const mime = m[1] || 'image/png';
+        const ext = mime.includes('jpeg') ? 'jpg' : mime.includes('png') ? 'png' : 'bin';
+        const up = await this.ossUpload.upload(Buffer.from(m[2], 'base64'), {
+          userId,
+          callMode: 'image_edit_input',
+          ext,
+          mime,
+        });
+        if (!up?.url) throw new BadRequestException('参考图上传 OSS 失败：请直接提供公网图片 URL');
+        resolved.push(up.url);
+      }
+      inputImages = resolved;
+    }
     const sourceId = `media-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const { price, frozenTxnId } = await this.charge(userId, model, {}, sourceId);
 

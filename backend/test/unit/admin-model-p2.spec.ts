@@ -303,7 +303,7 @@ describe('模板库接口', () => {
     });
     assert.deepEqual(saved[0].videoPerSecond, { '720P': 2, '1080P': 4 });
     assert.deepEqual(saved[0].generationParams, {
-      video_resolutions: ['720p', '1080p'],
+      video_resolutions: ['720P', '1080P'],
       video_durations: [5, 10, 15],
       video_fps: [24],
     });
@@ -724,5 +724,63 @@ describe('按 callMode 的测试调用 - 存量供应商模板兜底', () => {
     );
     assert.equal(genCfg.model, 'wanx2.1-t2i-turbo');
     assert.equal(saved[0].connectionStatus, 'connected');
+  });
+});
+
+describe('按 callMode 的测试调用 - 图像编辑参考图', () => {
+  it('image_edit 未传参考图 -> 友好提示且不调用上游', async () => {
+    const { svc, modelRepo, providerRepo, generationClient } = buildAdminService();
+    modelRepo.findOne = async () => ({
+      id: 9, providerId: 1, callMode: 'image_edit', modelType: 'image_edit',
+      modelId: 'sketch', upstreamModelId: 'wanx-sketch', isActive: true,
+    });
+    providerRepo.findOne = async () => ({
+      apiKey: 'enc-key', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      config: { vendorKey: 'aliyun-dashscope', generation: {} },
+    });
+    (svc as any).encryption.decryptAes = () => 'sk-test';
+    let called = false;
+    generationClient.generateImage = async () => { called = true; return { url: 'x' }; };
+    await assert.rejects(
+      () => svc.test(9, { input: '上色' }),
+      (err: any) => err instanceof BusinessException && String((err.getResponse() as any).message).includes('参考图'),
+    );
+    assert.equal(called, false, '不应调用上游');
+  });
+
+  it('image_edit 传公网参考图 URL -> generateImage 收到 inputImages 并成功', async () => {
+    const { svc, modelRepo, providerRepo, generationClient } = buildAdminService();
+    modelRepo.findOne = async () => ({
+      id: 10, providerId: 1, callMode: 'image_edit', modelType: 'image_edit',
+      modelId: 'sketch', upstreamModelId: 'wanx-sketch', isActive: true,
+    });
+    providerRepo.findOne = async () => ({
+      apiKey: 'enc-key', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      config: { vendorKey: 'aliyun-dashscope', generation: {} },
+    });
+    (svc as any).encryption.decryptAes = () => 'sk-test';
+    let genCfg: any = null;
+    generationClient.generateImage = async (cfg: any) => { genCfg = cfg; return { url: 'https://x/1.png' }; };
+    modelRepo.save = async (e: any) => e;
+    const r = await svc.test(10, { input: '上色', inputImages: ['https://cdn.example.com/sketch.png'] });
+    assert.equal(r.success, true);
+    assert.deepEqual(genCfg.inputImages, ['https://cdn.example.com/sketch.png']);
+  });
+
+  it('image_edit 传 data URI 参考图 -> 被拒并提示公网 URL', async () => {
+    const { svc, modelRepo, providerRepo } = buildAdminService();
+    modelRepo.findOne = async () => ({
+      id: 11, providerId: 1, callMode: 'image_edit', modelType: 'image_edit',
+      modelId: 'sketch', upstreamModelId: 'wanx-sketch', isActive: true,
+    });
+    providerRepo.findOne = async () => ({
+      apiKey: 'enc-key', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      config: { vendorKey: 'aliyun-dashscope', generation: {} },
+    });
+    (svc as any).encryption.decryptAes = () => 'sk-test';
+    await assert.rejects(
+      () => svc.test(11, { input: '上色', inputImages: ['data:image/png;base64,aGVsbG8='] }),
+      (err: any) => err instanceof BusinessException && String((err.getResponse() as any).message).includes('http'),
+    );
   });
 });

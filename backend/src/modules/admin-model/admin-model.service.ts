@@ -281,6 +281,20 @@ export class AdminModelService implements OnModuleInit {
         response = { taskId, message: `视频任务已提交（异步），taskId=${taskId}` };
       } else if (callMode === 'image' || callMode === 'image_edit') {
         const adapter = buildMediaGenerationAdapter(provider, model.generationParams);
+        if (callMode === 'image_edit' && !(dto.inputImages && dto.inputImages.length)) {
+          BusinessException.throw(
+            ErrorCode.VALIDATION_FAILED,
+            '图像编辑模型测试需要一张参考图（图生图需公网 base_image_url）：请传入参考图 URL 后重试，或到桌面端上传图片后测试',
+          );
+        }
+        for (const u of dto.inputImages ?? []) {
+          if (!/^https?:\/\//i.test(u)) {
+            BusinessException.throw(
+              ErrorCode.VALIDATION_FAILED,
+              '测试参考图仅支持 http(s) 公网图片 URL',
+            );
+          }
+        }
         if (adapter.imagesPath || adapter.requestTemplate) {
           // 配置了生成适配（如 DashScope 原生图片端点）→ 走与运行时一致的 generateImage
           const result = await this.generationClient.generateImage({
@@ -290,6 +304,7 @@ export class AdminModelService implements OnModuleInit {
             model: upstreamModelId,
             prompt: dto.input,
             size: '1024x1024',
+            inputImages: dto.inputImages ?? [],
           });
           response = JSON.stringify(result);
         } else {

@@ -118,5 +118,17 @@ describe('模型市场预设库不变量', () => {
     const rt = gen.requestTemplate as Record<string, unknown>;
     assert.equal(rt.model, '{upstreamModelId}');
     assert.ok((rt.input as Record<string, unknown>).prompt === '{prompt}', 'requestTemplate.input.prompt 缺失');
+    // DashScope 原生异步视频：parameters 必须在顶层（不在 input 里），且含分辨率/时长/帧率占位
+    const params = rt.parameters as Record<string, unknown>;
+    assert.equal(params.resolution, '{resolution}', '视频 parameters.resolution 占位缺失');
+    assert.equal(params.duration, '{duration}', '视频 parameters.duration 占位缺失');
+    assert.equal(params.fps, '{fps}', '视频 parameters.fps 占位缺失');
+    assert.equal((rt.input as Record<string, unknown>).parameters, undefined, 'parameters 不应嵌套在 input 内');
+    // 图片模板：size 占位 + 原生异步端点
+    const irt = gen.imageRequestTemplate as Record<string, unknown>;
+    assert.equal(irt.model, '{upstreamModelId}');
+    assert.equal((irt.parameters as Record<string, unknown>).size, '{size}');
+    assert.ok(String(gen.imagesPath).startsWith('https://'), 'imagesPath 必须是绝对 URL');
+    assert.ok(String(gen.videosPath).startsWith('https://'), 'videosPath 必须是绝对 URL');
   });
 });

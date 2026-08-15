@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PROVIDER_TEMPLATES } from '../admin-model/constants/model-templates';
+import { normalizeResolutionTier, upstreamResolution } from './billing';
 
 /** 生成适配模板（存于 model_providers.config.generation） */
 export interface GenerationAdapterConfig {
@@ -202,21 +203,45 @@ export class GenerationClientService {
     // JSON 分支：imageUrlN=仅 http(s) URL；imageB64N=仅 data URI；imageCount=张数
     const urls = inputImages.map((v) => (/^https?:\/\//i.test(v) ? v : ''));
     const b64s = inputImages.map((v) => (/^data:image\//i.test(v) ? v : ''));
-    const vars: Record<string, string | number> = { upstreamModelId: model, prompt, size: size ?? '' };
+    const vars: Record<string, string | number> = {
+      upstreamModelId: model,
+      prompt,
+      size: size ? upstreamResolution(size) : '',
+    };
     vars.imageCount = inputImages.length;
     vars.imageUrl = urls[0] || '';
     vars.imageB64 = b64s[0] || '';
-    inputImages.forEach((_v, i) => {
+    // 预初始化 4 个槽位：无输入图时占位解析为空串，由 stripEmptyFields 剔除
+    for (let i = 0; i < 4; i++) {
       vars[`imageUrl${i}`] = urls[i] || '';
       vars[`imageB64${i}`] = b64s[i] || '';
-    });
+    }
     let body = this.buildBody(adapter.imageRequestTemplate ?? adapter.requestTemplate, vars);
+    // 图片专用模板：剔除解析后为空的字段（如未传参考图时 base_image_url 占位为空，避免上游 400 url error）
+    if (adapter.imageRequestTemplate) {
+      body = this.stripEmptyFields(body);
+    }
     if (Object.keys(body).length === 0) {
       body = { model, prompt, response_format: 'b64_json' };
       if (size) body.size = size;
       if (inputImages[0]) body.image = urls[0] || b64s[0];
     }
     return { url, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+  }
+
+  /** 递归剔除值为空字符串的字段（图片模板可选占位符专用） */
+  private stripEmptyFields(obj: Record<string, unknown>): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v === '') continue;
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        const child = this.stripEmptyFields(v as Record<string, unknown>);
+        if (Object.keys(child).length) out[k] = child;
+      } else {
+        out[k] = v;
+      }
+    }
+    return out;
   }
 
   /** multipart 上传（不手动设置 Content-Type，fetch 自动带 boundary） */
@@ -335,16 +360,19 @@ export class GenerationClientService {
     fps?: number;
   }): Promise<{ taskId: string }> {
     const { endpoint, apiKey, adapter } = cfg;
+    const res = upstreamResolution(cfg.resolution ?? '');
     let body = this.buildBody(adapter.requestTemplate, {
       upstreamModelId: cfg.model,
       prompt: cfg.prompt,
-      resolution: cfg.resolution ?? '',
+      resolution: res,
       duration: cfg.duration ?? 5,
       fps: cfg.fps ?? 24,
     });
+    // 剔除空字段（如未传分辨率时 resolution=''，避免上游 400）
+    body = this.stripEmptyFields(body);
     if (Object.keys(body).length === 0) {
       body = { model: cfg.model, prompt: cfg.prompt };
-      if (cfg.resolution) body.resolution = cfg.resolution;
+      if (res) body.resolution = res;
       if (cfg.duration) body.duration = cfg.duration;
     }
     const url = this.buildUrl(endpoint, adapter.videosPath || '/videos/generations');

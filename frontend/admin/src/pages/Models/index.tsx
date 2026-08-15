@@ -156,6 +156,9 @@ export default function AdminModels() {
   const [enabledFilter, setEnabledFilter] = useState<'' | 'true' | 'false'>('')
   const [keyword, setKeyword] = useState('')
   const [searchKeyword, setSearchKeyword] = useState('')
+const [testModalOpen, setTestModalOpen] = useState(false)
+const [testRefImage, setTestRefImage] = useState('')
+const [pendingTestItem, setPendingTestItem] = useState<AdminModelItem | null>(null)
 
   // ----- 供应商（Tab2）-----
   const [providers, setProviders] = useState<AdminProviderItem[]>([])
@@ -419,10 +422,10 @@ export default function AdminModels() {
     }
   }
 
-  const handleTestModel = async (item: AdminModelItem) => {
+  const handleTestModel = async (item: AdminModelItem, refImageUrl?: string) => {
     setTestingModelId(item.id)
     try {
-      const result = await testModel(item.id)
+      const result = await testModel(item.id, 'Hello', refImageUrl)
       message.success('测试通过: ' + (result.response || '').slice(0, 60))
       setItems((prev) =>
         prev.map((m) =>
@@ -442,6 +445,17 @@ export default function AdminModels() {
     } finally {
       setTestingModelId(null)
     }
+  }
+
+  /** 图像编辑(图生图)模型测试需参考图 URL；其他模型直接测试 */
+  const onClickTest = (item: AdminModelItem) => {
+    if (item.callMode === 'image_edit' || item.modelType === 'image_edit') {
+      setPendingTestItem(item)
+      setTestRefImage('')
+      setTestModalOpen(true)
+      return
+    }
+    void handleTestModel(item)
   }
 
   const columns: TableColumnsType<AdminModelItem> = [
@@ -578,7 +592,7 @@ export default function AdminModels() {
             size="small"
             icon={<ThunderboltOutlined />}
             loading={testingModelId === m.id}
-            onClick={() => void handleTestModel(m)}
+            onClick={() => onClickTest(m)}
           >
             测试
           </Button>
@@ -1048,6 +1062,41 @@ export default function AdminModels() {
               void loadProviderList()
             }}
           />
+
+          {/* 图像编辑模型测试：需参考图 URL（图生图） */}
+          <Modal
+            title="测试图像编辑模型"
+            open={testModalOpen}
+            onCancel={() => setTestModalOpen(false)}
+            onOk={() => {
+              const url = testRefImage.trim()
+              if (!url) {
+                message.warning('图像编辑（图生图）测试需要一张公网可访问的参考图 URL')
+                return
+              }
+              setTestModalOpen(false)
+              if (pendingTestItem) void handleTestModel(pendingTestItem, url)
+            }}
+            okText="开始测试"
+            cancelText="取消"
+            width={520}
+          >
+            <p style={{ marginBottom: 8 }}>
+              该模型为图生图（图像编辑），上游要求 <code>base_image_url</code> 为公网可访问图片，请粘贴参考图 URL：
+            </p>
+            <Input
+              placeholder="https://cdn.example.com/sketch.png"
+              value={testRefImage}
+              onChange={(e) => setTestRefImage(e.target.value)}
+              onPressEnter={() => {
+                const url = testRefImage.trim()
+                if (url) {
+                  setTestModalOpen(false)
+                  if (pendingTestItem) void handleTestModel(pendingTestItem, url)
+                }
+              }}
+            />
+          </Modal>
         </>
       ) : (
         <>

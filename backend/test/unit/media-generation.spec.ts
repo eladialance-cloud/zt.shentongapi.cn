@@ -112,6 +112,21 @@ describe('MediaGenerationService.charge 定价与冻结', () => {
     assert.equal(freezeCalled, false);
   });
 
+  it('视频：per_second 档位归一化（配置 720P/1080P，用户传 720p 也能命中）', async () => {
+    const { svc } = buildService();
+    const res = await (svc as any).charge(1, { modelType: 'video', pricingMode: 'per_second', videoPerSecond: { '720P': 2, '1080P': 4 }, videoPrices: null }, { resolution: '720p', duration: 10 }, 'src-1');
+    assert.equal(res.price, 20);
+    assert.ok(res.frozenTxnId);
+  });
+
+  it('视频：per_second 矩阵未配置的规格直接拒绝', async () => {
+    const { svc } = buildService();
+    await assert.rejects(
+      (svc as any).charge(1, { modelType: 'video', pricingMode: 'per_second', videoPerSecond: { '720P': 2 }, videoPrices: null }, { resolution: '4k', duration: 10 }, 'src-1'),
+      (e: any) => e instanceof BadRequestException && /未配置/.test(e.message || ''),
+    );
+  });
+
   it('视频：矩阵命中 1080p/10s=36', async () => {
     const { svc } = buildService();
     const videoPrices = { '720p': { '5': 10, '10': 18 }, '1080p': { '5': 20, '10': 36 } };
@@ -750,6 +765,82 @@ describe('GenerationClientService.generateImage 端到端请求构造', () => {
     assert.equal(parsed.input.prompt, '一只猫');
   });
 });
+describe('GenerationClientService.submitVideo 视频请求构造（分辨率映射 + 顶层 parameters）', () => {
+  const client4 = new GenerationClientService();
+  const originalFetch = globalThis.fetch;
+
+  after(() => {
+    (globalThis as any).fetch = originalFetch;
+  });
+
+  it('DashScope 模板：720P 映射 1280*720，parameters 在顶层，带异步头', async () => {
+    let captured: { url: string; body: any; headers: any } | null = null;
+    (globalThis as any).fetch = async (url: string, opts: any) => {
+      captured = { url: String(url), body: JSON.parse(opts.body), headers: opts.headers };
+      return {
+        ok: true, status: 200,
+        text: async () => JSON.stringify({ output: { task_id: 't1', task_status: 'PENDING' } }),
+        json: async () => ({ output: { task_id: 't1', task_status: 'PENDING' } }),
+        headers: new Headers(),
+      };
+    };
+    const out = await client4.submitVideo({
+      endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      apiKey: 'k',
+      adapter: {
+        videosPath: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis',
+        requestTemplate: { model: '{upstreamModelId}', input: { prompt: '{prompt}' }, parameters: { resolution: '{resolution}', duration: '{duration}', fps: '{fps}' } },
+        taskIdPath: 'output.task_id',
+        extraHeaders: { 'X-DashScope-Async': 'enable' },
+      },
+      model: 'qwen-video-plus',
+      prompt: '一只猫',
+      resolution: '720P',
+      duration: 5,
+      fps: 24,
+    });
+    assert.equal(out.taskId, 't1');
+    assert.equal(captured!.url, 'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis');
+    assert.equal(captured!.headers.Authorization, 'Bearer k');
+    assert.equal(captured!.headers['X-DashScope-Async'], 'enable');
+    assert.deepEqual(captured!.body, {
+      model: 'qwen-video-plus',
+      input: { prompt: '一只猫' },
+      parameters: { resolution: '1280*720', duration: 5, fps: 24 },
+    });
+  });
+
+  it('1080p 小写输入自动归一化为 1920*1080', async () => {
+    let capturedBody: any = null;
+    (globalThis as any).fetch = async (_url: string, opts: any) => {
+      capturedBody = JSON.parse(opts.body);
+      return { ok: true, status: 200, text: async () => JSON.stringify({ data: { task_id: 't2' } }), json: async () => ({ data: { task_id: 't2' } }), headers: new Headers() };
+    };
+    const out = await client4.submitVideo({
+      endpoint: 'https://x.com', apiKey: 'k',
+      adapter: { requestTemplate: { parameters: { resolution: '{resolution}' } }, taskIdPath: 'data.task_id' },
+      model: 'm', prompt: 'p', resolution: '1080p', duration: 10,
+    });
+    assert.equal(out.taskId, 't2');
+    assert.equal(capturedBody.parameters.resolution, '1920*1080');
+  });
+
+  it('未传分辨率：空串占位被剔除，不发送 parameters.resolution', async () => {
+    let capturedBody: any = null;
+    (globalThis as any).fetch = async (_url: string, opts: any) => {
+      capturedBody = JSON.parse(opts.body);
+      return { ok: true, status: 200, text: async () => JSON.stringify({ data: { task_id: 't3' } }), json: async () => ({ data: { task_id: 't3' } }), headers: new Headers() };
+    };
+    await client4.submitVideo({
+      endpoint: 'https://x.com', apiKey: 'k',
+      adapter: { requestTemplate: { model: '{upstreamModelId}', input: { prompt: '{prompt}' }, parameters: { resolution: '{resolution}', duration: '{duration}' } }, taskIdPath: 'data.task_id' },
+      model: 'm', prompt: 'p', duration: 5,
+    });
+    assert.equal(capturedBody.parameters.resolution, undefined);
+    assert.equal(capturedBody.parameters.duration, 5);
+  });
+});
+
 describe('MediaGenerationService image_edit 适配合入与传参', () => {
   function buildEditSvc() {
     const encryption: any = { decryptAes: () => 'decrypted-key' };
@@ -859,5 +950,95 @@ describe('buildMediaGenerationAdapter 厂商模板兜底合并（测试=运行�
     );
     assert.equal(adapter.imagesPath, 'https://custom.example.com/text2image');
     assert.equal(adapter.pollInterval, 500);
+  });
+});
+
+describe('图像编辑参考图校验与 OSS 上传', () => {
+  function buildEditSvc2() {
+    const modelRepo: any = { findOne: async () => null, save: async (e: any) => e, create: (e: any) => e };
+    const providerRepo: any = { findOne: async () => null };
+    const jobRepo: any = {
+      find: async () => [], findOne: async () => null, findAndCount: async () => [[], 0],
+      save: async (e: any) => e, update: async () => ({ affected: 1 }), create: (e: any) => e,
+    };
+    const fileRepo: any = { save: async (e: any) => e, create: (e: any) => e };
+    const genClient: any = { generateImage: async () => ({ url: 'https://x/1.png' }) };
+    const credits: any = {
+      freezeCredits: async () => ({ id: 777 }), settleCredits: async () => undefined, refundCredits: async () => undefined,
+    };
+    const pricing: any = { getUserLevel: async () => 0, applyDiscount: (p: number) => p };
+    const encryption: any = { decryptAes: () => 'decrypted-key' };
+    return { modelRepo, providerRepo, jobRepo, fileRepo, genClient, credits, pricing, encryption };
+  }
+
+  function makeSvc(ossUpload: any, genClient: any, modelRepo: any, providerRepo: any, jobRepo: any, fileRepo: any, credits: any, pricing: any, encryption: any) {
+    return new MediaGenerationService(
+      jobRepo, modelRepo, providerRepo, fileRepo, genClient, encryption, credits, pricing, ossUpload,
+    );
+  }
+
+  it('image_edit 无参考图 -> 拒绝（提示需参考图）', async () => {
+    const m = buildEditSvc2();
+    m.modelRepo.findOne = async () => ({
+      modelId: 'sketch', modelType: 'image_edit', isActive: true, providerId: 5,
+      upstreamModelId: 'wanx-sketch', pricePerImage: 10,
+    });
+    m.providerRepo.findOne = async () => ({ id: 5, status: 'active', slug: 'qwen', baseUrl: 'https://x.com/v1', apiKey: 'enc', config: {} });
+    const svc = makeSvc({ upload: async () => null }, m.genClient, m.modelRepo, m.providerRepo, m.jobRepo, m.fileRepo, m.credits, m.pricing, m.encryption);
+    (svc as any).saveGeneratedMedia = async () => 'https://cdn.x.com/out.png';
+    await assert.rejects(
+      () => svc.generateImage(1, { modelId: 'sketch', prompt: '上色' }),
+      (e: any) => e instanceof BadRequestException && /参考图/.test(e.message),
+    );
+  });
+
+  it('data URI 参考图 + 模板适配 -> 先传 OSS 换公网 URL 再调上游', async () => {
+    const m = buildEditSvc2();
+    const captured: any = {};
+    m.genClient.generateImage = async (cfg: any) => { captured.cfg = cfg; return { url: 'https://x/1.png' }; };
+    m.modelRepo.findOne = async () => ({
+      modelId: 'sketch', modelType: 'image_edit', isActive: true, providerId: 5,
+      upstreamModelId: 'wanx-sketch', pricePerImage: 10,
+      generationParams: { images_style: 'json', image_request_template: { input: { base_image_url: '{imageUrl0}' } } },
+    });
+    m.providerRepo.findOne = async () => ({ id: 5, status: 'active', slug: 'qwen', baseUrl: 'https://x.com/v1', apiKey: 'enc', config: { vendorKey: 'aliyun-dashscope' } });
+    let ossCalls = 0;
+    const ossUpload = { upload: async () => { ossCalls++; return { url: 'https://oss.example.com/input.png', storageType: 'oss' as const }; } };
+    const svc = makeSvc(ossUpload, m.genClient, m.modelRepo, m.providerRepo, m.jobRepo, m.fileRepo, m.credits, m.pricing, m.encryption);
+    (svc as any).saveGeneratedMedia = async () => 'https://cdn.x.com/out.png';
+    await svc.generateImage(1, { modelId: 'sketch', prompt: '上色', inputImages: ['data:image/png;base64,aGVsbG8='] });
+    assert.equal(ossCalls, 1, '应上传一次 OSS');
+    assert.deepEqual(captured.cfg.inputImages, ['https://oss.example.com/input.png']);
+  });
+
+  it('imageRequestTemplate 空占位字段被剔除（不发送 base_image_url=""）', async () => {
+    let postBody = '';
+    (globalThis as any).fetch = async (url: string, opts: any) => {
+      postBody = opts.body;
+      return {
+        ok: true, status: 200,
+        text: async () => JSON.stringify({ data: [{ b64_json: 'aGVsbG8=' }] }),
+        json: async () => ({ data: [{ b64_json: 'aGVsbG8=' }] }),
+        headers: new Headers(),
+      };
+    };
+    const out = await client.generateImage({
+      endpoint: 'https://x.com/v1',
+      apiKey: 'k',
+      adapter: {
+        imagesPath: '/images/edits',
+        imageRequestTemplate: {
+          model: '{upstreamModelId}',
+          input: { prompt: '{prompt}', base_image_url: '{imageUrl0}' },
+        },
+      },
+      model: 'wanx-sketch',
+      prompt: '上色',
+    });
+    assert.equal(out.b64, 'aGVsbG8=');
+    const parsed = JSON.parse(postBody);
+    assert.equal(parsed.input.base_image_url, undefined, '空 base_image_url 不应发送');
+    assert.equal(parsed.input.prompt, '上色');
+    assert.equal(parsed.model, 'wanx-sketch');
   });
 });
