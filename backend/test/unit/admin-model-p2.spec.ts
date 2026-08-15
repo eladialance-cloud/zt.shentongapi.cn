@@ -83,6 +83,7 @@ describe('CreateProviderDto / UpdateProviderDto 余额监控与限流字段校�
 });
 
 import { AdminModelService } from '../../src/modules/admin-model/admin-model.service';
+import { BusinessException } from '../../src/common/exceptions/business.exception';
 
 function buildAdminService() {
   const modelRepo: any = {
@@ -635,5 +636,62 @@ describe('AdminModelService 余额监控（checkProviderBalance）', () => {
     } finally {
       restore();
     }
+  });
+});
+
+describe('AdminModelService 重复添加模型去重保护', () => {
+  function buildService(overrides?: { modelRepo?: any; providerRepo?: any }) {
+    const modelRepo: any = {
+      findOne: async () => null,
+      save: async (e: any) => ({ ...e, id: 99 }),
+      count: async () => 1,
+      ...(overrides?.modelRepo ?? {}),
+    };
+    const providerRepo: any = {
+      update: async () => ({ affected: 1 }),
+      ...(overrides?.providerRepo ?? {}),
+    };
+    const encryption: any = { encryptAes: (s: string) => 'enc:' + s };
+    const generationClient: any = {};
+    return new AdminModelService(modelRepo, providerRepo, encryption, generationClient);
+  }
+
+  const baseDto: any = {
+    provider: 'qwen', displayName: 'M', capabilities: [], enabled: true, minUserLevel: 1,
+  };
+
+  it('create 时 modelId 已存在 -> 友好业务异常而非 500', async () => {
+    const svc = buildService({
+      modelRepo: { findOne: async () => ({ modelId: 'qwen-image-3.0-pro' }) },
+    });
+    await assert.rejects(
+      () => svc.create({ ...baseDto, modelId: 'qwen-image-3.0-pro' }),
+      (err: any) =>
+        err instanceof BusinessException &&
+        err.code === ErrorCode.VALIDATION_FAILED &&
+        String((err.getResponse() as any).message).includes('已存在'),
+    );
+  });
+
+  it('create 时数据库唯一索引冲突(errno=1062) -> 友好业务异常', async () => {
+    const dupErr: any = new Error('Duplicate entry');
+    dupErr.errno = 1062;
+    dupErr.code = 'ER_DUP_ENTRY';
+    dupErr.driverError = { errno: 1062 };
+    const svc = buildService({ modelRepo: { save: async () => { throw dupErr; } } });
+    await assert.rejects(
+      () => svc.create({ ...baseDto, modelId: 'new-model' }),
+      (err: any) =>
+        err instanceof BusinessException &&
+        String((err.getResponse() as any).message).includes('已存在'),
+    );
+  });
+
+  it('create 正常路径保存成功并返回模型项', async () => {
+    const svc = buildService();
+    const res = await svc.create({
+      ...baseDto, modelId: 'brand-new', inputPricePerToken: 2, outputPricePerToken: 8,
+    });
+    assert.equal(res.modelId, 'brand-new');
   });
 });

@@ -149,11 +149,45 @@ export class AdminModelService implements OnModuleInit {
 
   /** 新增模型（兼容旧接口；新流程请使用供应商导入） */
   async create(dto: CreateModelDto) {
+    const modelId = dto.modelId?.trim() || dto.upstreamModelId?.trim() || '';
+    await this.assertModelIdAvailable(modelId, dto.upstreamModelId);
     const entity = new ModelEntity();
     this.applyCreateDto(entity, dto);
-    const saved = await this.modelRepo.save(entity);
+    const saved = await this.saveModelOrDuplicate(entity, modelId);
     await this.refreshProviderModelCount(saved.providerId);
     return this.toAdminModelItem(saved);
+  }
+
+  /** 重复添加保护：model_id 唯一索引冲突时给明确业务提示，而不是 500 */
+  private async assertModelIdAvailable(modelId: string, upstreamModelId?: string) {
+    if (!modelId) return;
+    const where: Array<{ modelId: string } | { upstreamModelId: string }> = [{ modelId }];
+    if (upstreamModelId && upstreamModelId !== modelId) {
+      where.push({ upstreamModelId });
+    }
+    const dup = await this.modelRepo.findOne({ where });
+    if (dup) {
+      BusinessException.throw(
+        ErrorCode.VALIDATION_FAILED,
+        `模型已存在: ${modelId}（可在模型列表直接编辑；如需重新添加请先删除旧记录）`,
+      );
+    }
+  }
+
+  /** 落库并捕获唯一索引冲突（并发的兜底） */
+  private async saveModelOrDuplicate(entity: ModelEntity, modelId: string): Promise<ModelEntity> {
+    try {
+      return await this.modelRepo.save(entity);
+    } catch (err: any) {
+      const errno = err?.driverError?.errno ?? err?.errno;
+      if (errno === 1062 || err?.code === 'ER_DUP_ENTRY') {
+        BusinessException.throw(
+          ErrorCode.VALIDATION_FAILED,
+          `模型已存在: ${modelId}（可在模型列表直接编辑；如需重新添加请先删除旧记录）`,
+        );
+      }
+      throw err;
+    }
   }
 
   /** 编辑模型（显示名/类型标签/积分单价/能力/上下架等） */
@@ -462,7 +496,8 @@ export class AdminModelService implements OnModuleInit {
       : null;
     entity.isActive = dto.enabled ?? false;
     if (dto.providerId) entity.providerId = dto.providerId;
-    const saved = await this.modelRepo.save(entity);
+    await this.assertModelIdAvailable(entity.modelId, entity.upstreamModelId);
+    const saved = await this.saveModelOrDuplicate(entity, entity.modelId);
     await this.refreshProviderModelCount(saved.providerId);
     return this.toAdminModelItem(saved);
   }
