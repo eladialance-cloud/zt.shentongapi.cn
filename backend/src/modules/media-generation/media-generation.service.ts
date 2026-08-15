@@ -384,6 +384,29 @@ export class MediaGenerationService implements OnModuleInit {
 
   async generateVideo(userId: number, dto: GenerateVideoDto) {
     const { model, provider, adapter, decryptedKey } = await this.resolveModel(dto.modelId, 'video');
+    // 图生视频：首帧图 data URI 转 OSS 公网 URL（http(s) 直接用）
+    let firstFrameUrl: string | undefined;
+    if (dto.inputImages?.length) {
+      const raw = dto.inputImages[0];
+      if (/^https?:\/\//i.test(raw)) {
+        firstFrameUrl = raw;
+      } else if (/^data:image\//i.test(raw)) {
+        const m = raw.match(/^data:([^;]+);base64,([\s\S]+)$/);
+        if (!m) throw new BadRequestException('首帧图 data URI 格式无效');
+        const mime = m[1] || 'image/png';
+        const ext = mime.includes('jpeg') ? 'jpg' : mime.includes('png') ? 'png' : 'bin';
+        const up = await this.ossUpload.upload(Buffer.from(m[2], 'base64'), {
+          userId,
+          callMode: 'video_input',
+          ext,
+          mime,
+        });
+        if (!up?.url) throw new BadRequestException('首帧图上传 OSS 失败：请直接提供公网图片 URL');
+        firstFrameUrl = up.url;
+      } else {
+        throw new BadRequestException('首帧图仅支持公网 URL 或 data:image 数据');
+      }
+    }
     const sourceId = `media-video-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const { price, frozenTxnId } = await this.charge(userId, model, { resolution: dto.resolution, duration: dto.duration }, sourceId);
 
@@ -408,6 +431,7 @@ export class MediaGenerationService implements OnModuleInit {
       resolution: dto.resolution,
       duration: dto.duration ?? 5,
       fps: dto.fps,
+      inputImages: firstFrameUrl ? [firstFrameUrl] : undefined,
     });
     return this.toJobItem(job);
   }
@@ -434,7 +458,7 @@ export class MediaGenerationService implements OnModuleInit {
 
   private async runVideoJob(
     jobId: number,
-    cfg: { endpoint: string; apiKey: string; adapter: GenerationAdapterConfig; model: string; prompt: string; resolution?: string; duration: number; fps?: number },
+    cfg: { endpoint: string; apiKey: string; adapter: GenerationAdapterConfig; model: string; prompt: string; resolution?: string; duration: number; fps?: number; inputImages?: string[] },
   ) {
     try {
       const { taskId } = await this.genClient.submitVideo(cfg);

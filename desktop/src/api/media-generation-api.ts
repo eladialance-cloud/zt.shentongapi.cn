@@ -148,7 +148,7 @@ export async function generateImageViaGateway(
 /** 文生视频（网关 POST /v1/videos/generations，异步任务，返回 MediaJob） */
 export async function generateVideoViaGateway(
   key: string,
-  data: { model?: string; prompt: string; resolution?: string; duration?: number; fps?: number },
+  data: { model?: string; prompt: string; resolution?: string; duration?: number; fps?: number; inputImages?: string[] },
 ): Promise<MediaJob> {
   const resp = await gatewayFetch('/llm-proxy/v1/videos/generations', {
     key,
@@ -158,7 +158,8 @@ export async function generateVideoViaGateway(
       prompt: data.prompt,
       resolution: data.resolution,
       duration: data.duration,
-      fps: data.fps
+      fps: data.fps,
+      inputImages: data.inputImages
     })
   })
   return (await parseGatewayResponse(resp, '文生视频失败')) as MediaJob

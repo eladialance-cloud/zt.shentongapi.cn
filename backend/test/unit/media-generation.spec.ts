@@ -53,6 +53,17 @@ describe('GenerationClientService.buildBody', () => {
   it('无模板返回空对象', () => {
     assert.deepEqual(client.buildBody(undefined, { prompt: 'x' }), {});
   });
+  it('数组占位符注入 input.media（图生视频首帧图）', () => {
+    const body = client.buildBody(
+      { model: '{upstreamModelId}', input: { prompt: '{prompt}', media: '{media}' }, parameters: { resolution: '{resolution}' } },
+      { upstreamModelId: 'happyhorse-1.1-i2v', prompt: 'cat run', resolution: '720P', media: [{ type: 'first_frame', url: 'https://cdn/x.png' }] },
+    );
+    assert.deepEqual(body, {
+      model: 'happyhorse-1.1-i2v',
+      input: { prompt: 'cat run', media: [{ type: 'first_frame', url: 'https://cdn/x.png' }] },
+      parameters: { resolution: '720P' },
+    });
+  });
 });
 
 describe('MediaGenerationService.charge 定价与冻结', () => {
@@ -841,6 +852,79 @@ describe('GenerationClientService.submitVideo 视频请求构造（分辨率映�
   });
 });
 
+describe('GenerationClientService.pollVideoTask 任务查询（taskMethod + 结果路径兜底）', () => {
+  const client5 = new GenerationClientService();
+  const originalFetch = globalThis.fetch;
+
+  after(() => {
+    (globalThis as any).fetch = originalFetch;
+  });
+
+  it('默认 GET 查询，结果从配置的 resultUrlPath 取', async () => {
+    let method = '';
+    (globalThis as any).fetch = async (url: string, opts: any) => {
+      method = opts?.method || 'GET';
+      return {
+        ok: true, status: 200,
+        text: async () => JSON.stringify({ output: { task_status: 'SUCCEEDED', video_url: 'https://cdn.x.com/v.mp4' } }),
+        json: async () => ({ output: { task_status: 'SUCCEEDED', video_url: 'https://cdn.x.com/v.mp4' } }),
+        headers: new Headers(),
+      };
+    };
+    const out = await client5.pollVideoTask({
+      endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      apiKey: 'k',
+      adapter: { taskPath: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/tasks/{id}', statusPath: 'output.task_status', successValues: ['SUCCEEDED'], resultUrlPath: 'output.video_url' },
+      taskId: 't-1',
+    });
+    assert.equal(method, 'GET');
+    assert.equal(out.status, 'done');
+    assert.equal(out.url, 'https://cdn.x.com/v.mp4');
+  });
+
+  it('taskMethod=POST 时用 POST 查询（无配置 resultUrlPath 时兜底 output.results[0].url）', async () => {
+    let method = '';
+    let sentBody: any = null;
+    (globalThis as any).fetch = async (url: string, opts: any) => {
+      method = opts?.method || 'GET';
+      sentBody = opts?.body;
+      return {
+        ok: true, status: 200,
+        text: async () => JSON.stringify({ output: { task_status: 'SUCCEEDED', results: [{ url: 'https://cdn.x.com/out.png' }] } }),
+        json: async () => ({ output: { task_status: 'SUCCEEDED', results: [{ url: 'https://cdn.x.com/out.png' }] } }),
+        headers: new Headers(),
+      };
+    };
+    const out = await client5.pollVideoTask({
+      endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      apiKey: 'k',
+      adapter: { taskPath: 'https://dashscope.aliyuncs.com/api/v1/tasks/{id}', taskMethod: 'POST', statusPath: 'output.task_status', successValues: ['SUCCEEDED'] },
+      taskId: 't-2',
+    });
+    assert.equal(method, 'POST');
+    assert.equal(sentBody, '{}');
+    assert.equal(out.status, 'done');
+    assert.equal(out.url, 'https://cdn.x.com/out.png');
+  });
+
+  it('任务失败返回 failed', async () => {
+    (globalThis as any).fetch = async (_url: string, _opts: any) => {
+      return {
+        ok: true, status: 200,
+        text: async () => JSON.stringify({ output: { task_status: 'FAILED' } }),
+        json: async () => ({ output: { task_status: 'FAILED' } }),
+        headers: new Headers(),
+      };
+    };
+    const out = await client5.pollVideoTask({
+      endpoint: 'https://x.com', apiKey: 'k',
+      adapter: { statusPath: 'output.task_status', successValues: ['SUCCEEDED'], failedValues: ['FAILED'] },
+      taskId: 't-3',
+    });
+    assert.equal(out.status, 'failed');
+  });
+});
+
 describe('MediaGenerationService image_edit 适配合入与传参', () => {
   function buildEditSvc() {
     const encryption: any = { decryptAes: () => 'decrypted-key' };
@@ -930,7 +1014,7 @@ describe('buildMediaGenerationAdapter 厂商模板兜底合并（测试=运行�
       null,
     );
     assert.equal(adapter.imagesPath, 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis');
-    assert.equal(adapter.imageTaskPath, 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/task/{id}');
+    assert.equal(adapter.imageTaskPath, 'https://dashscope.aliyuncs.com/api/v1/tasks/{id}');
     assert.equal(adapter.imageResultUrlPath, 'output.results[0].url');
     assert.equal((adapter.imageRequestTemplate as Record<string, unknown>)?.model, '{upstreamModelId}');
     assert.equal(adapter.async, true);

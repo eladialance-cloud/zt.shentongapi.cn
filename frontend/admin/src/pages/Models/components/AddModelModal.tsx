@@ -27,6 +27,7 @@ import {
   createAdminModel,
   createAdminProvider,
   fetchMarketVendors,
+  parseCurlExample,
   testAdminProvider
 } from '@/api/admin-model-api'
 import type {
@@ -106,6 +107,10 @@ export default function AddModelModal(props: {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
   const [saving, setSaving] = useState(false)
+  // 从 curl 解析
+  const [curlOpen, setCurlOpen] = useState(false)
+  const [curlText, setCurlText] = useState('')
+  const [parsingCurl, setParsingCurl] = useState(false)
   // 输出大类（联动调用模式）
   const [outputGroup, setOutputGroup] = useState<ModelOutputType>('text')
 
@@ -177,6 +182,56 @@ export default function AddModelModal(props: {
     if (!v) return
     if (!newName.trim()) setNewName(v.nameSuggestion)
     if (!newBaseUrl.trim()) setNewBaseUrl(v.baseUrl)
+  }
+
+  /** 解析官方 curl → 自动填充模型 ID / 调用模式 / 高级参数（端点+请求模板） */
+  const handleParseCurl = async () => {
+    if (!curlText.trim()) {
+      message.warning('请先粘贴官方 curl 示例')
+      return
+    }
+    setParsingCurl(true)
+    try {
+      const r = await parseCurlExample(curlText)
+      // 推断调用模式
+      const url = r.submitUrl || ''
+      let callMode = 'text_chat'
+      if (/video|video-synthesis/i.test(url)) callMode = 'video'
+      else if (/image|image-synthesis|images\/generations/i.test(url)) callMode = 'image'
+      else if (r.async) callMode = 'video'
+      // 组装 generationParams（snake_case，与后端适配器键名一致）
+      const gp: Record<string, unknown> = {}
+      if (Object.keys(r.requestTemplate || {}).length) gp.request_template = r.requestTemplate
+      if (r.extraHeaders && Object.keys(r.extraHeaders).length) gp.extra_headers = r.extraHeaders
+      if (r.async) {
+        gp.task_method = 'GET'
+        gp.task_id_path = 'output.task_id'
+        gp.task_status_path = 'output.task_status'
+        gp.success_values = ['SUCCEEDED']
+        gp.failed_values = ['FAILED', 'CANCELED']
+        gp.result_url_path = 'output.video_url'
+      }
+      if (callMode === 'video') {
+        gp.video_submit_path = url
+        if (r.taskQueryUrl) gp.video_query_path = r.taskQueryUrl
+      } else if (callMode === 'image') {
+        gp.images_path = url
+        gp.image_request_template = r.requestTemplate
+        if (r.taskQueryUrl) gp.image_task_path = r.taskQueryUrl
+        gp.image_result_url_path = 'output.results[0].url'
+      }
+      form.setFieldsValue({
+        upstreamModelId: r.modelId || form.getFieldValue('upstreamModelId'),
+        callMode,
+        generationParamsText: JSON.stringify(gp, null, 2),
+      })
+      message.success('curl 解析成功，已自动填充模型 ID / 调用模式 / 高级参数（请核对后保存）')
+      if (r.warnings?.length) message.warning(r.warnings[0])
+    } catch (err: any) {
+      message.error('curl 解析失败: ' + (err?.message || '未知错误'))
+    } finally {
+      setParsingCurl(false)
+    }
   }
 
   const handleTest = async () => {
@@ -510,6 +565,33 @@ export default function AddModelModal(props: {
         <Form.Item label="积分扣除设置">
           <PricingConfigForm def={callModeDef} />
         </Form.Item>
+        <div style={{ marginBottom: 12 }}>
+          <Button type="link" size="small" style={{ paddingLeft: 0 }} onClick={() => setCurlOpen(!curlOpen)}>
+            {curlOpen ? '收起' : '从官方 curl 解析（快速添加，新模型必看）'}
+          </Button>
+          {curlOpen && (
+            <div style={{ marginTop: 4 }}>
+              <Input.TextArea
+                rows={4}
+                value={curlText}
+                onChange={(e) => setCurlText(e.target.value)}
+                placeholder={`粘贴官方文档的 curl 示例，例如：\ncurl --location 'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis' \\n  -H 'X-DashScope-Async: enable' \\n  -d '{"model":"happyhorse-1.1-i2v","input":{"prompt":"一只猫"}}'`}
+              />
+              <Button
+                size="small"
+                type="primary"
+                loading={parsingCurl}
+                onClick={() => void handleParseCurl()}
+                style={{ marginTop: 8 }}
+              >
+                解析并填充
+              </Button>
+              <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
+                自动识别：提交端点 / 请求体模板 / 异步任务查询 / 模型 ID。识别不到的可手动补填。
+              </div>
+            </div>
+          )}
+        </div>
         <Form.Item name="generationParamsText" label="高级参数（JSON，可选）">
           <Input.TextArea
             rows={3}

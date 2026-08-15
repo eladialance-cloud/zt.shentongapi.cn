@@ -556,7 +556,7 @@ export class LlmProxyService {
 
   /** 解析生成类模型：显式 model 优先（custom/<id> 或 <type>/<id>），否则取该类型默认（sortOrder 最小且启用） */
   private async resolveMediaModel(
-    type: 'image' | 'video' | 'tts',
+    type: 'image' | 'video' | 'tts' | 'stt',
     requested?: string,
     userId?: number,
   ): Promise<ModelEntity> {
@@ -600,9 +600,10 @@ export class LlmProxyService {
     return model;
   }
 
-  private typeMatches(modelType: string | undefined, type: 'image' | 'video' | 'tts'): boolean {
+  private typeMatches(modelType: string | undefined, type: 'image' | 'video' | 'tts' | 'stt'): boolean {
     const t = (modelType || '').toLowerCase();
     if (type === 'image') return t === 'image' || t === 'image_edit';
+    if (type === 'stt') return t === 'stt' || t === 'audio';
     return t === type;
   }
 
@@ -689,10 +690,11 @@ export class LlmProxyService {
     }
   }
 
+
   /** 文生视频/图生视频（异步任务制，复用 MediaGenerationService 的作业/退款链路） */
   async videoGeneration(
     apiKey: string,
-    body: { model?: string; prompt: string; resolution?: string; duration?: number; fps?: number },
+    body: { model?: string; prompt: string; resolution?: string; duration?: number; fps?: number; inputImages?: string[] },
   ) {
     const { userId } = await this.verifyApiKey(apiKey);
     const model = await this.resolveMediaModel('video', body.model, userId);
@@ -702,6 +704,7 @@ export class LlmProxyService {
       resolution: body.resolution,
       duration: body.duration,
       fps: body.fps,
+      inputImages: body.inputImages,
     });
   }
 

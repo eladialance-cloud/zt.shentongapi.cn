@@ -96,6 +96,23 @@ export async function testModel(
   )
 }
 
+/** 解析官方 curl 示例 → 模型适配配置 */
+export interface ParsedCurlResult {
+  submitUrl: string
+  method: string
+  modelId?: string
+  async: boolean
+  taskQueryUrl?: string
+  requestTemplate: Record<string, unknown>
+  extraHeaders: Record<string, string>
+  rawBody?: Record<string, unknown>
+  warnings: string[]
+}
+
+export async function parseCurlExample(curlText: string): Promise<ParsedCurlResult> {
+  return adminRequest<ParsedCurlResult>('post', '/admin/models/parse-curl', { data: { curlText } })
+}
+
 // ===== 供应商 =====  
 
 /** 供应商列表 */

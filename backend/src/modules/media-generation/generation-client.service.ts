@@ -24,6 +24,8 @@ export interface GenerationAdapterConfig {
   resultUrlPath?: string;
   resultB64Path?: string;
   timeoutMs?: number;
+  /** 任务查询请求方法（默认 GET；个别上游要求 POST，如部分 DashScope 任务查询） */
+  taskMethod?: 'GET' | 'POST';
   /** 图片请求形状：json=JSON 内嵌图（占位符）/ multipart=multipart 文件字段（默认 json）*/
   imagesStyle?: 'json' | 'multipart';
   /** multipart 图片字段名（位置对应 inputImages；默认第 1 张 image，第 n 张 image_n）*/
@@ -62,6 +64,7 @@ export function mergeGenerationAdapter(
   const rt = obj(g.request_template); if (rt) adapter.requestTemplate = rt;
   const irt = obj(g.image_request_template); if (irt) adapter.imageRequestTemplate = irt;
   const itp = str(g.image_task_path); if (itp) adapter.imageTaskPath = itp;
+  if (g.task_method === 'GET' || g.task_method === 'POST') adapter.taskMethod = g.task_method;
   const irp = str(g.image_result_url_path); if (irp) adapter.imageResultUrlPath = irp;
   if (typeof g.poll_interval === 'number' && g.poll_interval > 0) adapter.pollInterval = g.poll_interval;
   if (typeof g.timeout_ms === 'number' && g.timeout_ms > 0) adapter.timeoutMs = g.timeout_ms;
@@ -121,7 +124,7 @@ export class GenerationClientService {
   }
 
   /** 请求体占位符替换：{upstreamModelId} {prompt} {size} {resolution} {duration} {fps} */
-  buildBody(template: Record<string, unknown> | undefined, vars: Record<string, string | number>): Record<string, unknown> {
+  buildBody(template: Record<string, unknown> | undefined, vars: Record<string, unknown>): Record<string, unknown> {
     if (!template) return {};
     const walk = (v: unknown): unknown => {
       if (typeof v === 'string') {
@@ -358,16 +361,29 @@ export class GenerationClientService {
     resolution?: string;
     duration?: number;
     fps?: number;
+    inputImages?: string[];
   }): Promise<{ taskId: string }> {
     const { endpoint, apiKey, adapter } = cfg;
     const res = upstreamResolution(cfg.resolution ?? '');
-    let body = this.buildBody(adapter.requestTemplate, {
+    const vars: Record<string, unknown> = {
       upstreamModelId: cfg.model,
       prompt: cfg.prompt,
       resolution: res,
       duration: cfg.duration ?? 5,
       fps: cfg.fps ?? 24,
-    });
+    };
+    // 图生视频：首帧图注入 input.media（模板内 {media} 占位符或强制注入）
+    if (cfg.inputImages?.length) {
+      vars.media = cfg.inputImages.map((url) => ({ type: 'first_frame', url }));
+    }
+    let body = this.buildBody(adapter.requestTemplate, vars);
+    if (cfg.inputImages?.length && !adapter.requestTemplate) {
+      body = { model: cfg.model, input: { prompt: cfg.prompt }, parameters: {} };
+      (body.input as Record<string, unknown>).media = vars.media;
+      if (res) (body.parameters as Record<string, unknown>).resolution = res;
+      if (cfg.duration) (body.parameters as Record<string, unknown>).duration = cfg.duration;
+      if (cfg.fps) (body.parameters as Record<string, unknown>).fps = cfg.fps;
+    }
     // 剔除空字段（如未传分辨率时 resolution=''，避免上游 400）
     body = this.stripEmptyFields(body);
     if (Object.keys(body).length === 0) {
@@ -397,12 +413,18 @@ export class GenerationClientService {
       .replace('{id}', encodeURIComponent(cfg.taskId))
       .replace('{task_id}', encodeURIComponent(cfg.taskId));
     const url = this.buildUrl(endpoint, taskPath);
-    const json = await this.getJson(url, apiKey, adapter.extraHeaders);
+    const json =
+      adapter.taskMethod === 'POST'
+        ? await this.postJson(url, apiKey, {}, adapter.extraHeaders, adapter.timeoutMs || 30000)
+        : await this.getJson(url, apiKey, adapter.extraHeaders, adapter.timeoutMs || 30000);
     const status = this.getByPath(json, adapter.statusPath || 'data.task_status') as string;
     const successValues = adapter.successValues || ['succeed'];
     const failedValues = adapter.failedValues || ['failed'];
     if (successValues.includes(status)) {
-      const u = this.getByPath(json, adapter.resultUrlPath || 'data.task_result.videos[0].url') as string;
+      let u = this.getByPath(json, adapter.resultUrlPath || '') as string;
+      if (!u) u = this.getByPath(json, 'output.results[0].url') as string;
+      if (!u) u = this.getByPath(json, 'output.video_url') as string;
+      if (!u) u = this.getByPath(json, 'data.task_result.videos[0].url') as string;
       return { status: 'done', url: u };
     }
     if (failedValues.includes(status)) {

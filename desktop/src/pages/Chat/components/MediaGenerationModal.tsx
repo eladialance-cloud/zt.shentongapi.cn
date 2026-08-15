@@ -6,8 +6,8 @@
 // - 完成后回调 onComplete(job)，父组件以助手媒体消息插入会话
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Modal, Select, Input, Button, Form, Alert, Progress, Tag, Tooltip, message } from 'antd'
-import { PictureOutlined, VideoCameraOutlined, ThunderboltOutlined, ReloadOutlined } from '@ant-design/icons'
+import { Modal, Select, Input, Button, Form, Alert, Progress, Tag, Tooltip, Upload, message } from 'antd'
+import { PictureOutlined, VideoCameraOutlined, ThunderboltOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons'
 import {
   listGenerationModels,
   generateImageViaGateway,
@@ -37,6 +37,8 @@ interface FormValues {
   resolution?: string
   duration?: number
   fps?: number
+  /** 图生视频首帧图（data URI） */
+  firstFrame?: string
 }
 
 const POLL_INTERVAL = 4000
@@ -74,6 +76,8 @@ export function MediaGenerationModal({ open, onClose, onComplete, defaultType = 
     () => modelOptions.find((m) => m.id === modelId),
     [modelOptions, modelId],
   )
+  /** 图生视频模型（generationParams.i2v = true 时用户需上传首帧图） */
+  const isI2v = type === 'video' && selectedModel?.generationParams?.i2v === true
 
   /** 打开时加载模型列表 */
   useEffect(() => {
@@ -193,6 +197,7 @@ export function MediaGenerationModal({ open, onClose, onComplete, defaultType = 
           resolution: values.resolution,
           duration: values.duration,
           fps: values.fps,
+          inputImages: values.firstFrame ? [values.firstFrame] : undefined,
         })
         setJob(vidJob)
         startPolling(vidJob.id)
@@ -278,6 +283,31 @@ export function MediaGenerationModal({ open, onClose, onComplete, defaultType = 
           </Form.Item>
         ) : (
           <>
+            {isI2v && (
+              <Form.Item
+                name="firstFrame"
+                label="首帧图（图生视频）"
+                rules={[{ required: true, message: '图生视频需要上传首帧图' }]}
+              >
+                <Upload
+                  maxCount={1}
+                  accept="image/*"
+                  listType="picture"
+                  beforeUpload={(file) => {
+                    const reader = new FileReader()
+                    reader.onload = () => {
+                      form.setFieldValue('firstFrame', String(reader.result || ''))
+                      form.validateFields(['firstFrame']).catch(() => undefined)
+                    }
+                    reader.readAsDataURL(file)
+                    return false
+                  }}
+                  onRemove={() => form.setFieldValue('firstFrame', undefined)}
+                >
+                  <Button icon={<UploadOutlined />}>选择图片</Button>
+                </Upload>
+              </Form.Item>
+            )}
             <Form.Item name="resolution" label="分辨率">
               <Select options={resOptions.map((r) => ({ value: r, label: r.toUpperCase() }))} />
             </Form.Item>

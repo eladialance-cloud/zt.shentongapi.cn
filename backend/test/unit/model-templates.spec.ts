@@ -95,9 +95,9 @@ describe('模型市场预设库不变量', () => {
       String(g.videosPath),
       /^https:\/\/dashscope\.aliyuncs\.com\/api\/v1\/services\/aigc\/video-generation\/video-synthesis$/,
     );
-    assert.match(String(g.taskPath), /^https:\/\/dashscope\.aliyuncs\.com\/api\/v1\/services\/aigc\/video-generation\/tasks\/\{id\}$/);
+    assert.equal(String(g.taskPath), 'https://dashscope.aliyuncs.com/api/v1/tasks/{id}');
     assert.match(String(g.imagesPath), /^https:\/\/dashscope\.aliyuncs\.com\/api\/v1\/services\/aigc\/text2image\/image-synthesis$/);
-    assert.equal(String(g.imageTaskPath), 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/task/{id}');
+    assert.equal(String(g.imageTaskPath), 'https://dashscope.aliyuncs.com/api/v1/tasks/{id}');
     assert.equal(String(g.imageResultUrlPath), 'output.results[0].url');
   });
 
@@ -130,5 +130,7 @@ describe('模型市场预设库不变量', () => {
     assert.equal((irt.parameters as Record<string, unknown>).size, '{size}');
     assert.ok(String(gen.imagesPath).startsWith('https://'), 'imagesPath 必须是绝对 URL');
     assert.ok(String(gen.videosPath).startsWith('https://'), 'videosPath 必须是绝对 URL');
+    // 图片任务查询必须走 DashScope 通用任务端点（services/aigc/text2image/task/{id} 不支持 GET -> 400）
+    assert.equal(gen.imageTaskPath, 'https://dashscope.aliyuncs.com/api/v1/tasks/{id}', 'imageTaskPath 应为通用任务查询端点');
   });
 });

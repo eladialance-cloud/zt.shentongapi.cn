@@ -90,12 +90,10 @@ import styles from './styles.module.css'
 const PAGE_SIZE = 20
 
 const MODEL_TYPE_OPTIONS: Array<{ label: string; value: string }> = [
-  { label: '文本对话 chat', value: 'chat' },
-  { label: '图片识图 vision', value: 'vision' },
-  { label: '文生图 image', value: 'image' },
-  { label: '图生图 image_edit', value: 'image_edit' },
-  { label: '视频生成 video', value: 'video' },
-  { label: '语音合成 tts', value: 'tts' }
+  { label: '文案（文本输出）', value: 'chat,vision,embedding,rerank' },
+  { label: '图片（文生图/图生图/编辑）', value: 'image,image_edit' },
+  { label: '视频（文生视频/图生视频）', value: 'video' },
+  { label: '语音（识别/合成/转语音）', value: 'tts,stt,audio' }
 ]
 
 const CONNECTION_TAG: Record<string, { color: string; text: string }> = {

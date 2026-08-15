@@ -44,6 +44,7 @@ import {
   resolvePricing,
 } from './utils/market-utils';
 import { presetsForProviderType } from './utils/provider-type-utils';
+import { parseCurl } from './utils/curl-parser';
 import { GenerationClientService, GenerationAdapterConfig, mergeGenerationAdapter, buildMediaGenerationAdapter } from '../media-generation/generation-client.service';
 
 /** 模型查询参数 */
@@ -115,7 +116,12 @@ export class AdminModelService implements OnModuleInit {
       });
     }
     if (query.modelType) {
-      qb.andWhere('m.model_type = :mt', { mt: String(query.modelType) });
+      const types = String(query.modelType).split(',').map((s) => s.trim()).filter(Boolean);
+      if (types.length === 1) {
+        qb.andWhere('m.model_type = :mt', { mt: types[0] });
+      } else if (types.length > 1) {
+        qb.andWhere('m.model_type IN (:...mts)', { mts: types });
+      }
     }
 
     qb.orderBy('m.sort_order', 'ASC').addOrderBy('m.created_at', 'DESC')
@@ -150,12 +156,17 @@ export class AdminModelService implements OnModuleInit {
   /** 新增模型（兼容旧接口；新流程请使用供应商导入） */
   async create(dto: CreateModelDto) {
     const modelId = dto.modelId?.trim() || dto.upstreamModelId?.trim() || '';
-    await this.assertModelIdAvailable(modelId, dto.upstreamModelId);
-    const entity = new ModelEntity();
-    this.applyCreateDto(entity, dto);
-    const saved = await this.saveModelOrDuplicate(entity, modelId);
-    await this.refreshProviderModelCount(saved.providerId);
-    return this.toAdminModelItem(saved);
+    try {
+      await this.assertModelIdAvailable(modelId, dto.upstreamModelId);
+      const entity = new ModelEntity();
+      this.applyCreateDto(entity, dto);
+      const saved = await this.saveModelOrDuplicate(entity, modelId);
+      await this.refreshProviderModelCount(saved.providerId);
+      return this.toAdminModelItem(saved);
+    } catch (err: any) {
+      this.logger.error('[admin-model] create 失败 modelId=' + modelId + ' callMode=' + dto.callMode + ' providerId=' + dto.providerId + ' err=' + (err?.message || err));
+      throw err;
+    }
   }
 
   /** 重复添加保护：model_id 唯一索引冲突时给明确业务提示，而不是 500 */
@@ -372,6 +383,10 @@ export class AdminModelService implements OnModuleInit {
   async templateList() {
     return MODEL_TEMPLATES;
   }
+  /** 解析官方 curl 示例 → 模型适配配置（端点/请求模板/异步/任务查询） */
+  async parseCurlText(curlText: string) {
+    return parseCurl(curlText);
+  }
 
   /** 模型市场：厂商列表 + 是否已创建该厂商供应商（config.vendorKey 关联） */
   async marketVendors() {
@@ -505,10 +520,15 @@ export class AdminModelService implements OnModuleInit {
       : null;
     entity.isActive = dto.enabled ?? false;
     if (dto.providerId) entity.providerId = dto.providerId;
-    await this.assertModelIdAvailable(entity.modelId, entity.upstreamModelId);
-    const saved = await this.saveModelOrDuplicate(entity, entity.modelId);
-    await this.refreshProviderModelCount(saved.providerId);
-    return this.toAdminModelItem(saved);
+    try {
+      await this.assertModelIdAvailable(entity.modelId, entity.upstreamModelId);
+      const saved = await this.saveModelOrDuplicate(entity, entity.modelId);
+      await this.refreshProviderModelCount(saved.providerId);
+      return this.toAdminModelItem(saved);
+    } catch (err: any) {
+      this.logger.error('[admin-model] createFromTemplate 失败 templateKey=' + dto.templateKey + ' modelId=' + entity.modelId + ' providerId=' + dto.providerId + ' err=' + (err?.message || err));
+      throw err;
+    }
   }
 
   // ============ 批量操作 ============

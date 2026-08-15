@@ -90,10 +90,12 @@ export class LlmProxyController {
   }
 
   @Public()
+
+  @Public()
   @Post('v1/videos/generations')
   async videoGenerations(
     @Headers('authorization') auth: string,
-    @Body() body: { model?: string; prompt: string; resolution?: string; duration?: number; fps?: number },
+    @Body() body: { model?: string; prompt: string; resolution?: string; duration?: number; fps?: number; inputImages?: string[] },
   ) {
     const token = this.extractToken(auth);
     return this.llmProxyService.videoGeneration(token, body);

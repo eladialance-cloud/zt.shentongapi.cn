@@ -51,6 +51,14 @@ export class GenerateVideoDto {
   @Min(1)
   @Max(120)
   fps?: number;
+
+  /** 图生视频首帧图：http(s) URL 或 data:image 数据 URI，最多 1 张 */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(1)
+  @IsString({ each: true })
+  @MaxLength(4000, { each: true })
+  inputImages?: string[];
 }
 
 /** 生成任务查询 DTO */

@@ -17,6 +17,7 @@ import { AdminModelService } from './admin-model.service';
 import { CreateModelDto } from './dto/create-model.dto';
 import { UpdateModelDto } from './dto/update-model.dto';
 import { TestModelDto } from './dto/test-model.dto';
+import { ParseCurlDto } from './dto/parse-curl.dto';
 import { FetchModelsDto } from './dto/fetch-models.dto';
 import { ImportModelsDto } from './dto/import-models.dto';
 import { CreateProviderDto } from './dto/create-provider.dto';
@@ -117,6 +118,13 @@ export class AdminModelController {
   @ApiOperation({ summary: '模型市场：批量创建模型' })
   async marketImport(@Body() dto: MarketImportDto) {
     return this.service.marketImport(dto);
+  }
+
+  /** 解析官方 curl 示例 → 生成模型适配配置 */
+  @Post('parse-curl')
+  @ApiOperation({ summary: '解析 curl 示例生成适配配置' })
+  parseCurl(@Body() dto: ParseCurlDto) {
+    return this.service.parseCurlText(dto.curlText);
   }
 
   /** 从模板创建模型 */
