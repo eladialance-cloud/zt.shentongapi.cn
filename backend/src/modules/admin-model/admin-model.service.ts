@@ -384,8 +384,21 @@ export class AdminModelService implements OnModuleInit {
     if (!provider) {
       BusinessException.throw(ErrorCode.NOT_FOUND, '供应商不存在');
     }
+    // 已存在检测：按预设模板 key 对应 modelId 判定，重复导入给明确提示而非 Duplicate 报错
+    const existingRows = await this.modelRepo.find({ select: ['modelId', 'upstreamModelId'] });
+    const existingIds = new Set<string>();
+    for (const r of existingRows) {
+      if (r.modelId) existingIds.add(r.modelId);
+      if (r.upstreamModelId) existingIds.add(r.upstreamModelId);
+    }
     const results: Array<{ presetKey: string; ok: boolean; modelId?: string; error?: string }> = [];
     for (const item of dto.items) {
+      const tpl = MODEL_TEMPLATES.find((t) => t.key === item.presetKey);
+      const dupKey = tpl?.key;
+      if (dupKey && existingIds.has(dupKey)) {
+        results.push({ presetKey: item.presetKey, ok: false, error: '该预设已存在（可在模型列表编辑），无需重复导入' });
+        continue;
+      }
       try {
         const created = await this.createFromTemplate({
           templateKey: item.presetKey,
@@ -395,6 +408,8 @@ export class AdminModelService implements OnModuleInit {
           scenarioTags: item.scenarioTags,
           priceOverrides: item.priceOverrides,
         });
+        if (created.modelId) existingIds.add(created.modelId);
+        if (created.upstreamModelId) existingIds.add(created.upstreamModelId);
         results.push({ presetKey: item.presetKey, ok: true, modelId: created.modelId });
       } catch (err: any) {
         results.push({ presetKey: item.presetKey, ok: false, error: err?.message || String(err) });

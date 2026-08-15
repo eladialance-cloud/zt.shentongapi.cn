@@ -26,6 +26,7 @@ import { ApiOutlined } from '@ant-design/icons'
 import {
   createAdminModel,
   createAdminProvider,
+  fetchMarketVendors,
   testAdminProvider
 } from '@/api/admin-model-api'
 import type {
@@ -33,6 +34,7 @@ import type {
   AdvancedCapability,
   CallModesMeta,
   CreateAdminModelDto,
+  MarketVendor,
   ModelInputType,
   ModelOutputType
 } from '@/types/admin-model'
@@ -98,6 +100,9 @@ export default function AddModelModal(props: {
   const [newName, setNewName] = useState('')
   const [newBaseUrl, setNewBaseUrl] = useState('')
   const [newApiKey, setNewApiKey] = useState('')
+  // 厂商模板（新建供应商时自动匹配 URL 后缀与生成适配；图片/视频必选）
+  const [vendorList, setVendorList] = useState<MarketVendor[]>([])
+  const [newVendorKey, setNewVendorKey] = useState('')
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
   const [saving, setSaving] = useState(false)
@@ -116,6 +121,10 @@ export default function AddModelModal(props: {
   )
 
   useEffect(() => {
+    fetchMarketVendors().then(setVendorList).catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
     if (open) {
       form.resetFields()
       setProviderSelect(undefined)
@@ -123,6 +132,7 @@ export default function AddModelModal(props: {
       setNewName('')
       setNewBaseUrl('')
       setNewApiKey('')
+      setNewVendorKey('')
       setTestResult(null)
       const def = meta?.callModes.find((m) => m.key === 'text_chat')
       form.setFieldsValue({
@@ -158,6 +168,15 @@ export default function AddModelModal(props: {
         specs: {}
       })
     }
+  }
+
+  /** 选择厂商模板：自动预填名称/Base URL，保存时写入 chatPath/modelsPath/generation（图片/视频生成地址） */
+  const applyVendor = (k: string) => {
+    setNewVendorKey(k)
+    const v = vendorList.find((x) => x.vendor === k)
+    if (!v) return
+    if (!newName.trim()) setNewName(v.nameSuggestion)
+    if (!newBaseUrl.trim()) setNewBaseUrl(v.baseUrl)
   }
 
   const handleTest = async () => {
@@ -210,11 +229,24 @@ export default function AddModelModal(props: {
         return
       }
       try {
+        const vendor = vendorList.find((v) => v.vendor === newVendorKey)
         const p = await createAdminProvider({
           name: newName.trim(),
           baseUrl: newBaseUrl.trim(),
-          apiKey: newApiKey.trim()
+          apiKey: newApiKey.trim(),
+          ...(vendor
+            ? {
+                apiStyle: vendor.apiStyle,
+                config: {
+                  vendorKey: vendor.vendor,
+                  chatPath: vendor.chatPath,
+                  modelsPath: vendor.modelsPath,
+                  generation: vendor.generation
+                }
+              }
+            : {})
         })
+        providerId = p.id
         providerId = p.id
       } catch (err: any) {
         message.error('创建供应商失败: ' + (err?.message || '未知错误'))
@@ -339,6 +371,24 @@ export default function AddModelModal(props: {
           <div style={{ marginBottom: 14, padding: 12, border: '1px dashed #444', borderRadius: 8 }}>
             <div style={{ marginBottom: 10, color: '#c7d2fe' }}>新建供应商（同一个 Key，可同时挂对话/图片/视频/语音模型）</div>
             <Space direction="vertical" style={{ width: '100%' }} size={10}>
+              <Select
+                placeholder="厂商模板（选填；图片/视频模型必选，自动匹配生成地址后缀）"
+                value={newVendorKey || undefined}
+                onChange={(v) => applyVendor(v ? String(v) : '')}
+                allowClear
+                options={vendorList.map((v) => ({
+                  label: v.nameSuggestion,
+                  value: v.vendor
+                }))}
+              />
+              {outputGroup !== 'text' && !newVendorKey && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ padding: '6px 10px' }}
+                  message="图片/视频模型请选择厂商模板（如 阿里百炼 DashScope），否则生成地址需在模型编辑里手动配置，测试会失败"
+                />
+              )}
               <Input
                 placeholder="供应商名称，如 阿里百炼"
                 value={newName}
