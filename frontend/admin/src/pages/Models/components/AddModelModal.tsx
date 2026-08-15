@@ -76,6 +76,8 @@ interface AddModelFormValues {
   specs: Record<string, unknown>
   videoPerSecondList: Array<{ resolution: string; rate: number }>
   generationParamsText?: string
+  /** 请求体模板 JSON（存 generationParams.request_template / image_request_template） */
+  requestTemplateText?: string
   pricingMode?: string
   inputPricePerToken?: number
   outputPricePerToken?: number
@@ -153,6 +155,7 @@ export default function AddModelModal(props: {
         advancedCapabilities: (def?.advancedCaps as AdvancedCapability[]) ?? [],
         scenarioTags: [],
         specs: {},
+        requestTemplateText: '',
         pricingMode: def?.recommendedBilling,
         enabled: false
       })
@@ -161,6 +164,44 @@ export default function AddModelModal(props: {
   }, [open, meta, initialOutput])
 
   const selectedProvider = providers.find((p) => p.id === providerSelect) ?? null
+
+  /** 当前生效的厂商模板（新建供应商按下拉选择；已有供应商按 config.vendorKey 匹配） */
+  const activeVendor = useMemo(() => {
+    if (providerSelect === NEW_PROVIDER) {
+      return vendorList.find((v) => v.vendor === newVendorKey) ?? null
+    }
+    const cfg = (selectedProvider?.config ?? {}) as Record<string, unknown>
+    const vk = typeof cfg.vendorKey === 'string' ? cfg.vendorKey : ''
+    return vendorList.find((v) => v.vendor === vk) ?? null
+  }, [providerSelect, newVendorKey, vendorList, selectedProvider])
+
+  /** 调用端点预览（按 供应商/厂商模板 + 模型类型 自动拼装，与实际调用一致） */
+  const endpointPreview = useMemo(() => {
+    const baseUrl =
+      providerSelect === NEW_PROVIDER ? newBaseUrl.trim() : (selectedProvider?.baseUrl ?? '')
+    const gen = (activeVendor?.generation ?? {}) as Record<string, unknown>
+    const genOf = (selectedProvider?.config ?? {}) as Record<string, unknown>
+    const pGen = (genOf.generation ?? {}) as Record<string, unknown>
+    if (outputGroup === 'image') {
+      const p = (gen.imagesPath as string) || (pGen.imagesPath as string)
+      if (p) return p
+      return baseUrl ? baseUrl + (callModeDef?.apiPath || '/images/generations') : ''
+    }
+    if (outputGroup === 'video') {
+      const p = (gen.videosPath as string) || (pGen.videosPath as string)
+      if (p) return p
+      return baseUrl ? baseUrl + (callModeDef?.apiPath || '/videos/generations') : ''
+    }
+    if (outputGroup === 'audio') {
+      return baseUrl ? baseUrl + (callModeDef?.apiPath || '/audio/speech') : ''
+    }
+    const chatPath =
+      (activeVendor?.chatPath as string) ||
+      (genOf.chatPath as string) ||
+      '/chat/completions'
+    return baseUrl ? baseUrl + chatPath : ''
+  }, [providerSelect, newBaseUrl, selectedProvider, activeVendor, outputGroup, callModeDef])
+
   const derivedType = useMemo(() => {
     if (!callModeDef) return 'chat'
     return deriveModelType(callModeDef.output, callModeDef.inputs)
@@ -206,7 +247,6 @@ export default function AddModelModal(props: {
       else if (r.async) callMode = 'video'
       // 组装 generationParams（snake_case，与后端适配器键名一致）
       const gp: Record<string, unknown> = {}
-      if (Object.keys(r.requestTemplate || {}).length) gp.request_template = r.requestTemplate
       if (r.extraHeaders && Object.keys(r.extraHeaders).length) gp.extra_headers = r.extraHeaders
       if (r.async) {
         gp.task_method = 'GET'
@@ -221,7 +261,6 @@ export default function AddModelModal(props: {
         if (r.taskQueryUrl) gp.video_query_path = r.taskQueryUrl
       } else if (callMode === 'image') {
         gp.images_path = url
-        gp.image_request_template = r.requestTemplate
         if (r.taskQueryUrl) gp.image_task_path = r.taskQueryUrl
         gp.image_result_url_path = 'output.results[0].url'
       }
@@ -229,8 +268,12 @@ export default function AddModelModal(props: {
         upstreamModelId: r.modelId || form.getFieldValue('upstreamModelId'),
         callMode,
         generationParamsText: JSON.stringify(gp, null, 2),
+        // 请求体模板单独放一个字段，保存时写回 generationParams.request_template / image_request_template
+        requestTemplateText: Object.keys(r.requestTemplate || {}).length
+          ? JSON.stringify(r.requestTemplate, null, 2)
+          : undefined
       })
-      message.success('curl 解析成功，已自动填充模型 ID / 调用模式 / 高级参数（请核对后保存）')
+      message.success('curl 解析成功，已自动填充模型 ID / 调用模式 / 端点 / 请求体模板（请核对后保存）')
       if (r.warnings?.length) message.warning(r.warnings[0])
     } catch (err: any) {
       message.error('curl 解析失败: ' + (err?.message || '未知错误'))
@@ -348,6 +391,21 @@ export default function AddModelModal(props: {
           generationParams = JSON.parse(values.generationParamsText) as Record<string, unknown>
         } catch {
           message.error('高级参数 JSON 格式错误')
+          return
+        }
+      }
+      // 请求体模板：图片类写 image_request_template，其余写 request_template
+      const tplText = (values.requestTemplateText ?? '').trim()
+      if (tplText) {
+        try {
+          const tpl = JSON.parse(tplText) as Record<string, unknown>
+          if (def.key === 'image' || def.key === 'image_edit') {
+            generationParams.image_request_template = tpl
+          } else {
+            generationParams.request_template = tpl
+          }
+        } catch {
+          message.error('请求体模板 JSON 格式错误')
           return
         }
       }
@@ -526,6 +584,43 @@ export default function AddModelModal(props: {
             </Space>
           </div>
         )}
+
+        {/* 调用端点预览 + 请求体模板（实际调用由系统按 厂商模板+模型ID 拼装；此处可核对与自定义） */}
+        <div
+          style={{
+            marginBottom: 14,
+            padding: '10px 12px',
+            border: '1px dashed rgba(128,128,128,.35)',
+            borderRadius: 8
+          }}
+        >
+          <div style={{ marginBottom: 8, fontSize: 12 }}>
+            <b>调用端点：</b>
+            {endpointPreview ? (
+              <span style={{ color: '#4ade80', wordBreak: 'break-all' }}>{endpointPreview}</span>
+            ) : (
+              <span style={{ color: '#8b949e' }}>选择供应商（或选厂商模板）后自动显示</span>
+            )}
+          </div>
+          <Form.Item
+            name="requestTemplateText"
+            label="请求体模板（JSON，可选）"
+            style={{ marginBottom: 0 }}
+            extra={
+              <span>
+                留空由系统按「厂商模板 + 模型 ID」自动拼装；自定义时支持变量{' '}
+                <code>{'{upstreamModelId}'}</code> <code>{'{prompt}'}</code>{' '}
+                <code>{'{resolution}'}</code> <code>{'{duration}'}</code>{' '}
+                <code>{'{imageUrl0}'}</code> <code>{'{media}'}</code> 等。可粘贴官方 curl 点下方「解析并填充」。
+              </span>
+            }
+          >
+            <Input.TextArea
+              rows={5}
+              placeholder={'{\n  "model": "{upstreamModelId}",\n  "input": { "prompt": "{prompt}" }\n}'}
+            />
+          </Form.Item>
+        </div>
 
         <Form.Item name="displayName" label="显示名" rules={[{ required: true, message: '请输入显示名' }]}>
           <Input maxLength={128} placeholder="用户端显示名称" />

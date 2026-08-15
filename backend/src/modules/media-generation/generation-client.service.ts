@@ -370,19 +370,25 @@ export class GenerationClientService {
       prompt: cfg.prompt,
       resolution: res,
       duration: cfg.duration ?? 5,
-      fps: cfg.fps ?? 24,
+      fps: cfg.fps ?? '',
     };
     // 图生视频：首帧图注入 input.media（模板内 {media} 占位符或强制注入）
     if (cfg.inputImages?.length) {
       vars.media = cfg.inputImages.map((url) => ({ type: 'first_frame', url }));
     }
     let body = this.buildBody(adapter.requestTemplate, vars);
-    if (cfg.inputImages?.length && !adapter.requestTemplate) {
-      body = { model: cfg.model, input: { prompt: cfg.prompt }, parameters: {} };
-      (body.input as Record<string, unknown>).media = vars.media;
-      if (res) (body.parameters as Record<string, unknown>).resolution = res;
-      if (cfg.duration) (body.parameters as Record<string, unknown>).duration = cfg.duration;
-      if (cfg.fps) (body.parameters as Record<string, unknown>).fps = cfg.fps;
+    if (cfg.inputImages?.length) {
+      if (!adapter.requestTemplate) {
+        body = { model: cfg.model, input: { prompt: cfg.prompt }, parameters: {} };
+        if (res) (body.parameters as Record<string, unknown>).resolution = res;
+        if (cfg.duration) (body.parameters as Record<string, unknown>).duration = cfg.duration;
+        if (cfg.fps) (body.parameters as Record<string, unknown>).fps = cfg.fps;
+      }
+      // i2v 必需：模板可能未含 {media} 占位符，强制把首帧图补进 input.media
+      const input = (body.input ?? {}) as Record<string, unknown>;
+      if (!input.media) {
+        body.input = { ...input, media: vars.media };
+      }
     }
     // 剔除空字段（如未传分辨率时 resolution=''，避免上游 400）
     body = this.stripEmptyFields(body);

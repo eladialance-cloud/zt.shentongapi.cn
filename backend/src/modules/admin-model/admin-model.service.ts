@@ -281,6 +281,7 @@ export class AdminModelService implements OnModuleInit {
       let response: string | Record<string, unknown>;
       if (callMode === 'video' || callMode === 'video_edit') {
         const adapter = buildMediaGenerationAdapter(provider, model.generationParams);
+        // 图生视频（i2v）需要首帧图 input.media；把测试填的参考图 URL 传上去
         const { taskId } = await this.generationClient.submitVideo({
           endpoint,
           apiKey,
@@ -288,6 +289,7 @@ export class AdminModelService implements OnModuleInit {
           model: upstreamModelId,
           prompt: dto.input,
           duration: 5,
+          inputImages: dto.inputImages ?? [],
         });
         response = { taskId, message: `视频任务已提交（异步），taskId=${taskId}` };
       } else if (callMode === 'image' || callMode === 'image_edit') {

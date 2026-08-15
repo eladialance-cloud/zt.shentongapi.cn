@@ -155,6 +155,8 @@ interface ModelFormValues {
   pricePerImage?: number
   pricePerCall?: number
   generationParamsText?: string
+  /** 请求体模板 JSON（存 generationParams.request_template / image_request_template） */
+  requestTemplateText?: string
   callMode?: string
   scenarioTags?: string[]
   specs?: Record<string, unknown>
@@ -343,6 +345,12 @@ export default function AdminModels() {
       pricePerImage: item.pricePerImage ?? undefined,
       pricePerCall: item.pricePerCall ?? undefined,
       generationParamsText: Object.keys(gen).length ? JSON.stringify(gen, null, 2) : undefined,
+      requestTemplateText:
+        typeof gen.image_request_template === 'object' && gen.image_request_template
+          ? JSON.stringify(gen.image_request_template, null, 2)
+          : typeof gen.request_template === 'object' && gen.request_template
+            ? JSON.stringify(gen.request_template, null, 2)
+            : undefined,
       callMode: item.callMode ?? 'text_chat',
       scenarioTags: item.scenarioTags ?? [],
       videoPerSecondList,
@@ -403,6 +411,24 @@ export default function AdminModels() {
           message.error('高级参数 JSON 格式错误')
           return
         }
+      }
+      // 请求体模板：图片类写 image_request_template，其余写 request_template；清空则删除
+      if (values.requestTemplateText?.trim()) {
+        try {
+          const tpl = JSON.parse(values.requestTemplateText) as Record<string, unknown>
+          if (!dto.generationParams) dto.generationParams = {}
+          if (def.key === 'image' || def.key === 'image_edit') {
+            dto.generationParams.image_request_template = tpl
+          } else {
+            dto.generationParams.request_template = tpl
+          }
+        } catch {
+          message.error('请求体模板 JSON 格式错误')
+          return
+        }
+      } else if (dto.generationParams) {
+        delete dto.generationParams.image_request_template
+        delete dto.generationParams.request_template
       }
       dto.callMode = values.callMode as CallModeKey
       if (values.scenarioTags && values.scenarioTags.length) dto.scenarioTags = values.scenarioTags
@@ -500,9 +526,17 @@ export default function AdminModels() {
     }
   }
 
-  /** 图像编辑(图生图)模型测试需参考图 URL；其他模型直接测试 */
+  /** 图生图 / 图生视频(i2v) 模型测试需参考图 URL；其他模型直接测试 */
+  const isI2vVideo = (item: AdminModelItem) =>
+    (item.callMode === 'video' || item.callMode === 'video_edit') &&
+    (item.generationParams as Record<string, unknown> | undefined)?.i2v === true
+
   const onClickTest = (item: AdminModelItem) => {
-    if (item.callMode === 'image_edit' || item.modelType === 'image_edit') {
+    const needsRefImage =
+      item.callMode === 'image_edit' ||
+      item.modelType === 'image_edit' ||
+      isI2vVideo(item)
+    if (needsRefImage) {
       setPendingTestItem(item)
       setTestRefImage('')
       setTestModalOpen(true)
@@ -910,6 +944,19 @@ export default function AdminModels() {
           >
             <Input.TextArea rows={3} placeholder='{"video_resolutions":["720p","1080p"]}' />
           </Form.Item>
+          <Form.Item
+            name="requestTemplateText"
+            label="请求体模板（JSON，可选）"
+            extra={
+              <span>
+                实际请求体，支持变量 <code>{'{upstreamModelId}'}</code> <code>{'{prompt}'}</code>{' '}
+                <code>{'{resolution}'}</code> <code>{'{duration}'}</code> <code>{'{imageUrl0}'}</code>{' '}
+                <code>{'{media}'}</code>；留空由系统按厂商模板自动拼装
+              </span>
+            }
+          >
+            <Input.TextArea rows={4} placeholder='{"model": "{upstreamModelId}", "input": {"prompt": "{prompt}"}}' />
+          </Form.Item>
           <Form.Item name="sortOrder" label="排序权重" extra="越小越靠前（用户端默认模型与下拉排序）">
             <InputNumber min={0} step={1} style={{ width: '100%' }} placeholder="如 0" />
           </Form.Item>
@@ -1131,15 +1178,23 @@ export default function AdminModels() {
         }}
       />
 
-      {/* 图像编辑模型测试：需参考图 URL（图生图） */}
+      {/* 图生图 / 图生视频(i2v) 模型测试：需参考图 URL */}
       <Modal
-        title="测试图像编辑模型"
+        title={
+          pendingTestItem && isI2vVideo(pendingTestItem)
+            ? '测试图生视频模型'
+            : '测试图像编辑模型'
+        }
         open={testModalOpen}
         onCancel={() => setTestModalOpen(false)}
         onOk={() => {
           const url = testRefImage.trim()
           if (!url) {
-            message.warning('图像编辑（图生图）测试需要一张公网可访问的参考图 URL')
+            message.warning(
+              pendingTestItem && isI2vVideo(pendingTestItem)
+                ? '图生视频（i2v）测试需要一张公网可访问的首帧图 URL'
+                : '图像编辑（图生图）测试需要一张公网可访问的参考图 URL',
+            )
             return
           }
           setTestModalOpen(false)
@@ -1150,7 +1205,15 @@ export default function AdminModels() {
         width={520}
       >
         <p style={{ marginBottom: 8 }}>
-          该模型为图生图（图像编辑），上游要求 <code>base_image_url</code> 为公网可访问图片，请粘贴参考图 URL：
+          {pendingTestItem && isI2vVideo(pendingTestItem) ? (
+            <>
+              该模型为图生视频（i2v），上游要求 <code>input.media.first_frame</code> 为公网可访问的首帧图 URL，请粘贴图片地址：
+            </>
+          ) : (
+            <>
+              该模型为图生图（图像编辑），上游要求 <code>base_image_url</code> 为公网可访问图片，请粘贴参考图 URL：
+            </>
+          )}
         </p>
         <Input
           placeholder="https://cdn.example.com/sketch.png"
