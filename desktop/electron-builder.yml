@@ -91,6 +91,6 @@ dmg:
       path: /Applications
 publish:
   provider: generic
-  url: https://update.shentong.ai/desktop/
+  url: https://zt.shentongapi.cn/desktop/
   channel: latest
 
