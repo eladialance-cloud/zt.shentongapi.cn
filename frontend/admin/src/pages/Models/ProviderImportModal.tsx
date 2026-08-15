@@ -7,10 +7,9 @@
 //
 // v0.9 关键说明（用户诉求）：
 //   同一个供应商、同一个 API Key；图片/对话/视频 只是 URL 后缀不同。
-//   - 选「对话」：按 OpenAI 兼容 /models 读取上游模型列表（DashScope 为 /compatible-mode/v1/models）。
-//   - 选「图片/视频」：平台（如 DashScope）没有图片/视频的模型列表接口，
-//     系统自动匹配厂商模板的生成地址后缀（imagesPath/videosPath/taskPath）并写入供应商 config，
-//     读取时改为加载该厂商官方预设模型（通义万相/qwen-video-plus 等），勾选即可导入。
+//   读取模型：统一按 OpenAI 兼容 /models 拉取上游模型列表（DashScope 为 /compatible-mode/v1/models），
+//   按模型 ID 关键词自动分类到 对话/图片/视频 Tab；图片/视频 Tab 若上游没返回该类型模型，
+//   自动加载该厂商官方预设模型（通义万相/qwen-video-plus 等）兜底，勾选即可导入。
 //
 // 价格单位：积分/千token（1 元 = 100 积分）。上游返回价格为元/千token时按 x100 预填。
 //
@@ -111,6 +110,18 @@ function formatPresetPrice(p: MarketPresetItem): string {
   const input = r.inputPricePerToken ?? 0
   const output = r.outputPricePerToken ?? 0
   return `输入 ${input} / 输出 ${output} 分/千token`
+}
+
+const IMAGE_HINT = /(dall-?e|gpt-image|image-?gen|seedream|hunyuan-?image|doubao-?image|wanx|wan2|t2i|i2i|flux|sdxl|stable-?diffusion|midjourney|cogview|kolors|sana|pixart|sketch|repaint|avatar|qwen-image|firefly|imagen|image)/;
+const VIDEO_HINT = /(t2v|i2v|v2v|qwen-video|minimax-?video|wan.*video|sora|veo|kling|runway|pika|luma|hailuo|happyhorse|vidu|mochi|cogvideo|pixverse|genmo|hydra|pollo|video)/;
+
+/** 按模型 ID 关键词猜测输出类型（上游 /models 列表按 Tab 分类展示；语音/向量/重排等默认归文本） */
+function guessOutputType(modelId: string): ModelOutputType {
+  const id = modelId.toLowerCase()
+  // 视频优先：wanx2.1-t2v / i2v 等同时含 wanx 关键词
+  if (VIDEO_HINT.test(id)) return 'video'
+  if (IMAGE_HINT.test(id)) return 'image'
+  return 'text'
 }
 
 /** 每个勾选模型的定价配置（类型=输出类型、能力=输入类型） */
@@ -346,48 +357,46 @@ export default function ProviderImportModal({
     setSelectedKeys([])
     setPricingMap({})
     try {
-      const canFetchUpstream = providerType === 'chat' || hints.length === 0
-      if (canFetchUpstream) {
-        // 对话/文本：OpenAI 兼容 /models 读取上游模型列表；
-        // 图片/视频 + 中转/OpenAI（无官方生成端点模板）：同样直接拉取上游 /models
+      // 统一先读上游 /models（OpenAI 兼容），按模型 ID 关键词分类到 对话/图片/视频 Tab
+      let rows: FetchRow[] = []
+      let fetchErrorMsg = ''
+      try {
         const r = await fetchProviderModels(providerId)
-        const rows: FetchRow[] = (r.models || []).map((m) => ({ ...m }))
-        setModels(rows)
-        const prefill: Record<string, PricingRow> = {}
-        for (const m of rows) {
-          prefill[m.modelId] = {
-            displayName: m.modelId,
-            outputType: 'text',
-            inputTypes: ['text'],
-            // 上游价格(元/千token) -> 积分/千token (x100)
-            inputPricePer1k: m.upstreamInputPrice != null ? Math.round(m.upstreamInputPrice * 100 * 100) / 100 : 0,
-            outputPricePer1k: m.upstreamOutputPrice != null ? Math.round(m.upstreamOutputPrice * 100 * 100) / 100 : 0,
-            enabled: true,
+        rows = (r.models || []).map((m) => ({
+          ...m,
+          outputType: guessOutputType(m.modelId),
+        }))
+      } catch (err: any) {
+        fetchErrorMsg = err?.message || '读取模型列表失败'
+      }
+      // 上游没返回图片/视频模型时，加载厂商官方预设兜底（market/presets?type=image|video）
+      if (rows.length === 0 && providerType !== 'chat') {
+        fetchErrorMsg = ''
+        if (!vendorKey) {
+          fetchErrorMsg = '请先在「连接信息」中选择供应商模板（厂商），系统才能匹配图片/视频生成地址并加载官方预设'
+        } else {
+          const presets = await fetchMarketPresets(vendorKey, providerType)
+          if (presets.length === 0) {
+            fetchErrorMsg = `该厂商没有${providerType === 'image' ? '图片' : '视频'}官方预设模型，且上游 /models 未返回该类型模型；请改用「对话」读取全部模型，或点「手动添加模型」`
+          } else {
+            rows = presets.map((p) => ({
+              modelId: p.upstreamModelId,
+              presetKey: p.key,
+              presetName: p.name,
+              priceText: formatPresetPrice(p),
+              outputType: (OUTPUT_BY_MODE[p.callMode] as ModelOutputType) ?? 'text',
+              alreadyExists: false,
+            }))
           }
         }
-        setPricingMap(prefill)
-        return
       }
-      // 图片/视频：平台无列表接口，加载厂商官方预设（market/presets?type=image|video）
-      if (!vendorKey) {
-        setFetchError('请先在「连接信息」中选择供应商模板（厂商），系统才能匹配图片/视频生成地址并加载官方预设')
-        return
+      if (rows.length === 0 && !fetchErrorMsg) {
+        fetchErrorMsg =
+          providerType === 'chat'
+            ? '上游 /models 未返回任何模型，请确认 Base URL 与 API Key 是否正确'
+            : `上游未返回${providerType === 'image' ? '图片' : '视频'}模型，加载厂商预设也没有结果`
       }
-      const presets = await fetchMarketPresets(vendorKey, providerType)
-      if (presets.length === 0) {
-        setFetchError(
-          `该厂商没有${providerType === 'image' ? '图片' : '视频'}官方预设模型，且该厂商无生成端点模板；请改用「对话」类型通过 OpenAI 兼容 /models 读取，或确认上游是否提供图片/视频模型列表`,
-        )
-        return
-      }
-      const rows: FetchRow[] = presets.map((p) => ({
-        modelId: p.upstreamModelId,
-        presetKey: p.key,
-        presetName: p.name,
-        priceText: formatPresetPrice(p),
-        outputType: (OUTPUT_BY_MODE[p.callMode] as ModelOutputType) ?? 'text',
-        alreadyExists: false,
-      }))
+      setFetchError(fetchErrorMsg)
       setModels(rows)
       const prefill: Record<string, PricingRow> = {}
       for (const m of rows) {
@@ -395,8 +404,9 @@ export default function ProviderImportModal({
           displayName: m.presetName || m.modelId,
           outputType: m.outputType ?? 'text',
           inputTypes: ['text'],
-          inputPricePer1k: 0,
-          outputPricePer1k: 0,
+          // 上游价格(元/千token) -> 积分/千token (x100)
+          inputPricePer1k: m.upstreamInputPrice != null ? Math.round(m.upstreamInputPrice * 100 * 100) / 100 : 0,
+          outputPricePer1k: m.upstreamOutputPrice != null ? Math.round(m.upstreamOutputPrice * 100 * 100) / 100 : 0,
           enabled: true,
         }
       }
@@ -411,9 +421,15 @@ export default function ProviderImportModal({
 
   const filteredModels = useMemo(() => {
     const kw = searchKeyword.trim().toLowerCase()
-    if (!kw) return models
-    return models.filter((m) => m.modelId.toLowerCase().includes(kw))
-  }, [models, searchKeyword])
+    return models.filter((m) => {
+      const out = m.outputType ?? 'text'
+      if (providerType === 'image' && out !== 'image') return false
+      if (providerType === 'video' && out !== 'video') return false
+      if (providerType === 'chat' && out !== 'text') return false
+      if (!kw) return true
+      return m.modelId.toLowerCase().includes(kw)
+    })
+  }, [models, searchKeyword, providerType])
 
   const selectedModels = useMemo(() => {
     const keySet = new Set(selectedKeys)
@@ -561,6 +577,12 @@ export default function ProviderImportModal({
     setImporting(true)
     setImportResult(null)
     try {
+        // 预设行与上游行不能混批：一条走市场导入、一条走逐模型导入
+      const hasPreset = selectedModels.some((m) => m.presetKey)
+      if (hasPreset && !selectedModels.every((m) => m.presetKey)) {
+        message.warning('官方预设模型与上游列表模型请分开导入（同一批只能都是预设或都是上游模型）')
+        return
+      }
       // 图片/视频预设：走市场批量导入（带生成适配参数/按张按秒计费）
       if (selectedModels.every((m) => m.presetKey)) {
         const r = await marketImportModels({
@@ -791,9 +813,7 @@ export default function ProviderImportModal({
               value={providerType}
               onChange={(v) => {
                 setProviderType(v as ProviderType)
-                setModels([])
-                setSelectedKeys([])
-                setPricingMap({})
+                // 保留已读取的上游列表与勾选，按类型即时过滤展示
                 setFetchError('')
               }}
               options={TYPE_OPTIONS}
@@ -804,9 +824,7 @@ export default function ProviderImportModal({
               loading={fetching}
               onClick={handleFetchModels}
             >
-              {providerType === 'chat' || hints.length === 0
-                ? '读取模型列表'
-                : `加载${providerType === 'image' ? '图片' : '视频'}预设模型`}
+              读取模型列表
             </Button>
             {providerType !== 'chat' && (
               <Button icon={<PlusOutlined />} onClick={() => setManualOpen(true)}>
@@ -826,7 +844,7 @@ export default function ProviderImportModal({
               type="warning"
               showIcon
               message="未关联厂商模板"
-              description="该供应商没有厂商模板信息，无法加载图片/视频预设。请删除后重新通过「添加第三方供应商」选择模板创建，或改用「对话」类型读取模型列表。"
+              description="仍可按 OpenAI 兼容 /models 读取并自动分类（对话/图片/视频）；若上游列表为空、需要加载厂商官方预设，请在「连接信息」选择厂商模板后重新读取。"
               style={{ marginBottom: 12 }}
             />
           )}
@@ -853,9 +871,7 @@ export default function ProviderImportModal({
           )}
           {models.length === 0 && !fetchError && (
             <div style={{ color: '#8b949e', fontSize: 12, marginTop: 8 }}>
-              {providerType === 'chat' || hints.length === 0
-                ? '点击「读取模型列表」拉取该供应商上游 /models（中转/OpenAI 兼容可拉到图片/视频模型）'
-                : `点击「加载${providerType === 'image' ? '图片' : '视频'}预设模型」获取 ${selectedVendor?.nameSuggestion ?? '该厂商'} 的官方${providerType === 'image' ? '图片' : '视频'}模型（阿里百炼等平台没有图片/视频模型列表接口，直接加载官方预设，地址后缀已自动匹配）`}
+              点击「读取模型列表」拉取该供应商上游 /models，系统按模型 ID 自动分类到 对话/图片/视频；图片/视频分类若上游没返回，会自动加载该厂商官方预设（需先在「连接信息」选择厂商模板）。
             </div>
           )}
         </div>
@@ -863,7 +879,7 @@ export default function ProviderImportModal({
 
       {step === 2 && (
         <div>
-          {providerType !== 'chat' ? (
+          {providerType !== 'chat' && selectedModels.every((m) => m.presetKey) ? (
             <Alert
               type="info"
               showIcon
@@ -876,7 +892,7 @@ export default function ProviderImportModal({
               type="info"
               showIcon
               message="逐模型定价（积分/千token，1 元 = 100 积分）"
-              description="每个勾选的模型可单独配置最终积分单价与模型类型；用户端选择模型时会显示该积分价格，使用后按实际 token 扣除。"
+              description="每个勾选的模型可单独配置最终积分单价与模型类型（输出类型已按模型 ID 自动预填，图片/视频模型请核对）；用户端选择模型时会显示该积分价格，使用后按实际 token 扣除。"
               style={{ marginBottom: 12 }}
             />
           )}
