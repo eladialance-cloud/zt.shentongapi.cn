@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { BadRequestException } from '@nestjs/common';
-import { GenerationClientService, GenerationAdapterConfig, buildMediaGenerationAdapter } from '../../src/modules/media-generation/generation-client.service';
+import { GenerationClientService, GenerationAdapterConfig, buildMediaGenerationAdapter, mergeGenerationAdapter } from '../../src/modules/media-generation/generation-client.service';
 import { MediaGenerationService } from '../../src/modules/media-generation/media-generation.service';
 import { PricingService } from '../../src/modules/credits/services/pricing.service';
 import { MediaJobEntity } from '../../src/modules/media-generation/entities/media-job.entity';
@@ -62,6 +62,21 @@ describe('GenerationClientService.buildBody', () => {
       model: 'happyhorse-1.1-i2v',
       input: { prompt: 'cat run', media: [{ type: 'first_frame', url: 'https://cdn/x.png' }] },
       parameters: { resolution: '720P' },
+    });
+  });
+  it('curl 解析出的 i2v 模板用 {imageUrl0} 占位（图生视频首帧图）', () => {
+    const body = client.buildBody(
+      {
+        model: '{upstreamModelId}',
+        input: { prompt: '{prompt}', media: [{ type: 'first_frame', url: '{imageUrl0}' }] },
+        parameters: { resolution: '{resolution}', duration: '{duration}' },
+      },
+      { upstreamModelId: 'happyhorse-1.1-i2v', prompt: 'cat', resolution: '720P', duration: 5, imageUrl0: 'https://cdn/x.png' },
+    );
+    assert.deepEqual(body, {
+      model: 'happyhorse-1.1-i2v',
+      input: { prompt: 'cat', media: [{ type: 'first_frame', url: 'https://cdn/x.png' }] },
+      parameters: { resolution: '720P', duration: 5 },
     });
   });
 });
@@ -1124,5 +1139,42 @@ describe('图像编辑参考图校验与 OSS 上传', () => {
     assert.equal(parsed.input.base_image_url, undefined, '空 base_image_url 不应发送');
     assert.equal(parsed.input.prompt, '上色');
     assert.equal(parsed.model, 'wanx-sketch');
+  });
+});
+
+describe('mergeGenerationAdapter', () => {
+  it('模型级 async 布尔可覆盖供应商级 async（false 关闭 / true 开启）', () => {
+    const base = { async: true } as GenerationAdapterConfig;
+    const off = mergeGenerationAdapter(base, { async: false });
+    assert.equal(off.async, false);
+    const on = mergeGenerationAdapter(base, { async: true });
+    assert.equal(on.async, true);
+    // 未设置时保留供应商级
+    const keep = mergeGenerationAdapter(base, { video_submit_path: 'https://x/v' });
+    assert.equal(keep.async, true);
+  });
+  it('snake_case 键映射到适配器（任务查询URL/状态/成功值/结果URL）', () => {
+    const a = mergeGenerationAdapter({}, {
+      video_submit_path: 'https://x/api/v3/tasks',
+      video_query_path: 'https://x/api/v3/tasks/{id}',
+      task_id_path: 'data.id',
+      task_status_path: 'data.state',
+      success_values: ['SUCCEEDED', 'done'],
+      failed_values: ['FAILED'],
+      result_url_path: 'data.video.url',
+      task_method: 'GET',
+      poll_interval: 2000,
+      timeout_ms: 90000,
+    });
+    assert.equal(a.videosPath, 'https://x/api/v3/tasks');
+    assert.equal(a.taskPath, 'https://x/api/v3/tasks/{id}');
+    assert.equal(a.taskIdPath, 'data.id');
+    assert.equal(a.statusPath, 'data.state');
+    assert.deepEqual(a.successValues, ['SUCCEEDED', 'done']);
+    assert.deepEqual(a.failedValues, ['FAILED']);
+    assert.equal(a.resultUrlPath, 'data.video.url');
+    assert.equal(a.taskMethod, 'GET');
+    assert.equal(a.pollInterval, 2000);
+    assert.equal(a.timeoutMs, 90000);
   });
 });

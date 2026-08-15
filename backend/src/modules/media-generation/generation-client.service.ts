@@ -64,6 +64,7 @@ export function mergeGenerationAdapter(
   const rt = obj(g.request_template); if (rt) adapter.requestTemplate = rt;
   const irt = obj(g.image_request_template); if (irt) adapter.imageRequestTemplate = irt;
   const itp = str(g.image_task_path); if (itp) adapter.imageTaskPath = itp;
+  if (typeof g.async === 'boolean') adapter.async = g.async;
   if (g.task_method === 'GET' || g.task_method === 'POST') adapter.taskMethod = g.task_method;
   const irp = str(g.image_result_url_path); if (irp) adapter.imageResultUrlPath = irp;
   if (typeof g.poll_interval === 'number' && g.poll_interval > 0) adapter.pollInterval = g.poll_interval;
@@ -376,6 +377,9 @@ export class GenerationClientService {
     if (cfg.inputImages?.length) {
       vars.media = cfg.inputImages.map((url) => ({ type: 'first_frame', url }));
     }
+    // 兼容 curl 解析出的模板占位符 {imageUrl0}~{imageUrl3}
+    const imgUrls = (cfg.inputImages ?? []).map((v) => (/^https?:\/\//i.test(v) ? v : ''));
+    for (let i = 0; i < 4; i++) vars['imageUrl' + i] = imgUrls[i] || '';
     let body = this.buildBody(adapter.requestTemplate, vars);
     if (cfg.inputImages?.length) {
       if (!adapter.requestTemplate) {

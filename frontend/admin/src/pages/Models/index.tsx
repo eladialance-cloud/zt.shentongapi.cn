@@ -41,6 +41,7 @@ import {
   ApiOutlined,
   DeleteOutlined,
   EditOutlined,
+  ExperimentOutlined,
   KeyOutlined,
   PlusOutlined,
   ShopOutlined,
@@ -54,6 +55,7 @@ import {
   listAdminModels,
   listAdminProviders,
   removeAdminModel,
+  probeModel,
   removeAdminProvider,
   testAdminProvider,
   testModel,
@@ -62,6 +64,7 @@ import {
 } from '@/api/admin-model-api'
 import ProviderImportModal from './ProviderImportModal'
 import AddModelModal from './components/AddModelModal'
+import AsyncTaskConfigForm from './components/AsyncTaskConfigForm'
 import CallModePicker from './components/CallModePicker'
 import DynamicSpecForm from './components/DynamicSpecForm'
 import ScenarioTagPicker from './components/ScenarioTagPicker'
@@ -246,9 +249,12 @@ export default function AdminModels() {
     return deriveModelType(callModeDef.output, callModeDef.inputs)
   }, [callModeDef])
 
+  const editGenParamsText = Form.useWatch('generationParamsText', form)
+
   // ----- 添加模型 -----
   const [addModelOpen, setAddModelOpen] = useState(false)
   const [testingModelId, setTestingModelId] = useState<number | null>(null)
+  const [probingId, setProbingId] = useState<number | null>(null)
 
   const loadProviders = useCallback(async () => {
     setProviderLoading(true)
@@ -527,6 +533,28 @@ export default function AdminModels() {
   }
 
   /** 图生图 / 图生视频(i2v) 模型测试需参考图 URL；其他模型直接测试 */
+  /** 探测模型可用性（手动逐个；真实调用上游一次，可能产生费用） */
+  const handleProbeModel = async (item: AdminModelItem) => {
+    setProbingId(item.id)
+    try {
+      const r = await probeModel(item.id)
+      if (r.verdict === 'available') {
+        message.success(r.message, 4)
+      } else if (r.verdict === 'not_activated') {
+        message.error(r.message, 6)
+      } else if (r.verdict === 'skip') {
+        message.info(r.message, 5)
+      } else {
+        message.warning(r.message, 6)
+      }
+      void loadList()
+    } catch (err: any) {
+      message.error('探测失败: ' + (err?.message || ''))
+    } finally {
+      setProbingId(null)
+    }
+  }
+
   const isI2vVideo = (item: AdminModelItem) =>
     (item.callMode === 'video' || item.callMode === 'video_edit') &&
     (item.generationParams as Record<string, unknown> | undefined)?.i2v === true
@@ -602,12 +630,39 @@ export default function AdminModels() {
       )
     },
     {
+      title: '可用性',
+      key: 'avail',
+      width: 120,
+      render: (_, m) => {
+        const tag = CONNECTION_TAG[m.connectionStatus || 'untested'] || CONNECTION_TAG.untested
+        return (
+          <div>
+            <Tag color={tag.color} style={{ marginRight: 0 }}>
+              {tag.text}
+            </Tag>
+            {m.lastTestedAt ? (
+              <div style={{ fontSize: 11, color: '#8b949e' }}>{m.lastTestedAt.slice(0, 16).replace('T', ' ')}</div>
+            ) : null}
+          </div>
+        )
+      }
+    },
+    {
       title: '操作',
       key: 'action',
-      width: 190,
+      width: 240,
       fixed: 'right',
       render: (_, m) => (
         <Space size={4}>
+          <Button
+            type="text"
+            size="small"
+            icon={<ExperimentOutlined />}
+            loading={probingId === m.id}
+            onClick={() => void handleProbeModel(m)}
+          >
+            探测
+          </Button>
           <Button
             type="text"
             size="small"
@@ -957,6 +1012,13 @@ export default function AdminModels() {
           >
             <Input.TextArea rows={4} placeholder='{"model": "{upstreamModelId}", "input": {"prompt": "{prompt}"}}' />
           </Form.Item>
+          {(callModeDef?.output === 'image' || callModeDef?.output === 'video') && (
+            <AsyncTaskConfigForm
+              value={editGenParamsText}
+              onChange={(t) => form.setFieldValue('generationParamsText', t)}
+              kind={callModeDef?.output === 'video' ? 'video' : 'image'}
+            />
+          )}
           <Form.Item name="sortOrder" label="排序权重" extra="越小越靠前（用户端默认模型与下拉排序）">
             <InputNumber min={0} step={1} style={{ width: '100%' }} placeholder="如 0" />
           </Form.Item>

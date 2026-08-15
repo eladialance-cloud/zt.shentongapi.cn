@@ -184,6 +184,8 @@ export default function ProviderImportModal({
   const [importResult, setImportResult] = useState<ImportProviderModelsResult | null>(null)
   // 手动添加模型（官方有、预设没有）
   const [manualOpen, setManualOpen] = useState(false)
+  // 已加载厂商预设的类型（图片/视频），避免切换 Tab 重复追加
+  const [loadedPresetTypes, setLoadedPresetTypes] = useState<ProviderType[]>([])
 
   const selectedVendor = vendorList.find((v) => v.vendor === vendorKey) ?? null
 
@@ -223,6 +225,7 @@ export default function ProviderImportModal({
     setSearchKeyword('')
     setPricingMap({})
     setImportResult(null)
+    setLoadedPresetTypes([])
   }
 
   useEffect(() => {
@@ -369,26 +372,31 @@ export default function ProviderImportModal({
       } catch (err: any) {
         fetchErrorMsg = err?.message || '读取模型列表失败'
       }
-      // 上游没返回图片/视频模型时，加载厂商官方预设兜底（market/presets?type=image|video）
-      if (rows.length === 0 && providerType !== 'chat') {
-        fetchErrorMsg = ''
-        if (!vendorKey) {
-          fetchErrorMsg = '请先在「连接信息」中选择供应商模板（厂商），系统才能匹配图片/视频生成地址并加载官方预设'
-        } else {
+      // 当前类型（图片/视频）在上游列表里没有时，加载厂商官方预设兜底（market/presets?type=image|video）
+      if (providerType !== 'chat' && vendorKey) {
+        const typeRows = rows.filter((m) => (m.outputType ?? 'text') === providerType)
+        if (typeRows.length === 0) {
           const presets = await fetchMarketPresets(vendorKey, providerType)
-          if (presets.length === 0) {
+          if (presets.length > 0) {
+            const existIds = new Set(rows.map((m) => m.modelId))
+            const presetRows: FetchRow[] = presets
+              .filter((p) => !existIds.has(p.upstreamModelId))
+              .map((p) => ({
+                modelId: p.upstreamModelId,
+                presetKey: p.key,
+                presetName: p.name,
+                priceText: formatPresetPrice(p),
+                outputType: (OUTPUT_BY_MODE[p.callMode] as ModelOutputType) ?? 'text',
+                alreadyExists: false,
+              }))
+            rows = [...rows, ...presetRows]
+          } else if (!fetchErrorMsg) {
             fetchErrorMsg = `该厂商没有${providerType === 'image' ? '图片' : '视频'}官方预设模型，且上游 /models 未返回该类型模型；请改用「对话」读取全部模型，或点「手动添加模型」`
-          } else {
-            rows = presets.map((p) => ({
-              modelId: p.upstreamModelId,
-              presetKey: p.key,
-              presetName: p.name,
-              priceText: formatPresetPrice(p),
-              outputType: (OUTPUT_BY_MODE[p.callMode] as ModelOutputType) ?? 'text',
-              alreadyExists: false,
-            }))
           }
         }
+      }
+      if (rows.length === 0 && !fetchErrorMsg && providerType !== 'chat' && !vendorKey) {
+        fetchErrorMsg = '请先在「连接信息」中选择供应商模板（厂商），系统才能匹配图片/视频生成地址并加载官方预设'
       }
       if (rows.length === 0 && !fetchErrorMsg) {
         fetchErrorMsg =
@@ -397,6 +405,7 @@ export default function ProviderImportModal({
             : `上游未返回${providerType === 'image' ? '图片' : '视频'}模型，加载厂商预设也没有结果`
       }
       setFetchError(fetchErrorMsg)
+      setLoadedPresetTypes((p) => (p.includes(providerType) ? p : [...p, providerType]))
       setModels(rows)
       const prefill: Record<string, PricingRow> = {}
       for (const m of rows) {
@@ -415,6 +424,57 @@ export default function ProviderImportModal({
       setFetchError(err?.message || '读取模型列表失败')
       setModels([])
     } finally {
+      setFetching(false)
+    }
+  }
+
+  /** 切到图片/视频 Tab 时，若上游列表里没有该类型模型，自动追加厂商官方预设 */
+  const ensureTypePresets = async (type: ProviderType) => {
+    if (type === 'chat') return
+    if (loadedPresetTypes.includes(type)) return
+    if (!vendorKey) return
+    setFetching(true)
+    try {
+      const hasTypeRows = models.some((m) => (m.outputType ?? 'text') === type)
+      if (hasTypeRows) {
+        setLoadedPresetTypes((p) => (p.includes(type) ? p : [...p, type]))
+        return
+      }
+      const presets = await fetchMarketPresets(vendorKey, type)
+      if (presets.length === 0) return
+      const existIds = new Set(models.map((m) => m.modelId))
+      const rows: FetchRow[] = presets
+        .filter((p) => !existIds.has(p.upstreamModelId))
+        .map((p) => ({
+          modelId: p.upstreamModelId,
+          presetKey: p.key,
+          presetName: p.name,
+          priceText: formatPresetPrice(p),
+          outputType: (OUTPUT_BY_MODE[p.callMode] as ModelOutputType) ?? 'text',
+          alreadyExists: false,
+        }))
+      if (rows.length === 0) return
+      setModels((prev) => [...prev, ...rows])
+      setPricingMap((prev) => {
+        const next = { ...prev }
+        for (const m of rows) {
+          if (!next[m.modelId]) {
+            next[m.modelId] = {
+              displayName: m.presetName || m.modelId,
+              outputType: m.outputType ?? 'text',
+              inputTypes: ['text'],
+              inputPricePer1k: 0,
+              outputPricePer1k: 0,
+              enabled: true,
+            }
+          }
+        }
+        return next
+      })
+    } catch {
+      // 预设加载失败不阻断浏览
+    } finally {
+      setLoadedPresetTypes((p) => (p.includes(type) ? p : [...p, type]))
       setFetching(false)
     }
   }
@@ -468,7 +528,22 @@ export default function ProviderImportModal({
   }
 
   const pricingColumns: TableColumnsType<FetchRow> = [
-    { title: '模型 ID(上游)', dataIndex: 'modelId', key: 'modelId', width: 200 },
+    {
+      title: '模型 ID(上游)',
+      dataIndex: 'modelId',
+      key: 'modelId',
+      width: 220,
+      render: (_, m) => (
+        <div>
+          <div>{m.modelId}</div>
+          {m.presetKey ? (
+            <Tag color="orange" style={{ marginTop: 2 }}>
+              官方预设·推荐（未验证）
+            </Tag>
+          ) : null}
+        </div>
+      )
+    },
     {
       title: '显示名',
       key: 'displayName',
@@ -577,64 +652,58 @@ export default function ProviderImportModal({
     setImporting(true)
     setImportResult(null)
     try {
-        // 预设行与上游行不能混批：一条走市场导入、一条走逐模型导入
-      const hasPreset = selectedModels.some((m) => m.presetKey)
-      if (hasPreset && !selectedModels.every((m) => m.presetKey)) {
-        message.warning('官方预设模型与上游列表模型请分开导入（同一批只能都是预设或都是上游模型）')
-        return
-      }
-      // 图片/视频预设：走市场批量导入（带生成适配参数/按张按秒计费）
-      if (selectedModels.every((m) => m.presetKey)) {
+      // 预设行走市场导入（带生成适配参数/按张按秒计费），上游行走逐模型定价导入，两批可同时勾选
+      const presetItems = selectedModels.filter((m) => m.presetKey)
+      const upstreamItems = selectedModels.filter((m) => !m.presetKey)
+      let imported = 0
+      let skipped = 0
+      const errors: Array<{ modelId: string; error: string }> = []
+      if (presetItems.length) {
         const r = await marketImportModels({
           providerId,
-          items: selectedModels.map((m) => ({
+          items: presetItems.map((m) => ({
             presetKey: m.presetKey!,
             displayName: pricingMap[m.modelId]?.displayName || m.presetName || m.modelId,
             enabled: pricingMap[m.modelId]?.enabled ?? true,
           })),
         })
-        setImportResult({
-          imported: r.imported,
-          skipped: r.failed,
-          errors: r.results
-            .filter((x) => !x.ok)
-            .map((x) => ({ modelId: x.presetKey, error: x.error || '导入失败' })),
-        })
-        if (r.imported > 0) {
-          message.success(`成功导入 ${r.imported} 个模型` + (r.failed ? `，失败 ${r.failed} 个` : ''))
-          onRefresh()
-        } else if (r.failed) {
-          message.warning('导入失败: ' + (r.results.find((x) => !x.ok)?.error || '未知错误'))
-        }
-        return
+        imported += r.imported
+        skipped += r.failed
+        errors.push(
+          ...r.results.filter((x) => !x.ok).map((x) => ({ modelId: x.presetKey, error: x.error || '导入失败' })),
+        )
       }
-      // 对话/文本：逐模型定价 token 导入
-      const modelsPayload: ImportProviderModelItem[] = selectedModels.map((m) => {
-        const row = pricingMap[m.modelId] ?? {
-          displayName: m.modelId,
-          outputType: 'text' as ModelOutputType,
-          inputTypes: ['text'] as ModelInputType[],
-          inputPricePer1k: 0,
-          outputPricePer1k: 0,
-          enabled: true,
-        }
-        return {
-          upstreamModelId: m.modelId,
-          displayName: row.displayName || m.modelId,
-          outputType: row.outputType || 'text',
-          inputTypes: row.inputTypes && row.inputTypes.length ? row.inputTypes : ['text'],
-          inputPricePer1k: row.inputPricePer1k ?? 0,
-          outputPricePer1k: row.outputPricePer1k ?? 0,
-          enabled: row.enabled ?? true,
-        }
-      })
-      const r = await importProviderModels(providerId, { models: modelsPayload })
-      setImportResult(r)
-      if (r.imported > 0) {
-        message.success(`成功导入 ${r.imported} 个模型` + (r.skipped ? `，跳过 ${r.skipped} 个` : ''))
+      if (upstreamItems.length) {
+        const modelsPayload: ImportProviderModelItem[] = upstreamItems.map((m) => {
+          const row = pricingMap[m.modelId] ?? {
+            displayName: m.modelId,
+            outputType: 'text' as ModelOutputType,
+            inputTypes: ['text'] as ModelInputType[],
+            inputPricePer1k: 0,
+            outputPricePer1k: 0,
+            enabled: true,
+          }
+          return {
+            upstreamModelId: m.modelId,
+            displayName: row.displayName || m.modelId,
+            outputType: row.outputType || 'text',
+            inputTypes: row.inputTypes && row.inputTypes.length ? row.inputTypes : ['text'],
+            inputPricePer1k: row.inputPricePer1k ?? 0,
+            outputPricePer1k: row.outputPricePer1k ?? 0,
+            enabled: row.enabled ?? true,
+          }
+        })
+        const r = await importProviderModels(providerId, { models: modelsPayload })
+        imported += r.imported
+        skipped += r.skipped
+        errors.push(...r.errors)
+      }
+      setImportResult({ imported, skipped, errors })
+      if (imported > 0) {
+        message.success(`成功导入 ${imported} 个模型` + (skipped ? `，跳过 ${skipped} 个` : ''))
         onRefresh()
-      } else if (r.errors.length) {
-        message.warning(`导入失败: ${r.errors[0].error}`)
+      } else if (errors.length) {
+        message.warning(`导入失败: ${errors[0].error}`)
       }
     } catch (err: any) {
       message.error('导入失败: ' + (err?.message || '未知错误'))
@@ -815,6 +884,8 @@ export default function ProviderImportModal({
                 setProviderType(v as ProviderType)
                 // 保留已读取的上游列表与勾选，按类型即时过滤展示
                 setFetchError('')
+                // 图片/视频 Tab 若上游没返回该类型模型，自动补加载厂商官方预设
+                void ensureTypePresets(v as ProviderType)
               }}
               options={TYPE_OPTIONS}
             />
@@ -871,7 +942,7 @@ export default function ProviderImportModal({
           )}
           {models.length === 0 && !fetchError && (
             <div style={{ color: '#8b949e', fontSize: 12, marginTop: 8 }}>
-              点击「读取模型列表」拉取该供应商上游 /models，系统按模型 ID 自动分类到 对话/图片/视频；图片/视频分类若上游没返回，会自动加载该厂商官方预设（需先在「连接信息」选择厂商模板）。
+              点击「读取模型列表」拉取该供应商上游 /models，系统按模型 ID 自动分类到 对话/图片/视频；图片/视频分类若上游没返回，会自动加载该厂商官方预设（需先在「连接信息」选择厂商模板）。官方预设为「推荐目录」：导入后必须在模型列表点「探测/测试」确认可用，未开通的模型请到平台控制台开通。
             </div>
           )}
         </div>
@@ -883,8 +954,8 @@ export default function ProviderImportModal({
             <Alert
               type="info"
               showIcon
-              message={`${providerType === 'image' ? '图片' : '视频'}模型预设导入`}
-              description="参考积分来自官方预设（图片按张、视频按秒），导入后可在模型列表调整；生成地址/异步任务等适配参数已由厂商模板自动写入，无需手填。"
+              message={`${providerType === 'image' ? '图片' : '视频'}模型预设导入（官方推荐库）`}
+              description="预设来自官方文档整理的推荐目录，仅代表该模型存在，不代表已开通可用：导入后请在模型列表点「探测/测试」验证；若提示未开通，请到该平台控制台开通此模型。生成地址/异步任务等适配参数已由厂商模板自动写入，无需手填。"
               style={{ marginBottom: 12 }}
             />
           ) : (

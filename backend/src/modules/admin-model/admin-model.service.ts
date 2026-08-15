@@ -36,6 +36,7 @@ import {
 } from './utils/model-type-utils';
 import { shouldAlertBalance } from './utils/balance-utils';
 import { CALL_MODES, CALL_MODE_TO_MODEL_TYPE, SCENARIO_TAGS } from './constants/call-modes';
+import type { CallModeDef } from './constants/call-modes';
 import { SPEC_FIELD_SCHEMAS, ADVANCED_CAP_LABELS } from './constants/form-meta';
 import { MODEL_TEMPLATES, PROVIDER_TEMPLATES } from './constants/model-templates';
 import { MarketImportDto } from './dto/market-import.dto';
@@ -45,6 +46,7 @@ import {
 } from './utils/market-utils';
 import { presetsForProviderType } from './utils/provider-type-utils';
 import { parseCurl } from './utils/curl-parser';
+import { classifyProbeError, probeNeedsFileInput } from './utils/probe-utils';
 import { GenerationClientService, GenerationAdapterConfig, mergeGenerationAdapter, buildMediaGenerationAdapter } from '../media-generation/generation-client.service';
 
 /** 模型查询参数 */
@@ -261,7 +263,6 @@ export class AdminModelService implements OnModuleInit {
         ? this.encryption.decryptAes(model.apiKey)
         : '';
     const endpoint = provider?.baseUrl || model.apiEndpoint || '';
-    const upstreamModelId = model.upstreamModelId || model.modelId;
     const callMode = model.callMode || callModeFromModelType(model.modelType);
     const def = CALL_MODES.find((m) => m.key === callMode);
     if (!def) {
@@ -273,76 +274,28 @@ export class AdminModelService implements OnModuleInit {
     if (!apiKey || !endpoint) {
       BusinessException.throw(ErrorCode.VALIDATION_FAILED, '模型未关联供应商凭据，无法测试');
     }
-    const cfg = (provider?.config ?? {}) as Record<string, unknown>;
-    // DashScope 兼容端点的文本/识图模型要求 content 为数组格式（qwen-image/qwen-vl 等）
-    const isDashScope =
-      cfg.vendorKey === 'aliyun-dashscope' ||
-      (provider?.slug ?? '').includes('dashscope') ||
-      endpoint.includes('dashscope.aliyuncs.com');
-    const chatPath = typeof cfg.chatPath === 'string' && cfg.chatPath.trim() ? cfg.chatPath.trim() : '';
-    const useChatPath = !!chatPath && (callMode === 'text_chat' || callMode === 'vision' || callMode === 'ocr');
-    const apiPath = useChatPath ? chatPath : def.apiPath;
-    try {
-      let response: string | Record<string, unknown>;
-      if (callMode === 'video' || callMode === 'video_edit') {
-        const adapter = buildMediaGenerationAdapter(provider, model.generationParams);
-        // 图生视频（i2v）需要首帧图 input.media；把测试填的参考图 URL 传上去
-        const { taskId } = await this.generationClient.submitVideo({
-          endpoint,
-          apiKey,
-          adapter,
-          model: upstreamModelId,
-          prompt: dto.input,
-          duration: 5,
-          inputImages: dto.inputImages ?? [],
-        });
-        response = { taskId, message: `视频任务已提交（异步），taskId=${taskId}` };
-      } else if (callMode === 'image' || callMode === 'image_edit') {
-        const adapter = buildMediaGenerationAdapter(provider, model.generationParams);
-        if (callMode === 'image_edit' && !(dto.inputImages && dto.inputImages.length)) {
-          BusinessException.throw(
-            ErrorCode.VALIDATION_FAILED,
-            '图像编辑模型测试需要一张参考图（图生图需公网 base_image_url）：请传入参考图 URL 后重试，或到桌面端上传图片后测试',
-          );
-        }
-        for (const u of dto.inputImages ?? []) {
-          if (!/^https?:\/\//i.test(u)) {
-            BusinessException.throw(
-              ErrorCode.VALIDATION_FAILED,
-              '测试参考图仅支持 http(s) 公网图片 URL',
-            );
-          }
-        }
-        if (adapter.imagesPath || adapter.requestTemplate) {
-          // 配置了生成适配（如 DashScope 原生图片端点）→ 走与运行时一致的 generateImage
-          const result = await this.generationClient.generateImage({
-            endpoint,
-            apiKey,
-            adapter,
-            model: upstreamModelId,
-            prompt: dto.input,
-            size: '1024x1024',
-            inputImages: dto.inputImages ?? [],
-          });
-          response = JSON.stringify(result);
-        } else {
-          const body = this.buildTestBody(callMode, upstreamModelId, dto.input, isDashScope);
-          const out = await this.callUpstreamRaw(
-            this.buildApiUrl(endpoint, apiPath),
-            apiKey,
-            body,
-          );
-          response = this.formatTestOutput(callMode, out);
-        }
-      } else {
-        const body = this.buildTestBody(callMode, upstreamModelId, dto.input, isDashScope);
-        const out = await this.callUpstreamRaw(
-          this.buildApiUrl(endpoint, apiPath),
-          apiKey,
-          body,
-        );
-        response = this.formatTestOutput(callMode, out);
+    if (callMode === 'image_edit' && !(dto.inputImages && dto.inputImages.length)) {
+      BusinessException.throw(
+        ErrorCode.VALIDATION_FAILED,
+        '图像编辑模型测试需要一张参考图（图生图需公网 base_image_url）：请传入参考图 URL 后重试，或到桌面端上传图片后测试',
+      );
+    }
+    for (const u of dto.inputImages ?? []) {
+      if (!/^https?:\/\//i.test(u)) {
+        BusinessException.throw(ErrorCode.VALIDATION_FAILED, '测试参考图仅支持 http(s) 公网图片 URL');
       }
+    }
+    try {
+      const { response } = await this.runModelRequest({
+        model,
+        provider,
+        apiKey,
+        endpoint,
+        callMode,
+        def,
+        input: dto.input,
+        inputImages: dto.inputImages ?? [],
+      });
       model.connectionStatus = 'connected';
       model.lastTestedAt = new Date();
       await this.modelRepo.save(model);
@@ -361,8 +314,138 @@ export class AdminModelService implements OnModuleInit {
         provider.lastTestedAt = new Date();
         await this.providerRepo.save(provider);
       }
-      BusinessException.throw(ErrorCode.THIRD_PARTY_ERROR, `模型测试失败: ${err?.message || err}`);
+      const cls = classifyProbeError(err?.message || String(err || ''));
+      BusinessException.throw(ErrorCode.THIRD_PARTY_ERROR, `模型测试失败: ${cls.message}`);
     }
+  }
+
+  /**
+   * 探测模型可用性（手动逐个触发；会真实调用上游一次）。
+   *  - 文本/识图：最小对话请求（max_tokens=1）
+   *  - 文生图：真实生成 1 张（产生上游费用）
+   *  - 视频：仅提交任务不轮询（提交成功 = 可用，产生上游费用）
+   *  - 需要文件输入（图生图/图生视频/OCR/STT/变声）：跳过，提示到「测试」里验证
+   * 返回 verdict：available / not_activated / config_error / skip
+   */
+  async probe(id: number) {
+    const model = await this.modelRepo.findOne({ where: { id } });
+    if (!model) {
+      BusinessException.throw(ErrorCode.NOT_FOUND, '模型不存在');
+    }
+    const provider = model.providerId
+      ? await this.providerRepo.findOne({ where: { id: model.providerId } })
+      : null;
+    const apiKey = provider?.apiKey
+      ? this.encryption.decryptAes(provider.apiKey)
+      : model.apiKey
+        ? this.encryption.decryptAes(model.apiKey)
+        : '';
+    const endpoint = provider?.baseUrl || model.apiEndpoint || '';
+    if (!apiKey || !endpoint) {
+      return { verdict: 'config_error', message: '模型未关联供应商凭据，无法探测' };
+    }
+    const callMode = model.callMode || callModeFromModelType(model.modelType);
+    const def = CALL_MODES.find((m) => m.key === callMode);
+    if (!def) {
+      return { verdict: 'config_error', message: `未知调用模式: ${callMode}` };
+    }
+    if (callMode === 'realtime') {
+      return { verdict: 'skip', message: '实时音视频模式无法自动探测，请在桌面端验证' };
+    }
+    if (probeNeedsFileInput(callMode, model.generationParams)) {
+      return {
+        verdict: 'skip',
+        message:
+          callMode === 'stt' || callMode === 'voice_conversion'
+            ? '语音识别/变声需要音频文件，无法自动探测：请在桌面端上传音频后验证'
+            : callMode === 'ocr'
+              ? 'OCR 需要图片文件，无法自动探测：请在桌面端/测试里验证'
+              : '图生图/图生视频需要参考图（或首帧图），无法自动探测：请到桌面端上传图片后验证',
+      };
+    }
+    try {
+      const { response } = await this.runModelRequest({
+        model,
+        provider,
+        apiKey,
+        endpoint,
+        callMode,
+        def,
+        input: '你好',
+      });
+      model.connectionStatus = 'connected';
+      model.lastTestedAt = new Date();
+      await this.modelRepo.save(model);
+      return { verdict: 'available', message: '✅ 可用：上游调用成功（探测会真实生成内容，注意积分成本）' };
+    } catch (err: any) {
+      model.connectionStatus = 'failed';
+      model.lastTestedAt = new Date();
+      await this.modelRepo.save(model);
+      return classifyProbeError(err?.message || String(err || ''));
+    }
+  }
+
+  /** 与运行时一致的模型真实调用（test / probe 共用，保证「测试 = 运行」） */
+  private async runModelRequest(params: {
+    model: ModelEntity;
+    provider: ModelProviderEntity | null;
+    apiKey: string;
+    endpoint: string;
+    callMode: string;
+    def: CallModeDef;
+    input: string;
+    inputImages?: string[];
+  }): Promise<{ response: string | Record<string, unknown> }> {
+    const { model, provider, apiKey, endpoint, callMode, def, input, inputImages = [] } = params;
+    const upstreamModelId = model.upstreamModelId || model.modelId;
+    const cfg = (provider?.config ?? {}) as Record<string, unknown>;
+    // DashScope 兼容端点的文本/识图模型要求 content 为数组格式（qwen-image/qwen-vl 等）
+    const isDashScope =
+      cfg.vendorKey === 'aliyun-dashscope' ||
+      (provider?.slug ?? '').includes('dashscope') ||
+      endpoint.includes('dashscope.aliyuncs.com');
+    const chatPath = typeof cfg.chatPath === 'string' && cfg.chatPath.trim() ? cfg.chatPath.trim() : '';
+    const useChatPath = !!chatPath && (callMode === 'text_chat' || callMode === 'vision' || callMode === 'ocr');
+    const apiPath = useChatPath ? chatPath : def.apiPath;
+    let response: string | Record<string, unknown>;
+    if (callMode === 'video' || callMode === 'video_edit') {
+      const adapter = buildMediaGenerationAdapter(provider, model.generationParams);
+      // 图生视频（i2v）需要首帧图 input.media；把测试填的参考图 URL 传上去
+      const { taskId } = await this.generationClient.submitVideo({
+        endpoint,
+        apiKey,
+        adapter,
+        model: upstreamModelId,
+        prompt: input,
+        duration: 5,
+        inputImages,
+      });
+      response = { taskId, message: `视频任务已提交（异步），taskId=${taskId}` };
+    } else if (callMode === 'image' || callMode === 'image_edit') {
+      const adapter = buildMediaGenerationAdapter(provider, model.generationParams);
+      if (adapter.imagesPath || adapter.requestTemplate) {
+        // 配置了生成适配（如 DashScope 原生图片端点）→ 走与运行时一致的 generateImage
+        const result = await this.generationClient.generateImage({
+          endpoint,
+          apiKey,
+          adapter,
+          model: upstreamModelId,
+          prompt: input,
+          size: '1024x1024',
+          inputImages,
+        });
+        response = JSON.stringify(result);
+      } else {
+        const body = this.buildTestBody(callMode, upstreamModelId, input, isDashScope);
+        const out = await this.callUpstreamRaw(this.buildApiUrl(endpoint, apiPath), apiKey, body);
+        response = this.formatTestOutput(callMode, out);
+      }
+    } else {
+      const body = this.buildTestBody(callMode, upstreamModelId, input, isDashScope);
+      const out = await this.callUpstreamRaw(this.buildApiUrl(endpoint, apiPath), apiKey, body);
+      response = this.formatTestOutput(callMode, out);
+    }
+    return { response };
   }
 
   /** 手动同步 OpenClaw（占位实现） */

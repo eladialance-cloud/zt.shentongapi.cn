@@ -39,6 +39,7 @@ import type {
   ModelInputType,
   ModelOutputType
 } from '@/types/admin-model'
+import AsyncTaskConfigForm from './AsyncTaskConfigForm'
 import CallModePicker from './CallModePicker'
 import DynamicSpecForm from './DynamicSpecForm'
 import ScenarioTagPicker from './ScenarioTagPicker'
@@ -128,6 +129,8 @@ export default function AddModelModal(props: {
     () => (meta?.callModes ?? []).filter((m) => m.output === outputGroup),
     [meta, outputGroup]
   )
+
+  const genParamsText = Form.useWatch('generationParamsText', form)
 
   useEffect(() => {
     fetchMarketVendors().then(setVendorList).catch(() => undefined)
@@ -249,6 +252,7 @@ export default function AddModelModal(props: {
       const gp: Record<string, unknown> = {}
       if (r.extraHeaders && Object.keys(r.extraHeaders).length) gp.extra_headers = r.extraHeaders
       if (r.async) {
+        gp.async = true
         gp.task_method = 'GET'
         gp.task_id_path = 'output.task_id'
         gp.task_status_path = 'output.task_status'
@@ -620,6 +624,13 @@ export default function AddModelModal(props: {
               placeholder={'{\n  "model": "{upstreamModelId}",\n  "input": { "prompt": "{prompt}" }\n}'}
             />
           </Form.Item>
+          {(outputGroup === 'image' || outputGroup === 'video') && (
+            <AsyncTaskConfigForm
+              value={genParamsText}
+              onChange={(t) => form.setFieldValue('generationParamsText', t)}
+              kind={outputGroup === 'video' ? 'video' : 'image'}
+            />
+          )}
         </div>
 
         <Form.Item name="displayName" label="显示名" rules={[{ required: true, message: '请输入显示名' }]}>

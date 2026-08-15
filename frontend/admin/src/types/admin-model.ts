@@ -449,6 +449,14 @@ export interface MarketImportItem {
   priceOverrides?: Record<string, unknown>
 }
 
+/** 模型可用性探测结果（手动逐个触发，真实调用上游） */
+export type ProbeVerdict = 'available' | 'not_activated' | 'config_error' | 'skip'
+
+export interface ProbeModelResult {
+  verdict: ProbeVerdict
+  message: string
+}
+
 /** 市场批量导入结果 */
 export interface MarketImportResult {
   imported: number

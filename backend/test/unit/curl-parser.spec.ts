@@ -62,4 +62,42 @@ describe('parseCurl', () => {
   it('无 URL 时报错', () => {
     assert.throws(() => parseCurl('not a curl'), /无法从 curl/);
   });
+
+  it('解析火山方舟（Volcengine）异步视频 curl → 任务查询URL自动兜底为 提交端点+/{id}', () => {
+    const r = parseCurl(`curl --location 'https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks' \\
+  -H 'Content-Type: application/json' \\
+  -H 'Authorization: Bearer $ARK_API_KEY' \\
+  -d '{
+    "model": "doubao-seedance-1-0-pro-250528",
+    "content": [
+      { "type": "text", "text": "一只猫在草地上奔跑" }
+    ]
+  }'`);
+    assert.equal(r.submitUrl, 'https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks');
+    assert.equal(r.modelId, 'doubao-seedance-1-0-pro-250528');
+    assert.equal(r.async, true);
+    assert.equal(r.taskQueryUrl, 'https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks/{id}');
+    assert.deepEqual(r.requestTemplate, {
+      model: '{upstreamModelId}',
+      content: [{ type: 'text', text: '{prompt}' }],
+    });
+  });
+
+  it('任意 async 相关请求头都能识别异步（不限于 DashScope）', () => {
+    const r = parseCurl(`curl --location 'https://api.example-vendor.com/v1/video/jobs' \\
+  -H 'X-Async-Task: 1' \\
+  -H 'Authorization: Bearer KEY' \\
+  -d '{"model":"my-video-model","input":{"prompt":"hello"}}'`);
+    assert.equal(r.async, true);
+    assert.equal(r.taskQueryUrl, 'https://api.example-vendor.com/v1/video/jobs/{id}');
+    assert.deepEqual(r.extraHeaders, { 'X-Async-Task': '1' });
+  });
+
+  it('同步请求不生成任务查询URL', () => {
+    const r = parseCurl(`curl --location 'https://api.example.com/v1/images/generations' \\
+  -H 'Authorization: Bearer KEY' \\
+  -d '{"model":"dall-e-3","prompt":"a cat","size":"1024x1024"}'`);
+    assert.equal(r.async, false);
+    assert.equal(r.taskQueryUrl, undefined);
+  });
 });

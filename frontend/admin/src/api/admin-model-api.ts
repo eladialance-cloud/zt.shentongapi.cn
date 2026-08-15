@@ -33,6 +33,7 @@ import type {
   MarketPresetItem,
   MarketVendor,
   ModelTemplateItem,
+  ProbeModelResult,
   ProviderBalanceResult,
   TestProviderDto,
   TestProviderResult,
@@ -94,6 +95,11 @@ export async function testModel(
     `/admin/models/${id}/test`,
     { data: { input, ...(inputImage ? { inputImages: [inputImage] } : {}) } }
   )
+}
+
+/** 探测模型可用性（手动逐个，会真实调用上游一次） */
+export async function probeModel(id: number): Promise<ProbeModelResult> {
+  return adminRequest<ProbeModelResult>('post', `/admin/models/${id}/probe`)
 }
 
 /** 解析官方 curl 示例 → 模型适配配置 */

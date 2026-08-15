@@ -283,6 +283,12 @@ export class AdminModelController {
     return this.service.test(id, dto);
   }
 
+  @Post(':id/probe')
+  @ApiOperation({ summary: '探测模型可用性（手动逐个，真实调用上游）' })
+  async probe(@Param('id', ParseIntPipe) id: number) {
+    return this.service.probe(id);
+  }
+
   @Post(':id/sync')
   @ApiOperation({ summary: '手动同步 OpenClaw' })
   async sync(@Param('id', ParseIntPipe) id: number) {

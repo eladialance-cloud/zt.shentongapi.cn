@@ -55,6 +55,36 @@ function extractHeaders(text: string): { headers: Record<string, string>; warnin
   return { headers, warnings };
 }
 
+/** 识别异步请求：
+ *  - URL 含 async，或含任务制路径（/tasks、/jobs、contents/generations，如火山方舟视频）
+ *  - 任意请求头名/值含 async（如 X-DashScope-Async: enable、X-Async-Task: 1）
+ */
+function isAsyncRequest(headers: Record<string, string>, url: string): boolean {
+  if (/async/i.test(url)) return true;
+  if (/\/tasks\/?$|\/tasks\?|\/jobs\/?$|\/jobs\?|contents\/generations/i.test(url)) return true;
+  for (const [k, v] of Object.entries(headers)) {
+    if (/async/i.test(k) || /async/i.test(v)) return true;
+  }
+  return false;
+}
+
+/** 推导异步任务查询 URL 模板（{id} 占位，可在管理端修改）：
+ *  - DashScope 原生媒体端点（services/aigc/...）→ 统一任务查询中心 /api/v1/tasks/{id}
+ *  - 火山方舟 /contents/generations → 提交端点 + /{id}
+ *  - 其余平台 → 提交端点 + /{id} 兜底（多数异步平台支持，用户可改）
+ */
+function suggestTaskQueryUrl(submitUrl: string): string | undefined {
+  const base = submitUrl.replace(/\/+$/, '');
+  if (/dashscope\.aliyuncs\.com/i.test(base)) {
+    if (/\/services\/aigc\//i.test(base)) return 'https://dashscope.aliyuncs.com/api/v1/tasks/{id}';
+    return undefined;
+  }
+  if (/volces\.com\/api\/v\d+\/contents\/generations/i.test(base)) {
+    return base + '/{id}';
+  }
+  return base + '/{id}';
+}
+
 /** 提取 -d / --data / --data-raw 的 JSON 文本（取最后一个引号块） */
 function extractBodyText(text: string): string | undefined {
   const prefixes = ['--data-raw', '--data-binary', '--data', '-d'];
@@ -154,11 +184,8 @@ export function parseCurl(curlText: string): ParsedCurl {
   } else {
     warnings.push('未找到请求体（-d），请手动配置请求模板');
   }
-  const async = headers['X-DashScope-Async'] === 'enable' || /async|Async/.test(submitUrl);
-  let taskQueryUrl: string | undefined;
-  if (async && /dashscope\.aliyuncs\.com/i.test(submitUrl)) {
-    taskQueryUrl = 'https://dashscope.aliyuncs.com/api/v1/tasks/{id}';
-  }
+  const async = isAsyncRequest(headers, submitUrl);
+  const taskQueryUrl = async ? suggestTaskQueryUrl(submitUrl) : undefined;
   return {
     submitUrl,
     method,
