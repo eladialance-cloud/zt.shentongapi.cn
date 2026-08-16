@@ -148,6 +148,10 @@ const electronAPI: ElectronAPI = {
     setProxyKey: (key: string) => {
       ipcRenderer.send('openclaw-chat:set-proxy-key', key)
     },
+    /** 同步用户首选对话模型到 OpenClaw 配置（agents.defaults.model；当前会话由主进程 sessions.patch 处理） */
+    setModel: (modelId: string) => {
+      ipcRenderer.send('openclaw-chat:set-model', modelId)
+    },
     send: (text: string, token: string, history?: OpenClawChatMessage[], knowledgeBaseId?: number, sessionId?: number, modelId?: string) =>
       ipcRenderer.invoke('openclaw-chat:send', { text, token, history, knowledgeBaseId, sessionId, modelId }) as Promise<{ ok: boolean; aborted?: boolean }>,
     abort: () => {

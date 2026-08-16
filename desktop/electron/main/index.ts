@@ -210,6 +210,10 @@ function registerIpcHandlers(): void {
   ipcMain.on('openclaw-chat:set-proxy-key', (_event, key: string) => {
     serviceManager.setOpenClawProxyKey(key || '')
   })
+  // 同步用户首选对话模型到 OpenClaw 配置（agents.defaults.model，新会话默认模型；当前会话由 WS sessions.patch 处理）
+  ipcMain.on('openclaw-chat:set-model', (_event, modelId: string) => {
+    serviceManager.setOpenClawPreferredModel(typeof modelId === 'string' ? modelId : '')
+  })
 
   // ===== 自定义大模型接入（本机保存） =====
   ipcMain.handle('llm-integrations:list', () => llmIntegrations.list())

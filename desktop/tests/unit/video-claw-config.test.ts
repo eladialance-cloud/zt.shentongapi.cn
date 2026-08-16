@@ -123,6 +123,57 @@ describe('syncVideoClawConfig', () => {
     }
   })
 
+  it('存量配置 llmproxy.api_key 为空/过期时同步补齐，且保留用户改过的端口', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vc-sync4-'))
+    try {
+      ensureVideoClawConfig(dir, OPTS)
+      const cfg = join(dir, 'config.yaml')
+      // 模拟旧配置：Key 为空、base_url 指向旧地址、用户改过端口
+      const stale = readFileSync(cfg, 'utf-8')
+        .replace('api_key: sk-shentong-test', "api_key: ''")
+        .replace('base_url: https://zt.shentongapi.cn/api/llm-proxy/v1', 'base_url: https://old.example/api/llm-proxy/v1')
+        .replace('  port: 8000', '  port: 9000')
+      writeFileSync(cfg, stale, 'utf-8')
+      syncVideoClawConfig(dir, OPTS)
+      const after = readFileSync(cfg, 'utf-8')
+      expect(after).toContain('api_key: sk-shentong-test')
+      expect(after).toContain('base_url: https://zt.shentongapi.cn/api/llm-proxy/v1')
+      expect(after).toContain('  port: 9000')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('顶层 models 默认值变化时同步（旧默认模型已失效）', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vc-sync5-'))
+    try {
+      ensureVideoClawConfig(dir, OPTS)
+      const cfg = join(dir, 'config.yaml')
+      const stale = readFileSync(cfg, 'utf-8').replace('llm: qwen3.8-max', 'llm: qwen3.8-old')
+      writeFileSync(cfg, stale, 'utf-8')
+      syncVideoClawConfig(dir, OPTS)
+      const after = readFileSync(cfg, 'utf-8')
+      expect(after).toContain('llm: qwen3.8-max')
+      expect(after).not.toContain('llm: qwen3.8-old')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('Key/默认模型/白名单均一致时不重写文件', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vc-sync6-'))
+    try {
+      ensureVideoClawConfig(dir, NEW_OPTS)
+      const cfg = join(dir, 'config.yaml')
+      const first = readFileSync(cfg, 'utf-8')
+      syncVideoClawConfig(dir, NEW_OPTS)
+      const second = readFileSync(cfg, 'utf-8')
+      expect(second).toBe(first)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('extractYamlWhitelist 能解析 llmproxy.models', () => {
     const yaml = buildVideoClawConfigYaml(NEW_OPTS)
     const ids = extractYamlWhitelist(yaml)
@@ -131,7 +182,6 @@ describe('syncVideoClawConfig', () => {
     expect(ids.length).toBeGreaterThan(0)
   })
 })
-
 describe('patchYamlWhitelist', () => {
   it('仅替换 llmproxy.models 列表，保留其它配置', () => {
     const userEdited = buildVideoClawConfigYaml(OPTS).replace('  port: 8000', '  port: 9000')

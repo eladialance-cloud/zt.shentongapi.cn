@@ -20,6 +20,8 @@ export interface OpenClawChatHandle {
     sessionId?: number,
     modelId?: string,
   ) => Promise<{ ok: boolean; aborted?: boolean }>
+  /** 同步用户首选对话模型到 OpenClaw 配置（新会话默认模型） */
+  setModel: (modelId: string) => void
   /** 中断当前对话（本地 abort，云端退款） */
   abort: () => void
   /** 流式文本块；返回取消监听函数 */
@@ -46,6 +48,7 @@ export function createOpenClawChat(): OpenClawChatHandle {
       if (!accessToken) throw new Error('未登录')
       return api.send(text, accessToken, history, knowledgeBaseId, sessionId, modelId)
     },
+    setModel: (modelId: string) => api.setModel(modelId),
     abort: () => api.abort(),
     onMessage: (cb) => api.onMessage((d) => cb(d.content)),
     onFinalize: (cb) => api.onFinalize((d) => cb(d.content)),

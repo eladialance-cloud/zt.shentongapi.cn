@@ -193,6 +193,9 @@ const OPENCLAW_LLM_PROXY_BASE = 'https://zt.shentongapi.cn/api/llm-proxy/v1'
 /** 用户 llm-proxy 静态 Key（登录后由主进程注入；空则 OpenClaw 不写 apiKey，聊天被 401 拦截） */
 let openclawProxyKey = ''
 
+/** 用户当前首选对话模型（桌面端对话页同步；写入 OpenClaw agents.defaults.model，新会话默认模型） */
+let openclawPreferredModel = ''
+
 /** VideoClaw 子进程环境变量：注入 llm-proxy 网关地址/静态 Key 与云端记账上下文 */
 function buildVideoClawEnv(): NodeJS.ProcessEnv {
   const accountingDir = path.join(app.getPath('userData'), 'openclaw-chat')
@@ -383,6 +386,13 @@ function ensureOpenClawConfig(): void {
           },
         },
       },
+    }
+    // 用户首选对话模型 → OpenClaw 新会话默认模型（旧会话由 WS sessions.patch 写入 modelOverride，
+    // 两者配合确保桌面端选择真实生效；不重启不打断进行中的对话，下次启动/重启时落盘）
+    if (openclawPreferredModel) {
+      patch.agents = {
+        defaults: { model: openclawPreferredModel },
+      }
     }
     let existing: Record<string, unknown> = {}
     try {
@@ -583,6 +593,19 @@ export class ServiceManager extends EventEmitter {
       console.log('[service-manager] llm-proxy Key 已更新，重启 OpenClaw 使其生效...')
       void this.restart('openclaw')
     }
+  }
+
+  /**
+   * 同步用户首选对话模型到 OpenClaw 配置（agents.defaults.model，新会话默认模型）。
+   * 不重启 OpenClaw（避免打断进行中的对话）；当前会话由 WS sessions.patch 在发送前写入。
+   */
+  setOpenClawPreferredModel(model: string): void {
+    const normalized = (model || '').trim()
+    if (!normalized || normalized.startsWith('custom/')) return
+    if (openclawPreferredModel === normalized) return
+    openclawPreferredModel = normalized
+    ensureOpenClawConfig()
+    console.log('[service-manager] OpenClaw 首选模型已同步: ' + normalized)
   }
 
   /** 追加子进程输出（滚动保留尾部，供失败时展示真实原因） */

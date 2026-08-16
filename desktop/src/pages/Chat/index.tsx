@@ -214,6 +214,12 @@ export default function Chat() {
     chatApi.setPreferredChatModel(modelId).catch((err) => {
       if (!cancelled) console.error('[Chat] sync preferred model failed:', err)
     })
+    // 本地 OpenClaw 新会话默认模型同步（sessions.patch 处理当前会话，这里保证新会话也生效）
+    try {
+      window.electronAPI?.openclawChat?.setModel(modelId)
+    } catch (err) {
+      console.error('[Chat] sync local openclaw model failed:', err)
+    }
     return () => {
       cancelled = true
     }
@@ -483,6 +489,12 @@ export default function Chat() {
         await chatApi.setPreferredChatModel(newModelId)
       } catch (err) {
         console.error('[Chat] set preferred model failed:', err)
+      }
+      // 本地 OpenClaw 新会话默认模型同步
+      try {
+        window.electronAPI?.openclawChat?.setModel(newModelId)
+      } catch (err) {
+        console.error('[Chat] sync local openclaw model failed:', err)
       }
     }
   }

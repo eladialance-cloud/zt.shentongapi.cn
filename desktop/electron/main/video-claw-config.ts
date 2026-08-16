@@ -301,9 +301,68 @@ export function patchYamlWhitelist(content: string, ids: string[]): string {
 }
 
 /**
- * 同步 backend/config.yaml：已存在时仅当 llmproxy.models 白名单与当前平台模型不一致才重写
- * （管理后台新增/下架模型后，重启桌面端或启动视频服务即自动生效；用户其他配置不受影响）。
- * 返回配置文件绝对路径。
+ * 在 YAML 指定段（如 api_providers.llmproxy / 顶层 models）内替换或新增标量字段。
+ * - 段不存在：返回 null（不整份重建，保留用户配置）；
+ * - 字段全部一致：返回 null（幂等，不触发重写）；
+ * - 有变化：返回替换后的完整文本。
+ */
+function replaceYamlSectionFields(
+  content: string,
+  sectionPattern: RegExp,
+  fieldIndent: number,
+  fields: Record<string, string>,
+): string | null {
+  const lines = content.split(/\r?\n/)
+  const indentOf = (l: string): number => (l.match(/^(\s*)/) ?? ['', ''])[1].length
+  const sectionIdx = lines.findIndex((l) => sectionPattern.test(l))
+  if (sectionIdx < 0) return null
+  const sectionIndent = indentOf(lines[sectionIdx])
+  // 段结束位置（缩进回退到 <= 段缩进，或文件尾）
+  let endIdx = lines.length
+  for (let i = sectionIdx + 1; i < lines.length; i++) {
+    const line = lines[i]
+    if (!line.trim()) continue
+    if (indentOf(line) <= sectionIndent) {
+      endIdx = i
+      break
+    }
+  }
+  const out = [...lines]
+  let changed = false
+  // 1) 替换段内已有字段
+  for (let i = sectionIdx + 1; i < endIdx; i++) {
+    const line = out[i]
+    const m = line.match(/^(\s*)([A-Za-z0-9_]+):\s*(.*)$/)
+    if (!m || indentOf(line) !== fieldIndent) continue
+    const key = m[2]
+    if (!(key in fields)) continue
+    const newLine = ' '.repeat(fieldIndent) + key + ': ' + yamlScalar(fields[key])
+    if (out[i] !== newLine) {
+      out[i] = newLine
+      changed = true
+    }
+  }
+  // 2) 段内缺失的字段追加到段末（跳过尾部空白行，保持缩进层级）
+  const present = new Set<string>()
+  for (let i = sectionIdx + 1; i < endIdx; i++) {
+    const m = out[i].match(/^(\s*)([A-Za-z0-9_]+):/)
+    if (m && indentOf(out[i]) === fieldIndent) present.add(m[2])
+  }
+  const missing = Object.keys(fields).filter((k) => !present.has(k))
+  if (missing.length > 0) {
+    let insertAt = endIdx
+    while (insertAt > sectionIdx + 1 && !out[insertAt - 1].trim()) insertAt--
+    const pad = ' '.repeat(fieldIndent)
+    out.splice(insertAt, 0, ...missing.map((k) => pad + k + ': ' + yamlScalar(fields[k])))
+    changed = true
+  }
+  return changed ? out.join('\n') : null
+}
+
+/**
+ * 同步 backend/config.yaml：已存在时补齐 llmproxy.api_key/base_url、顶层 models 默认值
+ * 与 llmproxy.models 白名单（管理后台新增/下架模型、用户重新登录后，重启桌面端或启动视频服务即自动生效；
+ * 用户其他配置——端口/风格/第三方 Key——不受影响）。返回配置文件绝对路径。
  */
 export function syncVideoClawConfig(
   backendDir: string,
@@ -313,17 +372,36 @@ export function syncVideoClawConfig(
   if (!existsSync(cfgPath)) return ensureVideoClawConfig(backendDir, opts)
   try {
     const existing = readFileSync(cfgPath, 'utf-8')
-    const desired = extractYamlWhitelist(buildVideoClawConfigYaml(opts))
-    const current = extractYamlWhitelist(existing)
-    const same =
-      desired.length === current.length && desired.every((id, i) => id === current[i])
-    if (!same) {
-      // 仅修补 llmproxy.models 白名单，保留用户其它配置
-      const patched = patchYamlWhitelist(existing, desired)
-      if (patched !== existing) {
-        mkdirSync(backendDir, { recursive: true })
-        writeFileSync(cfgPath, patched, 'utf-8')
-      }
+    const desiredYaml = buildVideoClawConfigYaml(opts)
+    let patched = existing
+
+    // 1) llmproxy 段：api_key / base_url 必须跟随当前用户（旧配置 Key 为空 → ST-Claw 拉不到后台模型）
+    const llmproxyPatch = replaceYamlSectionFields(patched, /^ {0,2}llmproxy:\s*$/, 4, {
+      api_key: opts.apiKey,
+      base_url: opts.llmProxyBaseUrl,
+    })
+    if (llmproxyPatch !== null) patched = llmproxyPatch
+
+    // 2) 顶层 models 段：默认模型跟随后台当前启用模型（旧默认值可能已失效/下架）
+    const modelsPatch = replaceYamlSectionFields(patched, /^models:\s*$/, 2, {
+      llm: opts.llmModel,
+      vlm: opts.vlmModel,
+      image_t2i: opts.imageT2iModel,
+      image_it2i: opts.imageIt2iModel,
+      video_first_frame: opts.videoFirstFrameModel,
+      video_start_end: opts.videoStartEndModel,
+      video_reference: opts.videoReferenceModel,
+    })
+    if (modelsPatch !== null) patched = modelsPatch
+
+    // 3) llmproxy.models 白名单（管理后台启用模型；模型不存在于白名单则 ST-Claw 不按 llmproxy 通道路由）
+    const desiredWhitelist = extractYamlWhitelist(desiredYaml)
+    const whitelistPatch = patchYamlWhitelist(patched, desiredWhitelist)
+    if (whitelistPatch !== patched) patched = whitelistPatch
+
+    if (patched !== existing) {
+      mkdirSync(backendDir, { recursive: true })
+      writeFileSync(cfgPath, patched, 'utf-8')
     }
   } catch (err) {
     console.warn('[video-claw-config] sync failed（保留原配置）: ' + (err instanceof Error ? err.message : String(err)))

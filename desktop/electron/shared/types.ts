@@ -466,6 +466,8 @@ export interface ElectronAPI {
   openclawChat: {
     /** 注入用户 llm-proxy 静态 Key（登录后调用；OpenClaw openai provider 指向云端 llm-proxy） */
     setProxyKey(key: string): void;
+    /** 同步用户首选对话模型到 OpenClaw 配置（agents.defaults.model；当前会话由主进程 sessions.patch 处理） */
+    setModel(modelId: string): void;
     /** 发送一条消息：本地 OpenClaw 流式对话（扣费由云端 llm-proxy 完成）。流式内容经 onMessage 推送 */
     send(
       text: string,

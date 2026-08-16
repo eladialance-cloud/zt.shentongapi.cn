@@ -531,6 +531,25 @@ export function createLocalOpenClawWsCaller(
 
     // 历史已由 OpenClaw 会话自身维护（同 sessionKey 连续上下文）；
     // 跨重启/新建会话时 OpenClaw 从当前消息开始，渲染层仍展示完整历史。
+
+    // 用户选择的平台模型 → 先写入 OpenClaw 会话（sessions.patch 设置 modelOverride），
+    // chat.send 才会真正使用该模型；失败不阻塞（后端 llm-proxy 仍有 defaultChatModel 兜底）。
+    // OpenClaw 的 chat.send 不接受 model 参数，模型只从会话条目/配置解析，必须在发送前落盘。
+    const selectedModel = (params.modelId ?? '').trim()
+    if (selectedModel && !selectedModel.startsWith('custom/')) {
+      try {
+        await Promise.race([
+          gateway.call('sessions.patch', { key: sessionKey, model: selectedModel }),
+          new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+        ])
+      } catch (err) {
+        console.warn(
+          '[openclaw-chat] sessions.patch 模型写入失败（忽略，走用户默认模型）: ' +
+            (err instanceof Error ? err.message : String(err)),
+        )
+      }
+    }
+
     const runId = 'st-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
     const sendRes = (await gateway.call('chat.send', {
       sessionKey,
