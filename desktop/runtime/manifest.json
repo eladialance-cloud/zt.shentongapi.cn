@@ -119,7 +119,7 @@
     },
     "video-claw": {
       "type": "local",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "displayName": "AI 视频",
       "port": 8000,
       "entry": {
@@ -128,19 +128,19 @@
         "linux": "video-claw"
       },
       "downloadUrl": {
-        "win32-x64": "https://zt.shentongapi.cn/runtime/video-claw/0.1.0/video-claw-win-x64.tar.gz",
+        "win32-x64": "https://zt.shentongapi.cn/runtime/video-claw/0.1.1/video-claw-win-x64.tar.gz",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""
       },
       "size": {
-        "win32-x64": 294438044,
+        "win32-x64": 294437929,
         "darwin-x64": 0,
         "darwin-arm64": 0,
         "linux-x64": 0
       },
       "sha256": {
-        "win32-x64": "91d56e3497f2749d3d641c76e1d4504fbf8bbbae6be05ea5a359587a022ba2a3",
+        "win32-x64": "76519fbf630848883f8b2209200d3f769908d08f9ee34e69be72213c89f67c25",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""

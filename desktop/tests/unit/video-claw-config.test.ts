@@ -8,6 +8,7 @@ import {
   buildVideoClawConfigYaml,
   ensureVideoClawConfig,
   syncVideoClawConfig,
+  insertMissingVideoClawSections,
   patchYamlWhitelist,
   extractYamlWhitelist,
   DEFAULT_VIDEO_CLAW_MODELS,
@@ -196,5 +197,82 @@ describe('patchYamlWhitelist', () => {
   it('llmproxy 段缺失时返回原文本（不整体重建）', () => {
     const noLlmp = 'project_name: x\nserver:\n  port: 8000\nmodels:\n  llm: y\n'
     expect(patchYamlWhitelist(noLlmp, ['a'])).toBe(noLlmp)
+  })
+})
+
+describe('insertMissingVideoClawSections / syncVideoClawConfig 补齐缺失段', () => {
+  // 存量配置（旧版桌面端或 ST-Claw 自身保存）没有 api_providers.llmproxy 段：
+  // sync 必须插入整段（Key/base_url/models 白名单），否则 ST-Claw 模型下拉读不到后台模型
+  it('存量配置缺 llmproxy 段时插入整段并保留用户改过的端口', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vc-legacy-'))
+    try {
+      const cfg = join(dir, 'config.yaml')
+      const legacy = [
+        'project_name: ST-Claw',
+        'server:',
+        '  host: 127.0.0.1',
+        '  port: 9000',
+        'api_providers:',
+        '  common:',
+        '    print_model_input: false',
+        '  dashscope:',
+        '    api_key: sk-dashscope-user',
+        '    base_url: https://dashscope.aliyuncs.com/api/v1',
+        'models:',
+        '  llm: qwen3.5-plus',
+        'generation:',
+        '  style: realistic',
+        '',
+      ].join('\n')
+      writeFileSync(cfg, legacy, 'utf-8')
+      syncVideoClawConfig(dir, OPTS)
+      const after = readFileSync(cfg, 'utf-8')
+      expect(after).toContain('  port: 9000') // 用户配置保留
+      expect(after).toContain('    api_key: sk-dashscope-user') // 第三方 Key 保留
+      expect(after).toContain('  llmproxy:')
+      expect(after).toContain('api_key: sk-shentong-test')
+      expect(after).toContain('base_url: https://zt.shentongapi.cn/api/llm-proxy/v1')
+      expect(extractYamlWhitelist(after)).toContain('qwen3.8-max')
+      expect(extractYamlWhitelist(after)).toContain('wan2.7-i2v')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('存量配置缺顶层 models 段时插入默认模型', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vc-nomodels-'))
+    try {
+      const cfg = join(dir, 'config.yaml')
+      const legacy = [
+        'project_name: ST-Claw',
+        'server:',
+        '  port: 8000',
+        'api_providers:',
+        '  common:',
+        '    print_model_input: false',
+        '  llmproxy:',
+        '    api_key: sk-old',
+        '    base_url: https://zt.shentongapi.cn/api/llm-proxy/v1',
+        '    models:',
+        '      - qwen3.8-max',
+        'generation:',
+        '  style: realistic',
+        '',
+      ].join('\n')
+      writeFileSync(cfg, legacy, 'utf-8')
+      syncVideoClawConfig(dir, OPTS)
+      const after = readFileSync(cfg, 'utf-8')
+      expect(after).toContain('models:')
+      expect(after).toContain('llm: qwen3.8-max')
+      expect(after).toContain('video_first_frame: wan2.7-i2v')
+      expect(after).toContain('  port: 8000')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('insertMissingVideoClawSections 无缺失时保持原文本（幂等）', () => {
+    const yaml = buildVideoClawConfigYaml(OPTS)
+    expect(insertMissingVideoClawSections(yaml, OPTS)).toBe(yaml)
   })
 })

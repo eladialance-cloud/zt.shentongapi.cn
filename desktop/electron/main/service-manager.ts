@@ -593,6 +593,13 @@ export class ServiceManager extends EventEmitter {
       console.log('[service-manager] llm-proxy Key 已更新，重启 OpenClaw 使其生效...')
       void this.restart('openclaw')
     }
+    // ST-Claw 后端在进程启动时加载 config.yaml；Key 更新后必须重启才能读到新 Key/新白名单，
+    // 否则模型下拉一直停留在旧配置（拉不到后台模型、生成路由失败）
+    const vcInfo = this.services.get('video-claw')
+    if (vcInfo && vcInfo.status === 'running') {
+      console.log('[service-manager] llm-proxy Key 已更新，重启 ST-Claw 使模型配置生效...')
+      void this.restart('video-claw')
+    }
   }
 
   /**

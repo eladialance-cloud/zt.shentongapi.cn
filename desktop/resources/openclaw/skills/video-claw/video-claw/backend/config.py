@@ -56,6 +56,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "api_key": "",
             "enable_proxy": False,
         },
+        "llmproxy": {
+            "api_key": "",
+            "base_url": "https://zt.shentongapi.cn/api/llm-proxy/v1",
+            "enable_proxy": False,
+            "models": [],
+        },
     },
     "models": {
         "llm": "qwen3.5-plus",
@@ -73,12 +79,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "video_resolution": "720P",
         "video_generation_mode": "first_frame",
     },
-        "llmproxy": {
-            "api_key": "",
-            "base_url": "https://zt.shentongapi.cn/api/llm-proxy/v1",
-            "enable_proxy": False,
-            "models": [],
-        },
 }
 
 
@@ -238,15 +238,25 @@ class Config:
     KLING_BASE_URL = _get(CONFIG, "api_providers.kling.base_url")
     KLING_ENABLE_PROXY = _get(CONFIG, "api_providers.kling.enable_proxy")
 
-    LLMPROXY_API_KEY = _get(CONFIG, "api_providers.llmproxy.api_key")
-    LLMPROXY_BASE_URL = _get(CONFIG, "api_providers.llmproxy.base_url")
+    LLMPROXY_API_KEY = os.environ.get("VIDEO_CLAW_PROXY_KEY") or _get(CONFIG, "api_providers.llmproxy.api_key")
+    LLMPROXY_BASE_URL = os.environ.get("VIDEO_CLAW_LLM_PROXY_BASE") or _get(CONFIG, "api_providers.llmproxy.base_url")
     LLMPROXY_MODELS = set(_get(CONFIG, "api_providers.llmproxy.models") or [])
     SHOW_THIRD_PARTY_MODELS = _as_bool(_get(CONFIG, "api_providers.common.show_third_party_models", False))
 
     @classmethod
     def is_llmproxy_model(cls, model: str) -> bool:
-        """平台中转 llm-proxy 模型：config.yaml 的 api_providers.llmproxy.models 白名单。"""
-        return bool(model) and model in cls.LLMPROXY_MODELS
+        """平台中转 llm-proxy 模型：config.yaml 的 api_providers.llmproxy.models 白名单；
+        白名单可能落后于管理后台（后台新增模型后桌面端尚未重写配置），命中平台实时模型列表也按 llmproxy 路由。"""
+        if model and model in cls.LLMPROXY_MODELS:
+            return True
+        if not model:
+            return False
+        try:
+            from models.config_model import fetch_platform_models
+            platform = fetch_platform_models() or []
+            return any(str(item.get("id") or "") == model for item in platform)
+        except Exception:
+            return False
 
     LLM_API_KEY = DASHSCOPE_API_KEY
     LLM_BASE_URL = ""
@@ -321,8 +331,8 @@ class Config:
         cls.KLING_API_KEY = _get(clean, "api_providers.kling.api_key")
         cls.KLING_BASE_URL = _get(clean, "api_providers.kling.base_url")
         cls.KLING_ENABLE_PROXY = _get(clean, "api_providers.kling.enable_proxy")
-        cls.LLMPROXY_API_KEY = _get(clean, "api_providers.llmproxy.api_key")
-        cls.LLMPROXY_BASE_URL = _get(clean, "api_providers.llmproxy.base_url")
+        cls.LLMPROXY_API_KEY = os.environ.get("VIDEO_CLAW_PROXY_KEY") or _get(clean, "api_providers.llmproxy.api_key")
+        cls.LLMPROXY_BASE_URL = os.environ.get("VIDEO_CLAW_LLM_PROXY_BASE") or _get(clean, "api_providers.llmproxy.base_url")
         cls.LLMPROXY_MODELS = set(_get(clean, "api_providers.llmproxy.models") or [])
         cls.SHOW_THIRD_PARTY_MODELS = _as_bool(_get(clean, "api_providers.common.show_third_party_models", False))
 

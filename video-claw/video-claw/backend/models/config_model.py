@@ -688,7 +688,6 @@ def fetch_platform_models() -> Optional[list[dict[str, Any]]]:
     now = time.time()
     if now - _PLATFORM_CACHE["ts"] < _PLATFORM_TTL:
         return _PLATFORM_CACHE["models"]
-    _PLATFORM_CACHE["ts"] = now
     if not Config.LLMPROXY_BASE_URL or not Config.LLMPROXY_API_KEY:
         _PLATFORM_CACHE["models"] = None
         return None
@@ -704,6 +703,7 @@ def fetch_platform_models() -> Optional[list[dict[str, Any]]]:
             return None
         data = resp.json() or {}
         models = data.get("data") or data.get("models") or []
+        _PLATFORM_CACHE["ts"] = now  # 仅成功才计时；失败/未配置立即重试，避免 Key 刚同步后仍缓存 60 秒空列表
         _PLATFORM_CACHE["models"] = [m for m in models if isinstance(m, dict) and m.get("id")]
         return _PLATFORM_CACHE["models"]
     except Exception:

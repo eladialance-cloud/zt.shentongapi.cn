@@ -54,13 +54,18 @@ function platformWhitelistLines(
   platformModels: Array<{ id: string; type?: string; name?: string; supportsVision?: boolean }>,
   defaults: string[],
 ): string[] {
+  return whitelistIds({ platformModels }, defaults).map((id) => '      - ' + yamlScalar(id))
+}
+
+/** 白名单模型 ID：后台启用模型优先，空则降级默认模型 */
+function whitelistIds(opts: { platformModels?: Array<{ id?: string }> }, defaults: string[]): string[] {
   const ids: string[] = []
-  for (const m of platformModels) {
+  for (const m of opts.platformModels ?? []) {
     const id = m?.id
     if (id && !ids.includes(id)) ids.push(id)
   }
   const list = ids.length > 0 ? ids : defaults
-  return list.map((id) => '      - ' + yamlScalar(id))
+  return list.filter((id): id is string => !!id)
 }
 
 function yamlScalar(value: string): string {
@@ -360,6 +365,78 @@ function replaceYamlSectionFields(
 }
 
 /**
+ * 补齐存量 backend/config.yaml 缺失的关键段（不整份重建，保留用户其它配置）：
+ * - api_providers.llmproxy 缺失时整段插入（旧版桌面端或 ST-Claw 自身保存的配置可能没有该段；
+ *   ST-Claw 只在段存在时注入 llm-proxy Key，缺失则模型下拉读不到后台模型、生成全部失败）
+ * - 顶层 models 缺失时插入默认模型（ST-Claw 各流程默认值）
+ * 返回有变化的新文本；无变化返回原文本。
+ */
+export function insertMissingVideoClawSections(
+  content: string,
+  opts: VideoClawConfigOptions,
+): string {
+  const indentOf = (l: string): number => (l.match(/^(\s*)/) ?? ['', ''])[1].length
+  let patched = content
+
+  // 1) api_providers.llmproxy 缺失 → 插入到 api_providers 段末尾
+  const lines = patched.split(/\r?\n/)
+  if (!lines.some((l) => /^ {0,2}llmproxy:\s*$/.test(l))) {
+    const apiIdx = lines.findIndex((l) => /^api_providers:\s*$/.test(l))
+    if (apiIdx >= 0) {
+      let endIdx = lines.length
+      for (let i = apiIdx + 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue
+        if (indentOf(lines[i]) <= 0) {
+          endIdx = i
+          break
+        }
+      }
+      const ids = whitelistIds(opts, [
+        opts.llmModel, opts.vlmModel, opts.imageT2iModel, opts.imageIt2iModel,
+        opts.videoFirstFrameModel, opts.videoStartEndModel, opts.videoReferenceModel,
+      ])
+      const block = [
+        '  llmproxy:',
+        '    api_key: ' + yamlScalar(opts.apiKey),
+        '    base_url: ' + yamlScalar(opts.llmProxyBaseUrl),
+        '    enable_proxy: false',
+        '    models:',
+        ...ids.map((id) => '      - ' + yamlScalar(id)),
+        '',
+      ]
+      const before = lines.slice(0, endIdx)
+      const after = lines.slice(endIdx)
+      while (before.length && !before[before.length - 1].trim()) before.pop()
+      patched = [...before, ...block, ...after].join('\n')
+    }
+  }
+
+  // 2) 顶层 models 缺失 → 插入到 generation 段之前（或文件尾）
+  const modelsLines = patched.split(/\r?\n/)
+  if (!modelsLines.some((l) => /^models:\s*$/.test(l))) {
+    const genIdx = modelsLines.findIndex((l) => /^generation:\s*$/.test(l))
+    const insertAt = genIdx >= 0 ? genIdx : modelsLines.length
+    const block = [
+      'models:',
+      '  llm: ' + yamlScalar(opts.llmModel),
+      '  vlm: ' + yamlScalar(opts.vlmModel),
+      '  image_t2i: ' + yamlScalar(opts.imageT2iModel),
+      '  image_it2i: ' + yamlScalar(opts.imageIt2iModel),
+      '  video_first_frame: ' + yamlScalar(opts.videoFirstFrameModel),
+      '  video_start_end: ' + yamlScalar(opts.videoStartEndModel),
+      '  video_reference: ' + yamlScalar(opts.videoReferenceModel),
+      '',
+    ]
+    const before = modelsLines.slice(0, insertAt)
+    const after = modelsLines.slice(insertAt)
+    while (before.length && !before[before.length - 1].trim()) before.pop()
+    patched = [...before, ...block, ...after].join('\n')
+  }
+
+  return patched
+}
+
+/**
  * 同步 backend/config.yaml：已存在时补齐 llmproxy.api_key/base_url、顶层 models 默认值
  * 与 llmproxy.models 白名单（管理后台新增/下架模型、用户重新登录后，重启桌面端或启动视频服务即自动生效；
  * 用户其他配置——端口/风格/第三方 Key——不受影响）。返回配置文件绝对路径。
@@ -374,6 +451,10 @@ export function syncVideoClawConfig(
     const existing = readFileSync(cfgPath, 'utf-8')
     const desiredYaml = buildVideoClawConfigYaml(opts)
     let patched = existing
+
+    // 0) 存量配置缺失 llmproxy/models 段时先补齐（旧版生成或 ST-Claw 自身保存的配置可能没有）
+    const inserted = insertMissingVideoClawSections(patched, opts)
+    if (inserted !== patched) patched = inserted
 
     // 1) llmproxy 段：api_key / base_url 必须跟随当前用户（旧配置 Key 为空 → ST-Claw 拉不到后台模型）
     const llmproxyPatch = replaceYamlSectionFields(patched, /^ {0,2}llmproxy:\s*$/, 4, {
