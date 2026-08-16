@@ -123,6 +123,11 @@ async function parseGatewayResponse(resp: Response, fallback: string): Promise<u
     })()
     throw new Error(fallback + '(' + resp.status + '): ' + msg)
   }
+  // 网关成功响应同样包了平台全局信封 {code:0,data:...}，解包到 data（失败分支不走到这里）
+  if (json && typeof json === 'object' && 'data' in json) {
+    const env = json as { code?: number; data?: unknown }
+    if (typeof env.code === 'number') json = env.data
+  }
   return json
 }
 

@@ -130,7 +130,7 @@ export const EMBEDDED_MANIFEST: RuntimeManifest = {
     },
     "video-claw": {
       "type": "local",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "displayName": "AI 视频",
       "port": 8000,
       "entry": {
@@ -139,19 +139,19 @@ export const EMBEDDED_MANIFEST: RuntimeManifest = {
         "linux": "video-claw"
       },
       "downloadUrl": {
-        "win32-x64": "https://zt.shentongapi.cn/runtime/video-claw/0.1.1/video-claw-win-x64.tar.gz",
+        "win32-x64": "https://zt.shentongapi.cn/runtime/video-claw/0.1.2/video-claw-win-x64.tar.gz",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""
       },
       "size": {
-        "win32-x64": 294437929,
+        "win32-x64": 294438048,
         "darwin-x64": 0,
         "darwin-arm64": 0,
         "linux-x64": 0
       },
       "sha256": {
-        "win32-x64": "76519fbf630848883f8b2209200d3f769908d08f9ee34e69be72213c89f67c25",
+        "win32-x64": "012e5034136d3d5119b153108cf132d47ed41e532395f435f29d4bd7cd3d7884",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""

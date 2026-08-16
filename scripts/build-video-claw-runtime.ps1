@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 Set-Location (Resolve-Path (Join-Path $PSScriptRoot '..'))
 
 $repoRoot = (Resolve-Path ".")
-$version = "0.1.1"
+$version = "0.1.2"
 $archiveName = "video-claw-win-x64.tar.gz"
 $stage = Join-Path $repoRoot "dist-deploy\video-claw-runtime"
 $archive = Join-Path $repoRoot ("dist-deploy\" + $archiveName)

@@ -8,6 +8,7 @@ import {
   buildVideoClawConfigYaml,
   ensureVideoClawConfig,
   syncVideoClawConfig,
+  fetchPlatformModels,
   insertMissingVideoClawSections,
   patchYamlWhitelist,
   extractYamlWhitelist,
@@ -274,5 +275,67 @@ describe('insertMissingVideoClawSections / syncVideoClawConfig 补齐缺失段',
   it('insertMissingVideoClawSections 无缺失时保持原文本（幂等）', () => {
     const yaml = buildVideoClawConfigYaml(OPTS)
     expect(insertMissingVideoClawSections(yaml, OPTS)).toBe(yaml)
+  })
+})
+
+describe('fetchPlatformModels', () => {
+  // jest/jsdom 环境缺少 AbortSignal.timeout（Electron 运行时自带），补 polyfill 避免 fetch 直接抛错
+  beforeAll(() => {
+    if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout !== 'function') {
+      ;(AbortSignal as unknown as { timeout?: (ms: number) => AbortSignal }).timeout = (ms: number) => {
+        const ctrl = new AbortController()
+        setTimeout(() => ctrl.abort(), ms)
+        return ctrl.signal
+      }
+    }
+  })
+
+  const base = 'https://zt.shentongapi.cn/api/llm-proxy/v1'
+  const key = 'sk-shentong-test'
+  const rawModels = [
+    { id: 'deep-shentong', object: 'model', type: 'chat' },
+    { id: 'qwen3.8-max', object: 'model', type: 'chat', name: 'qwen3.8-max' },
+    { id: 'happyhorse-1.1-i2v', object: 'model', type: 'video', name: 'happyhorse-1.1-i2v', supports_vision: true },
+  ]
+  const originalFetch = global.fetch
+
+  afterEach(() => {
+    global.fetch = originalFetch
+  })
+
+  function mockFetchOnce(body: unknown, ok = true): jest.Mock {
+    const fn = jest.fn(async () => ({ ok, json: async () => body }))
+    global.fetch = fn as unknown as typeof fetch
+    return fn
+  }
+
+  it('解析 OpenAI 兼容裸响应 {object,data:[...]}', async () => {
+    mockFetchOnce({ object: 'list', data: rawModels })
+    const list = await fetchPlatformModels(base, key)
+    expect(list?.map((m) => m.id)).toEqual(['qwen3.8-max', 'happyhorse-1.1-i2v'])
+    expect(list?.[1].type).toBe('video')
+    expect(list?.[1].supportsVision).toBe(true)
+  })
+
+  it('解析平台全局信封 {code:0,data:{object,data:[...]}}', async () => {
+    mockFetchOnce({ code: 0, data: { object: 'list', data: rawModels }, message: 'success' })
+    const list = await fetchPlatformModels(base, key)
+    expect(list?.map((m) => m.id)).toEqual(['qwen3.8-max', 'happyhorse-1.1-i2v'])
+  })
+
+  it('非 2xx 返回 null', async () => {
+    mockFetchOnce({ error: 'bad key' }, false)
+    expect(await fetchPlatformModels(base, key)).toBeNull()
+  })
+
+  it('空 Key 直接返回 null 且不发请求', async () => {
+    const fn = mockFetchOnce({ object: 'list', data: [] })
+    expect(await fetchPlatformModels(base, '')).toBeNull()
+    expect(fn).not.toHaveBeenCalled()
+  })
+
+  it('响应不是数组时回退空列表且不抛错', async () => {
+    mockFetchOnce({ code: 0, data: null })
+    expect(await fetchPlatformModels(base, key)).toEqual([])
   })
 })

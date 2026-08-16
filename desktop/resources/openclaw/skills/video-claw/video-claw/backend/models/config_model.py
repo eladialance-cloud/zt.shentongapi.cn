@@ -702,7 +702,13 @@ def fetch_platform_models() -> Optional[list[dict[str, Any]]]:
             _PLATFORM_CACHE["models"] = None
             return None
         data = resp.json() or {}
-        models = data.get("data") or data.get("models") or []
+        # 兼容两种响应体：
+        # - OpenAI 兼容裸响应：{object:'list',data:[...]}
+        # - 平台全局信封：{code:0,data:{object:'list',data:[...]}}
+        payload = data.get("data", data)
+        if isinstance(payload, dict):
+            payload = payload.get("data") or payload.get("models") or []
+        models = payload if isinstance(payload, list) else []
         _PLATFORM_CACHE["ts"] = now  # 仅成功才计时；失败/未配置立即重试，避免 Key 刚同步后仍缓存 60 秒空列表
         _PLATFORM_CACHE["models"] = [m for m in models if isinstance(m, dict) and m.get("id")]
         return _PLATFORM_CACHE["models"]

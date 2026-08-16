@@ -172,8 +172,16 @@ export async function fetchPlatformModels(
       signal: AbortSignal.timeout(10000),
     })
     if (!resp.ok) return null
-    const data = (await resp.json()) as { data?: Array<Record<string, unknown>> }
-    const list = data?.data ?? []
+    const body = (await resp.json()) as Record<string, unknown>
+    // 兼容两种响应体：
+    // - OpenAI 兼容裸响应：{ object:'list', data:[...] }
+    // - 平台全局信封：{ code:0, data:{ object:'list', data:[...] } }
+    const payload = (body?.data ?? body) as Record<string, unknown>
+    const list = Array.isArray(payload)
+      ? payload
+      : Array.isArray((payload as { data?: unknown })?.data)
+        ? ((payload as { data?: unknown }).data as Array<Record<string, unknown>>)
+        : []
     return list
       .filter((m) => m && typeof m.id === 'string' && m.id !== 'deep-shentong')
       .map((m) => ({
