@@ -674,9 +674,16 @@ export function createLocalOpenClawCaller(
       ...(params.history ?? []).map((h) => ({ role: h.role, content: h.content })),
       { role: 'user' as const, content: params.text },
     ]
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    // 把用户当前选择的模型透传给 OpenClaw（x-openclaw-model 覆盖），
+    // 否则 OpenClaw 始终用内置默认模型 openai/gpt-5.5 请求 llm-proxy，用户选择不生效
+    const selectedModel = params.modelId?.trim()
+    if (selectedModel && !selectedModel.startsWith('custom/')) {
+      headers['x-openclaw-model'] = selectedModel
+    }
     const resp = await fetch(baseUrl + '/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         model: OPENCLAW_MODEL,
         messages,

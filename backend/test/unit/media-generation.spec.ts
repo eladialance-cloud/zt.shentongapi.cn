@@ -1178,3 +1178,55 @@ describe('mergeGenerationAdapter', () => {
     assert.equal(a.timeoutMs, 90000);
   });
 });
+describe('MediaGenerationService.listGenerationModels 桌面端模型列表', () => {
+  function buildListService() {
+    const userService = { findById: async () => ({ id: 1, level: 0 }) };
+    const pricing = new PricingService({} as any, {} as any, {} as any, {} as any, userService as any);
+    const jobRepo: any = { find: async () => [], save: async (e: any) => e };
+    const modelRepo: any = { find: async () => [], findOne: async () => null };
+    const providerRepo: any = { findOne: async () => null };
+    const svc = new MediaGenerationService(
+      jobRepo, modelRepo, providerRepo, {} as any, {} as any,
+      { decryptAes: (s: string) => s } as any, {} as any, pricing, {} as any,
+    );
+    return { svc, modelRepo, providerRepo };
+  }
+  it('模型绑定有效供应商 → 出现在列表', async () => {
+    const { svc, modelRepo, providerRepo } = buildListService();
+    modelRepo.find = async () => [
+      { modelId: 'vid-1', name: '视频模型', modelType: 'video', isActive: true, providerId: 7, generationParams: {}, pricePerImage: null, videoPrices: {} },
+      { modelId: 'img-edit-1', name: '图生图', modelType: 'image_edit', isActive: true, providerId: 7, generationParams: {}, pricePerImage: 12, videoPrices: {} },
+    ];
+    providerRepo.findOne = async () => ({ id: 7, status: 'active', baseUrl: 'https://x/v1', apiKey: 'enc', slug: 'dashscope' });
+    const list = await (svc as any).listGenerationModels();
+    assert.equal(list.length, 2);
+    assert.equal(list[0].id, 'vid-1');
+    assert.equal(list[0].type, 'video');
+    assert.equal(list[1].type, 'image'); // image_edit 归一为 image
+    assert.equal(list[1].provider, 'dashscope');
+  });
+  it('模型未绑定供应商但存在全局中转 → relay 兜底出现在列表（与生成时一致）', async () => {
+    const { svc, modelRepo, providerRepo } = buildListService();
+    modelRepo.find = async () => [
+      { modelId: 'img-1', name: '图片模型', modelType: 'image', isActive: true, providerId: null, generationParams: {}, pricePerImage: 10, videoPrices: {} },
+    ];
+    let calls = 0;
+    providerRepo.findOne = async () => {
+      calls += 1;
+      return { id: 9, status: 'active', baseUrl: 'https://relay/v1', apiKey: 'enc', slug: 'relay' };
+    };
+    const list = await (svc as any).listGenerationModels();
+    assert.equal(list.length, 1);
+    assert.equal(list[0].id, 'img-1');
+    assert.equal(list[0].provider, 'relay');
+    assert.ok(calls >= 1, 'resolveRelay 应解析到可用供应商');
+  });
+  it('无任何可用供应商 → 列表为空', async () => {
+    const { svc, modelRepo } = buildListService();
+    modelRepo.find = async () => [
+      { modelId: 'vid-2', name: 'V', modelType: 'video', isActive: true, providerId: null, generationParams: {} },
+    ];
+    const list = await (svc as any).listGenerationModels();
+    assert.deepEqual(list, []);
+  });
+});

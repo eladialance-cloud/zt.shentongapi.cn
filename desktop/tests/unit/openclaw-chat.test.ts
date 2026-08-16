@@ -208,7 +208,25 @@ describe('createLocalOpenClawCaller mock 集成', () => {
       /未配置模型/,
     );
   });
+
+  it('平台模型 → 携带 x-openclaw-model 请求头（用户选择生效，不再固定 openai/gpt-5.5）', async () => {
+    const base = await startMock(MOCK_HEADER);
+    const caller = createLocalOpenClawCaller('http://127.0.0.1:' + base);
+    const chunks: string[] = [];
+    for await (const c of caller(
+      { text: 'hi', token: 'x', modelId: 'deepseek-chat' },
+      () => {},
+      new AbortController().signal,
+    )) {
+      chunks.push(c);
+    }
+    assert.deepEqual(chunks, ['你好']);
+  });
+
 });
+
+
+const MOCK_HEADER = "const http = require('node:http');\nconst s = http.createServer((req, res) => {\n  if (req.url !== '/v1/chat/completions') {\n    res.writeHead(404); res.end(); return;\n  }\n  if (req.headers['x-openclaw-model'] !== 'deepseek-chat') {\n    res.writeHead(400, { 'Content-Type': 'application/json' });\n    res.end(JSON.stringify({ error: 'missing header' })); return;\n  }\n  let body = '';\n  req.on('data', (d) => (body += d));\n  req.on('end', () => {\n    const payload = JSON.parse(body || '{}');\n    if (payload.model !== 'openclaw/default') {\n      res.writeHead(400, { 'Content-Type': 'application/json' });\n      res.end(JSON.stringify({ error: 'bad model' })); return;\n    }\n    res.writeHead(200, { 'Content-Type': 'text/event-stream' });\n    res.write('data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"你好\"}}]}\\n\\n');\n    res.write('data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}\\n\\n');\n    res.write('data: [DONE]\\n\\n');\n    res.end();\n  });\n});\ns.listen(0, '127.0.0.1', () => console.log('PORT=' + s.address().port));";
 
 const MOCK_200 = "const http = require('node:http');\nconst s = http.createServer((req, res) => {\n  if (req.url !== '/v1/chat/completions') {\n    res.writeHead(404); res.end(); return;\n  }\n  let body = '';\n  req.on('data', (d) => (body += d));\n  req.on('end', () => {\n    const payload = JSON.parse(body || '{}');\n    if (payload.model !== 'openclaw/default') {\n      res.writeHead(400, { 'Content-Type': 'application/json' });\n      res.end(JSON.stringify({ error: 'bad model' })); return;\n    }\n    res.writeHead(200, { 'Content-Type': 'text/event-stream' });\n    res.write('data: {\\\"choices\\\":[{\\\"index\\\":0,\\\"delta\\\":{\\\"role\\\":\\\"assistant\\\",\\\"content\\\":\\\"你\\\"}}]}\\n\\n');\n    res.write('data: {\\\"choices\\\":[{\\\"index\\\":0,\\\"delta\\\":{\\\"content\\\":\\\"好\\\"}}]}\\n\\n');\n    res.write('data: {\\\"choices\\\":[{\\\"index\\\":0,\\\"delta\\\":{\\\"tool_calls\\\":[{\\\"index\\\":0,\\\"id\\\":\\\"call_1\\\",\\\"function\\\":{\\\"name\\\":\\\"n8n-run-workflow\\\",\\\"arguments\\\":\\\"{}\\\"}}]}}]}\\n\\n');\n    res.write('data: {\\\"choices\\\":[{\\\"index\\\":0,\\\"delta\\\":{},\\\"finish_reason\\\":\\\"stop\\\"}],\\\"usage\\\":{\\\"prompt_tokens\\\":10,\\\"completion_tokens\\\":5,\\\"total_tokens\\\":15}}\\n\\n');\n    res.write('data: [DONE]\\n\\n');\n    res.end();\n  });\n});\ns.listen(0, '127.0.0.1', () => console.log('PORT=' + s.address().port));";
 const MOCK_401 = "const http = require('node:http');\nconst s = http.createServer((req, res) => {\n  if (req.url !== '/v1/chat/completions') {\n    res.writeHead(404); res.end(); return;\n  }\n  let body = '';\n  req.on('data', (d) => (body += d));\n  req.on('end', () => {\n    const payload = JSON.parse(body || '{}');\n    if (payload.model !== 'openclaw/default') {\n      res.writeHead(400, { 'Content-Type': 'application/json' });\n      res.end(JSON.stringify({ error: 'bad model' })); return;\n    }\n    res.writeHead(401, { 'Content-Type': 'application/json' });\n    res.end(JSON.stringify({ error: 'missing api key' })); return;\n  });\n});\ns.listen(0, '127.0.0.1', () => console.log('PORT=' + s.address().port));";

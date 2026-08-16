@@ -534,7 +534,17 @@ export class LlmProxyService {
       if (extracted && extracted !== 'deep-shentong') return extracted;
     }
 
-    // 请求模型是后台已上线的模型 → 直接使用
+    // OpenClaw 内部模型别名（openclaw/default、openai/gpt-5.5 等）不视为用户显式选择：
+    // 优先使用用户默认对话模型，避免后台启用了同名模型时把用户选择顶掉（桌面端一直回 gpt-5.5 的根因）
+    if (this.isOpenClawInternalModel(modelFromRequest)) {
+      const aliasUser = await this.userRepository.findOne({
+        where: { id: userId },
+        select: ['id', 'defaultChatModel'],
+      });
+      if (aliasUser?.defaultChatModel) return aliasUser.defaultChatModel;
+    }
+
+    // 请求模型是后台已上线的模型 → 原样使用（第三方 OpenAI 兼容客户端显式指定）
     if (modelFromRequest) {
       const enabled = await this.modelRepository.findOne({
         where: { modelId: modelFromRequest, isActive: true },
@@ -543,13 +553,25 @@ export class LlmProxyService {
       if (enabled) return modelFromRequest;
     }
 
-    // 否则（OpenClaw 内部模型名 openclaw/default 等或未知模型）→ 用户默认对话模型 → 兜底
+    // 否则（未知模型）→ 用户默认对话模型 → 兜底 DEFAULT_LLM_MODEL / deepseek-chat
     const user = await this.userRepository.findOne({
       where: { id: userId },
       select: ['id', 'defaultChatModel'],
     });
     if (user?.defaultChatModel) return user.defaultChatModel;
     return process.env.DEFAULT_LLM_MODEL || 'deepseek-chat';
+  }
+
+  /** OpenClaw 本地网关内部模型别名（openclaw/default 及内置默认模型 openai/gpt-5.5），不视为用户显式选择 */
+  private isOpenClawInternalModel(model: string): boolean {
+    const m = (model || '').trim().toLowerCase();
+    return (
+      m === 'openclaw' ||
+      m.startsWith('openclaw/') ||
+      m === 'deep-shentong' ||
+      m === 'gpt-5.5' ||
+      m === 'openai/gpt-5.5'
+    );
   }
 
   // ============ 多模态网关（文本/图片/视频/语音统一静态 Key 鉴权 + 分类路由） ============

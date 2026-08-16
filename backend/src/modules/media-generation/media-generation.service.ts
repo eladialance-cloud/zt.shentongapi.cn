@@ -79,12 +79,16 @@ export class MediaGenerationService implements OnModuleInit {
   /** 用户端可选生成模型（仅已上架 + 已配好凭据的 image/video 模型） */
   async listGenerationModels(): Promise<GenerationModelItem[]> {
     const models = await this.modelRepo.find({ where: { isActive: true }, order: { createdAt: 'DESC' } });
+    // 与 resolveModel 保持一致：模型未绑定供应商时回退到全局中转/首个可用供应商，
+    // 否则后台添加的图片/视频模型即使生成时能兜底，桌面端列表也看不到
+    const relay = await resolveRelay(this.providerRepo);
     const out: GenerationModelItem[] = [];
     for (const m of models) {
       if (m.modelType !== 'image' && m.modelType !== 'image_edit' && m.modelType !== 'video') continue;
-      const provider = m.providerId
+      const bound = m.providerId
         ? await this.providerRepo.findOne({ where: { id: m.providerId, status: 'active' } })
         : null;
+      const provider = bound ?? (relay && relay.status === 'active' ? relay : null);
       if (!provider?.apiKey || !provider?.baseUrl) continue;
       out.push({
         id: m.modelId,

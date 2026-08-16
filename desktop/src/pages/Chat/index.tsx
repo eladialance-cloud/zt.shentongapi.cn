@@ -206,6 +206,19 @@ export default function Chat() {
     void loadModels()
   }, [loadModels])
 
+  /** 首选模型同步：当前选择的模型始终作为云端默认对话模型（llm-proxy 解析 OpenClaw 内部模型名时使用）
+   * 覆盖首次自动选中、切换会话恢复等未触发 handleModelChange 的场景 */
+  useEffect(() => {
+    if (!modelId || modelId.startsWith('custom/')) return
+    let cancelled = false
+    chatApi.setPreferredChatModel(modelId).catch((err) => {
+      if (!cancelled) console.error('[Chat] sync preferred model failed:', err)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [modelId])
+
   // 窗口重新聚焦时刷新一次模型列表（管理后台新增/上下架模型后无需重启桌面端）
   useEffect(() => {
     const onFocus = () => {

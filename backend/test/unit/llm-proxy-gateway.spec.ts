@@ -446,3 +446,35 @@ describe('LlmProxyService.getByPathValue 路径取值', () => {
     assert.equal((svc as any).getByPathValue({ files: [] }, 'files[0].id'), undefined);
   });
 });
+describe('LlmProxyService.resolveModelId 用户选择优先于 OpenClaw 内部默认', () => {
+  function buildUserRepo(defaultChatModel: string | null) {
+    return { findOne: async () => ({ id: 1, defaultChatModel }) };
+  }
+  function buildSvc(userRepo: any) {
+    return new LlmProxyService(
+      userRepo,
+      { find: async () => [], findOne: async () => null } as any,
+      {} as any, {} as any, {} as any, {} as any,
+      { getUserLevel: async () => 0, applyDiscount: (p: number) => p } as any,
+      {} as any, {} as any, {} as any,
+    );
+  }
+  it('OpenClaw 内部别名 openai/gpt-5.5（后台存在同名启用模型）→ 优先用户默认对话模型', async () => {
+    const svc = buildSvc(buildUserRepo('deepseek-chat'));
+    (svc as any).modelRepository.findOne = async () => ({ modelId: 'openai/gpt-5.5', isActive: true });
+    assert.equal(await (svc as any).resolveModelId('openai/gpt-5.5', 1), 'deepseek-chat');
+  });
+  it('OpenClaw 内部别名 openclaw/default → 用户默认对话模型', async () => {
+    const svc = buildSvc(buildUserRepo('qwen-max'));
+    assert.equal(await (svc as any).resolveModelId('openclaw/default', 1), 'qwen-max');
+  });
+  it('后台已上线模型（非内部别名）→ 原样使用（第三方客户端显式指定）', async () => {
+    const svc = buildSvc(buildUserRepo('deepseek-chat'));
+    (svc as any).modelRepository.findOne = async () => ({ modelId: 'qwen-max', isActive: true });
+    assert.equal(await (svc as any).resolveModelId('qwen-max', 1), 'qwen-max');
+  });
+  it('未知模型且无默认 → 兜底 DEFAULT_LLM_MODEL / deepseek-chat', async () => {
+    const svc = buildSvc(buildUserRepo(null));
+    assert.equal(await (svc as any).resolveModelId('unknown-model', 1), process.env.DEFAULT_LLM_MODEL || 'deepseek-chat');
+  });
+});
