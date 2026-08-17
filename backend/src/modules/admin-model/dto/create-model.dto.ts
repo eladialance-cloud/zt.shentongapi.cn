@@ -112,6 +112,11 @@ export class CreateModelDto {
   pricePerCall?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  pricePerImage?: number;
+
+  @IsOptional()
   @IsObject()
   generationParams?: Record<string, unknown>;
   @IsOptional()
