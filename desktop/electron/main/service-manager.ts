@@ -31,6 +31,7 @@ import {
   fetchPlatformModels,
   pickPlatformModels,
 } from './video-claw-config'
+import { syncHermesConfig } from './hermes-config'
 import treeKill from 'tree-kill'
 import { getRuntimeRoot } from './runtime-config'
 
@@ -227,6 +228,27 @@ async function ensureVideoClawConfigSafe(): Promise<void> {
     console.log('[service-manager] video-claw config.yaml 已就绪: ' + backendDir)
   } catch (err) {
     console.warn('[service-manager] video-claw config 生成失败（忽略）: ' + (err instanceof Error ? err.message : String(err)))
+  }
+}
+
+/**
+ * Hermes 启动/登录前同步 $HERMES_HOME/config.yaml：
+ * model.provider=custom:shentong + custom_providers 指向平台 llm-proxy 网关（用户零配置，
+ * 解决 Hermes 空壳 No inference provider configured）；未登录（无 Key）时跳过，不抛错。
+ */
+async function ensureHermesConfigSafe(): Promise<void> {
+  if (!openclawProxyKey) return
+  try {
+    const platformModels = await fetchPlatformModels(OPENCLAW_LLM_PROXY_BASE, openclawProxyKey)
+    const opts = pickPlatformModels(platformModels, DEFAULT_VIDEO_CLAW_MODELS)
+    syncHermesConfig(getHermesHome(), {
+      llmProxyBaseUrl: OPENCLAW_LLM_PROXY_BASE,
+      apiKey: openclawProxyKey,
+      llmModel: opts.llmModel,
+    })
+    console.log('[service-manager] hermes config.yaml 已就绪: ' + getHermesHome())
+  } catch (err) {
+    console.warn('[service-manager] hermes config 生成失败（忽略）: ' + (err instanceof Error ? err.message : String(err)))
   }
 }
 
@@ -588,6 +610,7 @@ export class ServiceManager extends EventEmitter {
     openclawProxyKey = key || ''
     ensureOpenClawConfig()
     ensureVideoClawConfigSafe()
+    void ensureHermesConfigSafe()
     const info = this.services.get('openclaw')
     if (info && info.status === 'running') {
       console.log('[service-manager] llm-proxy Key 已更新，重启 OpenClaw 使其生效...')
@@ -990,6 +1013,10 @@ export class ServiceManager extends EventEmitter {
       if (name === 'video-claw') {
         // 等待 config.yaml 写完再启动 ST-Claw（避免 fetchPlatformModels 异步竞态导致进程读到旧/缺失配置）
         await ensureVideoClawConfigSafe()
+      }
+      if (name === 'hermes') {
+        // 等待 config.yaml 写完再启动 Hermes（登录后同步 llm-proxy 网关配置，解决 No inference provider configured）
+        await ensureHermesConfigSafe()
       }
 
       spawnArgs =
