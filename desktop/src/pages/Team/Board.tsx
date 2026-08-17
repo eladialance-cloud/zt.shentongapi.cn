@@ -1,13 +1,10 @@
-﻿// 团队看板视图 — 替换 OPC 看板
+// 团队看板视图 — Kimi 风格（v2.0）
 // 4 列: 待办 / 进行中 / 已完成 / 失败
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button, Spin, Tag, Tooltip, message } from "antd";
-import {
-  ArrowLeftOutlined, PartitionOutlined,
-  ClockCircleOutlined, UserOutlined,
-} from "@ant-design/icons";
+import { ArrowLeft, Clock, LayoutGrid, UserRound } from "lucide-react";
 import * as teamApi from "@/api/team-api";
 import type { Team, TeamTask, TeamTaskStatus, TeamTaskPriority } from "@/types/team";
 import styles from "./styles.module.css";
@@ -128,11 +125,13 @@ export default function TeamBoard() {
     <div className={styles.pageContainer}>
       <div className={styles.pageHeader}>
         <div className={styles.pageTitle}>
-          <PartitionOutlined />
+          <span className={styles.pageTitleIcon}>
+            <LayoutGrid size={18} />
+          </span>
           <span>{team ? `${team.name} - 看板` : "团队看板"}</span>
         </div>
         <div className={styles.headerActions}>
-          <Button className={styles.backBtn} icon={<ArrowLeftOutlined />}
+          <Button className={styles.ghostBtn} icon={<ArrowLeft size={14} />}
             onClick={() => navigate(`/team/${teamId}`)}>
             返回详情
           </Button>
@@ -150,7 +149,7 @@ export default function TeamBoard() {
                   <span className={styles.columnCount}>{columnTasks.length}</span>
                 </div>
                 {columnTasks.length === 0 && (
-                  <div style={{ color: "#6e7681", fontSize: 12, textAlign: "center", padding: "20px 0" }}>
+                  <div style={{ color: "var(--color-text-tertiary)", fontSize: 12, textAlign: "center", padding: "20px 0" }}>
                     暂无任务
                   </div>
                 )}
@@ -161,12 +160,12 @@ export default function TeamBoard() {
                       <div className={styles.taskTitle}>{task.title}</div>
                       <div className={styles.taskMeta}>
                         <span className={styles.taskAssignee}>
-                          <UserOutlined />
+                          <UserRound size={12} />
                           {task.assigneeName || "未分配"}
                         </span>
                         {task.dueDate && (
                           <span className={due.className}>
-                            <ClockCircleOutlined style={{ marginRight: 2 }} />
+                            <Clock size={11} style={{ marginRight: 2, verticalAlign: -1 }} />
                             {due.text}
                           </span>
                         )}

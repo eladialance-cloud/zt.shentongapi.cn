@@ -254,7 +254,6 @@ export function SessionList({
     <div className={styles.sessionList}>
       <div className={styles.sessionListHeader}>
         <Button
-          type="primary"
           icon={<PlusOutlined />}
           loading={creating}
           onClick={handleNewSession}

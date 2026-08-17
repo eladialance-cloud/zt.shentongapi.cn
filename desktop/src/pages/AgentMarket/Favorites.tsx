@@ -67,7 +67,7 @@ export default function Favorites({ embedded = false }: { embedded?: boolean }) 
           {/* 顶部标题 */}
           <div className={styles.header}>
             <div className={styles.titleArea}>
-              <HeartFilled className={styles.titleIcon} style={{ color: '#f87171' }} />
+              <HeartFilled className={styles.titleIcon} style={{ color: 'var(--color-error)' }} />
               <div>
                 <h1 className={styles.title}>我的收藏</h1>
                 <div className={styles.subtitle}>共 {favorites.length} 个收藏 Agent</div>
@@ -99,7 +99,7 @@ export default function Favorites({ embedded = false }: { embedded?: boolean }) 
                   <div className={styles.agentHeader}>
                     <div className={styles.agentAvatar}>
                       {agent.avatar ? (
-                        <img
+                        <img loading="lazy"
                           src={agent.avatar}
                           alt={agent.displayName || agent.name}
                           className={styles.agentAvatarImg}
@@ -133,7 +133,7 @@ export default function Favorites({ embedded = false }: { embedded?: boolean }) 
                               }
                               style={{ fontSize: 12 }}
                             />
-                            <span style={{ color: '#facc15' }}>
+                            <span style={{ color: 'var(--color-warning)' }}>
                               {agent.rating.toFixed(1)}
                             </span>
                           </span>
@@ -153,7 +153,7 @@ export default function Favorites({ embedded = false }: { embedded?: boolean }) 
                         : `${agent.pricePerCall} 积分/次`}
                     </span>
                     <span className={styles.callCount}>
-                      <FireOutlined style={{ marginRight: 4, color: '#fb923c' }} />
+                      <FireOutlined style={{ marginRight: 4, color: 'var(--color-accent)' }} />
                       {agent.callCount.toLocaleString()} 次
                     </span>
                   </div>

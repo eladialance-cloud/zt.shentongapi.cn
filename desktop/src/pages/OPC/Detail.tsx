@@ -345,7 +345,7 @@ export default function OPCTeamDetail() {
                 <div key={m.id} className={styles.memberCard}>
                   <div className={styles.memberAvatar}>
                     {m.agentAvatar ? (
-                      <img
+                      <img loading="lazy"
                         src={m.agentAvatar}
                         alt={m.agentName}
                         className={styles.memberAvatarImg}

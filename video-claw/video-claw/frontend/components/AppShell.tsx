@@ -24,11 +24,11 @@ const PIPELINE_ROUTES: Record<string, { href: string; label: string }> = {
 };
 
 const TASK_STATUS_STYLE: Record<string, string> = {
-  pending: 'bg-gray-100 text-gray-500',
-  running: 'bg-blue-50 text-blue-600',
-  waiting: 'bg-amber-50 text-amber-600',
-  completed: 'bg-green-50 text-green-600',
-  failed: 'bg-red-50 text-red-600',
+  pending: 'bg-[var(--vc-surface-2)] text-[var(--vc-text-2)]',
+  running: 'bg-[var(--vc-brand-weak)] text-[var(--vc-brand)]',
+  waiting: 'bg-[var(--vc-amber-weak)] text-[var(--vc-amber)]',
+  completed: 'bg-[var(--vc-green-weak)] text-[var(--vc-green)]',
+  failed: 'bg-[var(--vc-red-weak)] text-[var(--vc-red)]',
 };
 
 function statusText(status?: string) {
@@ -182,11 +182,11 @@ function TaskPanel({
   onTaskClick: (task: RunningTaskItem) => void;
 }) {
   return (
-    <section className="h-[20vh] min-h-32 border-t border-gray-100 p-3">
+    <section className="h-[20vh] min-h-32 border-t border-[var(--vc-border)] p-3">
       <div className="mb-2 flex items-center gap-2 px-1">
         {icon}
-        <span className="text-xs font-medium text-gray-500">{title}</span>
-        {loading && <Loader2 className="ml-auto h-3 w-3 animate-spin text-gray-300" />}
+        <span className="text-xs font-medium text-[var(--vc-text-2)]">{title}</span>
+        {loading && <Loader2 className="ml-auto h-3 w-3 animate-spin text-[var(--vc-text-3)]" />}
       </div>
       <div className="h-[calc(100%-26px)] overflow-y-auto pr-1">
         {tasks.length ? (
@@ -200,11 +200,11 @@ function TaskPanel({
                   onClick={() => onTaskClick(task)}
                   className={clsx(
                     'w-full rounded-lg border px-2.5 py-2 text-left transition-colors',
-                    active ? 'border-blue-100 bg-blue-50/60' : 'border-gray-100 bg-white hover:border-blue-200 hover:bg-blue-50/40'
+                    active ? 'border-[var(--vc-brand)] bg-[var(--vc-brand-weak)]' : 'border-[var(--vc-border)] bg-[var(--vc-surface)] hover:border-[var(--vc-brand)] hover:bg-[var(--vc-brand-weak)]'
                   )}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate text-xs font-medium text-gray-700">
+                    <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--vc-text)]">
                       {task.title.slice(0, 36)}
                     </span>
                     <span className={clsx('flex-shrink-0 rounded px-1.5 py-0.5 text-[10px]', TASK_STATUS_STYLE[task.status] || TASK_STATUS_STYLE.pending)}>
@@ -212,9 +212,9 @@ function TaskPanel({
                     </span>
                   </div>
                   <div className="mt-1 flex items-center gap-2">
-                    <span className="truncate text-[10px] text-gray-400">{task.scope}</span>
-                    <div className="h-1 min-w-10 flex-1 overflow-hidden rounded-full bg-gray-100">
-                      <div className="h-full rounded-full bg-blue-500" style={{ width: `${task.progress || 0}%` }} />
+                    <span className="truncate text-[10px] text-[var(--vc-text-3)]">{task.scope}</span>
+                    <div className="h-1 min-w-10 flex-1 overflow-hidden rounded-full bg-[var(--vc-surface-2)]">
+                      <div className="h-full rounded-full bg-[var(--vc-brand)]" style={{ width: `${task.progress || 0}%` }} />
                     </div>
                   </div>
                 </button>
@@ -222,7 +222,7 @@ function TaskPanel({
             })}
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-gray-100 px-2 text-center text-xs text-gray-300">
+          <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-[var(--vc-border)] px-2 text-center text-xs text-[var(--vc-text-3)]">
             {emptyText}
           </div>
         )}
@@ -283,7 +283,7 @@ function SidebarTaskPanels({ currentPath }: { currentPath: string }) {
     <>
       <TaskPanel
         title="进行中任务"
-        icon={<Clock className="h-3.5 w-3.5 text-gray-400" />}
+        icon={<Clock className="h-3.5 w-3.5 text-[var(--vc-text-3)]" />}
         loading={loading}
         tasks={runningTasks}
         currentPath={currentPath}
@@ -292,7 +292,7 @@ function SidebarTaskPanels({ currentPath }: { currentPath: string }) {
       />
       <TaskPanel
         title="已完成/等待确认"
-        icon={<CheckCircle2 className="h-3.5 w-3.5 text-gray-400" />}
+        icon={<CheckCircle2 className="h-3.5 w-3.5 text-[var(--vc-text-3)]" />}
         tasks={completedTasks}
         currentPath={currentPath}
         emptyText="暂无已完成或待确认任务"
@@ -333,23 +333,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div
-      className="min-h-screen bg-gray-50 text-gray-800"
+      className="min-h-screen bg-[var(--vc-bg)] text-[var(--vc-text)]"
       style={{ '--app-sidebar-width': open ? '15rem' : '0px' } as CSSProperties}
     >
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 z-40 border-r border-gray-200 bg-white shadow-sm transition-all duration-300',
+          'fixed inset-y-0 left-0 z-40 border-r border-[var(--vc-border)] bg-[var(--vc-surface)] transition-all duration-300',
           open ? 'w-60' : 'w-0 border-r-0'
         )}
       >
         <div className={clsx('flex h-full flex-col overflow-hidden transition-opacity duration-200', open ? 'opacity-100' : 'opacity-0')}>
-          <div className="flex h-16 items-center px-4 border-b border-gray-100">
+          <div className="flex h-[52px] items-center px-4 border-b border-[var(--vc-border)]">
             <div className="flex items-center gap-2 min-w-0">
-              <PanelLeftOpen className="w-4 h-4 text-blue-500 flex-shrink-0" />
-              <span className="text-sm font-semibold text-gray-800 truncate">ST-Claw</span>
+              <PanelLeftOpen className="w-4 h-4 text-[var(--vc-brand)] flex-shrink-0" />
+              <span className="text-sm font-semibold text-[var(--vc-text)] truncate">ST-Claw</span>
             </div>
           </div>
-          <nav className="min-h-0 flex-1 overflow-y-auto p-3 space-y-1">
+          <nav className="min-h-0 flex-1 overflow-y-auto p-2.5 space-y-0.5">
             {NAV_ITEMS.map(item => {
               const Icon = item.icon;
               const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
@@ -358,10 +358,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   key={item.href}
                   href={item.href}
                   className={clsx(
-                    'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
+                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                     active
-                      ? 'bg-blue-50 text-blue-600'
-                      : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
+                      ? 'bg-[var(--vc-brand-weak)] text-[var(--vc-brand)] shadow-[inset_3px_0_0_var(--vc-brand)]'
+                      : 'text-[var(--vc-text-2)] hover:bg-[var(--vc-surface-2)] hover:text-[var(--vc-text)]'
                   )}
                 >
                   <Icon className="w-4 h-4 flex-shrink-0" />
@@ -371,21 +371,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             })}
           </nav>
           <SidebarTaskPanels currentPath={pathname} />
-          <div className="relative border-t border-gray-100 p-3">
+          <div className="relative border-t border-[var(--vc-border)] p-2.5">
             {(() => {
               const Icon = SETTINGS_ITEM.icon;
               const active = pathname.startsWith(SETTINGS_ITEM.href);
               return (
                 <>
                   {settingsMenuOpen && (
-                    <div className="absolute bottom-[62px] left-3 right-3 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+                    <div className="absolute bottom-[62px] left-3 right-3 rounded-xl border border-[var(--vc-border)] bg-[var(--vc-surface)] p-2 shadow-[var(--vc-shadow)]">
                       <button
                         type="button"
                         onClick={() => {
                           setSettingsMenuOpen(false);
                           router.push(SETTINGS_ITEM.href);
                         }}
-                        className="flex h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-gray-600 hover:bg-blue-50 hover:text-blue-600"
+                        className="flex h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-[var(--vc-text-2)] hover:bg-[var(--vc-brand-weak)] hover:text-[var(--vc-brand)]"
                       >
                         <Settings className="h-4 w-4" />
                         修改配置
@@ -394,7 +394,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                         type="button"
                         onClick={() => handleClearCache()}
                         disabled={clearingCache}
-                        className="mt-1 flex h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="mt-1 flex h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-[var(--vc-text-2)] hover:bg-[var(--vc-red-weak)] hover:text-[var(--vc-red)] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {clearingCache ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                         清空缓存
@@ -405,10 +405,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     type="button"
                     onClick={() => setSettingsMenuOpen(value => !value)}
                   className={clsx(
-                    'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
+                    'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                     active || settingsMenuOpen
-                      ? 'bg-blue-50 text-blue-600'
-                      : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
+                      ? 'bg-[var(--vc-brand-weak)] text-[var(--vc-brand)] shadow-[inset_3px_0_0_var(--vc-brand)]'
+                      : 'text-[var(--vc-text-2)] hover:bg-[var(--vc-surface-2)] hover:text-[var(--vc-text)]'
                   )}
                 >
                   <Icon className="w-4 h-4 flex-shrink-0" />
@@ -424,7 +424,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {open && (
         <button
           onClick={() => setSidebarOpen(false)}
-          className="fixed left-60 top-1/2 z-50 h-14 w-7 -translate-y-1/2 rounded-r-xl border border-l-0 border-gray-200 bg-white text-gray-400 shadow-sm hover:w-9 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 flex items-center justify-center transition-all"
+          className="fixed left-60 top-1/2 z-50 h-12 w-6 -translate-y-1/2 rounded-r-lg border border-l-0 border-[var(--vc-border)] bg-[var(--vc-surface)] text-[var(--vc-text-3)] hover:w-8 hover:text-[var(--vc-brand)] hover:border-[var(--vc-brand)] hover:bg-[var(--vc-brand-weak)] flex items-center justify-center transition-all"
           title="收起侧边栏"
         >
           <ChevronLeft className="w-4 h-4" />
@@ -434,7 +434,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {!open && (
         <button
           onClick={() => setSidebarOpen(true)}
-          className="fixed left-0 top-1/2 z-50 h-14 w-7 -translate-y-1/2 rounded-r-xl border border-l-0 border-gray-200 bg-white text-gray-400 shadow-sm hover:w-9 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 flex items-center justify-center transition-all"
+          className="fixed left-0 top-1/2 z-50 h-12 w-6 -translate-y-1/2 rounded-r-lg border border-l-0 border-[var(--vc-border)] bg-[var(--vc-surface)] text-[var(--vc-text-3)] hover:w-8 hover:text-[var(--vc-brand)] hover:border-[var(--vc-brand)] hover:bg-[var(--vc-brand-weak)] flex items-center justify-center transition-all"
           title="打开侧边栏"
         >
           <ChevronRight className="w-4 h-4" />

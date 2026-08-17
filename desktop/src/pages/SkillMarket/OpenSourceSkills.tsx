@@ -22,7 +22,7 @@ import {
 import * as marketApi from "@/api/market-api";
 import type { UserSkillSource } from "@/types/skill-source";
 import type { InstalledRecord } from "@/types/market";
-import styles from "@/pages/Hermes/styles.module.css";
+import styles from "./styles.module.css";
 
 const PAGE_SIZE = 24;
 
@@ -135,7 +135,7 @@ export default function OpenSourceSkills({ embedded = false }: { embedded?: bool
               value: c.category,
             }))}
           />
-          <span style={{ color: "#6e7681", fontSize: 12 }}>共 {total} 条开源技能，点击「下载安装」将直接从 GitHub 下载到本地</span>
+          <span style={{ color: "var(--color-text-tertiary)", fontSize: 12 }}>共 {total} 条开源技能，点击「下载安装」将直接从 GitHub 下载到本地</span>
         </div>
 
         {sources.length === 0 && !loading ? (

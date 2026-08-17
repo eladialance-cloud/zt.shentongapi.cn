@@ -192,7 +192,7 @@ function renderUpdateStatus(
           <Progress
             percent={status.progress}
             status="active"
-            strokeColor={{ from: '#1677FF', to: '#4096FF' }}
+            strokeColor="var(--color-brand)"
           />
           <div style={{ color: 'var(--color-text-tertiary)', fontSize: 13 }}>
             正在下载更新... {status.progress}%

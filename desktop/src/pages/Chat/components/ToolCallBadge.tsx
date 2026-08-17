@@ -123,7 +123,7 @@ export function ToolCallBadge({
         )}
         {toolCall.creditsCost > 0 && (
           <Tooltip title="积分消耗">
-            <span style={{ color: "#34d399" }}>
+            <span style={{ color: "var(--color-success)" }}>
               · <GoldOutlined style={{ fontSize: 11 }} /> {toolCall.creditsCost}
             </span>
           </Tooltip>

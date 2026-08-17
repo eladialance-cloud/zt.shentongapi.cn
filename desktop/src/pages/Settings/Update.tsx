@@ -176,16 +176,16 @@ function renderStatus(
           </Descriptions>
           {status.releaseNotes && (
             <div>
-              <div style={{ fontWeight: 600, marginBottom: 8, color: '#cbd5e1' }}>
+              <div style={{ fontWeight: 600, marginBottom: 8, color: 'var(--color-text-secondary)' }}>
                 更新日志：
               </div>
               <pre
                 style={{
-                  background: 'rgba(248, 250, 252, 0.6)',
-                  border: '1px solid rgba(99, 102, 241, 0.15)',
-                  borderRadius: 8,
+                  background: 'var(--color-bg-layout)',
+                  border: '1px solid var(--color-border-secondary)',
+                  borderRadius: 'var(--radius-md)',
                   padding: 12,
-                  color: '#e6edf3',
+                  color: 'var(--color-text-secondary)',
                   fontSize: 13,
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
@@ -215,7 +215,7 @@ function renderStatus(
           <Progress
             percent={status.progress}
             status="active"
-            strokeColor={{ from: '#6366f1', to: '#8b5cf6' }}
+            strokeColor="var(--color-brand)"
           />
           <div style={{ color: 'var(--color-text-tertiary)', fontSize: 13 }}>
             正在下载更新... {status.progress}%

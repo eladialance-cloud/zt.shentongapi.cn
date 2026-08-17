@@ -1,9 +1,10 @@
 // 知识库编辑器 - v0.3.1 stub (Task 31)
 // 占位页面：知识库元数据编辑 + 分块策略配置（后续接入 /knowledge/bases/:id PATCH）
+// Kimi 风格（v2.0）
 
 import { useState } from 'react'
-import { Button, Card, Form, Input, Select, Space, message } from 'antd'
-import { ArrowLeftOutlined, BookOutlined } from '@ant-design/icons'
+import { Button, Form, Input, Select, Space, message } from 'antd'
+import { ArrowLeft, Library, Save } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import styles from './styles.module.css'
 
@@ -16,17 +17,37 @@ export default function KnowledgeEditor() {
     <div className={styles.pageContainer}>
       <div className={styles.pageHeader}>
         <div className={styles.pageTitle}>
-          <BookOutlined />
-          知识库编辑器
+          <span className={styles.pageTitleIcon}>
+            <Library size={18} />
+          </span>
+          <span>知识库编辑器</span>
         </div>
         <Space>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>返回</Button>
-          <Button type="primary" loading={saving} onClick={() => message.info('保存接口待接入')}>
+          <Button
+            className={styles.ghostBtn}
+            icon={<ArrowLeft size={14} />}
+            onClick={() => navigate(-1)}
+          >
+            返回
+          </Button>
+          <Button
+            type="primary"
+            className={styles.primaryBtn}
+            icon={<Save size={14} />}
+            loading={saving}
+            onClick={() => message.info('保存接口待接入')}
+          >
             保存
           </Button>
         </Space>
       </div>
-      <Card title={`知识库 ID: ${id ?? 'new'}`} bordered={false}>
+      <div className={styles.editorCard}>
+        <div className={styles.sectionTitle}>
+          <span className={styles.sectionTitleIcon}>
+            <Library size={15} />
+          </span>
+          知识库 ID: {id ?? 'new'}
+        </div>
         <Form layout="vertical" initialValues={{ name: '', visibility: 'private' }}>
           <Form.Item label="知识库名称" name="name">
             <Input placeholder="请输入知识库名称" />
@@ -44,7 +65,7 @@ export default function KnowledgeEditor() {
             />
           </Form.Item>
         </Form>
-      </Card>
+      </div>
     </div>
   )
 }

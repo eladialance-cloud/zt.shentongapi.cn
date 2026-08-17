@@ -1,5 +1,4 @@
-﻿// 团队列表页 — 替换 OPC 团队列表
-// 设计文档: team_module_design_20260730.md
+// 团队列表页 — Kimi 风格（v2.0）
 // 核心变化: 创建团队时可为每个 Agent 指定自定义职能
 
 import { useCallback, useEffect, useState } from "react";
@@ -7,10 +6,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Button, Card, Empty, Form, Input, Modal, Popconfirm, Select, Spin, message,
 } from "antd";
-import {
-  ArrowLeftOutlined, DeleteOutlined, EyeOutlined, PlusOutlined,
-  TeamOutlined, UserOutlined, ApartmentOutlined,
-} from "@ant-design/icons";
+import { ArrowLeft, BookOpen, Eye, Plus, Trash2, UserRound, Users } from "lucide-react";
 import * as teamApi from "@/api/team-api";
 import type { Team, CreateTeamDto, SelectableAgent } from "@/types/team";
 import type { KnowledgeBase } from "@/types/knowledge";
@@ -138,13 +134,15 @@ export default function TeamList() {
     <div className={styles.pageContainer}>
       <div className={styles.pageHeader}>
         <div className={styles.pageTitle}>
-          <TeamOutlined />
+          <span className={styles.pageTitleIcon}>
+            <Users size={18} />
+          </span>
           <span>团队管理</span>
         </div>
         <div className={styles.headerActions}>
           <Button
-            className={styles.backBtn}
-            icon={<ArrowLeftOutlined />}
+            className={styles.ghostBtn}
+            icon={<ArrowLeft size={14} />}
             onClick={() => navigate("/dashboard")}
           >
             返回
@@ -152,7 +150,7 @@ export default function TeamList() {
           <Button
             type="primary"
             className={styles.primaryBtn}
-            icon={<PlusOutlined />}
+            icon={<Plus size={14} />}
             onClick={handleOpenCreate}
           >
             创建团队
@@ -170,26 +168,25 @@ export default function TeamList() {
                 key={team.id}
                 className={styles.teamCard}
                 bordered={false}
+                styles={{ body: { padding: 20 } }}
                 onClick={() => navigate(`/team/${team.id}`)}
               >
-                <div className={styles.teamCardTitle}>
-                  <TeamOutlined style={{ marginRight: 6, color: "#a5b4fc" }} />
-                  {team.name}
-                </div>
+                <div className={styles.teamCardTitle}>{team.name}</div>
                 <div className={styles.teamCardDesc}>
                   {team.description || "暂无描述"}
                 </div>
                 <div className={styles.teamCardMeta}>
-                  <span>
-                    <UserOutlined style={{ marginRight: 4 }} />
+                  <span className={styles.metaItem}>
+                    <UserRound size={12} />
                     {team.memberCount} 成员
                   </span>
                   {team.knowledgeBaseId != null && (
-                    <span title="关联知识库">
-                      📚 {knowledgeBases.find((kb) => kb.id === team.knowledgeBaseId)?.name || `知识库 #${team.knowledgeBaseId}`}
+                    <span className={styles.metaItem} title="关联知识库">
+                      <BookOpen size={12} />
+                      {knowledgeBases.find((kb) => kb.id === team.knowledgeBaseId)?.name || `知识库 #${team.knowledgeBaseId}`}
                     </span>
                   )}
-                  <span>创建于 {formatTime(team.createdAt)}</span>
+                  <span className={styles.metaItem}>创建于 {formatTime(team.createdAt)}</span>
                 </div>
                 <div
                   className={styles.teamCardActions}
@@ -199,7 +196,7 @@ export default function TeamList() {
                     size="small"
                     type="primary"
                     className={styles.primaryBtn}
-                    icon={<EyeOutlined />}
+                    icon={<Eye size={14} />}
                     onClick={() => navigate(`/team/${team.id}`)}
                   >
                     查看详情
@@ -212,7 +209,7 @@ export default function TeamList() {
                     cancelText="取消"
                     okButtonProps={{ danger: true }}
                   >
-                    <Button size="small" danger icon={<DeleteOutlined />}>
+                    <Button size="small" danger icon={<Trash2 size={14} />}>
                       删除
                     </Button>
                   </Popconfirm>
@@ -277,8 +274,8 @@ export default function TeamList() {
                       gap: 8,
                       marginBottom: 8,
                       alignItems: "flex-start",
-                      background: "#f8fafc",
-                      borderRadius: 8,
+                      background: "var(--color-bg-layout)",
+                      borderRadius: 10,
                       padding: 10,
                     }}
                   >
@@ -312,13 +309,13 @@ export default function TeamList() {
                     <Button
                       type="text"
                       danger
-                      icon={<DeleteOutlined />}
+                      icon={<Trash2 size={14} />}
                       onClick={() => remove(name)}
                       style={{ marginTop: 2 }}
                     />
                   </div>
                 ))}
-                <Button type="dashed" block icon={<PlusOutlined />} onClick={() => add()}>
+                <Button type="dashed" block icon={<Plus size={14} />} onClick={() => add()}>
                   添加 AI 员工
                 </Button>
               </>

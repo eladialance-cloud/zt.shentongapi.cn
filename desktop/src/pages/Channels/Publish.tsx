@@ -114,7 +114,7 @@ export default function PublishList() {
   return (
     <div className={styles.pageContainer}>
       <div className={styles.pageHeader}>
-        <div className={styles.pageTitle}><SendOutlined /><span>发布管理</span></div>
+        <div className={styles.pageTitle}><span className={styles.pageTitleIcon}><SendOutlined /></span><span>发布管理</span></div>
         <div className={styles.headerActions}>
           <Button className={styles.backBtn} icon={<ReloadOutlined />} onClick={loadData}>刷新</Button>
           <Button type="primary" className={styles.primaryBtn} icon={<PlusOutlined />}
@@ -134,7 +134,7 @@ export default function PublishList() {
               return (
                 <Card key={plan.id} className={styles.teamCard} bordered={false}>
                   <div className={styles.teamCardTitle}>
-                    <SendOutlined style={{ marginRight: 6, color: "#a5b4fc" }} />
+                    <SendOutlined style={{ marginRight: 6, color: "var(--color-brand)" }} />
                     {plan.title}
                   </div>
                   <div className={styles.teamCardDesc}>

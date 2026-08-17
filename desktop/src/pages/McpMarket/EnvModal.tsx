@@ -4,12 +4,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   Button,
-  ConfigProvider,
   Form,
   Input,
   Modal,
   Spin,
-  theme,
   message,
 } from 'antd'
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
@@ -142,8 +140,7 @@ export default function EnvModal({ open, serverId, onClose, onSaved }: EnvModalP
   }
 
   return (
-    <ConfigProvider theme={{ algorithm: theme.darkAlgorithm }}>
-      <Modal
+    <Modal
         className={styles.envModal}
         title={serverName ? '配置环境变量 - ' + serverName : '配置环境变量'}
         open={open}
@@ -240,7 +237,6 @@ export default function EnvModal({ open, serverId, onClose, onSaved }: EnvModalP
             </Form>
           )}
         </Spin>
-      </Modal>
-    </ConfigProvider>
+    </Modal>
   )
 }

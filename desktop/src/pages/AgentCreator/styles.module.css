@@ -1,8 +1,10 @@
-/* Agent 创建模块样式 - 赛博科技深色风格 */
+/* Agent 创建模块 — Kimi 风格（v2.0）
+   原则: 白/灰分层 · 1px 细边框 · 12px 圆角 · 品牌蓝点缀 · 浅深双板自适应
+   结构: 列表 / 创建表单 / 收益中心 */
 
 .pageContainer {
   min-height: 100vh;
-  background: linear-gradient(180deg, var(--color-bg-root) 0%, #F1F5F9 100%);
+  background: var(--color-bg-root);
   color: var(--color-text-primary);
   padding: 24px 32px 48px;
   overflow-y: auto;
@@ -12,7 +14,7 @@
   width: 8px;
 }
 .pageContainer::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.3);
+  background: var(--color-scrollbar-thumb);
   border-radius: 4px;
 }
 
@@ -22,26 +24,33 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--color-border-secondary);
 }
 
 .pageTitle {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 600;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--color-text-primary);
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
+.pageTitle :global(.anticon) {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--color-brand-bg);
+  color: var(--color-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .headerActions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 /* ===== 工具栏（Tab + 操作） ===== */
@@ -51,12 +60,11 @@
   gap: 12px;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(99, 102, 241, 0.18);
+  padding: 8px 16px;
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   margin-bottom: 20px;
-  backdrop-filter: blur(12px);
 }
 
 .toolbarLeft {
@@ -74,17 +82,19 @@
 }
 
 .agentCard {
-  background: rgba(255, 255, 255, 0.65) !important;
-  border: 1px solid rgba(99, 102, 241, 0.22) !important;
-  border-radius: 14px !important;
-  backdrop-filter: blur(16px);
-  transition: all 0.25s ease;
+  background: var(--color-bg-container) !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .agentCard:hover {
-  border-color: rgba(99, 102, 241, 0.55) !important;
-  box-shadow: 0 0 32px var(--color-border), 0 8px 24px rgba(0, 0, 0, 0.4) !important;
-  transform: translateY(-3px);
+  border-color: var(--color-border-hover) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-1px);
 }
 
 .cardHeader {
@@ -104,9 +114,9 @@
   justify-content: center;
   font-size: 22px;
   font-weight: 600;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.3));
-  color: var(--color-text-secondary);
-  border: 1px solid rgba(99, 102, 241, 0.4);
+  background: var(--color-brand-bg);
+  color: var(--color-brand);
+  border: 1px solid var(--color-border-secondary);
   overflow: hidden;
 }
 
@@ -151,66 +161,70 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(99, 102, 241, 0.1);
+  padding-top: 10px;
+  border-top: 1px solid var(--color-split);
 }
 
 .rejectReason {
   margin-top: 6px;
-  padding: 6px 8px;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 6px 10px;
+  background: var(--color-error-light);
+  border: 1px solid var(--color-error-light);
   border-radius: 6px;
   font-size: 11px;
-  color: #fca5a5;
+  color: var(--color-error);
   line-height: 1.5;
 }
 
-/* ===== 状态标签颜色 ===== */
+/* ===== 状态标签（轻量胶囊） ===== */
 .statusDraft {
   color: var(--color-text-tertiary) !important;
-  border-color: rgba(139, 148, 158, 0.4) !important;
-  background: rgba(139, 148, 158, 0.1) !important;
+  background: var(--color-bg-hover) !important;
+  border-color: transparent !important;
 }
 
 .statusPending {
-  color: #fbbf24 !important;
-  border-color: rgba(251, 191, 36, 0.4) !important;
-  background: rgba(251, 191, 36, 0.1) !important;
+  color: var(--color-warning) !important;
+  background: var(--color-warning-light) !important;
+  border-color: transparent !important;
 }
 
 .statusPublished {
   color: var(--color-success) !important;
-  border-color: rgba(52, 211, 153, 0.4) !important;
-  background: rgba(52, 211, 153, 0.1) !important;
+  background: var(--color-success-light) !important;
+  border-color: transparent !important;
 }
 
 .statusRejected {
-  color: #f87171 !important;
-  border-color: rgba(248, 113, 113, 0.4) !important;
-  background: rgba(248, 113, 113, 0.1) !important;
+  color: var(--color-error) !important;
+  background: var(--color-error-light) !important;
+  border-color: transparent !important;
 }
 
-/* ===== 按钮 ===== */
+/* ===== 按钮（Kimi 式：primary 实心蓝 / ghost 描边） ===== */
 .primaryBtn {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
+  background: var(--color-brand) !important;
   border: none !important;
-  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.4) !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
 }
 
 .primaryBtn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #5558e3 0%, #7c4ef0 100%) !important;
+  background: var(--color-brand-hover) !important;
 }
 
 .backBtn {
-  background: rgba(99, 102, 241, 0.1) !important;
-  border: 1px solid rgba(99, 102, 241, 0.3) !important;
+  background: transparent !important;
+  border: 1px solid var(--color-border) !important;
   color: var(--color-text-secondary) !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
 }
 
-.backBtn:hover {
-  background: var(--color-border-secondary) !important;
-  color: var(--color-text-secondary) !important;
+.backBtn:hover:not(:disabled) {
+  color: var(--color-text-primary) !important;
+  border-color: var(--color-border-hover) !important;
+  background: var(--color-bg-hover) !important;
 }
 
 /* ===== 创建/编辑表单 ===== */
@@ -220,10 +234,10 @@
 }
 
 .formCard {
-  background: rgba(255, 255, 255, 0.65) !important;
-  border: 1px solid rgba(99, 102, 241, 0.22) !important;
-  border-radius: 14px !important;
-  backdrop-filter: blur(16px);
+  background: var(--color-bg-container) !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-sm) !important;
   padding: 8px 4px;
 }
 
@@ -272,17 +286,18 @@
 }
 
 .statCard {
-  background: rgba(255, 255, 255, 0.65);
-  border: 1px solid rgba(99, 102, 241, 0.22);
-  border-radius: 14px;
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
   padding: 20px;
-  backdrop-filter: blur(16px);
-  transition: all 0.2s ease;
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .statCard:hover {
-  border-color: rgba(99, 102, 241, 0.45);
-  box-shadow: 0 8px 24px var(--color-border-secondary);
+  border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-md);
 }
 
 .statLabel {
@@ -296,7 +311,7 @@
 .statValue {
   font-size: 28px;
   font-weight: 600;
-  color: var(--color-text-secondary);
+  color: var(--color-text-primary);
   line-height: 1.2;
 }
 
@@ -308,12 +323,11 @@
 }
 
 .sectionCard {
-  background: rgba(255, 255, 255, 0.65);
-  border: 1px solid var(--color-border-secondary);
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 20px 24px;
   margin-bottom: 20px;
-  backdrop-filter: blur(12px);
 }
 
 .sectionTitle {
@@ -346,17 +360,16 @@
 .trendBar {
   flex: 1;
   min-width: 8px;
-  background: linear-gradient(180deg, #8b5cf6 0%, #6366f1 100%);
+  background: var(--color-brand);
   border-radius: 3px 3px 0 0;
   position: relative;
-  transition: all 0.2s ease;
+  transition: background var(--duration-fast) var(--ease-out);
   cursor: pointer;
   min-height: 2px;
 }
 
 .trendBar:hover {
-  background: linear-gradient(180deg, #a78bfa 0%, #7c7ff5 100%);
-  box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+  background: var(--color-brand-hover);
 }
 
 .trendBarTooltip {
@@ -365,13 +378,14 @@
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(248, 250, 252, 0.95);
+  background: var(--color-bg-elevated);
   color: var(--color-text-primary);
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 11px;
   white-space: nowrap;
-  border: 1px solid rgba(99, 102, 241, 0.3);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
   z-index: 10;
 }
 
@@ -400,7 +414,7 @@
 
 .emptyStateIcon {
   font-size: 56px;
-  color: rgba(99, 102, 241, 0.4);
+  color: var(--color-text-disabled);
 }
 
 .emptyStateText {

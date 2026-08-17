@@ -1,17 +1,22 @@
-﻿// 顶栏 - 方案B
-// 48px 高度:logo + 搜索框 + 通知 + 积分余额 + 头像菜单
-// (页面标题已由顶部 Tab 栏体现,此处不再显示)
+// 顶栏 - v4.0 Kimi 风格
+// 40px: Logo(点击回仪表盘) + 搜索框 + 主题切换 + 通知 + 积分余额 + 头像菜单
 
 import { useNavigate } from "react-router-dom";
-import { Avatar, Badge, Dropdown, Input, Popover, type MenuProps } from "antd";
+import { Avatar, Badge, Dropdown, Input, Popover, Tooltip, type MenuProps } from "antd";
 import {
   BellOutlined,
   GiftOutlined,
   LogoutOutlined,
   UserOutlined,
 } from "@ant-design/icons";
+import { Moon, Sun } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { useCreditsStore } from "@/store/credits";
+import {
+  useSettingsStore,
+  resolveThemeMode,
+  systemPrefersDark,
+} from "@/store/settings";
 import styles from "./styles.module.css";
 
 interface NotificationItem {
@@ -33,6 +38,11 @@ export default function TopBar() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const balance = useCreditsStore((s) => s.balance);
+
+  const themeMode = useSettingsStore((s) => s.theme);
+  const toggleTheme = useSettingsStore((s) => s.toggleTheme);
+  const effectiveTheme = resolveThemeMode(themeMode, systemPrefersDark());
+  const isDark = effectiveTheme === "dark";
 
   const handleLogout = async () => {
     await logout();
@@ -77,9 +87,19 @@ export default function TopBar() {
 
   return (
     <div className={styles.topbar}>
-      {/* 左侧:logo */}
+      {/* 左侧:Logo（点击回仪表盘） */}
       <div className={styles.topbarLeft}>
-        <span className={styles.logo}>深瞳AI-智能中台</span>
+        <span
+          className={styles.logo}
+          onClick={() => navigate("/dashboard")}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") navigate("/dashboard");
+          }}
+        >
+          深瞳AI
+        </span>
       </div>
 
       {/* 中间:搜索框 */}
@@ -92,8 +112,22 @@ export default function TopBar() {
         />
       </div>
 
-      {/* 右侧:通知 + 积分 + 头像 */}
+      {/* 右侧:主题 + 通知 + 积分 + 头像 */}
       <div className={styles.topbarRight}>
+        <Tooltip title={isDark ? "切换到浅色" : "切换到深色"}>
+          <span
+            className={styles.iconBtn}
+            onClick={toggleTheme}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") toggleTheme();
+            }}
+          >
+            {isDark ? <Sun size={18} /> : <Moon size={18} />}
+          </span>
+        </Tooltip>
+
         <Popover
           content={notificationContent}
           title="通知"

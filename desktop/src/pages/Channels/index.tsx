@@ -86,7 +86,7 @@ export default function ChannelList() {
   return (
     <div className={styles.pageContainer}>
       <div className={styles.pageHeader}>
-        <div className={styles.pageTitle}><ApiOutlined /><span>渠道管理</span></div>
+        <div className={styles.pageTitle}><span className={styles.pageTitleIcon}><ApiOutlined /></span><span>渠道管理</span></div>
         <div className={styles.headerActions}>
           <Button className={styles.backBtn} icon={<ReloadOutlined />} onClick={loadData}>刷新</Button>
           <Button type="primary" className={styles.primaryBtn} icon={<PlusOutlined />} onClick={() => { form.resetFields(); setCreateOpen(true); }}>添加渠道</Button>

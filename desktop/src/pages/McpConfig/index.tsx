@@ -205,7 +205,7 @@ export default function McpConfig() {
       {/* 头部 */}
       <div className={styles.header}>
         <div className={styles.titleArea}>
-          <ApiOutlined className={styles.titleIcon} />
+          <span className={styles.titleIcon}><ApiOutlined /></span>
           <div>
             <h1 className={styles.title}>MCP 工具配置</h1>
             <div className={styles.subtitle}>管理 MCP 服务器配置与工具调用</div>

@@ -4,7 +4,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   Button,
-  ConfigProvider,
   Drawer,
   Empty,
   Form,
@@ -16,7 +15,6 @@ import {
   Switch,
   Table,
   Tag,
-  theme,
   message,
 } from 'antd'
 import type { TableProps } from 'antd'
@@ -364,12 +362,11 @@ export default function InstalledMcp() {
     TRANSPORT_TAG[s.transportType || s.transport || 'stdio']
 
   return (
-    <ConfigProvider theme={{ algorithm: theme.darkAlgorithm }}>
-      <div className={styles.installedPage}>
+    <div className={styles.installedPage}>
         {/* 顶部：数量 + 自定义添加 */}
         <div className={styles.installedToolbar}>
           <div className={styles.toolbarInfo}>
-            <ApiOutlined style={{ marginRight: 6, color: '#7dd3fc' }} />
+            <ApiOutlined className={styles.toolbarIcon} />
             共 {servers.length} 个 MCP 服务器
           </div>
           <Button
@@ -639,7 +636,6 @@ export default function InstalledMcp() {
             )}
           </Spin>
         </Drawer>
-      </div>
-    </ConfigProvider>
+    </div>
   )
 }

@@ -225,11 +225,11 @@ export default function Recharge() {
               onChange={(e) => setPaymentMethod(e.target.value)}
             >
               <Radio.Button value="wechat" style={{ marginRight: 8 }}>
-                <WechatOutlined style={{ color: '#34d399', marginRight: 6 }} />
+                <WechatOutlined style={{ color: 'var(--color-success)', marginRight: 6 }} />
                 微信支付
               </Radio.Button>
               <Radio.Button value="alipay" style={{ marginRight: 8 }}>
-                <AlipayOutlined style={{ color: '#3b82f6', marginRight: 6 }} />
+                <AlipayOutlined style={{ color: 'var(--color-brand)', marginRight: 6 }} />
                 支付宝
               </Radio.Button>
               <Radio.Button value="stripe">
@@ -285,7 +285,7 @@ function PayResultView({
       <Result
         status={paid ? 'success' : 'info'}
         title={
-          <span style={{ color: '#e6edf3' }}>
+          <span style={{ color: 'var(--color-text-primary)' }}>
             {paid ? '支付成功，积分已到账' : '订单已创建，请完成支付'}
           </span>
         }
@@ -346,7 +346,7 @@ function PayResultView({
         <Text style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }}>
           {paid ? (
             <>
-              <CheckCircleOutlined style={{ color: '#34d399', marginRight: 4 }} />
+              <CheckCircleOutlined style={{ color: 'var(--color-success)', marginRight: 4 }} />
               积分已到账，正在返回积分中心…
             </>
           ) : (

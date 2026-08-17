@@ -156,7 +156,7 @@ export default function AgentCreatorRevenue() {
       key: 'amount',
       width: 140,
       render: (v: number) => (
-        <span style={{ color: '#22d3ee', fontWeight: 600 }}>
+        <span style={{ color: 'var(--color-brand)', fontWeight: 600 }}>
           {v.toLocaleString()}
         </span>
       )

@@ -47,12 +47,12 @@ const TAB_ITEMS: Array<{
   {
     key: 'plugin_call',
     label: '插件调用',
-    icon: <AppstoreOutlined style={{ color: '#34d399' }} />
+    icon: <AppstoreOutlined style={{ color: 'var(--color-success)' }} />
   },
   {
     key: 'workflow_call',
     label: '工作流调用',
-    icon: <ThunderboltOutlined style={{ color: '#fbbf24' }} />
+    icon: <ThunderboltOutlined style={{ color: 'var(--color-warning)' }} />
   }
 ]
 
@@ -63,12 +63,12 @@ function StatusIcon({ status }: { status?: string }) {
   if (!status) return null
   const lower = status.toLowerCase()
   if (lower === 'success' || lower === 'done' || lower === 'settled') {
-    return <CheckCircleOutlined style={{ color: '#34d399' }} />
+    return <CheckCircleOutlined style={{ color: 'var(--color-success)' }} />
   }
   if (lower === 'failed' || lower === 'error') {
-    return <CloseCircleOutlined style={{ color: '#f87171' }} />
+    return <CloseCircleOutlined style={{ color: 'var(--color-error)' }} />
   }
-  return <ClockCircleOutlined style={{ color: '#fbbf24' }} />
+  return <ClockCircleOutlined style={{ color: 'var(--color-warning)' }} />
 }
 
 export default function Consumption() {
@@ -159,15 +159,7 @@ export default function Consumption() {
           <List
             dataSource={data.list}
             renderItem={(item) => (
-              <List.Item
-                style={{
-                  background: 'rgba(255, 255, 255, 0.6)',
-                  border: '1px solid rgba(99, 102, 241, 0.15)',
-                  borderRadius: 10,
-                  marginBottom: 10,
-                  padding: '12px 16px',
-                  color: '#e6edf3'
-                }}
+              <List.Item className={styles.consumptionItem}
               >
                 <div
                   style={{
@@ -182,7 +174,7 @@ export default function Consumption() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <StatusIcon status={item.remark} />
                     <div>
-                      <div style={{ fontSize: 13, color: '#e6edf3' }}>
+                      <div className={styles.consumptionRemark}>
                         {item.remark || item.source}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
@@ -193,7 +185,7 @@ export default function Consumption() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <Tag color="blue">{item.source}</Tag>
                     <span className={styles.amountNegative}>{item.amount}</span>
-                    <span style={{ fontSize: 11, color: '#6e7681' }}>
+                    <span className={styles.consumptionBalance}>
                       余额 {item.balanceAfter?.toLocaleString?.() ?? '-'}
                     </span>
                   </div>

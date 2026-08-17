@@ -245,7 +245,7 @@ export default function LocalDetail() {
             <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 4 }}>
               版本 {detail.version} · 安装于 {new Date(detail.installedAt).toLocaleString()}
             </div>
-            <div style={{ fontSize: 12, color: '#8b98a5', wordBreak: 'break-all', marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', wordBreak: 'break-all', marginTop: 2 }}>
               安装位置：{detail.dir}
             </div>
           </div>

@@ -11,6 +11,7 @@ import {
   KeyOutlined,
   DesktopOutlined,
   BellOutlined,
+  BgColorsOutlined,
   SyncOutlined,
   RollbackOutlined,
   RobotOutlined,
@@ -23,14 +24,16 @@ import ApiKeys from './ApiKeys'
 import Devices from './Devices'
 import Notifications from './Notifications'
 import Update from './Update'
+import Theme from './Theme'
 import SettingsModels from './Models'
 import SettingsLlmIntegrations from './LlmIntegrations'
 import styles from './styles.module.css'
 
-type SettingsTab = 'profile' | 'password' | 'apikeys' | 'models' | 'llms' | 'devices' | 'notifications' | 'update'
+type SettingsTab = 'profile' | 'theme' | 'password' | 'apikeys' | 'models' | 'llms' | 'devices' | 'notifications' | 'update'
 
 const MENU_ITEMS: Array<{ key: SettingsTab; label: string; icon: React.ReactNode }> = [
   { key: 'profile', label: '资料编辑', icon: <UserOutlined /> },
+  { key: 'theme', label: '外观主题', icon: <BgColorsOutlined /> },
   { key: 'password', label: '修改密码', icon: <LockOutlined /> },
   { key: 'apikeys', label: 'API Key', icon: <KeyOutlined /> },
   { key: 'models', label: '模型设置', icon: <RobotOutlined /> },
@@ -81,6 +84,7 @@ export default function Settings() {
 
         <div className={styles.content}>
           {active === 'profile' && <Profile />}
+          {active === 'theme' && <Theme />}
           {active === 'password' && <Password />}
           {active === 'apikeys' && <ApiKeys />}
           {active === 'models' && <SettingsModels />}

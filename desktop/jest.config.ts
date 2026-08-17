@@ -18,6 +18,10 @@ const config: Config = {
     // runtime 目录是下载/解压产物，含 node/python 运行时，无需 jest 扫描
     "<rootDir>/runtime/",
   ],
+  testPathIgnorePatterns: [
+    // openclaw-chat.test.ts 使用 node:test 运行器（npx tsx --test），jest 会误报「至少一个测试」
+    "<rootDir>/tests/unit/openclaw-chat.test.ts",
+  ],
 };
 
 export default config;

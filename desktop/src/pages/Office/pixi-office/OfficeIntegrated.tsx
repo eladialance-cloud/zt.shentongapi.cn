@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Empty, Form, Input, Modal, Select, Tag, message } from 'antd'
 import OfficeCanvas from './OfficeCanvas'
+import styles from './office.module.css'
 import type { OfficeScene } from '../scene/OfficeScene'
 import {
   listTasks,
@@ -83,20 +84,6 @@ const DEFAULT_ROSTER: Array<{ id: string; name: string; color: number; task?: st
   AGENT_ROSTER.map((r) => ({ id: r.id, name: r.name, color: r.color, task: r.task }))
 
 // ─── 样式 ───
-
-const panelStyle: React.CSSProperties = {
-  background: '#fff',
-  borderRadius: 12,
-  padding: '14px 16px',
-  flexShrink: 0,
-}
-
-const sectionTitleStyle: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: '#1e293b',
-  margin: '0 0 10px',
-}
 
 function formatTime(iso?: string | null): string {
   if (!iso) return '-'
@@ -478,43 +465,20 @@ export default function OfficeIntegrated() {
   ];
 
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100%',
-      background: '#f1f5f9',
-      gap: 0,
-    }}>
+    <div className={styles.page}>
       {/* 顶部统计卡片 */}
-      <div style={{
-        display: 'flex',
-        gap: 10,
-        padding: '10px 14px',
-        flexShrink: 0,
-        background: 'transparent',
-      }}>
+      <div className={styles.statsBar}>
         {stats.map((stat) => (
           <div
             key={stat.label}
             onClick={stat.onClick}
             title={`${stat.label}：点击查看详情`}
-            style={{
-            ...panelStyle,
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2,
-            padding: '10px 14px',
-            cursor: 'pointer',
-            transition: 'box-shadow 0.15s, transform 0.15s',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,0.10)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translateY(0)'; }}
+            className={styles.statCard}
           >
-            <span style={{ fontSize: 11, color: '#64748b' }}>{stat.label}</span>
-            <span style={{ fontSize: 20, fontWeight: 700, color: '#1e293b' }}>{stat.value}</span>
-            <span style={{ fontSize: 10, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
-              {stat.online && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />}
+            <span className={styles.statLabel}>{stat.label}</span>
+            <span className={styles.statValue}>{stat.value}</span>
+            <span className={styles.statHint}>
+              {stat.online && <span className={styles.statDot} />}
               {stat.hint}
             </span>
           </div>
@@ -522,62 +486,23 @@ export default function OfficeIntegrated() {
       </div>
 
       {/* 中间区域：画布 + 右侧任务流 */}
-      <div style={{
-        flex: 1,
-        minHeight: 0,
-        display: 'flex',
-        gap: 10,
-        padding: '0 14px',
-      }}>
+      <div className={styles.mainArea}>
         {/* 画布区 */}
-        <div style={{
-          flex: 1,
-          minWidth: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-        }}>
-          <div style={{
-            flex: 1,
-            minHeight: 0,
-            borderRadius: 12,
-            overflow: 'hidden',
-            background: '#fff',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-          }}>
+        <div className={styles.canvasColumn}>
+          <div className={styles.canvasWrap}>
             <OfficeCanvas onSceneReady={(scene) => { sceneRef.current = scene; if (pendingRosterRef.current) scene.setRoster(pendingRosterRef.current); }} />
           </div>
 
           {/* 底部工具栏 */}
-          <div style={{
-            ...panelStyle,
-            display: 'flex',
-            gap: 8,
-            padding: '8px 12px',
-            justifyContent: 'center',
-            flexWrap: 'wrap',
-          }}>
+          <div className={styles.toolbar}>
             {toolbarItems.map((item) => (
               <button
                 key={item.label}
                 type="button"
                 onClick={item.onClick}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '6px 14px',
-                  border: item.primary ? 'none' : '1px solid #e2e8f0',
-                  background: item.primary ? '#2563eb' : '#fff',
-                  color: item.primary ? '#fff' : '#475569',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  fontWeight: item.primary ? 600 : 400,
-                  transition: 'all 0.15s',
-                }}
+                className={item.primary ? styles.toolbarBtnPrimary : styles.toolbarBtn}
               >
-                <span style={{ fontSize: 13 }}>{item.icon}</span>
+                <span className={styles.toolbarIcon}>{item.icon}</span>
                 <span>{item.label}</span>
               </button>
             ))}
@@ -585,17 +510,10 @@ export default function OfficeIntegrated() {
         </div>
 
         {/* 右侧任务流面板 */}
-        <div style={{
-          width: 300,
-          flexShrink: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
-          overflowY: 'auto',
-        }}>
+        <div className={styles.sidePanel}>
           {/* 当前任务流 */}
-          <div style={panelStyle}>
-            <h3 style={sectionTitleStyle}>任务流（AI办公室 / Hermes / N8N）</h3>
+          <div className={styles.panel}>
+            <h3 className={styles.panelTitle}>任务流（AI办公室 / Hermes / N8N）</h3>
             {feed.length === 0 ? (
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -603,20 +521,16 @@ export default function OfficeIntegrated() {
                 style={{ margin: '16px 0' }}
               />
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 340, overflowY: 'auto' }}>
+              <div className={styles.feedList}>
                 {feed.map((item) => (
-                  <div key={item.key} style={{
-                    padding: '8px 10px',
-                    background: '#f8fafc',
-                    borderRadius: 8,
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 6 }}>
-                      <span style={{ fontSize: 13, fontWeight: 500, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div key={item.key} className={styles.feedItem}>
+                    <div className={styles.feedItemTop}>
+                      <span className={styles.feedItemTitle}>
                         {item.title}
                       </span>
                       <Tag color={item.statusColor} style={{ margin: 0, fontSize: 10, lineHeight: '16px', flexShrink: 0 }}>{item.statusLabel}</Tag>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10, color: '#94a3b8' }}>
+                    <div className={styles.feedItemMeta}>
                       <span>
                         <Tag color={SOURCE_COLOR[item.source]} style={{ marginRight: 4, fontSize: 9, lineHeight: '14px' }}>{item.sourceLabel}</Tag>
                         {item.typeLabel}
@@ -630,27 +544,20 @@ export default function OfficeIntegrated() {
           </div>
 
           {/* 实时动态 */}
-          <div style={{ ...panelStyle, flex: 1, minHeight: 0, overflowY: 'auto' }}>
-            <h3 style={sectionTitleStyle}>实时动态</h3>
+          <div className={styles.panel + ' ' + styles.panelFlex}>
+            <h3 className={styles.panelTitle}>实时动态</h3>
             {feed.length === 0 ? (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无动态" style={{ margin: '16px 0' }} />
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className={styles.dynamicList}>
                 {feed.slice(0, 5).map((item) => (
-                  <div key={item.key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                    <span style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: '50%',
-                      background: item.statusLabel === '已完成' ? '#22c55e' : item.statusLabel === '失败' ? '#ef4444' : item.statusLabel === '执行中' ? '#0ea5e9' : '#cbd5e1',
-                      marginTop: 5,
-                      flexShrink: 0,
-                    }} />
-                    <div style={{ flex: 1 }}>
-                      <span style={{ fontSize: 12, color: '#1e293b' }}>
+                  <div key={item.key} className={styles.dynamicRow}>
+                    <span className={styles.dynamicDot + ' ' + (item.statusLabel === '已完成' ? styles.dotSuccess : item.statusLabel === '失败' ? styles.dotError : item.statusLabel === '执行中' ? styles.dotRunning : styles.dotIdle)} />
+                    <div className={styles.dynamicText}>
+                      <span className={styles.dynamicTitle}>
                         <strong>{item.title}</strong> {item.statusLabel}
                       </span>
-                      <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 6 }}>{item.createdAt ? formatTime(item.createdAt) : ''}</span>
+                      <span className={styles.dynamicTime}>{item.createdAt ? formatTime(item.createdAt) : ''}</span>
                     </div>
                   </div>
                 ))}
@@ -703,17 +610,17 @@ export default function OfficeIntegrated() {
         {detailItems.length === 0 ? (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无任务" style={{ margin: '24px 0' }} />
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 440, overflowY: 'auto' }}>
+          <div className={styles.modalList}>
             {detailItems.map((item) => (
-              <div key={item.key} style={{ padding: '10px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #eef2f7' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>{item.title}</span>
+              <div key={item.key} className={styles.modalItem}>
+                <div className={styles.modalItemTop}>
+                  <span className={styles.modalItemTitle}>{item.title}</span>
                   <span style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                     <Tag color={SOURCE_COLOR[item.source]} style={{ margin: 0, fontSize: 10 }}>{item.sourceLabel}</Tag>
                     <Tag color={item.statusColor} style={{ margin: 0, fontSize: 10 }}>{item.statusLabel}</Tag>
                   </span>
                 </div>
-                <div style={{ fontSize: 11, color: '#64748b' }}>
+                <div className={styles.modalItemSub}>
                   {item.typeLabel}
                   {item.createdAt ? ' · ' + new Date(item.createdAt).toLocaleString('zh-CN', { hour12: false }) : ''}
                 </div>
@@ -728,24 +635,18 @@ export default function OfficeIntegrated() {
         {sceneAgents.length === 0 ? (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂未加载到员工" style={{ margin: '24px 0' }} />
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 420, overflowY: 'auto' }}>
+          <div className={styles.agentList}>
             {sceneAgents.map((agent) => (
               <div
                 key={agent.id}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                  background: '#f8fafc', borderRadius: 8, border: '1px solid #eef2f7',
-                }}
+                className={styles.agentRow}
               >
-                <span style={{
-                  width: 32, height: 32, borderRadius: '50%', background: '#2563eb', color: '#fff',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 600, flexShrink: 0,
-                }}>
+                <span className={styles.agentAvatar}>
                   {agent.name ? agent.name.slice(0, 1) : '员'}
                 </span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>{agent.name}</div>
-                  <div style={{ fontSize: 11, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div className={styles.agentInfo}>
+                  <div className={styles.agentName}>{agent.name}</div>
+                  <div className={styles.agentState}>
                     {AGENT_STATE_LABEL[agent.state || ''] || agent.state || '未知状态'}
                     {agent.currentTask ? ' · ' + agent.currentTask : ''}
                   </div>

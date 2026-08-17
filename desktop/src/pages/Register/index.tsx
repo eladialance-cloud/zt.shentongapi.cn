@@ -1,4 +1,4 @@
-// 注册页 - 赛博科技深色风格
+// 注册页 - Kimi 风格极简（与登录页一致，企业/团队协作定位）
 //
 // 注册流程：
 // 1. 表单校验（username/email/password/confirmPassword/inviteCode）
@@ -13,7 +13,6 @@ import {
   GiftOutlined,
   LockOutlined,
   MailOutlined,
-  RobotOutlined,
   UserOutlined,
 } from '@ant-design/icons'
 import { httpClient } from '@/api/http-client'
@@ -87,10 +86,9 @@ export default function Register() {
   return (
     <div className={styles.container}>
       <div className={styles.card}>
-        <div className={styles.header}>
-          <RobotOutlined className={styles.logoIcon} />
-          <h2 className={styles.title}>创建账号</h2>
-          <p className={styles.subtitle}>加入深瞳 AI，开启智能对话之旅</p>
+        <div className={styles.logo}>深瞳AI</div>
+        <div className={styles.subtitle}>
+          创建账号，开启团队智能协作
         </div>
 
         <Form<RegisterFormValues>
@@ -98,10 +96,11 @@ export default function Register() {
           onFinish={handleFinish}
           size="large"
           layout="vertical"
+          requiredMark={false}
         >
           <Form.Item
             name="username"
-            label={<span style={{ color: '#cbd5e1' }}>用户名</span>}
+            label={<span className={styles.fieldLabel}>用户名</span>}
             rules={[
               { required: true, message: '请输入用户名' },
               {
@@ -119,7 +118,7 @@ export default function Register() {
 
           <Form.Item
             name="email"
-            label={<span style={{ color: '#cbd5e1' }}>邮箱</span>}
+            label={<span className={styles.fieldLabel}>邮箱</span>}
             rules={[
               { required: true, message: '请输入邮箱' },
               {
@@ -137,7 +136,7 @@ export default function Register() {
 
           <Form.Item
             name="password"
-            label={<span style={{ color: '#cbd5e1' }}>密码</span>}
+            label={<span className={styles.fieldLabel}>密码</span>}
             rules={[
               { required: true, message: '请输入密码' },
               { min: 6, message: '密码至少 6 字符' },
@@ -152,7 +151,7 @@ export default function Register() {
 
           <Form.Item
             name="confirmPassword"
-            label={<span style={{ color: '#cbd5e1' }}>确认密码</span>}
+            label={<span className={styles.fieldLabel}>确认密码</span>}
             dependencies={['password']}
             rules={[
               { required: true, message: '请确认密码' },
@@ -175,7 +174,7 @@ export default function Register() {
 
           <Form.Item
             name="inviteCode"
-            label={<span style={{ color: '#cbd5e1' }}>邀请码（可选）</span>}
+            label={<span className={styles.fieldLabel}>邀请码（可选）</span>}
           >
             <Input
               prefix={<GiftOutlined className={styles.inputPrefix} />}
@@ -192,7 +191,7 @@ export default function Register() {
               loading={loading}
               className={styles.submitBtn}
             >
-              注册
+              注 册
             </Button>
           </Form.Item>
         </Form>

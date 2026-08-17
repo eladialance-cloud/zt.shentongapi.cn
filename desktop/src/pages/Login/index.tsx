@@ -1,4 +1,4 @@
-// 登录页 - 赛博科技深色风格
+// 登录页 - Kimi 风格极简（企业/团队协作定位）
 //
 // 登录流程：
 // 1. 获取设备指纹（window.electronAPI.device.getFingerprint）
@@ -10,7 +10,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Checkbox, Form, Input, message } from "antd";
-import { LockOutlined, RobotOutlined, UserOutlined } from "@ant-design/icons";
 import { httpClient } from "@/api/http-client";
 import { useAuthStore, type User } from "@/store/auth";
 import { BusinessError } from "@/utils/errors";
@@ -185,39 +184,33 @@ export default function Login() {
   return (
     <div className={styles.container}>
       <div className={styles.card}>
-        <div className={styles.header}>
-          <RobotOutlined className={styles.logoIcon} />
-          <h2 className={styles.title}>深瞳 AI</h2>
-          <p className={styles.subtitle}>登录以开始你的智能对话</p>
+        <div className={styles.logo}>深瞳AI</div>
+        <div className={styles.subtitle}>
+          企业智能协作平台 · 让团队与 AI 高效协同
         </div>
 
         <Form<LoginFormValues>
           form={form}
           onFinish={handleFinish}
-          size="large"
           layout="vertical"
+          requiredMark={false}
+          size="large"
         >
           <Form.Item
             name="account"
+            label={<span className={styles.fieldLabel}>手机号 / 邮箱</span>}
             rules={[{ required: true, message: "请输入用户名或邮箱" }]}
           >
-            <Input
-              prefix={<UserOutlined className={styles.inputPrefix} />}
-              placeholder="用户名或邮箱"
-              className={styles.input}
-            />
+            <Input placeholder="请输入账号" className={styles.input} />
           </Form.Item>
           <Form.Item
             name="password"
+            label={<span className={styles.fieldLabel}>密码</span>}
             rules={[{ required: true, message: "请输入密码" }]}
           >
-            <Input.Password
-              prefix={<LockOutlined className={styles.inputPrefix} />}
-              placeholder="密码"
-              className={styles.input}
-            />
+            <Input.Password placeholder="请输入密码" className={styles.input} />
           </Form.Item>
-          <Form.Item style={{ marginBottom: 4 }}>
+          <Form.Item style={{ marginBottom: 16 }}>
             <Checkbox
               checked={remember}
               onChange={(e) => setRemember(e.target.checked)}
@@ -226,7 +219,7 @@ export default function Login() {
               记住账号密码
             </Checkbox>
           </Form.Item>
-          <Form.Item style={{ marginBottom: 12 }}>
+          <Form.Item style={{ marginBottom: 0 }}>
             <Button
               type="primary"
               htmlType="submit"
@@ -234,23 +227,22 @@ export default function Login() {
               loading={loading}
               className={styles.submitBtn}
             >
-              登录
+              登 录
             </Button>
           </Form.Item>
         </Form>
 
         <div className={styles.footerLinks}>
+          <span className={styles.link} onClick={() => navigate("/register")}>
+            注册账号
+          </span>
           <span
             className={styles.link}
             onClick={() => navigate("/forgot-password")}
           >
             忘记密码？
           </span>
-          <span className={styles.link} onClick={() => navigate("/register")}>
-            没有账号？立即注册
-          </span>
         </div>
-
       </div>
     </div>
   );

@@ -145,7 +145,7 @@ export default function Profile() {
           <div className={styles.avatarWrap}>
             <div className={styles.avatar}>
               {avatar ? (
-                <img src={avatar} alt="avatar" className={styles.avatarImg} />
+                <img loading="lazy" src={avatar} alt="avatar" className={styles.avatarImg} />
               ) : (
                 initial
               )}

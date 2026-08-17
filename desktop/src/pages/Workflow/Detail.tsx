@@ -7,14 +7,14 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Button, Input, Spin, Table, Tag, Typography, message } from "antd";
 import type { TableColumnsType } from "antd";
 import {
-  ArrowLeftOutlined,
-  PlayCircleOutlined,
-  ThunderboltOutlined,
-  PictureOutlined,
-  ClockCircleOutlined,
-  DollarOutlined,
-  DownloadOutlined,
-} from "@ant-design/icons";
+  ArrowLeft,
+  CirclePlay,
+  Clock,
+  Coins,
+  Download,
+  Image,
+  Zap,
+} from "lucide-react";
 import * as workflowApi from "@/api/workflow-api";
 import * as marketApi from "@/api/market-api";
 import type {
@@ -212,7 +212,7 @@ export default function WorkflowDetail() {
       key: "output",
       ellipsis: true,
       render: (v: unknown) => (
-        <Text style={{ color: "#8b949e", fontSize: 12 }} ellipsis>
+        <Text style={{ color: "var(--color-text-tertiary)", fontSize: 12 }} ellipsis>
           {formatJson(v)}
         </Text>
       ),
@@ -232,7 +232,7 @@ export default function WorkflowDetail() {
         <Spin
           fullscreen
           tip="加载中..."
-          style={{ background: "rgba(10, 14, 26, 0.85)" }}
+          style={{ background: "var(--color-bg-overlay)" }}
         />
       </div>
     );
@@ -242,11 +242,11 @@ export default function WorkflowDetail() {
     return (
       <div className={styles.pageContainer}>
         <div className={styles.emptyState}>
-          <ThunderboltOutlined className={styles.emptyStateIcon} />
+          <Zap size={48} className={styles.emptyStateIcon} />
           <div className={styles.emptyStateText}>工作流不存在或加载失败</div>
           <Button
             className={styles.backBtn}
-            icon={<ArrowLeftOutlined />}
+            icon={<ArrowLeft size={14} />}
             onClick={handleBack}
           >
             返回列表
@@ -261,12 +261,14 @@ export default function WorkflowDetail() {
       {/* 顶部导航 */}
       <div className={styles.pageHeader}>
         <div className={styles.pageTitle}>
-          <ThunderboltOutlined />
+          <span className={styles.pageTitleIcon}>
+            <Zap size={18} />
+          </span>
           <span>{template.name}</span>
         </div>
         <Button
           className={styles.backBtn}
-          icon={<ArrowLeftOutlined />}
+          icon={<ArrowLeft size={14} />}
           onClick={handleBack}
         >
           返回列表
@@ -287,9 +289,9 @@ export default function WorkflowDetail() {
           {/* 预览图 */}
           <div className={styles.detailPreview}>
             {template.previewImage ? (
-              <img src={template.previewImage} alt={template.name} />
+              <img loading="lazy" src={template.previewImage} alt={template.name} />
             ) : (
-              <PictureOutlined className={styles.detailPreviewPlaceholder} />
+              <Image size={64} className={styles.detailPreviewPlaceholder} />
             )}
           </div>
 
@@ -304,7 +306,9 @@ export default function WorkflowDetail() {
           >
             <div>
               <div className={styles.sectionTitle}>
-                <ArrowLeftOutlined style={{ transform: "rotate(180deg)" }} />
+                <span className={styles.sectionTitleIcon}>
+                  <ArrowLeft size={14} style={{ transform: "rotate(180deg)" }} />
+                </span>
                 输入 Schema
               </div>
               <div className={styles.schemaBlock}>
@@ -313,7 +317,9 @@ export default function WorkflowDetail() {
             </div>
             <div>
               <div className={styles.sectionTitle}>
-                <ArrowLeftOutlined />
+                <span className={styles.sectionTitleIcon}>
+                  <ArrowLeft size={14} />
+                </span>
                 输出 Schema
               </div>
               <div className={styles.schemaBlock}>
@@ -326,7 +332,9 @@ export default function WorkflowDetail() {
         {/* 执行区 */}
         <div className={styles.detailCard}>
           <div className={styles.sectionTitle}>
-            <PlayCircleOutlined />
+            <span className={styles.sectionTitleIcon}>
+              <CirclePlay size={14} />
+            </span>
             执行工作流
             {template.pricePerExecution != null &&
               template.pricePerExecution > 0 && (
@@ -349,14 +357,14 @@ export default function WorkflowDetail() {
             <Button
               type="primary"
               className={styles.executeBtn}
-              icon={<PlayCircleOutlined />}
+              icon={<CirclePlay size={14} />}
               onClick={handleExecute}
               loading={executing}
             >
               执行工作流
             </Button>
             <Button
-              icon={<DownloadOutlined />}
+              icon={<Download size={14} />}
               onClick={handleInstallLocal}
               loading={installing}
               disabled={installed}
@@ -365,7 +373,7 @@ export default function WorkflowDetail() {
               {installed ? "已安装到本地" : "安装到本地"}
             </Button>
             {installed && installDir && (
-              <div style={{ fontSize: 12, color: "#8b98a5", marginTop: 8 }}>
+              <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginTop: 8 }}>
                 安装位置：{installDir}
               </div>
             )}
@@ -375,7 +383,9 @@ export default function WorkflowDetail() {
           {lastResult && (
             <div style={{ marginTop: 16 }}>
               <div className={styles.sectionTitle}>
-                <ThunderboltOutlined />
+                <span className={styles.sectionTitleIcon}>
+                  <Zap size={14} />
+                </span>
                 最近执行结果
               </div>
               <div className={styles.resultBlock}>
@@ -388,11 +398,11 @@ export default function WorkflowDetail() {
                   </Tag>
                 </span>
                 <span className={styles.resultMetaItem}>
-                  <ClockCircleOutlined />
+                  <Clock size={12} />
                   耗时: {formatDuration(lastResult.durationMs)}
                 </span>
                 <span className={styles.resultMetaItem}>
-                  <DollarOutlined />
+                  <Coins size={12} />
                   积分消耗:{" "}
                   <span className={styles.creditsCost}>
                     {lastResult.creditsCost ?? 0}
@@ -409,7 +419,9 @@ export default function WorkflowDetail() {
         {/* 执行历史 */}
         <div className={styles.historyTableWrapper}>
           <div className={styles.sectionTitle}>
-            <ClockCircleOutlined />
+            <span className={styles.sectionTitleIcon}>
+              <Clock size={14} />
+            </span>
             执行历史
           </div>
           <Table<WorkflowExecution>

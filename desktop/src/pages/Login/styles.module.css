@@ -1,164 +1,115 @@
-/* 登录页样式 - 赛博科技深色风格 */
+/* 登录页 - Kimi 风格极简（企业/团队协作定位） */
 
 .container {
   min-height: 100vh;
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
   padding: 24px;
   background: var(--color-bg-root);
-  background-image:
-    radial-gradient(circle at 20% 30%, var(--color-border-secondary) 0%, transparent 50%),
-    radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.12) 0%, transparent 50%),
-    linear-gradient(135deg, var(--color-bg-root) 0%, var(--color-bg-layout) 100%);
-  position: relative;
-  overflow: hidden;
-}
-
-/* 网格背景 */
-.container::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
-  pointer-events: none;
 }
 
 .card {
-  width: 420px;
+  width: 380px;
   max-width: 100%;
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--color-border-secondary);
-  border-radius: 16px;
-  padding: 40px 36px;
-  box-shadow:
-    0 0 0 1px rgba(99, 102, 241, 0.05),
-    0 20px 60px rgba(0, 0, 0, 0.5),
-    0 0 80px rgba(99, 102, 241, 0.08);
-  position: relative;
-  z-index: 1;
+  padding: 48px 8px 40px;
 }
 
-/* 顶部光带 */
-.card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 20%;
-  right: 20%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #6366f1, transparent);
-}
-
-.header {
-  text-align: center;
-  margin-bottom: 32px;
-}
-
-.logoIcon {
-  font-size: 48px;
-  color: #6366f1;
-  filter: drop-shadow(0 0 12px rgba(99, 102, 241, 0.6));
-  margin-bottom: 12px;
-}
-
-.title {
+.logo {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
   color: var(--color-text-primary);
-  font-size: 24px;
-  font-weight: 600;
   margin: 0 0 8px;
-  letter-spacing: 1px;
 }
 
 .subtitle {
-  color: var(--color-text-tertiary);
   font-size: 13px;
-  margin: 0;
+  color: var(--color-text-tertiary);
+  margin: 0 0 40px;
 }
 
-/* 表单输入框深色风格 */
+.fieldLabel {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+/* 表单输入框 - Kimi 极简 */
 .input {
-  background: rgba(248, 250, 252, 0.6) !important;
-  border-color: var(--color-text-secondary) !important;
+  height: 40px !important;
+  border-radius: 10px !important;
+  background: var(--color-bg-base) !important;
+  border-color: var(--color-border) !important;
   color: var(--color-text-primary) !important;
-  height: 44px !important;
-  border-radius: 8px !important;
 }
 
 .input:hover {
-  border-color: rgba(99, 102, 241, 0.4) !important;
+  border-color: var(--color-border-hover) !important;
 }
 
 .input:focus,
 .input-focused {
-  border-color: #6366f1 !important;
-  box-shadow: 0 0 0 2px var(--color-border-secondary) !important;
+  border-color: var(--color-brand) !important;
+  box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.12) !important;
 }
 
-.inputPrefix {
-  color: var(--color-text-tertiary);
-}
-
-/* 主按钮 */
+/* 主按钮 - 品牌蓝实心 */
 .submitBtn {
-  height: 44px !important;
-  border-radius: 8px !important;
+  height: 42px !important;
+  border-radius: 10px !important;
   font-weight: 600 !important;
-  font-size: 15px !important;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+  font-size: 14px !important;
+  background: var(--color-brand) !important;
   border: none !important;
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35) !important;
+  letter-spacing: 1px;
 }
 
 .submitBtn:hover {
-  background: linear-gradient(135deg, #5558e3, #7c4ef0) !important;
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45) !important;
+  background: var(--color-brand-hover) !important;
 }
 
-/* 底部链接区域 */
-.footer {
-  margin-top: 24px;
-  text-align: center;
+.submitBtn:active {
+  background: var(--color-brand-active) !important;
 }
 
-.footerLinks {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.link {
-  color: var(--color-brand);
-  font-size: 13px;
-  cursor: pointer;
-  transition: color 0.2s;
-}
-
-.link:hover {
-  color: var(--color-text-secondary);
-}
-
-/* 记住账号密码复选框 */
 .rememberCheckbox {
   color: var(--color-text-secondary);
-  font-size: 13px;
+  font-size: 12px;
   user-select: none;
+  float: right;
 }
 
 .rememberCheckbox :global(.ant-checkbox-inner) {
-  border-color: var(--color-text-secondary);
+  border-color: var(--color-border-hover);
 }
 
 .rememberCheckbox:hover :global(.ant-checkbox-inner),
 .rememberCheckbox :global(.ant-checkbox-checked .ant-checkbox-inner) {
-  border-color: #6366f1;
+  border-color: var(--color-brand);
 }
 
 .rememberCheckbox :global(.ant-checkbox-checked .ant-checkbox-inner) {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: var(--color-brand);
+}
+
+/* 底部链接区域 */
+.footerLinks {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+.link {
+  color: var(--color-brand);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.link:hover {
+  color: var(--color-brand-hover);
 }

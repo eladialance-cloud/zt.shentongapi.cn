@@ -203,7 +203,7 @@ export default function AgentCreatorList() {
                 <div className={styles.cardHeader}>
                   <div className={styles.cardAvatar}>
                     {agent.avatar ? (
-                      <img
+                      <img loading="lazy"
                         src={agent.avatar}
                         alt={agent.name}
                         className={styles.cardAvatarImg}

@@ -32,21 +32,13 @@ const CATEGORY_OPTIONS: Array<{ label: string; value: string }> = [
   { label: "工作流", value: "workflow" },
 ];
 
-/** 类型标签 className 映射 */
-function typeTagClass(type: PluginType): string {
-  switch (type) {
-    case "tool":
-      return styles.typeTagTool;
-    case "connector":
-      return styles.typeTagConnector;
-    case "knowledge_base":
-      return styles.typeTagKb;
-    case "workflow":
-      return styles.typeTagWorkflow;
-    default:
-      return "";
-  }
-}
+/** 类型标签 antd 预设色 */
+const TYPE_TAG_COLOR: Record<PluginType, string> = {
+  tool: "blue",
+  connector: "orange",
+  knowledge_base: "green",
+  workflow: "magenta",
+};
 
 /** 类型中文显示 */
 function typeLabel(type: PluginType): string {
@@ -160,7 +152,7 @@ export default function PluginMarket({ embedded = false }: { embedded?: boolean 
 
   /** 返回 */
   const handleBack = () => {
-    navigate("/dashboard");
+    navigate("/skill-market");
   };
 
   return (
@@ -169,7 +161,9 @@ export default function PluginMarket({ embedded = false }: { embedded?: boolean 
         <>
           <div className={styles.pageHeader}>
             <div className={styles.pageTitle}>
-              <AppstoreOutlined />
+              <span className={styles.titleIcon}>
+                <AppstoreOutlined />
+              </span>
               <span>插件市场</span>
             </div>
             <Button
@@ -247,7 +241,8 @@ export default function PluginMarket({ embedded = false }: { embedded?: boolean 
                       )}
                     </div>
                     <Tag
-                      className={`${styles.typeTag} ${typeTagClass(plugin.type)}`}
+                      className={styles.typeTag}
+                      color={TYPE_TAG_COLOR[plugin.type]}
                     >
                       {typeLabel(plugin.type)}
                     </Tag>

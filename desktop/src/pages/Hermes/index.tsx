@@ -248,7 +248,9 @@ export default function HermesList() {
     <div className={styles.pageContainer}>
       <div className={styles.pageHeader}>
         <div className={styles.pageTitle}>
-          <AppstoreOutlined />
+          <span className={styles.pageTitleIcon}>
+            <AppstoreOutlined />
+          </span>
           <span>Hermes 实例</span>
         </div>
         <div className={styles.headerActions}>
@@ -310,7 +312,7 @@ export default function HermesList() {
                     <span>创建时间：{formatTime(inst.createdAt)}</span>
                   </div>
                   {inst.status === 'error' && inst.errorMessage && (
-                    <div style={{ color: '#fca5a5', fontSize: 11 }}>
+                    <div className={styles.errorText}>
                       错误：{inst.errorMessage}
                     </div>
                   )}

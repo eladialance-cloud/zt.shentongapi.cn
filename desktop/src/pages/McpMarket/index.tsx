@@ -5,13 +5,11 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   Button,
   Card,
-  ConfigProvider,
   Empty,
   Input,
   Select,
   Spin,
   Tag,
-  theme,
   message,
 } from 'antd'
 import {
@@ -42,11 +40,11 @@ const CATEGORY_OPTIONS: Array<{ label: string; value: string }> = [
   { label: '其他', value: 'other' },
 ]
 
-const RUNTIME_META: Record<string, { text: string; color: string; bg: string; border: string }> = {
-  node: { text: 'node', color: '#22c55e', bg: 'rgba(34, 197, 94, 0.14)', border: 'rgba(34, 197, 94, 0.4)' },
-  python: { text: 'python', color: '#7dd3fc', bg: 'rgba(125, 211, 252, 0.12)', border: 'rgba(125, 211, 252, 0.4)' },
-  docker: { text: 'docker', color: '#c4b5fd', bg: 'rgba(139, 92, 246, 0.16)', border: 'rgba(139, 92, 246, 0.45)' },
-  http: { text: 'http', color: '#fb923c', bg: 'rgba(251, 146, 60, 0.14)', border: 'rgba(251, 146, 60, 0.4)' },
+const RUNTIME_META: Record<string, { text: string; color: string }> = {
+  node: { text: 'node', color: 'green' },
+  python: { text: 'python', color: 'cyan' },
+  docker: { text: 'docker', color: 'purple' },
+  http: { text: 'http', color: 'orange' },
 }
 
 export default function McpMarket({ embedded = false }: { embedded?: boolean }) {
@@ -112,12 +110,11 @@ export default function McpMarket({ embedded = false }: { embedded?: boolean }) 
   }
 
   return (
-    <ConfigProvider theme={{ algorithm: theme.darkAlgorithm }}>
-      <div className={styles.page}>
+    <div className={styles.page}>
         {!embedded && (
           <div className={styles.header}>
             <div className={styles.titleArea}>
-              <ApiOutlined className={styles.titleIcon} />
+              <span className={styles.titleIcon}><ApiOutlined /></span>
               <div>
                 <h1 className={styles.title}>MCP 市场</h1>
                 <div className={styles.subtitle}>发现并使用官方 MCP 服务</div>
@@ -177,8 +174,7 @@ export default function McpMarket({ embedded = false }: { embedded?: boolean }) 
           onClose={() => setEnvModalOpen(false)}
           onSaved={() => void loadData()}
         />
-      </div>
-    </ConfigProvider>
+    </div>
   )
 }
 
@@ -202,7 +198,7 @@ function McpCardItem({
         <div className={styles.mcpHeader}>
           <div className={styles.mcpIcon}>
             {item.icon ? (
-              <img src={item.icon} alt={item.name} className={styles.mcpAvatarImg} />
+              <img loading="lazy" src={item.icon} alt={item.name} className={styles.mcpAvatarImg} />
             ) : (
               <div className={styles.mcpAvatar}>
                 {item.name.charAt(0).toUpperCase()}
@@ -210,7 +206,7 @@ function McpCardItem({
             )}
             <span className={styles.mcpAvatarBadge}>
               {item.isInstalled ? (
-                <CheckCircleOutlined style={{ color: '#22c55e' }} />
+                <CheckCircleOutlined style={{ color: 'var(--color-success)' }} />
               ) : installing ? (
                 <LoadingOutlined />
               ) : (
@@ -239,26 +235,11 @@ function McpCardItem({
 
         {/* runtime / 安全等级 / 传输方式 */}
         <div className={styles.mcpTagRow}>
-          <Tag
-            style={{
-              color: runtime.color,
-              background: runtime.bg,
-              borderColor: runtime.border,
-              marginRight: 0,
-            }}
-          >
+          <Tag color={runtime.color} style={{ marginRight: 0 }}>
             {runtime.text}
           </Tag>
           {item.securityLevel === 'official' ? (
-            <Tag
-              style={{
-                color: '#22c55e',
-                background: 'rgba(34, 197, 94, 0.14)',
-                borderColor: 'rgba(34, 197, 94, 0.4)',
-              }}
-            >
-              官方
-            </Tag>
+            <Tag color="green">官方</Tag>
           ) : (
             <Tag>社区</Tag>
           )}

@@ -6,15 +6,14 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Input, Select, Spin, Tag, message } from "antd";
 import {
-  ArrowLeftOutlined,
-  PlusOutlined,
-  ThunderboltOutlined,
-  SearchOutlined,
-  PlayCircleOutlined,
-  PictureOutlined,
-  DownloadOutlined,
-  CheckCircleOutlined,
-} from "@ant-design/icons";
+  ArrowLeft,
+  CircleCheck,
+  Download,
+  Image,
+  Plus,
+  Search,
+  Zap,
+} from "lucide-react";
 import * as workflowApi from "@/api/workflow-api";
 import * as marketApi from "@/api/market-api";
 import type {
@@ -178,13 +177,15 @@ export default function WorkflowList({ embedded = false }: { embedded?: boolean 
         <>
           <div className={styles.pageHeader}>
             <div className={styles.pageTitle}>
-              <ThunderboltOutlined />
+              <span className={styles.pageTitleIcon}>
+                <Zap size={18} />
+              </span>
               <span>工作流模板</span>
             </div>
             <div className={styles.headerActions}>
               <Button
                 className={styles.backBtn}
-                icon={<ArrowLeftOutlined />}
+                icon={<ArrowLeft size={14} />}
                 onClick={handleBack}
               >
                 返回
@@ -192,7 +193,7 @@ export default function WorkflowList({ embedded = false }: { embedded?: boolean 
               <Button
                 type="primary"
                 className={styles.newBtn}
-                icon={<PlusOutlined />}
+                icon={<Plus size={14} />}
                 onClick={handleNewWorkflow}
               >
                 新建工作流
@@ -217,7 +218,7 @@ export default function WorkflowList({ embedded = false }: { embedded?: boolean 
           allowClear
           enterButton={
             <>
-              <SearchOutlined /> 搜索
+              <Search size={14} /> 搜索
             </>
           }
           onSearch={handleSearch}
@@ -228,7 +229,7 @@ export default function WorkflowList({ embedded = false }: { embedded?: boolean 
       <Spin spinning={loading}>
         {templates.length === 0 && !loading ? (
           <div className={styles.emptyState}>
-            <ThunderboltOutlined className={styles.emptyStateIcon} />
+            <Zap size={48} className={styles.emptyStateIcon} />
             <div className={styles.emptyStateText}>暂无工作流模板</div>
           </div>
         ) : (
@@ -238,11 +239,9 @@ export default function WorkflowList({ embedded = false }: { embedded?: boolean 
                 {/* 预览图 */}
                 <div className={styles.cardPreview}>
                   {tpl.previewImage ? (
-                    <img src={tpl.previewImage} alt={tpl.name} />
+                    <img loading="lazy" src={tpl.previewImage} alt={tpl.name} />
                   ) : (
-                    <PictureOutlined
-                      className={styles.cardPreviewPlaceholder}
-                    />
+                    <Image size={44} className={styles.cardPreviewPlaceholder} />
                   )}
                 </div>
 
@@ -278,7 +277,7 @@ export default function WorkflowList({ embedded = false }: { embedded?: boolean 
                     <Button
                       type="primary"
                       className={styles.useBtn}
-                      icon={<CheckCircleOutlined />}
+                      icon={<CircleCheck size={14} />}
                       onClick={() => handleUseTemplate(tpl)}
                       block
                     >
@@ -288,7 +287,7 @@ export default function WorkflowList({ embedded = false }: { embedded?: boolean 
                     <Button
                       type="primary"
                       className={styles.useBtn}
-                      icon={<DownloadOutlined />}
+                      icon={<Download size={14} />}
                       loading={installingIds.has(String(tpl.id))}
                       onClick={() => handleDownload(tpl)}
                       block

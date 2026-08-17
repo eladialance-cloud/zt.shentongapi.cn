@@ -1,47 +1,76 @@
-/* Hermes 实例管理样式 - 赛博科技深色风格 */
+/* Hermes 实例管理 — Kimi 风格（v2.0）
+   原则: 白/灰分层 · 1px 细边框 · 12px 圆角 · 品牌蓝点缀 · 浅深双板自适应
+   结构: 实例列表 / 实例详情 / 技能包挂载 */
 
 .pageContainer {
-  min-height: 100vh;
-  background: linear-gradient(180deg, var(--color-bg-root) 0%, #F1F5F9 100%);
+  min-height: 100%;
+  background: var(--color-bg-root);
   color: var(--color-text-primary);
   padding: 24px 32px 48px;
   overflow-y: auto;
 }
 
-.pageContainer::-webkit-scrollbar {
-  width: 8px;
-}
+.pageContainer::-webkit-scrollbar { width: 8px; }
 .pageContainer::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.3);
+  background: var(--color-scrollbar-thumb);
   border-radius: 4px;
 }
 
-/* ===== 顶部标题栏 ===== */
+/* ===== 页头 ===== */
 .pageHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--color-border-secondary);
 }
 
 .pageTitle {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 600;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--color-text-primary);
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.headerActions {
+.pageTitleIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--color-brand-bg);
+  color: var(--color-brand);
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.headerActions { display: flex; align-items: center; gap: 10px; }
+
+/* ===== 按钮（Kimi 式：primary 实心蓝 / ghost 描边） ===== */
+.primaryBtn {
+  background: var(--color-brand) !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
+}
+
+.primaryBtn:hover:not(:disabled) {
+  background: var(--color-brand-hover) !important;
+}
+
+.backBtn {
+  background: transparent !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-secondary) !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
+}
+
+.backBtn:hover:not(:disabled) {
+  color: var(--color-text-primary) !important;
+  border-color: var(--color-border-hover) !important;
+  background: var(--color-bg-hover) !important;
 }
 
 /* ===== 实例卡片网格 ===== */
@@ -52,17 +81,19 @@
 }
 
 .instanceCard {
-  background: rgba(255, 255, 255, 0.65) !important;
-  border: 1px solid rgba(99, 102, 241, 0.22) !important;
-  border-radius: 14px !important;
-  backdrop-filter: blur(16px);
-  transition: all 0.25s ease;
+  background: var(--color-bg-container) !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .instanceCard:hover {
-  border-color: rgba(99, 102, 241, 0.55) !important;
-  box-shadow: 0 0 32px var(--color-border), 0 8px 24px rgba(0, 0, 0, 0.4) !important;
-  transform: translateY(-3px);
+  border-color: var(--color-border-hover) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-1px);
 }
 
 .cardTitleRow {
@@ -99,72 +130,50 @@
   flex-wrap: wrap;
   gap: 6px;
   padding-top: 10px;
-  border-top: 1px solid rgba(99, 102, 241, 0.1);
+  border-top: 1px solid var(--color-split);
 }
 
-/* ===== 状态标签 ===== */
+/* ===== 状态标签（轻量胶囊） ===== */
 .statusRunning {
   color: var(--color-success) !important;
-  border-color: rgba(52, 211, 153, 0.4) !important;
-  background: rgba(52, 211, 153, 0.1) !important;
+  background: var(--color-success-light) !important;
+  border-color: transparent !important;
 }
 
 .statusStopped {
   color: var(--color-text-tertiary) !important;
-  border-color: rgba(139, 148, 158, 0.4) !important;
-  background: rgba(139, 148, 158, 0.1) !important;
+  background: var(--color-bg-hover) !important;
+  border-color: transparent !important;
 }
 
 .statusError {
-  color: #f87171 !important;
-  border-color: rgba(248, 113, 113, 0.4) !important;
-  background: rgba(248, 113, 113, 0.1) !important;
+  color: var(--color-error) !important;
+  background: var(--color-error-light) !important;
+  border-color: transparent !important;
 }
 
 .callStatusSuccess {
   color: var(--color-success) !important;
-  border-color: rgba(52, 211, 153, 0.4) !important;
-  background: rgba(52, 211, 153, 0.1) !important;
+  background: var(--color-success-light) !important;
+  border-color: transparent !important;
 }
 
 .callStatusFailed {
-  color: #f87171 !important;
-  border-color: rgba(248, 113, 113, 0.4) !important;
-  background: rgba(248, 113, 113, 0.1) !important;
+  color: var(--color-error) !important;
+  background: var(--color-error-light) !important;
+  border-color: transparent !important;
 }
 
 .callStatusTimeout {
-  color: #fbbf24 !important;
-  border-color: rgba(251, 191, 36, 0.4) !important;
-  background: rgba(251, 191, 36, 0.1) !important;
+  color: var(--color-warning) !important;
+  background: var(--color-warning-light) !important;
+  border-color: transparent !important;
 }
 
 .callStatusRunning {
-  color: #60a5fa !important;
-  border-color: rgba(96, 165, 250, 0.4) !important;
-  background: rgba(96, 165, 250, 0.1) !important;
-}
-
-/* ===== 按钮 ===== */
-.primaryBtn {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
-  border: none !important;
-  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.4) !important;
-}
-
-.primaryBtn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #5558e3 0%, #7c4ef0 100%) !important;
-}
-
-.backBtn {
-  background: rgba(99, 102, 241, 0.1) !important;
-  border: 1px solid rgba(99, 102, 241, 0.3) !important;
-  color: var(--color-text-secondary) !important;
-}
-
-.backBtn:hover {
-  background: var(--color-border-secondary) !important;
-  color: var(--color-text-secondary) !important;
+  color: var(--color-info) !important;
+  background: var(--color-info-light) !important;
+  border-color: transparent !important;
 }
 
 /* ===== 详情页 ===== */
@@ -175,11 +184,10 @@
 }
 
 .sectionCard {
-  background: rgba(255, 255, 255, 0.65);
-  border: 1px solid var(--color-border-secondary);
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 20px 24px;
-  backdrop-filter: blur(12px);
 }
 
 .sectionTitle {
@@ -258,15 +266,15 @@
 }
 
 .skillCard {
-  background: rgba(255, 255, 255, 0.65) !important;
-  border: 1px solid rgba(99, 102, 241, 0.22) !important;
+  background: var(--color-bg-container) !important;
+  border: 1px solid var(--color-border) !important;
   border-radius: 12px !important;
-  backdrop-filter: blur(16px);
-  transition: all 0.2s ease;
+  box-shadow: var(--shadow-sm) !important;
+  transition: border-color var(--duration-fast) var(--ease-out);
 }
 
 .skillCard:hover {
-  border-color: rgba(99, 102, 241, 0.5) !important;
+  border-color: var(--color-border-hover) !important;
 }
 
 .skillCardBody {
@@ -296,13 +304,13 @@
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.3));
-  color: var(--color-text-secondary);
+  background: var(--color-brand-bg);
+  color: var(--color-brand);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 18px;
-  border: 1px solid rgba(99, 102, 241, 0.4);
+  border: 1px solid var(--color-border);
 }
 
 .skillDesc {
@@ -334,16 +342,16 @@
   padding: 2px 8px;
   border-radius: 8px;
   font-size: 11px;
-  background: rgba(34, 211, 238, 0.12);
-  color: #22d3ee;
-  border: 1px solid rgba(34, 211, 238, 0.3);
+  background: var(--color-brand-light);
+  color: var(--color-brand);
+  border: 1px solid transparent;
   font-weight: 500;
 }
 
 .skillPriceFree {
-  background: rgba(52, 211, 153, 0.12);
+  background: var(--color-success-light);
   color: var(--color-success);
-  border-color: rgba(52, 211, 153, 0.3);
+  border-color: transparent;
 }
 
 .skillActions {
@@ -354,19 +362,19 @@
 
 .installedTag {
   color: var(--color-success) !important;
-  border-color: rgba(52, 211, 153, 0.4) !important;
-  background: rgba(52, 211, 153, 0.1) !important;
+  background: var(--color-success-light) !important;
+  border-color: transparent !important;
 }
 
 /* ===== 费用预估提示 ===== */
 .costEstimate {
   margin-top: 8px;
   padding: 8px 12px;
-  background: rgba(34, 211, 238, 0.08);
-  border: 1px solid rgba(34, 211, 238, 0.3);
+  background: var(--color-brand-light);
+  border: 1px solid transparent;
   border-radius: 8px;
   font-size: 12px;
-  color: #22d3ee;
+  color: var(--color-brand);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -385,10 +393,16 @@
 
 .emptyStateIcon {
   font-size: 56px;
-  color: rgba(99, 102, 241, 0.4);
+  color: var(--color-text-disabled);
 }
 
 .emptyStateText {
   font-size: 14px;
   color: var(--color-text-tertiary);
+}
+
+/* ===== 错误提示 ===== */
+.errorText {
+  font-size: 11px;
+  color: var(--color-error);
 }

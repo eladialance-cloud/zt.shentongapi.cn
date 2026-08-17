@@ -154,7 +154,7 @@ export default function InstalledPlugins({ embedded = false }: { embedded?: bool
       dataIndex: ['plugin', 'name'],
       key: 'name',
       render: (name: string, record: InstalledPluginRow) => (
-        <span style={{ color: '#e6edf3', fontWeight: 500 }}>
+        <span className={styles.nameCellTitle}>
           {name}
           {record.plugin.isOfficial && (
             <span className={styles.officialBadge} style={{ marginLeft: 8 }}>
@@ -229,10 +229,12 @@ export default function InstalledPlugins({ embedded = false }: { embedded?: bool
         <>
           <div className={styles.pageHeader}>
             <div className={styles.pageTitle}>
-              <AppstoreOutlined />
+              <span className={styles.titleIcon}>
+                <AppstoreOutlined />
+              </span>
               <span>已安装插件</span>
             </div>
-            <Button className={styles.backBtn} icon={<ArrowLeftOutlined />} onClick={() => navigate('/dashboard')}>
+            <Button className={styles.backBtn} icon={<ArrowLeftOutlined />} onClick={() => navigate('/skill-market')}>
               返回
             </Button>
           </div>

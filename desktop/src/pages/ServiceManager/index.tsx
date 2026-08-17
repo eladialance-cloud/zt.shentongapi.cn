@@ -27,6 +27,7 @@ import {
   DownloadOutlined,
   FolderOpenOutlined,
   VideoCameraOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import {
   listServices,
@@ -50,11 +51,11 @@ import styles from "./styles.module.css";
 
 /** 服务图标映射 */
 const SERVICE_ICONS: Record<ServiceName, React.ReactNode> = {
-  openclaw: <CloudServerOutlined style={{ color: "#6366f1" }} />,
-  n8n: <ApartmentOutlined style={{ color: "#8b5cf6" }} />,
-  mcp: <ApiOutlined style={{ color: "#06b6d4" }} />,
-  hermes: <ApiOutlined style={{ color: "#f59e0b" }} />,
-  "video-claw": <VideoCameraOutlined style={{ color: "#ec4899" }} />,
+  openclaw: <CloudServerOutlined className={styles.serviceIcon} />,
+  n8n: <ApartmentOutlined className={styles.serviceIcon} />,
+  mcp: <ApiOutlined className={styles.serviceIcon} />,
+  hermes: <ApiOutlined className={styles.serviceIcon} />,
+  "video-claw": <VideoCameraOutlined className={styles.serviceIcon} />,
 };
 
 /** 状态展示配置 */
@@ -299,7 +300,7 @@ export default function ServiceManager() {
           <div>
             <h1 className={styles.title}>本地服务管理</h1>
             <div className={styles.subtitle}>
-              管理 OpenClaw / N8N / MCP Gateway 三个本地服务进程
+              统一管理本地服务进程：启动 / 停止 / 重启 / 安装修复
             </div>
           </div>
         </div>
@@ -381,7 +382,10 @@ export default function ServiceManager() {
 
                   {/* 错误信息 */}
                   {svc.status === "error" && svc.error && (
-                    <div className={styles.errorMsg}>⚠️ {svc.error}</div>
+                    <div className={styles.errorMsg}>
+                      <WarningOutlined />
+                      {svc.error}
+                    </div>
                   )}
 
                   {/* 指标 */}

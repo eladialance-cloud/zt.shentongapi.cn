@@ -11,13 +11,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Progress, message } from "antd";
 import {
-  ArrowLeftOutlined,
-  ReloadOutlined,
-  ThunderboltOutlined,
-  LoadingOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-} from "@ant-design/icons";
+  ArrowLeft,
+  CircleCheck,
+  CircleX,
+  LoaderCircle,
+  RotateCw,
+  Zap,
+} from "lucide-react";
 import styles from "./styles.module.css";
 
 /** N8N 服务地址 */
@@ -218,7 +218,9 @@ export default function WorkflowEditor() {
       {/* 顶部栏 */}
       <div className={styles.editorHeader}>
         <div className={styles.editorTitle}>
-          <ThunderboltOutlined />
+          <span className={styles.editorTitleIcon}>
+            <Zap size={14} />
+          </span>
           <span>N8N 工作流编辑器</span>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -238,7 +240,7 @@ export default function WorkflowEditor() {
           </Button>
           <Button
             className={styles.backBtn}
-            icon={<ArrowLeftOutlined />}
+            icon={<ArrowLeft size={14} />}
             onClick={handleBack}
           >
             返回
@@ -263,11 +265,11 @@ export default function WorkflowEditor() {
         {/* 加载中遮罩 */}
         {state === "starting" && (
           <div className={styles.loadingOverlay}>
-            <LoadingOutlined className={styles.loadingIcon} />
+            <LoaderCircle size={48} className={styles.loadingIcon} />
             <div className={styles.loadingTitle}>正在启动 N8N 服务...</div>
             <Progress
               percent={progress}
-              strokeColor={{ from: "#6366f1", to: "#8b5cf6" }}
+              strokeColor="var(--color-brand)"
               style={{ width: 280 }}
               status="active"
             />
@@ -282,7 +284,7 @@ export default function WorkflowEditor() {
         {/* iframe 加载中 */}
         {state === "iframe-loading" && (
           <div className={styles.loadingOverlay}>
-            <LoadingOutlined className={styles.loadingIcon} />
+            <LoaderCircle size={48} className={styles.loadingIcon} />
             <div className={styles.loadingTitle}>
               正在加载 N8N 编辑器界面...
             </div>
@@ -295,16 +297,13 @@ export default function WorkflowEditor() {
         {/* 错误状态 */}
         {state === "error" && (
           <div className={styles.loadingOverlay}>
-            <CloseCircleOutlined
-              className={styles.loadingIcon}
-              style={{ color: "#f87171" }}
-            />
+            <CircleX size={48} className={styles.loadingIcon} style={{ color: "var(--color-error)" }} />
             <div className={styles.loadingTitle}>N8N 启动失败</div>
             <div className={styles.loadingError}>{errorMessage}</div>
             <Button
               type="primary"
               className={styles.retryBtn}
-              icon={<ReloadOutlined />}
+              icon={<RotateCw size={14} />}
               onClick={handleRetry}
             >
               重试
@@ -318,10 +317,7 @@ export default function WorkflowEditor() {
             className={styles.loadingOverlay}
             style={{ pointerEvents: "none" }}
           >
-            <CheckCircleOutlined
-              className={styles.loadingIcon}
-              style={{ color: "#34d399" }}
-            />
+            <CircleCheck size={48} className={styles.loadingIcon} style={{ color: "var(--color-success)" }} />
             <div className={styles.loadingTitle}>N8N 编辑器已就绪</div>
           </div>
         )}

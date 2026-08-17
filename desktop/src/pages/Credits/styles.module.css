@@ -1,31 +1,27 @@
-/* 积分中心样式 - 赛博科技深色风格 */
+/* 积分中心 — Kimi 风格（v2.0）
+   原则: 白/灰分层 · 1px 细边框 · 12px 圆角 · 品牌蓝点缀 · 浅深双板自适应
+   结构: 余额主卡 / 统计卡 / 快捷入口 / 套餐卡 / 支付 / 流水表格 */
 
 .page {
-  min-height: 100vh;
+  min-height: 100%;
   background: var(--color-bg-root);
-  background-image:
-    radial-gradient(circle at 15% 20%, rgba(99, 102, 241, 0.12) 0%, transparent 45%),
-    radial-gradient(circle at 85% 80%, rgba(139, 92, 246, 0.10) 0%, transparent 45%),
-    linear-gradient(135deg, var(--color-bg-root) 0%, var(--color-bg-layout) 100%);
   color: var(--color-text-primary);
   padding: 24px 32px 48px;
   overflow-y: auto;
 }
 
-.page::-webkit-scrollbar {
-  width: 8px;
-}
+.page::-webkit-scrollbar { width: 8px; }
 .page::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.3);
+  background: var(--color-scrollbar-thumb);
   border-radius: 4px;
 }
 
-/* ===== 顶部标题栏 ===== */
+/* ===== 页头 ===== */
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .titleArea {
@@ -35,17 +31,23 @@
 }
 
 .titleIcon {
-  font-size: 28px;
-  color: #6366f1;
-  filter: drop-shadow(0 0 10px rgba(99, 102, 241, 0.6));
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--color-brand-bg);
+  color: var(--color-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  flex-shrink: 0;
 }
 
 .title {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 600;
   color: var(--color-text-primary);
   margin: 0;
-  letter-spacing: 0.5px;
 }
 
 .subtitle {
@@ -55,39 +57,26 @@
 }
 
 .backBtn {
-  background: rgba(99, 102, 241, 0.1) !important;
-  border: 1px solid rgba(99, 102, 241, 0.3) !important;
+  background: transparent !important;
+  border: 1px solid var(--color-border) !important;
   color: var(--color-text-secondary) !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
+}
+.backBtn:hover:not(:disabled) {
+  color: var(--color-text-primary) !important;
+  border-color: var(--color-border-hover) !important;
+  background: var(--color-bg-hover) !important;
 }
 
-.backBtn:hover {
-  background: var(--color-border-secondary) !important;
-  color: var(--color-text-secondary) !important;
-}
-
-/* ===== 余额卡片（渐变 + 发光） ===== */
+/* ===== 余额主卡片 ===== */
 .balanceCard {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.18) 0%, rgba(139, 92, 246, 0.12) 50%, rgba(236, 72, 153, 0.10) 100%) !important;
-  border: 1px solid rgba(99, 102, 241, 0.35) !important;
+  background: var(--color-bg-container) !important;
+  border: 1px solid var(--color-border) !important;
   border-radius: 16px !important;
-  box-shadow:
-    0 0 0 1px rgba(99, 102, 241, 0.08),
-    0 12px 40px rgba(0, 0, 0, 0.4),
-    0 0 60px rgba(99, 102, 241, 0.18) !important;
-  backdrop-filter: blur(20px);
+  box-shadow: var(--shadow-sm) !important;
   position: relative;
   overflow: hidden;
-}
-
-/* 顶部光带 */
-.balanceCard::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 15%;
-  right: 15%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #818cf8, transparent);
 }
 
 .balanceRow {
@@ -115,11 +104,7 @@
   font-size: 44px;
   font-weight: 700;
   line-height: 1.1;
-  background: linear-gradient(135deg, #c7d2fe 0%, #f0abfc 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 16px rgba(99, 102, 241, 0.4));
+  color: var(--color-text-primary);
 }
 
 .balanceUnit {
@@ -134,14 +119,12 @@
   border-radius: 10px !important;
   font-weight: 600 !important;
   font-size: 15px !important;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+  background: var(--color-brand) !important;
   border: none !important;
-  box-shadow: 0 4px 18px rgba(99, 102, 241, 0.45) !important;
+  box-shadow: none !important;
 }
-
-.rechargeBtn:hover {
-  background: linear-gradient(135deg, #5558e3, #7c4ef0) !important;
-  box-shadow: 0 6px 24px rgba(99, 102, 241, 0.6) !important;
+.rechargeBtn:hover:not(:disabled) {
+  background: var(--color-brand-hover) !important;
 }
 
 /* ===== 统计卡片网格 ===== */
@@ -153,16 +136,16 @@
 }
 
 .statCard {
-  background: rgba(255, 255, 255, 0.7) !important;
-  border: 1px solid rgba(99, 102, 241, 0.18) !important;
+  background: var(--color-bg-container) !important;
+  border: 1px solid var(--color-border) !important;
   border-radius: 12px !important;
-  backdrop-filter: blur(12px);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: var(--shadow-sm) !important;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
-
 .statCard:hover {
-  border-color: rgba(99, 102, 241, 0.4) !important;
-  box-shadow: 0 0 24px var(--color-border-secondary) !important;
+  border-color: var(--color-border-hover) !important;
+  box-shadow: var(--shadow-md) !important;
 }
 
 /* ===== 快捷入口 ===== */
@@ -174,18 +157,18 @@
 }
 
 .actionCard {
-  background: rgba(255, 255, 255, 0.7) !important;
-  border: 1px solid rgba(99, 102, 241, 0.18) !important;
+  background: var(--color-bg-container) !important;
+  border: 1px solid var(--color-border) !important;
   border-radius: 12px !important;
   cursor: pointer;
-  transition: all 0.2s ease;
-  backdrop-filter: blur(12px);
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
-
 .actionCard:hover {
-  border-color: rgba(99, 102, 241, 0.5) !important;
-  box-shadow: 0 0 28px var(--color-border-secondary) !important;
-  transform: translateY(-2px);
+  border-color: var(--color-border-hover) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-1px);
 }
 
 .actionInner {
@@ -196,7 +179,7 @@
 }
 
 .actionIcon {
-  font-size: 28px;
+  font-size: 26px;
   color: var(--color-brand);
 }
 
@@ -217,59 +200,55 @@
   margin-top: 2px;
 }
 
-/* ===== 充值套餐卡片（玻璃拟态 + 边框发光） ===== */
+/* ===== 充值套餐卡片 ===== */
 .plansGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 20px;
+  gap: 16px;
   margin-top: 24px;
 }
 
 .planCard {
-  background: rgba(255, 255, 255, 0.65) !important;
-  border: 1px solid rgba(99, 102, 241, 0.22) !important;
+  background: var(--color-bg-container) !important;
+  border: 1px solid var(--color-border) !important;
   border-radius: 14px !important;
-  backdrop-filter: blur(16px);
   position: relative;
-  transition: all 0.25s ease;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
   cursor: pointer;
   overflow: hidden;
 }
-
 .planCard:hover {
-  border-color: rgba(99, 102, 241, 0.55) !important;
-  box-shadow: 0 0 32px var(--color-border) !important;
-  transform: translateY(-3px);
+  border-color: var(--color-border-hover) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-1px);
 }
 
 .planCardSelected {
-  border-color: #6366f1 !important;
-  box-shadow:
-    0 0 0 2px rgba(99, 102, 241, 0.4),
-    0 0 40px rgba(99, 102, 241, 0.35) !important;
+  border-color: var(--color-brand) !important;
+  box-shadow: 0 0 0 2px var(--color-brand-light) !important;
 }
 
 /* 推荐套餐特殊高亮 */
 .planCardRecommended {
-  border-color: rgba(245, 158, 11, 0.5) !important;
-  box-shadow: 0 0 28px rgba(245, 158, 11, 0.2) !important;
+  border-color: var(--color-warning) !important;
+  box-shadow: 0 0 0 1px var(--color-warning-light) !important;
 }
-
 .planCardRecommended:hover {
-  box-shadow: 0 0 40px rgba(245, 158, 11, 0.35) !important;
+  box-shadow: 0 0 0 2px var(--color-warning-light) !important;
 }
 
 .recommendBadge {
   position: absolute;
   top: 0;
   right: 0;
-  background: linear-gradient(135deg, #f59e0b, #f97316);
-  color: #fff;
+  background: var(--color-warning);
+  color: var(--color-text-inverse);
   font-size: 11px;
   font-weight: 600;
   padding: 3px 12px;
   border-bottom-left-radius: 10px;
-  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
 }
 
 .planName {
@@ -283,7 +262,6 @@
   font-size: 28px;
   font-weight: 700;
   color: var(--color-text-secondary);
-  filter: drop-shadow(0 0 10px rgba(99, 102, 241, 0.4));
 }
 
 .planCreditsUnit {
@@ -302,7 +280,7 @@
   margin-top: 12px;
   font-size: 20px;
   font-weight: 600;
-  color: #f0abfc;
+  color: var(--color-text-primary);
 }
 
 .planPriceCurrency {
@@ -315,10 +293,10 @@
 .paymentSection {
   margin-top: 28px;
   padding: 20px;
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(99, 102, 241, 0.18);
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
-  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-sm);
 }
 
 .sectionTitle {
@@ -338,28 +316,27 @@
   border-radius: 10px !important;
   font-weight: 600 !important;
   font-size: 15px !important;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+  background: var(--color-brand) !important;
   border: none !important;
-  box-shadow: 0 4px 18px rgba(99, 102, 241, 0.45) !important;
+  box-shadow: none !important;
 }
-
 .confirmBtn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #5558e3, #7c4ef0) !important;
+  background: var(--color-brand-hover) !important;
 }
-
 .confirmBtn:disabled {
-  background: rgba(99, 102, 241, 0.3) !important;
+  background: var(--color-brand-light) !important;
   cursor: not-allowed;
 }
 
-/* ===== 支付结果（二维码占位） ===== */
+/* ===== 支付结果 ===== */
 .payResult {
   margin-top: 24px;
   padding: 24px;
   text-align: center;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--color-bg-container);
   border: 1px solid var(--color-border);
   border-radius: 12px;
+  box-shadow: var(--shadow-sm);
 }
 
 .qrPlaceholder {
@@ -368,9 +345,9 @@
   justify-content: center;
   width: 200px;
   height: 200px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--color-bg-layout);
   border-radius: 8px;
-  color: var(--color-bg-root);
+  color: var(--color-text-tertiary);
   font-size: 12px;
   text-align: center;
   padding: 12px;
@@ -391,11 +368,11 @@
   gap: 12px;
   align-items: center;
   padding: 16px;
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(99, 102, 241, 0.18);
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   margin-bottom: 20px;
-  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-sm);
 }
 
 .filterItem {
@@ -410,9 +387,12 @@
   white-space: nowrap;
 }
 
-/* ===== 深色表格覆盖 ===== */
+/* ===== 表格覆盖（浅深双板自适应） ===== */
 .darkTable {
-  background: rgba(255, 255, 255, 0.6) !important;
+  background: var(--color-bg-container) !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
 }
 
 .darkTable .ant-table {
@@ -421,7 +401,7 @@
 }
 
 .darkTable .ant-table-thead > tr > th {
-  background: rgba(248, 250, 252, 0.7) !important;
+  background: var(--color-bg-layout) !important;
   color: var(--color-text-secondary) !important;
   border-bottom: 1px solid var(--color-border) !important;
 }
@@ -429,11 +409,11 @@
 .darkTable .ant-table-tbody > tr > td {
   background: transparent !important;
   color: var(--color-text-primary) !important;
-  border-bottom: 1px solid rgba(99, 102, 241, 0.1) !important;
+  border-bottom: 1px solid var(--color-split) !important;
 }
 
 .darkTable .ant-table-tbody > tr:hover > td {
-  background: rgba(99, 102, 241, 0.08) !important;
+  background: var(--color-bg-hover) !important;
 }
 
 /* 金额颜色 */
@@ -443,7 +423,7 @@
 }
 
 .amountNegative {
-  color: #f87171;
+  color: var(--color-error);
   font-weight: 600;
 }
 
@@ -453,17 +433,60 @@
   padding: 1px 8px;
   border-radius: 10px;
   font-size: 11px;
-  background: var(--color-border-secondary);
+  background: var(--color-bg-hover);
   color: var(--color-text-secondary);
   border: 1px solid var(--color-border);
 }
 
 /* ===== 通用 ===== */
-.glowText {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+.noticeBar {
+  margin-top: 24px;
+  padding: 12px 16px;
+  background: var(--color-brand-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.noticeIcon {
+  color: var(--color-brand);
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* 统计卡标题/前缀 */
+.statTitle {
+  color: var(--color-text-tertiary);
+}
+
+.statPrefixWarning { color: var(--color-warning); }
+.statPrefixSuccess { color: var(--color-success); }
+.statPrefixError { color: var(--color-error); }
+
+/* 消费明细条目 */
+.consumptionItem {
+  background: var(--color-bg-container) !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 10px !important;
+  margin-bottom: 10px !important;
+  padding: 12px 16px !important;
+  color: var(--color-text-primary) !important;
+}
+
+.consumptionRemark {
+  font-size: 13px;
+  color: var(--color-text-primary);
+}
+
+.consumptionBalance {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
 }
 
 .emptyState {

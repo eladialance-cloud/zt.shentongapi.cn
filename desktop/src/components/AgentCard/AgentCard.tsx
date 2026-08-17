@@ -117,7 +117,7 @@ export default function AgentCard({
             }}
           >
             {agent.avatar ? (
-              <img src={agent.avatar} alt={agent.name} className={styles.avatarImg} />
+              <img loading="lazy" src={agent.avatar} alt={agent.name} className={styles.avatarImg} />
             ) : (
               <span className={styles.avatarText} style={{ color: theme.color }}>
                 {avatarText}

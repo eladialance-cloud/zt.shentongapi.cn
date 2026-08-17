@@ -1,18 +1,40 @@
 // 应用根组件 - 全局配置与路由挂载
+// v2：Kimi 风格主题应用 — system/light/dark + data-theme 驱动 CSS 变量
 
-import { useEffect } from 'react'
-import { ConfigProvider, theme as antdTheme } from 'antd'
+import { useEffect, useMemo, useState } from 'react'
+import { ConfigProvider } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import { RouterProvider } from 'react-router-dom'
 import router from '@/router'
-import { useSettingsStore } from '@/store/settings'
+import { useSettingsStore, resolveThemeMode, systemPrefersDark } from '@/store/settings'
 import { useAuthStore } from '@/store/auth'
 import { fetchLlmProxyKey } from '@/api/chat-api'
-import { antdTheme as appTheme } from '@/theme/antd-theme'
+import { lightTheme, darkTheme } from '@/theme/antd-theme'
 
 export default function App() {
   const themeMode = useSettingsStore((s) => s.theme)
+  const [systemDark, setSystemDark] = useState(systemPrefersDark)
   const initialize = useAuthStore((s) => s.initialize)
+
+  // 跟随系统深色模式
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const mql = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = (e: MediaQueryListEvent) => setSystemDark(e.matches)
+    mql.addEventListener('change', onChange)
+    return () => mql.removeEventListener('change', onChange)
+  }, [])
+
+  // 当前有效主题（system 跟随系统）
+  const effectiveMode = useMemo(
+    () => resolveThemeMode(themeMode, systemDark),
+    [themeMode, systemDark]
+  )
+
+  // data-theme 驱动 CSS 变量切换（design-tokens.css 双色板）
+  useEffect(() => {
+    document.documentElement.dataset.theme = effectiveMode
+  }, [effectiveMode])
 
   // 应用启动时：如果有持久化的 refreshToken，自动刷新 accessToken
   useEffect(() => {
@@ -45,11 +67,7 @@ export default function App() {
   return (
     <ConfigProvider
       locale={zhCN}
-      theme={{
-        algorithm:
-          themeMode === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
-        ...appTheme,
-      }}
+      theme={effectiveMode === 'dark' ? darkTheme : lightTheme}
     >
       <RouterProvider router={router} />
     </ConfigProvider>

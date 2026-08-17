@@ -1,25 +1,18 @@
-// 知识库检索测试页
+// 知识库检索测试页 — Kimi 风格（v2.0）
 // 布局：搜索框 + Top-K 选择 + 检索结果列表（内容/来源/相似度分数/元数据）
 // 调用 POST /knowledge/bases/:id/search，body: { query, topK }
 
 import { useCallback, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { Button, Input, Select, Skeleton, Spin, message } from 'antd'
 import {
-  Button,
-  Input,
-  Select,
-  Skeleton,
-  Spin,
-  Tag,
-  message
-} from 'antd'
-import {
-  ArrowLeftOutlined,
-  BookOutlined,
-  SearchOutlined,
-  FileTextOutlined,
-  PercentageOutlined
-} from '@ant-design/icons'
+  ArrowLeft,
+  BookOpen,
+  FileText,
+  Library,
+  Percent,
+  Search
+} from 'lucide-react'
 import * as kbApi from '@/api/knowledge-api'
 import type { SearchResult } from '@/types/knowledge'
 import styles from './styles.module.css'
@@ -35,7 +28,7 @@ const TOP_K_OPTIONS = [
 /** 格式化相似度分数 */
 function formatScore(score: number): string {
   if (typeof score !== 'number') return '-'
-  return `${(score * 100).toFixed(1)}%`
+  return (score * 100).toFixed(1) + '%'
 }
 
 /** 格式化元数据为可读字符串 */
@@ -92,9 +85,9 @@ export default function KnowledgeSearch() {
     }
   }
 
-  /** 返回 */
+  /** 返回文档管理 */
   const handleBack = () => {
-    navigate(`/knowledge/${kbId}/documents`)
+    navigate('/knowledge/' + kbId + '/documents')
   }
 
   /** 返回列表 */
@@ -106,20 +99,22 @@ export default function KnowledgeSearch() {
     <div className={styles.pageContainer}>
       <div className={styles.pageHeader}>
         <div className={styles.pageTitle}>
-          <SearchOutlined />
+          <span className={styles.pageTitleIcon}>
+            <Library size={18} />
+          </span>
           <span>知识库检索测试</span>
         </div>
         <div className={styles.headerActions}>
           <Button
-            className={styles.backBtn}
-            icon={<BookOutlined />}
+            className={styles.ghostBtn}
+            icon={<BookOpen size={14} />}
             onClick={handleBack}
           >
             文档管理
           </Button>
           <Button
-            className={styles.backBtn}
-            icon={<ArrowLeftOutlined />}
+            className={styles.ghostBtn}
+            icon={<ArrowLeft size={14} />}
             onClick={handleBackToList}
           >
             返回列表
@@ -138,7 +133,7 @@ export default function KnowledgeSearch() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onPressEnter={handlePressEnter}
-              prefix={<SearchOutlined style={{ color: 'var(--color-text-secondary)' }} />}
+              prefix={<Search size={16} style={{ color: 'var(--color-text-tertiary)' }} />}
             />
             <Select
               className={styles.topKSelect}
@@ -150,8 +145,8 @@ export default function KnowledgeSearch() {
             <Button
               type="primary"
               size="large"
-              className={styles.searchBtn}
-              icon={<SearchOutlined />}
+              className={styles.primaryBtn}
+              icon={<Search size={16} />}
               onClick={handleSearch}
               loading={loading}
             >
@@ -164,14 +159,14 @@ export default function KnowledgeSearch() {
         <Spin spinning={loading}>
           {!searched ? (
             <div className={styles.emptyState}>
-              <SearchOutlined className={styles.emptyStateIcon} />
+              <Search className={styles.emptyStateIcon} size={44} strokeWidth={1} />
               <div className={styles.emptyStateText}>
                 输入查询内容后点击「检索」按钮，结果将在此处显示
               </div>
             </div>
           ) : results.length === 0 && !loading ? (
             <div className={styles.emptyState}>
-              <SearchOutlined className={styles.emptyStateIcon} />
+              <Search className={styles.emptyStateIcon} size={44} strokeWidth={1} />
               <div className={styles.emptyStateText}>未找到相关结果</div>
             </div>
           ) : (
@@ -187,14 +182,14 @@ export default function KnowledgeSearch() {
                       {/* 头部：来源 + 相似度 */}
                       <div className={styles.resultHeader}>
                         <span className={styles.resultSource}>
-                          <FileTextOutlined />
-                          <span>来源: {result.documentName || `#${result.documentId}`}</span>
-                          <Tag color="purple" style={{ marginLeft: 6 }}>
-                            #{index + 1}
-                          </Tag>
+                          <FileText size={13} />
+                          <span className={styles.resultSourceText}>
+                            来源: {result.documentName || '#' + result.documentId}
+                          </span>
+                          <span className={styles.resultIndex}>#{index + 1}</span>
                         </span>
                         <span className={styles.scoreBadge}>
-                          <PercentageOutlined />
+                          <Percent size={11} />
                           相似度: {formatScore(result.score)}
                         </span>
                       </div>
@@ -207,7 +202,7 @@ export default function KnowledgeSearch() {
                         <div className={styles.resultMeta}>
                           {formatMetadata(result.metadata).map((item) => (
                             <span key={item.key} className={styles.resultMetaItem}>
-                              <span style={{ color: '#6e7681' }}>{item.key}:</span>
+                              <span className={styles.resultMetaKey}>{item.key}:</span>
                               <span style={{ color: 'var(--color-text-secondary)' }}>{item.value}</span>
                             </span>
                           ))}

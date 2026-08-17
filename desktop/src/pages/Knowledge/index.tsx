@@ -1,4 +1,4 @@
-// 知识库列表页
+// 知识库列表页 — Kimi 风格（v2.0）
 // 布局：顶部标题 + 新建按钮 + 知识库卡片网格
 // 调用 GET /knowledge/bases、POST /knowledge/bases、DELETE /knowledge/bases/:id
 
@@ -6,13 +6,14 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Form, Input, Modal, Popconfirm, Select, Spin, Tabs, message } from "antd";
 import {
-  ArrowLeftOutlined,
-  BookOutlined,
-  DeleteOutlined,
-  FileTextOutlined,
-  PlusOutlined,
-  SearchOutlined,
-} from "@ant-design/icons";
+  ArrowLeft,
+  BookOpen,
+  FileText,
+  Library,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react";
 import * as kbApi from "@/api/knowledge-api";
 import type {
   KnowledgeBase,
@@ -41,7 +42,7 @@ export default function KnowledgeList() {
   const [createForm] = Form.useForm<CreateKnowledgeBaseDto>();
   const [creating, setCreating] = useState(false);
 
-  // ===== 官方知识库 =====  
+  // ===== 官方知识库 =====
   const [officialBases, setOfficialBases] = useState<OfficialKnowledgeBase[]>([]);
   const [officialLoading, setOfficialLoading] = useState(false);
   const [industries, setIndustries] = useState<KnowledgeIndustry[]>([]);
@@ -132,7 +133,7 @@ export default function KnowledgeList() {
   const handleDelete = async (kb: KnowledgeBase) => {
     try {
       await kbApi.deleteKnowledgeBase(kb.id);
-      message.success(`知识库 ${kb.name} 已删除`);
+      message.success("知识库 " + kb.name + " 已删除");
       setBases((prev) => prev.filter((k) => k.id !== kb.id));
     } catch (err) {
       console.error("[KnowledgeList] delete failed:", err);
@@ -142,12 +143,12 @@ export default function KnowledgeList() {
 
   /** 进入文档管理 */
   const handleEnter = (kb: KnowledgeBase) => {
-    navigate(`/knowledge/${kb.id}/documents`);
+    navigate('/knowledge/' + kb.id + '/documents');
   };
 
   /** 进入检索测试 */
   const handleSearch = (kb: KnowledgeBase) => {
-    navigate(`/knowledge/${kb.id}/search`);
+    navigate('/knowledge/' + kb.id + '/search');
   };
 
   /** 返回 */
@@ -159,21 +160,23 @@ export default function KnowledgeList() {
     <div className={styles.pageContainer}>
       <div className={styles.pageHeader}>
         <div className={styles.pageTitle}>
-          <BookOutlined />
+          <span className={styles.pageTitleIcon}>
+            <Library size={18} />
+          </span>
           <span>知识库</span>
         </div>
         <div className={styles.headerActions}>
           <Button
-            className={styles.backBtn}
-            icon={<ArrowLeftOutlined />}
+            className={styles.ghostBtn}
+            icon={<ArrowLeft size={14} />}
             onClick={handleBack}
           >
             返回
           </Button>
           <Button
             type="primary"
-            className={styles.newBtn}
-            icon={<PlusOutlined />}
+            className={styles.primaryBtn}
+            icon={<Plus size={14} />}
             onClick={() => setCreateOpen(true)}
           >
             新建知识库
@@ -182,6 +185,7 @@ export default function KnowledgeList() {
       </div>
 
       <Tabs
+        className={styles.tabs}
         defaultActiveKey="mine"
         items={[
           {
@@ -191,9 +195,9 @@ export default function KnowledgeList() {
               <Spin spinning={loading}>
                 {bases.length === 0 && !loading ? (
                   <div className={styles.emptyState}>
-                    <BookOutlined className={styles.emptyStateIcon} />
+                    <Library className={styles.emptyStateIcon} size={44} strokeWidth={1} />
                     <div className={styles.emptyStateText}>
-                      暂无知识库，点击右上角"新建知识库"开始
+                      暂无知识库，点击右上角「新建知识库」开始
                     </div>
                   </div>
                 ) : (
@@ -201,7 +205,7 @@ export default function KnowledgeList() {
                     {bases.map((kb) => (
                       <div key={kb.id} className={styles.kbCard}>
                         <div className={styles.kbCardIcon}>
-                          <BookOutlined />
+                          <BookOpen size={34} strokeWidth={1.5} />
                         </div>
                         <div className={styles.kbCardBody}>
                           <div className={styles.kbCardTitle}>{kb.name}</div>
@@ -209,25 +213,27 @@ export default function KnowledgeList() {
                             {kb.description || "暂无描述"}
                           </div>
                           <div className={styles.kbCardMeta}>
-                            <span>
-                              <FileTextOutlined style={{ marginRight: 4 }} />
+                            <span className={styles.metaItem}>
+                              <FileText size={12} />
                               {kb.documentCount ?? 0} 个文档
                             </span>
-                            <span>创建于 {formatTime(kb.createdAt)}</span>
+                            <span className={styles.metaItem}>
+                              创建于 {formatTime(kb.createdAt)}
+                            </span>
                           </div>
                         </div>
                         <div className={styles.kbCardFooter}>
                           <Button
                             type="primary"
-                            className={styles.enterBtn}
+                            className={styles.primaryBtn + " " + styles.enterBtn}
                             onClick={() => handleEnter(kb)}
-                            block
                           >
                             进入详情
                           </Button>
                           <Button
-                            className={styles.backBtn}
-                            icon={<SearchOutlined />}
+                            className={styles.ghostBtn}
+                            icon={<Search size={14} />}
+                            title="检索测试"
                             onClick={() => handleSearch(kb)}
                           />
                           <Popconfirm
@@ -239,9 +245,9 @@ export default function KnowledgeList() {
                             okButtonProps={{ danger: true }}
                           >
                             <Button
-                              className={styles.deleteBtn}
-                              icon={<DeleteOutlined />}
-                              danger
+                              className={styles.dangerBtn}
+                              icon={<Trash2 size={14} />}
+                              title="删除"
                             />
                           </Popconfirm>
                         </div>
@@ -257,23 +263,23 @@ export default function KnowledgeList() {
             label: "官方知识库",
             children: (
               <>
-                <div style={{ marginBottom: 16, display: "flex", gap: 12, alignItems: "center" }}>
+                <div className={styles.filterBar}>
                   <Select
                     allowClear
                     placeholder="全部行业"
-                    style={{ width: 200 }}
+                    className={styles.industrySelect}
                     value={industryFilter}
                     onChange={(v?: number) => setIndustryFilter(v)}
                     options={industries.map((c) => ({ label: c.name, value: c.id }))}
                   />
-                  <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
+                  <span className={styles.filterHint}>
                     管理后台按行业发布的官方知识库，可在聊天中选择挂载使用
                   </span>
                 </div>
                 <Spin spinning={officialLoading}>
                   {officialBases.length === 0 && !officialLoading ? (
                     <div className={styles.emptyState}>
-                      <BookOutlined className={styles.emptyStateIcon} />
+                      <Library className={styles.emptyStateIcon} size={44} strokeWidth={1} />
                       <div className={styles.emptyStateText}>暂无官方知识库</div>
                     </div>
                   ) : (
@@ -281,26 +287,26 @@ export default function KnowledgeList() {
                       {officialBases.map((kb) => (
                         <div key={kb.id} className={styles.kbCard}>
                           <div className={styles.kbCardIcon}>
-                            <BookOutlined />
+                            <BookOpen size={34} strokeWidth={1.5} />
                           </div>
                           <div className={styles.kbCardBody}>
                             <div className={styles.kbCardTitle}>
                               {kb.name}
                               {kb.industryName && (
-                                <span style={{ marginLeft: 8, fontSize: 12, color: "var(--color-primary, #1677ff)" }}>
-                                  {kb.industryName}
-                                </span>
+                                <span className={styles.industryTag}>{kb.industryName}</span>
                               )}
                             </div>
                             <div className={styles.kbCardDescription}>
                               {kb.description || "暂无描述"}
                             </div>
                             <div className={styles.kbCardMeta}>
-                              <span>
-                                <FileTextOutlined style={{ marginRight: 4 }} />
+                              <span className={styles.metaItem}>
+                                <FileText size={12} />
                                 {kb.documentCount ?? 0} 个文档
                               </span>
-                              <span>发布于 {formatTime(kb.createdAt)}</span>
+                              <span className={styles.metaItem}>
+                                发布于 {formatTime(kb.createdAt)}
+                              </span>
                             </div>
                           </div>
                         </div>

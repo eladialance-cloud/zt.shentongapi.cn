@@ -7,8 +7,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { Button, Select, Tooltip, message } from 'antd'
 import type { SelectProps } from 'antd'
 import {
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
   RobotOutlined,
   ThunderboltOutlined,
   DatabaseOutlined,
@@ -66,9 +64,6 @@ const GLOBAL_KB_VALUE = '__global__'
 const CHAT_ACTIVE_SESSION_KEY = 'chat:active-session'
 
 export default function Chat() {
-  // ===== 侧边栏折叠状态 =====
-  const [collapsed, setCollapsed] = useState(false)
-
   // ===== 当前会话与消息 =====
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -184,8 +179,8 @@ export default function Chat() {
       if (customResult.status === 'rejected') {
         console.error('[Chat] load custom integrations failed:', customResult.reason)
       }
-      const list = listResult.status === 'fulfilled' ? listResult.value || [] : []
-      const custom = customResult.status === 'fulfilled' ? customResult.value || [] : []
+      const list = listResult.status === 'fulfilled' && Array.isArray(listResult.value) ? listResult.value : []
+      const custom = customResult.status === 'fulfilled' && Array.isArray(customResult.value) ? customResult.value : []
       setModelOptions(list)
       setCustomIntegrations(custom)
       const all = [
@@ -527,12 +522,12 @@ export default function Chat() {
               </span>
             )}
             {m.modelType && m.modelType !== 'chat' && (
-              <span style={{ color: '#8b5cf6', marginLeft: 6, fontSize: 11 }}>
+              <span style={{ color: 'var(--color-purple)', marginLeft: 6, fontSize: 11 }}>
                 [{m.modelType}]
               </span>
             )}
             {(m.inputPricePer1k != null || m.outputPricePer1k != null) && (
-              <span style={{ color: '#22d3ee', marginLeft: 6, fontSize: 11 }}>
+              <span style={{ color: 'var(--color-accent)', marginLeft: 6, fontSize: 11 }}>
                 {m.inputPricePer1k ?? 0}/{m.outputPricePer1k ?? 0} 积分/千token
               </span>
             )}
@@ -643,94 +638,75 @@ export default function Chat() {
   return (
     <div className={styles.chatContainer}>
       {/* 左侧会话列表 */}
-      <div className={collapsed ? styles.sessionListCollapsed : ''}>
-        {!collapsed && (
-          <SessionList
-            activeSessionId={activeSession?.id ?? null}
-            defaultModelId={modelId}
-            defaultAgentId={agentId}
-            onSelectSession={handleSelectSession}
-          />
-        )}
-      </div>
+      <SessionList
+        activeSessionId={activeSession?.id ?? null}
+        defaultModelId={modelId}
+        defaultAgentId={agentId}
+        onSelectSession={handleSelectSession}
+      />
 
       {/* 中间消息区 */}
       <div className={styles.messageArea}>
-        {/* 顶部选择器 */}
-        <div className={styles.modelSelector}>
-          <Tooltip title={collapsed ? '展开会话列表' : '折叠会话列表'}>
-            <Button
-              type="text"
-              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-              onClick={() => setCollapsed((v) => !v)}
-              className={styles.collapseBtn}
-              style={{ color: 'var(--color-text-secondary)' }}
-            />
-          </Tooltip>
-          <span className={styles.selectorLabel}>模型:</span>
-          <Select
-            {...modelSelectProps}
-            value={modelId || undefined}
-            onChange={handleModelChange}
-            loading={modelLoading}
-            placeholder="暂无可用模型"
-            className={styles.selectorItem}
-            size="small"
-            popupMatchSelectWidth={false}
-          />
-          <Tooltip title="刷新模型列表（同步管理后台最新模型）">
-            <Button
-              type="text"
-              size="small"
-              icon={<ReloadOutlined />}
-              loading={modelLoading}
-              onClick={() => void loadModels()}
-              style={{ color: 'var(--color-text-secondary)' }}
-            />
-          </Tooltip>
-          <span className={styles.selectorLabel}>Agent:</span>
-          <Select
-            {...agentSelectProps}
-            value={agentId}
-            onChange={(v) => setAgentId(v)}
-            placeholder="选择 Agent（可选）"
-            allowClear
-            className={styles.selectorItem}
-            size="small"
-            popupMatchSelectWidth={false}
-          />
-          {agentId != null && agentPriceHint && (
-            <Tooltip title="Agent 调用计费：冻结预估积分 → 结算实际 Token 费用 → 退补差额">
-              <span
-                style={{
-                  fontSize: 11,
-                  color: '#22d3ee',
-                  background: 'rgba(34, 211, 238, 0.1)',
-                  border: '1px solid rgba(34, 211, 238, 0.3)',
-                  padding: '1px 8px',
-                  borderRadius: 8,
-                  whiteSpace: 'nowrap'
+        {/* 顶部头部：会话标题 + 轻量选择器 */}
+        <div className={styles.chatHead}>
+          <div className={styles.chatHeadTitle}>
+            {activeSession?.title || '和 OpenClaw 对话'}
+          </div>
+          <div className={styles.chatHeadActions}>
+            <Tooltip title={modelId ? `当前模型：${modelId}` : '选择模型'}>
+              <Select
+                {...modelSelectProps}
+                value={modelId || undefined}
+                onChange={handleModelChange}
+                loading={modelLoading}
+                placeholder="选择模型"
+                variant="borderless"
+                className={styles.selectorItem}
+                popupMatchSelectWidth={false}
+                labelRender={({ value }) => {
+                  const m = modelOptions.find((x) => x.id === value)
+                  return <span className={styles.selectorText}>{m?.name || (value as string)}</span>
                 }}
-              >
-                {agentPriceHint}
-              </span>
+              />
             </Tooltip>
-          )}
-          <span className={styles.selectorLabel}>知识库:</span>
-          <Select
-            {...kbSelectProps}
-            value={knowledgeBaseId ?? GLOBAL_KB_VALUE}
-            onChange={(v) =>
-              handleKnowledgeBaseChange(
-                v === GLOBAL_KB_VALUE ? undefined : (v as number),
-              )
-            }
-            placeholder="全局搜索（默认）"
-            allowClear
-            className={styles.selectorItem}
-            size="small"
-            popupMatchSelectWidth={false}
-          />
+            <Tooltip title="刷新模型列表（同步管理后台最新模型）">
+              <Button
+                type="text"
+                size="small"
+                icon={<ReloadOutlined />}
+                loading={modelLoading}
+                onClick={() => void loadModels()}
+                className={styles.headerIconBtn}
+              />
+            </Tooltip>
+            <Select
+              {...agentSelectProps}
+              value={agentId}
+              onChange={(v) => setAgentId(v)}
+              placeholder="选择 Agent（可选）"
+              allowClear
+              variant="borderless"
+              className={styles.selectorItem}
+              popupMatchSelectWidth={false}
+            />
+            {agentPriceHint && (
+              <span className={styles.agentPriceHint}>{agentPriceHint}</span>
+            )}
+            <Select
+              {...kbSelectProps}
+              value={knowledgeBaseId ?? GLOBAL_KB_VALUE}
+              onChange={(v) =>
+                handleKnowledgeBaseChange(
+                  v === GLOBAL_KB_VALUE ? undefined : (v as number),
+                )
+              }
+              placeholder="全局搜索（默认）"
+              allowClear
+              variant="borderless"
+              className={styles.selectorItem}
+              popupMatchSelectWidth={false}
+            />
+          </div>
         </div>
 
         {/* 消息列表 */}
@@ -745,10 +721,10 @@ export default function Chat() {
         ) : (
           <div className={styles.messageListContainer}>
             <div className={styles.emptyState}>
-              <RobotOutlined className={styles.emptyStateIcon} />
-              <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                和 OpenClaw 对话
+              <div className={styles.emptyStateIconWrap}>
+                <RobotOutlined className={styles.emptyStateIcon} />
               </div>
+              <div className={styles.emptyStateTitle}>和 OpenClaw 对话</div>
               <div className={styles.emptyStateTip}>
                 对话由本地 OpenClaw 驱动，可自动调用 Hermes / N8N / MCP 帮你完成复杂任务。选择左侧对话开始聊天，或点击「新建对话」。
               </div>

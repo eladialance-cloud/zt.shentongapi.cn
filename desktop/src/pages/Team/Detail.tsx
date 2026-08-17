@@ -1,4 +1,4 @@
-﻿// 团队详情页 — 替换 OPC 团队详情
+// 团队详情页 — Kimi 风格（v2.0）
 // 核心变化: 成员绑定 Agent + 自定义职能（roleTitle/roleEmoji/themeColor）
 // 支持添加/编辑/移除成员
 
@@ -10,10 +10,9 @@ import {
 } from "antd";
 import type { TableColumnsType } from "antd";
 import {
-  ArrowLeftOutlined, TeamOutlined, UserOutlined,
-  ApartmentOutlined, DeploymentUnitOutlined, PlusOutlined,
-  EditOutlined, DeleteOutlined, PartitionOutlined,
-} from "@ant-design/icons";
+  ArrowLeft, Briefcase, LayoutGrid, ListTodo, Pencil,
+  Plus, Trash2, UserRound, Users, Workflow,
+} from "lucide-react";
 import * as teamApi from "@/api/team-api";
 import type {
   Team, TeamMember, TeamTask, TeamWorkflowNode,
@@ -190,7 +189,7 @@ export default function TeamDetail() {
   const taskColumns: TableColumnsType<TeamTask> = [
     { title: "任务名称", dataIndex: "title", key: "title",
       render: (v: string, record) => (
-        <span style={{ color: "#e6edf3", fontSize: 13 }}>
+        <span style={{ color: "var(--color-text-primary)", fontSize: 13 }}>
           {record.description ? <span title={record.description}>{v}</span> : v}
         </span>
       ),
@@ -225,16 +224,19 @@ export default function TeamDetail() {
     <div className={styles.pageContainer}>
       <div className={styles.pageHeader}>
         <div className={styles.pageTitle}>
-          <TeamOutlined />
+          <span className={styles.pageTitleIcon}>
+            <Users size={18} />
+          </span>
           <span>{team?.name || "团队详情"}</span>
         </div>
         <div className={styles.headerActions}>
-          <Button className={styles.backBtn} icon={<ArrowLeftOutlined />} onClick={() => navigate("/team")}>
+          <Button className={styles.ghostBtn} icon={<ArrowLeft size={14} />} onClick={() => navigate("/team")}>
             返回列表
           </Button>
           <Button
+            type="primary"
             className={styles.primaryBtn}
-            icon={<PartitionOutlined />}
+            icon={<LayoutGrid size={14} />}
             onClick={() => navigate(`/team/${teamId}/board`)}
           >
             看板视图
@@ -248,7 +250,7 @@ export default function TeamDetail() {
           {team && (
             <div className={styles.sectionCard}>
               <div className={styles.sectionTitle}>
-                <span className={styles.sectionTitleText}><TeamOutlined />团队信息</span>
+                <span className={styles.sectionTitleText}><Briefcase size={14} />团队信息</span>
               </div>
               <div className={styles.infoGrid}>
                 <div className={styles.infoItem}>
@@ -265,7 +267,7 @@ export default function TeamDetail() {
                 </div>
               </div>
               {team.description && (
-                <div style={{ marginTop: 12, color: "#94a3b8", fontSize: 13, lineHeight: 1.6 }}>
+                <div style={{ marginTop: 12, color: "var(--color-text-secondary)", fontSize: 13, lineHeight: 1.6 }}>
                   {team.description}
                 </div>
               )}
@@ -276,12 +278,12 @@ export default function TeamDetail() {
           <div className={styles.sectionCard}>
             <div className={styles.sectionTitle}>
               <span className={styles.sectionTitleText}>
-                <UserOutlined />成员列表（{members.length}）
+                <UserRound size={14} />成员列表（{members.length}）
               </span>
               <Button
                 size="small"
                 className={styles.addMemberBtn}
-                icon={<PlusOutlined />}
+                icon={<Plus size={14} />}
                 onClick={() => openMemberModal()}
               >
                 添加成员
@@ -295,7 +297,7 @@ export default function TeamDetail() {
                   <div key={m.id} className={styles.memberCard}>
                     <div className={styles.memberAvatar}>
                       {m.agentAvatar ? (
-                        <img src={m.agentAvatar} alt={m.agentName} className={styles.memberAvatarImg} />
+                        <img loading="lazy" src={m.agentAvatar} alt={m.agentName} className={styles.memberAvatarImg} />
                       ) : (
                         m.agentName.charAt(0).toUpperCase()
                       )}
@@ -307,19 +309,19 @@ export default function TeamDetail() {
                       </div>
                       <div className={styles.memberMeta}>
                         <span className={styles.roleTitle}>{m.roleTitle}</span>
-                        <span style={{ color: m.themeColor || "#a5b4fc", fontSize: 11 }}>
+                        <span style={{ color: m.themeColor || "var(--color-text-tertiary)", fontSize: 11 }}>
                           ● {m.isActive ? "激活" : "停用"}
                         </span>
                       </div>
                     </div>
                     <div className={styles.memberActions}>
-                      <Button size="small" type="text" icon={<EditOutlined />}
+                      <Button size="small" type="text" icon={<Pencil size={14} />}
                         onClick={() => openMemberModal(m)}
-                        style={{ color: "#a5b4fc" }}
+                        style={{ color: "var(--color-text-secondary)" }}
                       />
                       <Popconfirm title="确定移除此成员？" onConfirm={() => removeMember(m)}
                         okText="移除" cancelText="取消">
-                        <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                        <Button size="small" type="text" danger icon={<Trash2 size={14} />} />
                       </Popconfirm>
                     </div>
                   </div>
@@ -331,7 +333,7 @@ export default function TeamDetail() {
           {/* 任务列表 */}
           <div className={styles.sectionCard}>
             <div className={styles.sectionTitle}>
-              <span className={styles.sectionTitleText}><ApartmentOutlined />任务分配列表</span>
+              <span className={styles.sectionTitleText}><ListTodo size={14} />任务分配列表</span>
             </div>
             {tasks.length === 0 ? (
               <Empty description="暂无任务" />
@@ -344,10 +346,10 @@ export default function TeamDetail() {
           {/* 协作流程 */}
           <div className={styles.sectionCard}>
             <div className={styles.sectionTitle}>
-              <span className={styles.sectionTitleText}><DeploymentUnitOutlined />协作流程</span>
+              <span className={styles.sectionTitleText}><Workflow size={14} />协作流程</span>
             </div>
             {workflow.length === 0 ? (
-              <div style={{ color: "#6e7681", fontSize: 12, lineHeight: 1.6 }}>
+              <div style={{ color: "var(--color-text-tertiary)", fontSize: 12, lineHeight: 1.6 }}>
                 暂未配置协作流程。默认协作流程：任务创建 → 负责人接收 → 执行中 → 提交审核 → 审核通过 → 完成。
               </div>
             ) : (
@@ -357,7 +359,7 @@ export default function TeamDetail() {
                     <div className={styles.workflowNode}>
                       <div style={{ fontWeight: 600 }}>{node.name}</div>
                       {node.description && (
-                        <div style={{ fontSize: 10, color: "#6e7681", marginTop: 2 }}>{node.description}</div>
+                        <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 2 }}>{node.description}</div>
                       )}
                     </div>
                     {idx < workflow.length - 1 && <span className={styles.workflowArrow}>→</span>}

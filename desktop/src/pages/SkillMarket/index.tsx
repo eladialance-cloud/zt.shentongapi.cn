@@ -73,8 +73,11 @@ export default function SkillMarket() {
     <div className={styles.pageContainer}>
       <div className={styles.pageHeader}>
         <div className={styles.pageTitle}>
-          <ShopOutlined />
+          <div className={styles.pageTitleIcon}>
+            <ShopOutlined />
+          </div>
           <span>技能市场</span>
+        
         </div>
       </div>
 

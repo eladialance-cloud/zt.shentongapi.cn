@@ -13,6 +13,7 @@ import * as channelApi from "@/api/channel-api";
 import type { Channel, ChannelMessage } from "@/types/channel";
 import { PLATFORM_LABELS } from "@/types/channel";
 import type { ChannelPlatform } from "@/types/channel";
+import styles from "../Team/styles.module.css";
 
 function formatTime(v: unknown): string {
   if (!v) return "-";
@@ -90,18 +91,27 @@ export default function ChannelDetail() {
   const webhookFullUrl = channel.webhookUrl || `${window.location.origin.replace(/\/$/, "")}/api/channels/webhook/${channel.platform}`;
 
   return (
-    <div style={{ padding: "24px 32px", maxWidth: 1100 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/channels")}>返回</Button>
-        <h2 style={{ margin: 0 }}>{platformInfo?.emoji || "🔗"} {channel.name}</h2>
-        <Tag color={channel.status === "active" ? "green" : "default"}>
-          {channel.status === "active" ? "活跃" : "已禁用"}
-        </Tag>
+    <div className={styles.pageContainer}>
+      <div className={styles.pageHeader}>
+        <div className={styles.pageTitle}>
+          <span className={styles.pageTitleIcon}>
+            <LinkOutlined />
+          </span>
+          <span>{channel.name}</span>
+          <Tag color={channel.status === "active" ? "green" : "default"}>
+            {channel.status === "active" ? "活跃" : "已禁用"}
+          </Tag>
+        </div>
+        <div className={styles.headerActions}>
+          <Button className={styles.backBtn} icon={<ArrowLeftOutlined />} onClick={() => navigate("/channels")}>
+            返回列表
+          </Button>
+        </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, maxWidth: 1100 }}>
         {/* 左侧：基本配置 */}
-        <Card title="渠道配置" extra={<Button icon={<ReloadOutlined />} onClick={loadChannel} size="small">刷新</Button>}>
+        <Card title="渠道配置" extra={<Button className={styles.backBtn} icon={<ReloadOutlined />} onClick={loadChannel} size="small">刷新</Button>}>
           <Form form={form} layout="vertical" onFinish={handleSave}>
             <Form.Item label="渠道名称" name="name" rules={[{ required: true }]}>
               <Input />
@@ -132,7 +142,7 @@ export default function ChannelDetail() {
               <Input.Password placeholder="平台 URL 验证 Token" />
             </Form.Item>
 
-            <Button type="primary" htmlType="submit" loading={saving} block>
+            <Button type="primary" htmlType="submit" loading={saving} block className={styles.primaryBtn}>
               保存配置
             </Button>
           </Form>
@@ -165,7 +175,7 @@ export default function ChannelDetail() {
               </Descriptions.Item>
               <Descriptions.Item label="创建时间">{formatTime(channel.createdAt)}</Descriptions.Item>
             </Descriptions>
-            <div style={{ marginTop: 12, padding: 10, background: "#161B22", borderRadius: 6, fontSize: 12, color: "#8B949E" }}>
+            <div style={{ marginTop: 12, padding: "10px 12px", background: "var(--color-bg-layout)", border: "1px solid var(--color-border)", borderRadius: 6, fontSize: 12, color: "var(--color-text-tertiary)" }}>
               💡 将此 URL 填入 {platformInfo?.label || "平台"} 的服务器配置中的回调地址
             </div>
           </Card>

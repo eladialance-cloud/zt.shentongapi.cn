@@ -37,10 +37,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
-  background: var(--glass-bg);
-  border-bottom: 1px solid var(--glass-border);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  background: var(--color-bg-container);
+  border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
   z-index: 100;
 }
@@ -57,6 +55,12 @@
   color: var(--color-text-primary);
   letter-spacing: -0.3px;
   white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--duration-fast) ease;
+}
+
+.logo:hover {
+  color: var(--color-brand);
 }
 
 .topbarCenter {
@@ -106,7 +110,7 @@
 }
 
 .creditsBadge:hover {
-  background: rgba(37, 99, 235, 0.18);
+  background: var(--color-brand-light);
 }
 
 .avatarWrap {

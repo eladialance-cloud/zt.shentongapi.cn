@@ -138,7 +138,7 @@ export default function WorkflowCard({
       {/* ====== 预览区 ====== */}
       <div className={styles.preview}>
         {template.previewImage ? (
-          <img src={template.previewImage} alt={template.name} className={styles.previewImg} />
+          <img loading="lazy" src={template.previewImage} alt={template.name} className={styles.previewImg} />
         ) : (
           <div className={styles.previewPlaceholder}>
             <FlowPreview color={theme.color} />

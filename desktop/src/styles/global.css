@@ -1,9 +1,9 @@
 @import "./design-tokens.css";
 
 /* ============================================
- * 深瞳AI - 全局样式 v3.0
- * 方案C: Glassmorphism Enterprise Blue
- * 布局: Glass Sidebar + Content
+ * 深瞳AI - 全局样式 v2
+ * Kimi 风格极简体系：近黑文字 + 白/浅灰分层 + 单品牌蓝
+ * 深色模式由 html[data-theme='dark'] 变量驱动
  * ============================================ */
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -17,6 +17,8 @@ body {
   overflow: hidden;
   background: var(--color-bg-root);
   color: var(--color-text-primary);
+  transition: background-color var(--duration-base) ease,
+              color var(--duration-base) ease;
 }
 
 #root { display: flex; flex-direction: column; }
@@ -28,7 +30,7 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: var(--color-border-hover); }
 
 /* === Selection === */
-::selection { background: rgba(37, 99, 235, 0.2); color: var(--color-text-primary); }
+::selection { background: var(--color-brand-light); color: var(--color-text-primary); }
 
 /* === Focus === */
 :focus-visible {
@@ -75,21 +77,29 @@ body {
   padding: var(--space-xl);
 }
 
-/* === Glass effect === */
+/* === Glass 工具类（过渡期保留，已降级为纯色，P1 起随壳层重构移除） === */
 .glass {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .glass-elevated {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
   box-shadow: var(--glass-shadow);
 }
 
 /* === Code === */
 code, pre { font-family: var(--font-family-mono); }
+
+/* === Reduced Motion === */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

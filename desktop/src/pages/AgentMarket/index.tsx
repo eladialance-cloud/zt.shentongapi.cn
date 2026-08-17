@@ -214,7 +214,7 @@ export default function AgentMarket({ embedded = false }: { embedded?: boolean }
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             onPressEnter={handleSearch}
-            prefix={<SearchOutlined style={{ color: "#64748b" }} />}
+            prefix={<SearchOutlined style={{ color: "var(--color-text-tertiary)" }} />}
             className={styles.searchBox}
             allowClear
           />
@@ -289,7 +289,7 @@ function AgentCardItem({
           >
             <div className={styles.agentAvatar}>
               {agent.avatar ? (
-                <img
+                <img loading="lazy"
                   src={agent.avatar}
                   alt={agent.displayName || agent.name}
                   className={styles.agentAvatarImg}
@@ -300,7 +300,7 @@ function AgentCardItem({
             </div>
             <span className={styles.agentAvatarBadge}>
               {installed ? (
-                <CheckCircleOutlined style={{ color: "#22c55e" }} />
+                <CheckCircleOutlined style={{ color: "var(--color-success)" }} />
               ) : installing ? (
                 <LoadingOutlined />
               ) : (
@@ -333,7 +333,7 @@ function AgentCardItem({
                     }
                     style={{ fontSize: 12 }}
                   />
-                  <span style={{ color: "#facc15" }}>
+                  <span style={{ color: "var(--color-warning)" }}>
                     {agent.rating.toFixed(1)}
                   </span>
                   <span className={styles.callCount}>
@@ -396,7 +396,7 @@ function AgentCardItem({
             )}
           </span>
           <span className={styles.callCount}>
-            <FireOutlined style={{ marginRight: 4, color: "#fb923c" }} />
+            <FireOutlined style={{ marginRight: 4, color: "var(--color-accent)" }} />
             {agent.callCount.toLocaleString()} 次调用
           </span>
         </div>

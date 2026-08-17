@@ -15,8 +15,8 @@ import {
   Typography
 } from 'antd'
 import {
-  CheckCircleTwoTone,
-  CloseCircleTwoTone,
+  CheckCircleFilled,
+  CloseCircleFilled,
   DownloadOutlined,
   LoadingOutlined,
   LockOutlined,
@@ -309,10 +309,10 @@ export default function Onboarding() {
 
   const renderVerifyStatus = (name: ServiceName) => {
     const status = verifyResults[name]
-    if (verifying) return <LoadingOutlined style={{ color: '#6366f1' }} />
-    if (status === null) return <span style={{ color: '#999' }}>未检测</span>
-    if (status) return <CheckCircleTwoTone twoToneColor="#52c41a" />
-    return <CloseCircleTwoTone twoToneColor="#ff4d4f" />
+    if (verifying) return <LoadingOutlined style={{ color: 'var(--color-brand)' }} />
+    if (status === null) return <span style={{ color: 'var(--color-text-tertiary)' }}>未检测</span>
+    if (status) return <CheckCircleFilled style={{ color: 'var(--color-success)' }} />
+    return <CloseCircleFilled style={{ color: 'var(--color-error)' }} />
   }
 
   /** 是否有失败的安装项 */
@@ -333,19 +333,10 @@ export default function Onboarding() {
   ]
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-        padding: 24
-      }}
-    >
-      <Card style={{ width: 640, boxShadow: '0 10px 40px rgba(0,0,0,0.15)' }}>
+    <div className={styles.container}>
+      <Card className={styles.wizardCard}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <RobotOutlined style={{ fontSize: 48, color: '#6366f1' }} />
+          <RobotOutlined className={styles.wizardIcon} />
           <Typography.Title level={3} style={{ marginTop: 12, marginBottom: 0 }}>
             深瞳AI 初始化向导
           </Typography.Title>
@@ -414,7 +405,7 @@ export default function Onboarding() {
               })}
             </Space>
             {allPassed && (
-              <Typography.Paragraph style={{ color: '#10b981', marginBottom: 12 }}>
+              <Typography.Paragraph style={{ color: 'var(--color-success)', marginBottom: 12 }}>
                 ✅ 全部就绪，点击下一步启动服务
               </Typography.Paragraph>
             )}
@@ -465,13 +456,13 @@ export default function Onboarding() {
                         )}
                         {state.status === 'success' && (
                           <span className={styles.installSuccess}>
-                            <CheckCircleTwoTone twoToneColor="#52c41a" />
+                            <CheckCircleFilled style={{ color: 'var(--color-success)' }} />
                             成功
                           </span>
                         )}
                         {state.status === 'failed' && (
                           <span className={styles.installFailed}>
-                            <CloseCircleTwoTone twoToneColor="#ff4d4f" />
+                            <CloseCircleFilled style={{ color: 'var(--color-error)' }} />
                             失败
                           </span>
                         )}

@@ -135,12 +135,12 @@ export default function UsageHistory() {
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <RobotOutlined style={{ color: 'var(--color-brand)' }} />
-                      <span style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3' }}>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>
                         {log.agentName}
                       </span>
                       {getStatusTag(log.status)}
                     </div>
-                    <span style={{ fontSize: 11, color: '#6e7681' }}>
+                    <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
                       {new Date(log.createdAt).toLocaleString('zh-CN')}
                     </span>
                   </div>
@@ -154,9 +154,9 @@ export default function UsageHistory() {
                     }}
                   >
                     <span>
-                      <ThunderboltOutlined style={{ color: '#22d3ee', marginRight: 4 }} />
+                      <ThunderboltOutlined style={{ color: 'var(--color-brand)', marginRight: 4 }} />
                       消耗积分：
-                      <span style={{ color: '#f87171', fontWeight: 600 }}>
+                      <span style={{ color: 'var(--color-error)', fontWeight: 600 }}>
                         {log.creditsCost}
                       </span>
                     </span>
@@ -170,7 +170,7 @@ export default function UsageHistory() {
                     </span>
                     <span>
                       会话：
-                      <span style={{ color: '#6e7681' }}>
+                      <span style={{ color: 'var(--color-text-tertiary)' }}>
                         {log.sessionId?.slice(0, 8) || '-'}
                       </span>
                     </span>

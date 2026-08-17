@@ -212,7 +212,7 @@ export default function AgentDetail() {
         <div className={styles.detailHeader}>
           <div className={styles.detailAvatar}>
             {agent.avatar ? (
-              <img
+              <img loading="lazy"
                 src={agent.avatar}
                 alt={agent.displayName || agent.name}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
@@ -263,7 +263,7 @@ export default function AgentDetail() {
               <div className={styles.detailStat}>
                 <span className={styles.detailStatLabel}>调用次数</span>
                 <span className={styles.detailStatValue}>
-                  <FireOutlined style={{ color: '#fb923c', marginRight: 4 }} />
+                  <FireOutlined style={{ color: 'var(--color-accent)', marginRight: 4 }} />
                   {agent.callCount.toLocaleString()}
                 </span>
               </div>
@@ -281,7 +281,7 @@ export default function AgentDetail() {
               {installed ? '已下载' : '下载到本地'}
             </Button>
             {installed && installDir && (
-              <div style={{ fontSize: 12, color: '#8b98a5', wordBreak: 'break-all' }}>
+              <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', wordBreak: 'break-all' }}>
                 安装位置：{installDir}
               </div>
             )}

@@ -176,7 +176,7 @@ export default function HermesSkillMarket({ embedded = false }: { embedded?: boo
                         : `${skill.pricePerMinute} 积分/分钟`}
                     </span>
                     {skill.version && (
-                      <span style={{ color: "#6e7681" }}>v{skill.version}</span>
+                      <span style={{ color: "var(--color-text-tertiary)" }}>v{skill.version}</span>
                     )}
                   </div>
 
@@ -223,14 +223,14 @@ export default function HermesSkillMarket({ embedded = false }: { embedded?: boo
       >
         {estimateSkill && (
           <div>
-            <p style={{ color: "#a5b4fc", marginBottom: 12 }}>
+            <p style={{ color: "var(--color-text-primary)", marginBottom: 12 }}>
               技能包：{estimateSkill.name}
             </p>
-            <p style={{ color: "#94a3b8", marginBottom: 8 }}>
+            <p style={{ color: "var(--color-text-tertiary)", marginBottom: 8 }}>
               单价：{estimateSkill.pricePerMinute} 积分/分钟
             </p>
             <div style={{ marginBottom: 12 }}>
-              <span style={{ color: "#94a3b8", marginRight: 8 }}>
+              <span style={{ color: "var(--color-text-tertiary)", marginRight: 8 }}>
                 预计时长（分钟）：
               </span>
               <InputNumber
@@ -255,7 +255,7 @@ export default function HermesSkillMarket({ embedded = false }: { embedded?: boo
             </div>
             <p
               style={{
-                color: "#6e7681",
+                color: "var(--color-text-tertiary)",
                 fontSize: 11,
                 marginTop: 8,
                 lineHeight: 1.5,

@@ -1,78 +1,157 @@
 import type { ThemeConfig } from 'antd';
+import { theme as antdThemeAlgorithm } from 'antd';
 
 /**
- * Ant Design v5 Theme — 方案C: Glassmorphism Enterprise Blue
- * 玻璃态侧栏 + 浅色主题
+ * Ant Design v5 Theme — 深瞳AI Kimi 风格极简体系
+ * 浅色：defaultAlgorithm | 深色：darkAlgorithm
+ * 品牌蓝 #1F6FEB（Kimi 深蓝），近黑文字 + 白/浅灰分层 + 1px 细边框
  */
-export const antdTheme: ThemeConfig = {
-  token: {
-    colorPrimary: '#2563EB',
-    colorPrimaryHover: '#3B82F6',
-    colorPrimaryActive: '#1D4ED8',
 
-    colorSuccess: '#16A34A',
-    colorWarning: '#F59E0B',
-    colorError: '#EF4444',
-    colorInfo: '#3B82F6',
-    colorLink: '#2563EB',
+const baseTokens = {
+  colorPrimary: '#1F6FEB',
+  colorPrimaryHover: '#1B5FD6',
+  colorPrimaryActive: '#1850C0',
 
-    colorTextBase: '#1E293B',
-    colorText: '#1E293B',
-    colorTextSecondary: '#475569',
-    colorTextTertiary: '#475569',
-    colorTextQuaternary: '#64748B',
+  colorSuccess: '#16A34A',
+  colorWarning: '#F59E0B',
+  colorError: '#DC2626',
+  colorInfo: '#1F6FEB',
+  colorLink: '#1F6FEB',
 
-    colorBgBase: '#FFFFFF',
-    colorBgContainer: '#FFFFFF',
-    colorBgElevated: '#FFFFFF',
-    colorBgLayout: '#F1F5F9',
-    colorBgSpotlight: '#F1F5F9',
+  fontFamily:
+    "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
+  fontSize: 14,
+  fontSizeLG: 16,
+  fontSizeSM: 12,
+  fontSizeXL: 20,
+  fontSizeHeading1: 32,
+  fontSizeHeading2: 24,
+  fontSizeHeading3: 20,
 
-    colorBorder: '#E2E8F0',
-    colorBorderSecondary: '#E9EFF8',
+  borderRadius: 8,
+  borderRadiusLG: 12,
+  borderRadiusSM: 6,
 
-    fontFamily: "Inter, 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif",
-    fontSize: 14,
-    fontSizeLG: 16,
-    fontSizeSM: 12,
-    fontSizeXL: 20,
-    fontSizeHeading1: 32,
-    fontSizeHeading2: 24,
-    fontSizeHeading3: 20,
+  motionDurationFast: '0.15s',
+  motionDurationMid: '0.2s',
+  motionDurationSlow: '0.35s',
+} as const;
 
-    borderRadius: 10,
-    borderRadiusLG: 14,
-    borderRadiusSM: 6,
+const lightTokens = {
+  ...baseTokens,
+  colorTextBase: '#18181B',
+  colorText: '#18181B',
+  colorTextSecondary: '#5C5C5E',
+  colorTextTertiary: '#8E8E93',
+  colorTextQuaternary: '#B0B0B5',
 
-    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04)',
-    boxShadowSecondary: '0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04)',
+  colorBgBase: '#FFFFFF',
+  colorBgContainer: '#FFFFFF',
+  colorBgElevated: '#FFFFFF',
+  colorBgLayout: '#F7F7F8',
+  colorBgSpotlight: '#F7F7F8',
 
-    motionDurationFast: '0.12s',
-    motionDurationMid: '0.2s',
-    motionDurationSlow: '0.35s',
+  colorBorder: '#E4E4E7',
+  colorBorderSecondary: '#ECECEE',
+
+  boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.06)',
+  boxShadowSecondary: '0 1px 2px rgba(0,0,0,0.04)',
+};
+
+const darkTokens = {
+  ...baseTokens,
+  colorPrimary: '#3B82F6',
+  colorPrimaryHover: '#4C93F7',
+  colorPrimaryActive: '#2E6FE0',
+  colorLink: '#3B82F6',
+  colorInfo: '#3B82F6',
+
+  colorSuccess: '#4ADE80',
+  colorWarning: '#FBBF24',
+  colorError: '#F87171',
+
+  colorTextBase: '#F5F5F5',
+  colorText: '#F5F5F5',
+  colorTextSecondary: '#A6A6AB',
+  colorTextTertiary: '#8E8E93',
+  colorTextQuaternary: '#6E6E73',
+
+  colorBgBase: '#1E1E1E',
+  colorBgContainer: '#2A2A2A',
+  colorBgElevated: '#2A2A2A',
+  colorBgLayout: '#1E1E1E',
+  colorBgSpotlight: '#232323',
+
+  colorBorder: '#3A3A3C',
+  colorBorderSecondary: '#333336',
+
+  boxShadow: '0 1px 2px rgba(0,0,0,0.2), 0 4px 12px rgba(0,0,0,0.3)',
+  boxShadowSecondary: '0 1px 2px rgba(0,0,0,0.2)',
+};
+
+const sharedComponents = {
+  Layout: {
+    bodyBg: '#FFFFFF',
+    headerBg: '#FFFFFF',
+    siderBg: '#F7F7F8',
   },
-  components: {
-    Layout: {
-      bodyBg: '#F8FAFC',
-      headerBg: 'rgba(255, 255, 255, 0.72)',
-      siderBg: 'transparent',
-    },
-    Menu: {
-      itemBg: 'transparent',
-      itemSelectedBg: 'rgba(37, 99, 235, 0.08)',
-      itemColor: '#475569',
-      itemSelectedColor: '#2563EB',
-      itemHoverBg: 'rgba(37, 99, 235, 0.04)',
-    },
-    Card: {
-      paddingLG: 20,
-      borderRadiusLG: 16,
-      boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04)',
-    },
-    Button: {
-      borderRadius: 10,
-      borderRadiusLG: 12,
-      primaryShadow: '0 0 16px rgba(37, 99, 235, 0.2)',
-    },
+  Menu: {
+    itemBg: 'transparent',
+    itemSelectedBg: 'rgba(31, 111, 235, 0.08)',
+    itemColor: '#5C5C5E',
+    itemSelectedColor: '#1F6FEB',
+    itemHoverBg: '#F2F2F3',
+  },
+  Card: {
+    paddingLG: 20,
+    borderRadiusLG: 12,
+    boxShadow: 'none',
+  },
+  Button: {
+    borderRadius: 8,
+    borderRadiusLG: 10,
   },
 };
+
+const darkComponents = {
+  Layout: {
+    bodyBg: '#1E1E1E',
+    headerBg: '#1E1E1E',
+    siderBg: '#232323',
+  },
+  Menu: {
+    itemBg: 'transparent',
+    itemSelectedBg: 'rgba(59, 130, 246, 0.16)',
+    itemColor: '#A6A6AB',
+    itemSelectedColor: '#3B82F6',
+    itemHoverBg: '#323232',
+  },
+  Card: {
+    paddingLG: 20,
+    borderRadiusLG: 12,
+    boxShadow: 'none',
+  },
+  Button: {
+    borderRadius: 8,
+    borderRadiusLG: 10,
+  },
+};
+
+/** 浅色主题（默认） */
+export const lightTheme: ThemeConfig = {
+  algorithm: antdThemeAlgorithm.defaultAlgorithm,
+  token: lightTokens,
+  components: sharedComponents,
+};
+
+/** 深色主题 */
+export const darkTheme: ThemeConfig = {
+  algorithm: antdThemeAlgorithm.darkAlgorithm,
+  token: darkTokens,
+  components: darkComponents,
+};
+
+/** 兼容旧引用（按当前主题返回对应配置） */
+export const antdTheme: ThemeConfig = lightTheme;
+
+export default antdTheme;

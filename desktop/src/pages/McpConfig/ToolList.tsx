@@ -315,7 +315,7 @@ export default function ToolList({ serverId, serverName }: ToolListProps) {
                       <span>
                         {field.name}
                         {field.required && (
-                          <span style={{ color: '#ff0080', marginLeft: 4 }}>*</span>
+                          <span className={styles.requiredMark}>*</span>
                         )}
                       </span>
                     }

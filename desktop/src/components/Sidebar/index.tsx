@@ -1,136 +1,128 @@
 /**
- * Sidebar — v0.3.1 左侧导航栏 (Task 5)
- * 4 个分组 11 项导航，200px 展开 / 64px 折叠
- * 干净浅色主题（移除赛博矩阵装饰），激活态使用 primary-light 背景
+ * Sidebar — v5.0 Kimi 风格极简导航
+ * 主导航 5 项（对话/ST-Claw/团队/AI办公室/知识库），固定展开不折叠
+ * 次级入口收纳到左下角「用户 + 更多」弹出菜单
  */
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Tooltip } from 'antd'
-import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
+import { Avatar, Dropdown, type MenuProps } from 'antd'
+import {
+  MessageSquare,
+  Clapperboard,
+  Users,
+  Building2,
+  BookOpen,
+  Workflow,
+  Store,
+  Send,
+  Zap,
+  Coins,
+  Settings,
+  Server,
+  MoreHorizontal,
+  type LucideIcon,
+} from 'lucide-react'
+import { useAuthStore } from '@/store/auth'
 import styles from './styles.module.css'
-
-interface SidebarProps {
-  collapsed: boolean
-  onToggle: () => void
-}
 
 interface NavItem {
   key: string
   label: string
-  icon: string
+  icon: LucideIcon
   path: string
 }
 
-interface NavGroup {
-  title: string
-  items: NavItem[]
-}
-
-/** 4 个分组 × 11 项导航（去重精简：合并 agents→agent-market、opc→team、插件/工作流/智能体市场→skill-market、mcp-config→services） */
-const NAV_GROUPS: NavGroup[] = [
-  {
-    title: 'AI 办公区',
-    items: [
-      { key: 'dashboard', label: '仪表盘', icon: '📊', path: '/dashboard' },
-      { key: 'office', label: 'AI 办公室', icon: '🏢', path: '/office' },
-      { key: 'chat', label: '对话', icon: '💬', path: '/chat' },
-      { key: 'automation', label: '自动化', icon: '⚡', path: '/automation' },
-      { key: 'video-claw', label: 'ST-Claw', icon: '🎬', path: '/video-claw' }
-    ]
-  },
-  {
-    title: '工作区',
-    items: [
-      { key: 'hermes', label: 'Hermes', icon: '🧩', path: '/hermes' },
-      { key: 'knowledge', label: '知识库', icon: '📚', path: '/knowledge' },
-      { key: 'team', label: '团队', icon: '👥', path: '/team' }
-    ]
-  },
-  {
-    title: '资源区',
-    items: [
-      { key: 'skill-market', label: '技能市场', icon: '🛒', path: '/skill-market' },
-      { key: 'credits', label: '积分', icon: '💎', path: '/credits' }
-    ]
-  },
-  {
-    title: '设置区',
-    items: [
-      { key: 'settings', label: '设置', icon: '⚙️', path: '/settings' },
-      { key: 'services', label: '服务', icon: '🔧', path: '/services' }
-    ]
-  }
+/** 主导航（用户确认顺序） */
+const PRIMARY_NAV: NavItem[] = [
+  { key: 'chat', label: '对话', icon: MessageSquare, path: '/chat' },
+  { key: 'video-claw', label: 'ST-Claw', icon: Clapperboard, path: '/video-claw' },
+  { key: 'team', label: '团队', icon: Users, path: '/team' },
+  { key: 'office', label: 'AI 办公室', icon: Building2, path: '/office' },
+  { key: 'knowledge', label: '知识库', icon: BookOpen, path: '/knowledge' },
 ]
 
-export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
+/** 次级入口（隐藏收纳，通过左下角「更多」展开） */
+const MORE_NAV: NavItem[] = [
+  { key: 'workflow', label: '工作流', icon: Workflow, path: '/workflow' },
+  { key: 'market', label: '市场', icon: Store, path: '/skill-market' },
+  { key: 'channels', label: '渠道', icon: Send, path: '/channels' },
+  { key: 'automation', label: '自动化', icon: Zap, path: '/automation' },
+  { key: 'credits', label: '积分', icon: Coins, path: '/credits' },
+  { key: 'settings', label: '设置', icon: Settings, path: '/settings' },
+  { key: 'services', label: '服务', icon: Server, path: '/services' },
+]
+
+export default function Sidebar() {
   const navigate = useNavigate()
   const location = useLocation()
-
-  const handleNavigate = (path: string) => {
-    navigate(path)
-  }
+  const user = useAuthStore((s) => s.user)
 
   const isActive = (path: string): boolean => {
     // /office 不参与前缀匹配（避免成为默认激活项）
     if (path === '/office') return location.pathname === '/office'
-    return (
-      location.pathname === path || location.pathname.startsWith(path + '/')
-    )
+    return location.pathname === path || location.pathname.startsWith(path + '/')
   }
 
+  const moreItems: MenuProps['items'] = MORE_NAV.map((item) => {
+    const Icon = item.icon
+    return {
+      key: item.key,
+      icon: <Icon size={15} />,
+      label: item.label,
+      onClick: () => navigate(item.path),
+    }
+  })
+
+  const activeMoreKey = MORE_NAV.find((item) => isActive(item.path))?.key
+
   return (
-    <aside
-      className={`${styles.sidebar} ${collapsed ? styles.collapsed : ''}`}
-    >
+    <aside className={styles.sidebar}>
       <nav className={styles.navList}>
-        {NAV_GROUPS.map((group) => (
-          <div key={group.title} className={styles.navGroup}>
-            {!collapsed && (
-              <div className={styles.groupTitle}>{group.title}</div>
-            )}
-            {group.items.map((item) => {
-              const active = isActive(item.path)
-              const itemEl = (
-                <div
-                  key={item.key}
-                  className={`${styles.navItem} ${
-                    active ? styles.navActive : ''
-                  }`}
-                  onClick={() => handleNavigate(item.path)}
-                >
-                  <span className={styles.navIcon}>{item.icon}</span>
-                  {!collapsed && (
-                    <span className={styles.navLabel}>{item.label}</span>
-                  )}
-                </div>
-              )
-              return collapsed ? (
-                <Tooltip
-                  key={item.key}
-                  title={item.label}
-                  placement="right"
-                >
-                  {itemEl}
-                </Tooltip>
-              ) : (
-                itemEl
-              )
-            })}
-          </div>
-        ))}
+        {PRIMARY_NAV.map((item) => {
+          const Icon = item.icon
+          const active = isActive(item.path)
+          return (
+            <div
+              key={item.key}
+              className={styles.navItem + (active ? ' ' + styles.navActive : '')}
+              onClick={() => navigate(item.path)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') navigate(item.path)
+              }}
+            >
+              <span className={styles.navIcon}>
+                <Icon size={18} strokeWidth={active ? 2.2 : 1.8} />
+              </span>
+              <span className={styles.navLabel}>{item.label}</span>
+            </div>
+          )
+        })}
       </nav>
 
-      {/* 折叠按钮 */}
-      <div
-        className={styles.collapseBtn}
-        onClick={onToggle}
-        role="button"
-        tabIndex={0}
-      >
-        {collapsed ? (
-          <MenuUnfoldOutlined />
-        ) : (
-          <MenuFoldOutlined />
-        )}
+      {/* 左下角：用户 + 更多 */}
+      <div className={styles.userArea}>
+        <Avatar
+          size={28}
+          src={user?.avatar || undefined}
+          className={styles.userAvatar}
+        >
+          {(user?.username || '用').slice(0, 1).toUpperCase()}
+        </Avatar>
+        <span className={styles.userName}>{user?.username || '用户'}</span>
+        <Dropdown
+          menu={{
+            items: moreItems,
+            selectedKeys: activeMoreKey ? [activeMoreKey] : [],
+          }}
+          trigger={['click']}
+          placement="topLeft"
+        >
+          <span className={styles.moreBtn} role="button" tabIndex={0}>
+            <MoreHorizontal size={16} />
+            <span className={styles.moreText}>更多</span>
+          </span>
+        </Dropdown>
       </div>
     </aside>
   )

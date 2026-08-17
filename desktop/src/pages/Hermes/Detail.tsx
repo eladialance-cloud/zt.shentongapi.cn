@@ -214,7 +214,7 @@ export default function HermesDetail() {
       key: "callType",
       width: 120,
       render: (t: CallType) => (
-        <span style={{ color: "#a5b4fc" }}>{callTypeLabel(t)}</span>
+        <span style={{ color: "var(--color-text-secondary)" }}>{callTypeLabel(t)}</span>
       ),
     },
     {
@@ -222,7 +222,7 @@ export default function HermesDetail() {
       dataIndex: "target",
       key: "target",
       render: (v?: string) => (
-        <span style={{ color: "#e6edf3" }}>{v || "-"}</span>
+        <span style={{ color: "var(--color-text-primary)" }}>{v || "-"}</span>
       ),
     },
     {
@@ -240,7 +240,7 @@ export default function HermesDetail() {
       key: "durationMs",
       width: 120,
       render: (v: number) => (
-        <span style={{ color: "#94a3b8" }}>{formatDuration(v)}</span>
+        <span style={{ color: "var(--color-text-tertiary)" }}>{formatDuration(v)}</span>
       ),
     },
     {
@@ -249,7 +249,7 @@ export default function HermesDetail() {
       key: "creditsCost",
       width: 120,
       render: (v: number) => (
-        <span style={{ color: "#22d3ee", fontWeight: 600 }}>
+        <span style={{ color: "var(--color-brand)", fontWeight: 600 }}>
           {v.toLocaleString()}
         </span>
       ),
@@ -266,11 +266,7 @@ export default function HermesDetail() {
   if (loading && !instance) {
     return (
       <div className={styles.pageContainer}>
-        <Spin
-          fullscreen
-          tip="加载中..."
-          style={{ background: "rgba(10, 14, 26, 0.85)" }}
-        />
+        <Spin fullscreen tip="加载中..." />
       </div>
     );
   }
@@ -302,7 +298,9 @@ export default function HermesDetail() {
     <div className={styles.pageContainer}>
       <div className={styles.pageHeader}>
         <div className={styles.pageTitle}>
-          <AppstoreOutlined />
+          <span className={styles.pageTitleIcon}>
+            <AppstoreOutlined />
+          </span>
           <span>{instance.name}</span>
           <Tag className={statusClass(instance.status)}>
             {statusLabel(instance.status)}
@@ -366,7 +364,7 @@ export default function HermesDetail() {
             {instance.status === "error" && instance.errorMessage && (
               <div className={styles.infoItem}>
                 <span className={styles.infoLabel}>错误信息</span>
-                <span style={{ color: "#fca5a5" }}>
+                <span style={{ color: "var(--color-error)" }}>
                   {instance.errorMessage}
                 </span>
               </div>
@@ -393,7 +391,7 @@ export default function HermesDetail() {
                 </div>
                 <Progress
                   percent={Math.min(cpuPct, 100)}
-                  strokeColor={{ from: "#6366f1", to: "#8b5cf6" }}
+                  strokeColor="var(--color-brand)"
                   showInfo={false}
                 />
               </div>
@@ -406,13 +404,13 @@ export default function HermesDetail() {
                 </div>
                 <Progress
                   percent={Math.min(memPct, 100)}
-                  strokeColor={{ from: "#22d3ee", to: "#34d399" }}
+                  strokeColor="var(--color-success)"
                   showInfo={false}
                 />
               </div>
             </div>
           ) : (
-            <div style={{ color: "#6e7681", fontSize: 12 }}>
+            <div style={{ color: "var(--color-text-tertiary)", fontSize: 12 }}>
               实例未运行，暂无资源占用数据
             </div>
           )}

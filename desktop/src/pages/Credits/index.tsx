@@ -95,26 +95,26 @@ export default function CreditsOverview() {
           <div className={styles.statsGrid}>
             <Card className={styles.statCard} bordered={false}>
               <Statistic
-                title={<span style={{ color: "#8b949e" }}>冻结积分</span>}
+                title={<span className={styles.statTitle}>冻结积分</span>}
                 value={frozenBalance}
-                prefix={<LockOutlined style={{ color: "#fbbf24" }} />}
-                valueStyle={{ color: "#fbbf24" }}
+                prefix={<LockOutlined className={styles.statPrefixWarning} />}
+                valueStyle={{ color: "var(--color-warning)" }}
               />
             </Card>
             <Card className={styles.statCard} bordered={false}>
               <Statistic
-                title={<span style={{ color: "#8b949e" }}>累计充值</span>}
+                title={<span className={styles.statTitle}>累计充值</span>}
                 value={totalRecharged}
-                prefix={<ArrowUpOutlined style={{ color: "#34d399" }} />}
-                valueStyle={{ color: "#34d399" }}
+                prefix={<ArrowUpOutlined className={styles.statPrefixSuccess} />}
+                valueStyle={{ color: "var(--color-success)" }}
               />
             </Card>
             <Card className={styles.statCard} bordered={false}>
               <Statistic
-                title={<span style={{ color: "#8b949e" }}>累计消费</span>}
+                title={<span className={styles.statTitle}>累计消费</span>}
                 value={totalConsumed}
-                prefix={<ArrowDownOutlined style={{ color: "#f87171" }} />}
-                valueStyle={{ color: "#f87171" }}
+                prefix={<ArrowDownOutlined className={styles.statPrefixError} />}
+                valueStyle={{ color: "var(--color-error)" }}
               />
             </Card>
           </div>
@@ -165,17 +165,9 @@ export default function CreditsOverview() {
       </div>
 
       {/* 底部说明 */}
-      <div
-        style={{
-          marginTop: 24,
-          padding: "12px 16px",
-          background: "rgba(17, 24, 39, 0.6)",
-          border: "1px solid rgba(99, 102, 241, 0.15)",
-          borderRadius: 10,
-        }}
-      >
-        <ThunderboltOutlined style={{ color: "#818cf8", marginRight: 8 }} />
-        <span style={{ color: "#8b949e", fontSize: 12 }}>
+      <div className={styles.noticeBar}>
+        <ThunderboltOutlined className={styles.noticeIcon} />
+        <span>
           积分用于对话调用、插件调用、工作流执行等。后端采用三阶段计费（冻结 →
           结算 → 退补），余额变更将通过 WebSocket 实时推送。
         </span>

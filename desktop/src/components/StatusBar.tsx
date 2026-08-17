@@ -1,7 +1,7 @@
 // 底栏状态指示器（Task 16.4 + Task 34.3）
-// 32px 高底部状态栏：三个服务状态点 + [📊]状态面板按钮 + 版本号
+// 32px 高底部状态栏：三个服务状态点 + []状态面板按钮 + 版本号
 // 点击状态点跳转到服务管理页；通过 IPC service:status-changed 实时更新
-// [📊] 按钮点击弹出状态面板浮层（Task 34.4）
+// [] 按钮点击弹出状态面板浮层（Task 34.4）
 
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -26,11 +26,11 @@ const SERVICE_LABELS: Record<ServiceName, string> = {
 
 /** 状态点颜色 */
 const STATUS_COLOR: Record<ServiceStatus, string> = {
-  running: '#10b981',
-  stopped: '#94a3b8',
-  starting: '#facc15',
-  error: '#ef4444',
-  unknown: '#64748b'
+  running: 'var(--color-success)',
+  stopped: 'var(--color-text-disabled)',
+  starting: 'var(--color-warning)',
+  error: 'var(--color-error)',
+  unknown: 'var(--color-text-tertiary)'
 }
 
 const STATUS_TEXT: Record<ServiceStatus, string> = {
@@ -97,14 +97,14 @@ export default function StatusBar() {
   return (
     <div
       style={{
-        height: 32,
+        height: 'var(--statusbar-height)',
         flexShrink: 0,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '0 16px',
-        background: 'var(--glass-bg)',
-        borderTop: '1px solid var(--glass-border)',
+        background: 'var(--color-bg-container)',
+        borderTop: '1px solid var(--color-border)',
         color: 'var(--color-text-secondary)',
         fontSize: 12,
         userSelect: 'none'

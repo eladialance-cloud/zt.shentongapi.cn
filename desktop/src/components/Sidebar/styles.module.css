@@ -1,24 +1,17 @@
-/* === Sidebar v3.0 — Glassmorphism Enterprise Blue === */
-/* 240px expanded / 64px collapsed, glass background */
+/* === Sidebar v5.0 — Kimi 风格极简 === */
+/* 224px 固定展开（不折叠），纯色 + 1px 右边框 */
 
 .sidebar {
   width: var(--sidebar-width);
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--glass-bg);
-  border-right: 1px solid var(--glass-border);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  transition: width var(--duration-base) var(--ease-out);
+  background: var(--color-bg-layout);
+  border-right: 1px solid var(--color-border);
   flex-shrink: 0;
   overflow: hidden;
   user-select: none;
   z-index: 50;
-}
-
-.collapsed {
-  width: var(--sidebar-collapsed);
 }
 
 /* 导航列表 */
@@ -26,7 +19,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
+  gap: 2px;
   padding: var(--space-md) var(--space-sm);
   overflow-y: auto;
 }
@@ -34,29 +27,12 @@
 .navList::-webkit-scrollbar { width: 4px; }
 .navList::-webkit-scrollbar-thumb { background: var(--color-scrollbar-thumb); border-radius: 2px; }
 
-.navGroup {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-}
-
-.groupTitle {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-tertiary);
-  padding: var(--space-xs) var(--space-sm);
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
 /* 导航项 */
 .navItem {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
+  padding: 9px var(--space-md);
   border-radius: var(--radius-md);
   cursor: pointer;
   color: var(--color-text-secondary);
@@ -69,15 +45,20 @@
 }
 
 .navItem:hover {
-  background: var(--glass-bg-hover);
-  color: var(--color-brand);
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
 }
 
 /* 激活态 */
 .navActive {
-  background: var(--glass-bg-active);
+  background: var(--color-brand-light);
   color: var(--color-brand);
   font-weight: var(--font-weight-semibold);
+}
+
+.navActive:hover {
+  background: var(--color-brand-light);
+  color: var(--color-brand);
 }
 
 .navActive::before {
@@ -93,7 +74,6 @@
 }
 
 .navIcon {
-  font-size: 16px;
   width: 24px;
   display: inline-flex;
   align-items: center;
@@ -107,32 +87,52 @@
   text-overflow: ellipsis;
 }
 
-/* 折叠态: 隐藏 label, 居中图标 */
-.collapsed .navItem {
-  justify-content: center;
-  padding: var(--space-sm);
-}
-
-.collapsed .groupTitle {
-  text-align: center;
-  padding: var(--space-xs) 0;
-}
-
-/* 底部折叠按钮 */
-.collapseBtn {
-  height: 44px;
+/* 左下角用户区 */
+.userArea {
   display: flex;
   align-items: center;
-  justify-content: center;
-  border-top: 1px solid var(--glass-border);
-  cursor: pointer;
-  color: var(--color-text-tertiary);
-  font-size: 16px;
-  transition: all var(--duration-fast) var(--ease-out);
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  border-top: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
-.collapseBtn:hover {
-  background: var(--glass-bg-hover);
+.userAvatar {
+  flex-shrink: 0;
+  background: var(--color-brand);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.userName {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 更多按钮 */
+.moreBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 8px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.moreBtn:hover {
+  background: var(--color-bg-hover);
   color: var(--color-brand);
+}
+
+.moreText {
+  line-height: 1;
 }

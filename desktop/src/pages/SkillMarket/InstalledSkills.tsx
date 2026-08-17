@@ -89,7 +89,7 @@ export default function InstalledSkills() {
                   {skill.description || "暂无描述"}
                 </div>
                 {skill.installDir && (
-                  <div style={{ fontSize: 12, color: "#8b98a5", wordBreak: "break-all" }}>
+                  <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", wordBreak: "break-all" }}>
                     安装位置：{skill.installDir}
                   </div>
                 )}

@@ -181,9 +181,10 @@ export default function OfficeCanvas({ onSceneReady }: OfficeCanvasProps) {
             top: menu.y,
             width: 260,
             maxHeight: Math.min(520, 600),
-            background: '#fff',
+            background: 'var(--color-bg-elevated)',
+            border: '1px solid var(--color-border)',
             borderRadius: 12,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.16)',
+            boxShadow: 'var(--shadow-lg)',
             padding: '12px 14px',
             zIndex: 100,
             overflowY: 'auto',
@@ -191,18 +192,18 @@ export default function OfficeCanvas({ onSceneReady }: OfficeCanvasProps) {
             userSelect: 'none',
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #f0f0f0' }}>
-            <span style={{ fontWeight: 600, fontSize: 14 }}>{menu.agent.name}</span>
-            <span style={{ color: '#999', fontSize: 11 }}>{menu.agent.state}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid var(--color-split)' }}>
+            <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text-primary)' }}>{menu.agent.name}</span>
+            <span style={{ color: 'var(--color-text-tertiary)', fontSize: 11 }}>{menu.agent.state}</span>
           </div>
 
           {!menu.pickingTarget ? (
             <>
               <div style={{ marginBottom: 10 }}>
-                <div style={{ color: '#999', fontSize: 11, marginBottom: 4 }}>互动</div>
+                <div style={{ color: 'var(--color-text-tertiary)', fontSize: 11, marginBottom: 4 }}>互动</div>
                 <button
                   type="button"
-                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: 6, fontSize: 13 }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: 6, fontSize: 13, color: 'var(--color-text-primary)' }}
                   onClick={() => setMenu((c) => c ? { ...c, pickingTarget: true } : c)}
                 >
                   互动…
@@ -210,12 +211,12 @@ export default function OfficeCanvas({ onSceneReady }: OfficeCanvasProps) {
               </div>
 
               <div style={{ marginBottom: 10 }}>
-                <div style={{ color: '#999', fontSize: 11, marginBottom: 4 }}>状态</div>
+                <div style={{ color: 'var(--color-text-tertiary)', fontSize: 11, marginBottom: 4 }}>状态</div>
                 {STATE_ACTIONS.map((action) => (
                   <button
                     key={action.label}
                     type="button"
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: 6, fontSize: 13 }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: 6, fontSize: 13, color: 'var(--color-text-primary)' }}
                     onClick={() => applyState(action.state, action.task)}
                   >
                     {action.label}
@@ -224,13 +225,13 @@ export default function OfficeCanvas({ onSceneReady }: OfficeCanvasProps) {
               </div>
 
               <div>
-                <div style={{ color: '#999', fontSize: 11, marginBottom: 4 }}>表情动作</div>
+                <div style={{ color: 'var(--color-text-tertiary)', fontSize: 11, marginBottom: 4 }}>表情动作</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                   {EMOTE_ACTIONS.map((action) => (
                     <button
                       key={action.animation}
                       type="button"
-                      style={{ padding: '3px 8px', border: '1px solid #e8e8e8', background: '#fafafa', cursor: 'pointer', borderRadius: 12, fontSize: 11 }}
+                      style={{ padding: '3px 8px', border: '1px solid var(--color-border)', background: 'var(--color-bg-layout)', color: 'var(--color-text-secondary)', cursor: 'pointer', borderRadius: 12, fontSize: 11 }}
                       onClick={() => playEmote(action.animation, action.label)}
                     >
                       {action.label}
@@ -241,10 +242,10 @@ export default function OfficeCanvas({ onSceneReady }: OfficeCanvasProps) {
             </>
           ) : (
             <div>
-              <div style={{ color: '#999', fontSize: 11, marginBottom: 4 }}>选择互动对象</div>
+              <div style={{ color: 'var(--color-text-tertiary)', fontSize: 11, marginBottom: 4 }}>选择互动对象</div>
               <button
                 type="button"
-                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: 6, fontSize: 12, color: '#999' }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: 6, fontSize: 12, color: 'var(--color-text-tertiary)' }}
                 onClick={() => setMenu((c) => c ? { ...c, pickingTarget: false } : c)}
               >
                 ← 返回动作

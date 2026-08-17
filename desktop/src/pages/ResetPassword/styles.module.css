@@ -1,4 +1,4 @@
-/* 注册页 - Kimi 风格极简（与登录页一致） */
+/* 重置密码页 - Kimi 风格极简（与登录页一致） */
 
 .container {
   min-height: 100vh;
@@ -10,7 +10,7 @@
 }
 
 .card {
-  width: 400px;
+  width: 380px;
   max-width: 100%;
   padding: 48px 8px 40px;
 }
@@ -27,8 +27,9 @@
 .subtitle {
   font-size: 13px;
   color: var(--color-text-tertiary);
-  margin: 0 0 32px;
+  margin: 0 0 40px;
   text-align: center;
+  line-height: 1.7;
 }
 
 .fieldLabel {
@@ -79,7 +80,40 @@
   background: var(--color-brand-active) !important;
 }
 
-/* 底部链接 */
+/* 无效链接态 */
+.invalidBox {
+  padding: 8px 0;
+  text-align: center;
+}
+
+.invalidTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 8px;
+}
+
+.invalidText {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.9;
+  margin: 0 0 24px;
+}
+
+/* 成功态 */
+.successBox {
+  padding: 8px 0;
+}
+
+.successText {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  line-height: 1.9;
+  text-align: center;
+  margin: 0 0 24px;
+}
+
+/* 底部返回 */
 .footer {
   margin-top: 20px;
   text-align: center;

@@ -33,3 +33,53 @@ body {
     background: #d1d5db;
     border-radius: 3px;
 }
+
+/* ── ST-Claw Kimi 设计令牌（浅色） ── */
+:root {
+  --background: #F7F7F8;
+  --foreground: #18181B;
+  --vc-bg: #F7F7F8;
+  --vc-surface: #FFFFFF;
+  --vc-surface-2: #F4F4F5;
+  --vc-border: #E4E4E7;
+  --vc-border-strong: #D4D4D8;
+  --vc-text: #18181B;
+  --vc-text-2: #71717A;
+  --vc-text-3: #A1A1AA;
+  --vc-brand: #1F6FEB;
+  --vc-brand-weak: #EAF2FE;
+  --vc-brand-text: #1A56C7;
+  --vc-green: #16A34A;
+  --vc-green-weak: #ECFDF3;
+  --vc-amber: #B45309;
+  --vc-amber-weak: #FFFBEB;
+  --vc-red: #DC2626;
+  --vc-red-weak: #FEF2F2;
+  --vc-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+}
+
+/* ── ST-Claw Kimi 设计令牌（深色，跟随系统） ── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #1B1B1F;
+    --foreground: #E9E9EC;
+    --vc-bg: #1B1B1F;
+    --vc-surface: #232327;
+    --vc-surface-2: #2B2B31;
+    --vc-border: #34343B;
+    --vc-border-strong: #45454D;
+    --vc-text: #E9E9EC;
+    --vc-text-2: #A3A3AB;
+    --vc-text-3: #71717A;
+    --vc-brand: #3B82F6;
+    --vc-brand-weak: rgba(59, 130, 246, 0.16);
+    --vc-brand-text: #93C5FD;
+    --vc-green: #4ADE80;
+    --vc-green-weak: rgba(74, 222, 128, 0.12);
+    --vc-amber: #FBBF24;
+    --vc-amber-weak: rgba(251, 191, 36, 0.12);
+    --vc-red: #F87171;
+    --vc-red-weak: rgba(248, 113, 113, 0.12);
+    --vc-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  }
+}

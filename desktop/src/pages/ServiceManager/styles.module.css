@@ -1,37 +1,27 @@
-/* 服务管理样式 - 赛博科技深色风格 */
+/* 服务管理 — Kimi 风格（v2.0）
+   原则: 白/灰分层 · 1px 细边框 · 12px 圆角 · 品牌蓝点缀 · 浅深双板自适应
+   结构: 下载位置条 / 服务卡片网格 / 状态胶囊 / 操作按钮 */
 
 .page {
-  min-height: 100vh;
+  min-height: 100%;
   background: var(--color-bg-root);
-  background-image:
-    radial-gradient(circle at 15% 20%, rgba(99, 102, 241, 0.12) 0%, transparent 45%),
-    radial-gradient(circle at 85% 80%, rgba(139, 92, 246, 0.10) 0%, transparent 45%),
-    linear-gradient(135deg, var(--color-bg-root) 0%, var(--color-bg-layout) 100%);
   color: var(--color-text-primary);
   padding: 24px 32px 48px;
   overflow-y: auto;
 }
 
-.page::-webkit-scrollbar {
-  width: 8px;
-}
+.page::-webkit-scrollbar { width: 8px; }
 .page::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.3);
+  background: var(--color-scrollbar-thumb);
   border-radius: 4px;
 }
 
-/* ===== 顶部标题栏 ===== */
+/* ===== 页头 ===== */
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
-}
-
-.headerActions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  margin-bottom: 20px;
 }
 
 .titleArea {
@@ -41,17 +31,23 @@
 }
 
 .titleIcon {
-  font-size: 28px;
-  color: #6366f1;
-  filter: drop-shadow(0 0 10px rgba(99, 102, 241, 0.6));
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--color-brand-bg);
+  color: var(--color-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  flex-shrink: 0;
 }
 
 .title {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 600;
   color: var(--color-text-primary);
   margin: 0;
-  letter-spacing: 0.5px;
 }
 
 .subtitle {
@@ -61,43 +57,115 @@
 }
 
 .backBtn {
-  background: rgba(99, 102, 241, 0.1) !important;
-  border: 1px solid rgba(99, 102, 241, 0.3) !important;
+  background: transparent !important;
+  border: 1px solid var(--color-border) !important;
   color: var(--color-text-secondary) !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
 }
-.backBtn:hover {
-  background: var(--color-border-secondary) !important;
-  border-color: rgba(99, 102, 241, 0.5) !important;
+.backBtn:hover:not(:disabled) {
+  color: var(--color-text-primary) !important;
+  border-color: var(--color-border-hover) !important;
+  background: var(--color-bg-hover) !important;
 }
 
-/* ===== 一键修复全部按钮 ===== */
-.repairAllBtn {
-  background: rgba(245, 158, 11, 0.15) !important;
-  border: 1px solid rgba(245, 158, 11, 0.4) !important;
-  color: #fbbf24 !important;
-  font-weight: 500;
+/* ===== 下载安装位置设置条 ===== */
+.locationBar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
 }
-.repairAllBtn:hover {
-  background: rgba(245, 158, 11, 0.25) !important;
-  border-color: rgba(245, 158, 11, 0.6) !important;
-  color: #fcd34d !important;
+
+.locationIcon {
+  color: var(--color-brand);
+  font-size: 15px;
+}
+
+.locationLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.locationPath {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-layout);
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 6px;
+  padding: 3px 10px;
+  max-width: 480px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-family-mono);
+}
+
+.locationSpace {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.locationBtn {
+  margin-left: auto;
+  background: var(--color-brand-bg) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-brand) !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
+}
+.locationBtn:hover:not(:disabled) {
+  background: var(--color-brand-light) !important;
+  border-color: var(--color-brand) !important;
+}
+
+.locationTip {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+.locationError {
+  flex: 1;
+  min-width: 0;
+  color: var(--color-error);
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ===== 服务卡片网格 ===== */
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  gap: 20px;
+  gap: 16px;
 }
 
 .card {
-  background: rgba(255, 255, 255, 0.6) !important;
-  border: 1px solid var(--color-border-secondary) !important;
+  background: var(--color-bg-container) !important;
+  border: 1px solid var(--color-border) !important;
   border-radius: 12px !important;
-  transition: border-color 0.2s;
+  box-shadow: var(--shadow-sm) !important;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 .card:hover {
-  border-color: rgba(99, 102, 241, 0.35) !important;
+  border-color: var(--color-border-hover) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-1px);
 }
 
 .cardHeader {
@@ -108,12 +176,17 @@
 }
 
 .serviceName {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--color-text-primary);
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.serviceIcon {
+  color: var(--color-brand);
+  font-size: 15px;
 }
 
 .statusBadge {
@@ -124,6 +197,7 @@
   border-radius: 12px;
   font-size: 12px;
   font-weight: 500;
+  border: 1px solid transparent;
 }
 
 .statusDot {
@@ -134,47 +208,34 @@
 }
 
 .statusRunning {
-  background: rgba(16, 185, 129, 0.15);
-  color: #6ee7b7;
+  color: var(--color-success);
+  background: var(--color-success-light);
 }
-.statusRunning .statusDot {
-  background: #10b981;
-  box-shadow: 0 0 6px #10b981;
-}
+.statusRunning .statusDot { background: var(--color-success); }
 
 .statusStopped {
-  background: rgba(148, 163, 184, 0.15);
-  color: #cbd5e1;
+  color: var(--color-text-tertiary);
+  background: var(--color-bg-hover);
 }
-.statusStopped .statusDot {
-  background: #94a3b8;
-}
+.statusStopped .statusDot { background: var(--color-text-disabled); }
 
 .statusStarting {
-  background: rgba(250, 204, 21, 0.15);
-  color: #fde047;
+  color: var(--color-warning);
+  background: var(--color-warning-light);
 }
-.statusStarting .statusDot {
-  background: #facc15;
-  box-shadow: 0 0 6px #facc15;
-}
+.statusStarting .statusDot { background: var(--color-warning); }
 
 .statusError {
-  background: rgba(239, 68, 68, 0.15);
-  color: #fca5a5;
+  color: var(--color-error);
+  background: var(--color-error-light);
 }
-.statusError .statusDot {
-  background: #ef4444;
-  box-shadow: 0 0 6px #ef4444;
-}
+.statusError .statusDot { background: var(--color-error); }
 
 .statusUnknown {
-  background: rgba(148, 163, 184, 0.15);
   color: var(--color-text-tertiary);
+  background: var(--color-bg-hover);
 }
-.statusUnknown .statusDot {
-  background: #64748b;
-}
+.statusUnknown .statusDot { background: var(--color-text-disabled); }
 
 /* ===== 指标行 ===== */
 .metrics {
@@ -198,114 +259,62 @@
 .metricValue {
   font-size: 14px;
   color: var(--color-text-primary);
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-family-mono);
 }
 
 .errorMsg {
-  color: #fca5a5;
+  color: var(--color-error);
   font-size: 12px;
   margin: 8px 0;
   word-break: break-all;
-}
-
-.errorHint {
-  color: #fbbf24;
-  font-size: 11px;
-  margin-top: 4px;
-  opacity: 0.8;
-}
-
-/* ===== 修复进度条 ===== */
-.progressContainer {
-  padding: 10px 12px;
-  background: rgba(245, 158, 11, 0.06);
-  border: 1px solid rgba(245, 158, 11, 0.15);
-  border-radius: 8px;
-  margin: 8px 0;
-}
-
-.progressBar {
-  height: 6px;
-  background: rgba(245, 158, 11, 0.15);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.progressFill {
-  height: 100%;
-  background: linear-gradient(90deg, #f59e0b, #fbbf24);
-  border-radius: 3px;
-  transition: width 0.3s ease;
-}
-
-.progressText {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-top: 6px;
+  gap: 6px;
 }
 
-.progressPercent {
-  font-size: 13px;
-  font-weight: 600;
-  color: #fbbf24;
-  font-family: 'Courier New', monospace;
-}
-
-.progressMeta {
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-  font-family: 'Courier New', monospace;
-}
-
-/* ===== 操作按钮 ===== */
+/* ===== 操作按钮（Kimi 式：primary 实心蓝 / ghost 描边 / danger 红字） ===== */
 .actions {
   display: flex;
   gap: 8px;
   margin-top: 16px;
-  border-top: 1px solid rgba(99, 102, 241, 0.1);
+  border-top: 1px solid var(--color-split);
   padding-top: 16px;
   flex-wrap: wrap;
 }
 
 .primaryBtn {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+  background: var(--color-brand) !important;
   border: none !important;
-  color: #fff !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
 }
-.primaryBtn:hover {
-  background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
+.primaryBtn:hover:not(:disabled) {
+  background: var(--color-brand-hover) !important;
 }
 
 .ghostBtn {
-  background: rgba(99, 102, 241, 0.1) !important;
-  border: 1px solid rgba(99, 102, 241, 0.3) !important;
+  background: transparent !important;
+  border: 1px solid var(--color-border) !important;
   color: var(--color-text-secondary) !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
 }
-.ghostBtn:hover {
-  background: var(--color-border-secondary) !important;
+.ghostBtn:hover:not(:disabled) {
+  color: var(--color-text-primary) !important;
+  border-color: var(--color-border-hover) !important;
+  background: var(--color-bg-hover) !important;
 }
 
 .dangerBtn {
-  border-color: rgba(239, 68, 68, 0.4) !important;
-  color: #fca5a5 !important;
+  background: transparent !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-error) !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
 }
-.dangerBtn:hover {
-  background: rgba(239, 68, 68, 0.1) !important;
-  border-color: rgba(239, 68, 68, 0.6) !important;
-  color: #fecaca !important;
-}
-
-/* ===== 修复按钮（警告色系） ===== */
-.repairBtn {
-  background: rgba(245, 158, 11, 0.15) !important;
-  border: 1px solid rgba(245, 158, 11, 0.4) !important;
-  color: #fbbf24 !important;
-}
-.repairBtn:hover {
-  background: rgba(245, 158, 11, 0.25) !important;
-  border-color: rgba(245, 158, 11, 0.6) !important;
-  color: #fcd34d !important;
+.dangerBtn:hover:not(:disabled) {
+  background: var(--color-error-light) !important;
+  border-color: var(--color-error) !important;
 }
 
 .emptyWrap {
@@ -316,7 +325,7 @@
 .installProgress {
   margin-top: 12px;
   padding: 8px 10px;
-  background: rgba(99, 102, 241, 0.08);
+  background: var(--color-brand-bg);
   border: 1px solid var(--color-border);
   border-radius: 8px;
 }
@@ -324,76 +333,4 @@
 .installProgress :global(.ant-progress-text) {
   color: var(--color-text-secondary);
   font-size: 12px;
-}
-/* ===== 下载安装位置设置条 ===== */
-.locationBar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  background: rgba(99, 102, 241, 0.08);
-  border: 1px solid rgba(99, 102, 241, 0.25);
-  border-radius: 10px;
-  padding: 10px 16px;
-  margin-bottom: 20px;
-}
-
-.locationIcon {
-  color: #6366f1;
-  font-size: 15px;
-}
-
-.locationLabel {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  white-space: nowrap;
-}
-
-.locationPath {
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  background: rgba(0, 0, 0, 0.25);
-  border-radius: 6px;
-  padding: 3px 10px;
-  max-width: 480px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: Consolas, Menlo, monospace;
-}
-
-.locationSpace {
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-  white-space: nowrap;
-}
-
-.locationBtn {
-  margin-left: auto;
-  background: rgba(99, 102, 241, 0.15) !important;
-  border: 1px solid rgba(99, 102, 241, 0.4) !important;
-  color: #a5b4fc !important;
-}
-.locationBtn:hover {
-  background: rgba(99, 102, 241, 0.3) !important;
-  border-color: rgba(99, 102, 241, 0.6) !important;
-}
-
-.locationTip {
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-}
-
-.locationError {
-  flex: 1;
-  min-width: 0;
-  color: #dc2626;
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }

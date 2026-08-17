@@ -156,7 +156,7 @@ export default function PluginDetail() {
   }
 
   const handleBack = () => {
-    navigate('/plugins')
+    navigate('/skill-market')
   }
 
   const handleSubmitComment = async () => {

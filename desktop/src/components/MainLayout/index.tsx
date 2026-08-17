@@ -14,7 +14,6 @@ import styles from "./styles.module.css";
 
 export default function MainLayout() {
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { backendAvailable, checkingBackend, setChecking, setBackendOnline } = useSystemStore();
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -90,10 +89,7 @@ export default function MainLayout() {
       )}
 
       <div className={styles.main}>
-        <Sidebar
-          collapsed={sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed((v) => !v)}
-        />
+        <Sidebar />
         <div className={styles.content}>
           <Outlet />
         </div>

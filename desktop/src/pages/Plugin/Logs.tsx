@@ -124,7 +124,7 @@ export default function PluginLogs() {
       key: 'pluginName',
       width: 160,
       render: (v: string) => (
-        <span style={{ color: '#e6edf3', fontWeight: 500 }}>{v}</span>
+        <span className={styles.nameCellTitle}>{v}</span>
       )
     },
     {
@@ -185,10 +185,12 @@ export default function PluginLogs() {
     <div className={styles.pageContainer}>
       <div className={styles.pageHeader}>
         <div className={styles.pageTitle}>
-          <FileTextOutlined />
+          <span className={styles.titleIcon}>
+            <FileTextOutlined />
+          </span>
           <span>插件调用记录</span>
         </div>
-        <Button className={styles.backBtn} icon={<ArrowLeftOutlined />} onClick={() => navigate('/dashboard')}>
+        <Button className={styles.backBtn} icon={<ArrowLeftOutlined />} onClick={() => navigate('/skill-market')}>
           返回
         </Button>
       </div>
@@ -232,7 +234,7 @@ export default function PluginLogs() {
       </Spin>
 
       {/* 底部统计提示 */}
-      <div style={{ marginTop: 12, color: '#6e7681', fontSize: 12, display: 'flex', gap: 16 }}>
+      <div className={styles.statsBar}>
         <span>
           <ClockCircleOutlined style={{ marginRight: 4 }} />
           共 {total} 条记录

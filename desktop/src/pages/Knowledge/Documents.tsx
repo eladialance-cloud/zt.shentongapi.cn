@@ -1,4 +1,4 @@
-// 知识库文档管理页
+// 知识库文档管理页 — Kimi 风格（v2.0）
 // 布局：知识库信息栏 + 上传区（antd Upload，多文件，进度）+ 文档列表
 // 调用 GET /knowledge/bases/:id/documents、POST /knowledge/bases/:id/documents、DELETE /knowledge/bases/:id/documents/:docId
 
@@ -17,13 +17,14 @@ import {
 import type { TableColumnsType } from 'antd'
 import type { UploadFile, UploadProps } from 'antd'
 import {
-  ArrowLeftOutlined,
-  BookOutlined,
-  DeleteOutlined,
-  InboxOutlined,
-  FileTextOutlined,
-  SearchOutlined
-} from '@ant-design/icons'
+  ArrowLeft,
+  BookOpen,
+  FileText,
+  RefreshCw,
+  Search,
+  Trash2,
+  UploadCloud
+} from 'lucide-react'
 import * as kbApi from '@/api/knowledge-api'
 import type { KnowledgeBase, KnowledgeDocument, ChunkStatus } from '@/types/knowledge'
 import styles from './styles.module.css'
@@ -33,10 +34,10 @@ const { Dragger } = Upload
 /** 格式化文件大小 */
 function formatFileSize(bytes: number): string {
   if (!bytes) return '-'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
 }
 
 /** 格式化时间 */
@@ -122,17 +123,17 @@ export default function KnowledgeDocuments() {
     beforeUpload: (file) => {
       // 异步上传
       void (async () => {
-        const fileKey = `${file.name}-${file.uid}`
+        const fileKey = file.name + '-' + file.uid
         try {
           setUploadProgress((prev) => ({ ...prev, [fileKey]: 0 }))
           const doc = await kbApi.uploadDocument(kbId, file, (percent) => {
             setUploadProgress((prev) => ({ ...prev, [fileKey]: percent }))
           })
-          message.success(`文件 ${file.name} 上传成功`)
+          message.success('文件 ' + file.name + ' 上传成功')
           setDocuments((prev) => [...prev, doc])
         } catch (err) {
           console.error('[KnowledgeDocuments] upload failed:', err)
-          message.error(`上传 ${file.name} 失败: ${(err as Error).message}`)
+          message.error('上传 ' + file.name + ' 失败: ' + (err as Error).message)
         } finally {
           setUploadProgress((prev) => {
             const next = { ...prev }
@@ -150,7 +151,7 @@ export default function KnowledgeDocuments() {
   const handleDeleteDoc = async (doc: KnowledgeDocument) => {
     try {
       await kbApi.deleteDocument(kbId, doc.id)
-      message.success(`文档 ${doc.fileName} 已删除`)
+      message.success('文档 ' + doc.fileName + ' 已删除')
       setDocuments((prev) => prev.filter((d) => d.id !== doc.id))
     } catch (err) {
       console.error('[KnowledgeDocuments] delete failed:', err)
@@ -158,7 +159,7 @@ export default function KnowledgeDocuments() {
     }
   }
 
-  /** 刷新列表（用于轮询分块状态） */
+  /** 刷新 */
   const handleRefresh = () => {
     void loadData()
   }
@@ -170,8 +171,8 @@ export default function KnowledgeDocuments() {
       dataIndex: 'fileName',
       key: 'fileName',
       render: (v: string) => (
-        <span style={{ color: '#e6edf3', fontSize: 13 }}>
-          <FileTextOutlined style={{ marginRight: 6, color: 'var(--color-text-secondary)' }} />
+        <span style={{ color: 'var(--color-text-primary)', fontSize: 13 }}>
+          <FileText size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
           {v}
         </span>
       )
@@ -223,7 +224,7 @@ export default function KnowledgeDocuments() {
           cancelText="取消"
           okButtonProps={{ danger: true }}
         >
-          <Button size="small" danger icon={<DeleteOutlined />}>
+          <Button size="small" danger icon={<Trash2 size={14} />}>
             删除
           </Button>
         </Popconfirm>
@@ -234,11 +235,7 @@ export default function KnowledgeDocuments() {
   if (loading && !kb) {
     return (
       <div className={styles.pageContainer}>
-        <Spin
-          fullscreen
-          tip="加载中..."
-          style={{ background: 'rgba(248, 250, 252, 0.85)' }}
-        />
+        <Spin fullscreen tip="加载中..." />
       </div>
     )
   }
@@ -247,20 +244,22 @@ export default function KnowledgeDocuments() {
     <div className={styles.pageContainer}>
       <div className={styles.pageHeader}>
         <div className={styles.pageTitle}>
-          <BookOutlined />
+          <span className={styles.pageTitleIcon}>
+            <BookOpen size={18} />
+          </span>
           <span>{kb?.name ?? '知识库'} - 文档管理</span>
         </div>
         <div className={styles.headerActions}>
           <Button
-            className={styles.backBtn}
-            icon={<SearchOutlined />}
-            onClick={() => navigate(`/knowledge/${kbId}/search`)}
+            className={styles.ghostBtn}
+            icon={<Search size={14} />}
+            onClick={() => navigate('/knowledge/' + kbId + '/search')}
           >
             检索测试
           </Button>
           <Button
-            className={styles.backBtn}
-            icon={<ArrowLeftOutlined />}
+            className={styles.ghostBtn}
+            icon={<ArrowLeft size={14} />}
             onClick={() => navigate('/knowledge')}
           >
             返回列表
@@ -272,14 +271,20 @@ export default function KnowledgeDocuments() {
         {/* 知识库信息栏 */}
         {kb && (
           <div className={styles.kbInfoBar}>
-            <BookOutlined style={{ color: 'var(--color-text-secondary)', fontSize: 18 }} />
+            <span className={styles.kbInfoIcon}>
+              <BookOpen size={18} />
+            </span>
             <div style={{ flex: 1 }}>
               <div className={styles.kbInfoName}>{kb.name}</div>
               <div className={styles.kbInfoDescription}>
                 {kb.description || '暂无描述'} · 共 {kb.documentCount ?? documents.length} 个文档
               </div>
             </div>
-            <Button className={styles.backBtn} onClick={handleRefresh}>
+            <Button
+              className={styles.ghostBtn}
+              icon={<RefreshCw size={14} />}
+              onClick={handleRefresh}
+            >
               刷新
             </Button>
           </div>
@@ -288,12 +293,14 @@ export default function KnowledgeDocuments() {
         {/* 上传区 */}
         <div className={styles.uploadArea}>
           <div className={styles.sectionTitle}>
-            <InboxOutlined />
+            <span className={styles.sectionTitleIcon}>
+              <UploadCloud size={15} />
+            </span>
             上传文档
           </div>
           <Dragger {...uploadProps} className={styles.uploadDragger}>
             <p className={styles.uploadText}>
-              <InboxOutlined style={{ fontSize: 36, color: 'var(--color-text-secondary)' }} />
+              <UploadCloud size={36} strokeWidth={1.5} className={styles.uploadIcon} />
             </p>
             <p className={styles.uploadText}>点击或拖拽文件到此区域上传</p>
             <p className={styles.uploadHint}>
@@ -306,12 +313,10 @@ export default function KnowledgeDocuments() {
             <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {Object.entries(uploadProgress).map(([key, percent]) => (
                 <div key={key}>
-                  <div style={{ color: 'var(--color-text-tertiary)', fontSize: 12, marginBottom: 2 }}>{key}</div>
-                  <Progress
-                    percent={percent}
-                    size="small"
-                    strokeColor={{ from: '#6366f1', to: '#8b5cf6' }}
-                  />
+                  <div style={{ color: 'var(--color-text-tertiary)', fontSize: 12, marginBottom: 2 }}>
+                    {key}
+                  </div>
+                  <Progress percent={percent} size="small" strokeColor="var(--color-brand)" />
                 </div>
               ))}
             </div>
@@ -320,9 +325,11 @@ export default function KnowledgeDocuments() {
 
         {/* 文档列表 */}
         <Spin spinning={loading}>
-          <div className={styles.docsTableWrapper}>
+          <div className={styles.sectionCard}>
             <div className={styles.sectionTitle}>
-              <FileTextOutlined />
+              <span className={styles.sectionTitleIcon}>
+                <FileText size={15} />
+              </span>
               文档列表
             </div>
             <Table<KnowledgeDocument>

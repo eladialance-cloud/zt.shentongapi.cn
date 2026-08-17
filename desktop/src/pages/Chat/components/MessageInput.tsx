@@ -204,8 +204,8 @@ export function MessageInput({
                   showInfo={false}
                 />
               )}
-              {a.status === 'done' && <CheckCircleFilled style={{ color: '#34d399' }} />}
-              {a.status === 'error' && <CloseCircleFilled style={{ color: '#ef4444' }} />}
+              {a.status === 'done' && <CheckCircleFilled style={{ color: 'var(--color-success)' }} />}
+              {a.status === 'error' && <CloseCircleFilled style={{ color: 'var(--color-error)' }} />}
               <CloseOutlined
                 className={styles.attachmentRemove}
                 onClick={() => handleRemoveAttachment(a.uid)}
@@ -278,9 +278,8 @@ export function MessageInput({
         {sending ? (
           <Tooltip title="停止生成">
             <Button
-              danger
               onClick={onAbort}
-              className={styles.sendBtn}
+              className={styles.stopBtn}
             >
               停止
             </Button>

@@ -39,7 +39,7 @@ export default function ConfigPanel({ config, onChange }: ConfigPanelProps) {
         type="text"
         icon={<SettingOutlined />}
         onClick={() => setOpen(true)}
-        style={{ color: '#8B949E' }}
+        style={{ color: 'var(--color-text-tertiary)' }}
       >
         布局与配色
       </Button>
@@ -52,7 +52,7 @@ export default function ConfigPanel({ config, onChange }: ConfigPanelProps) {
         styles={{ body: { padding: 16 } }}
       >
         {/* 主题预设 */}
-        <Text strong style={{ fontSize: 12, color: '#8B949E' }}>配色主题</Text>
+        <Text strong style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>配色主题</Text>
         <Space wrap style={{ margin: '8px 0 16px' }}>
           {Object.entries(COLOR_PRESETS).map(([key, preset]) => (
             <Button
@@ -62,7 +62,7 @@ export default function ConfigPanel({ config, onChange }: ConfigPanelProps) {
               style={{
                 background: preset.background,
                 color: preset.floor === '#161B22' ? '#E6EDF3' : '#333',
-                border: '1px solid #30363D',
+                border: '1px solid var(--color-border)',
                 borderRadius: 6,
               }}
             >
@@ -77,10 +77,10 @@ export default function ConfigPanel({ config, onChange }: ConfigPanelProps) {
         <Divider style={{ margin: '12px 0' }} />
 
         {/* 布局 */}
-        <Text strong style={{ fontSize: 12, color: '#8B949E' }}>布局设置</Text>
+        <Text strong style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>布局设置</Text>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
           <div>
-            <Text style={{ fontSize: 11, color: '#6E7681' }}>列数</Text>
+            <Text style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>列数</Text>
             <InputNumber
               size="small"
               min={1}
@@ -91,7 +91,7 @@ export default function ConfigPanel({ config, onChange }: ConfigPanelProps) {
             />
           </div>
           <div>
-            <Text style={{ fontSize: 11, color: '#6E7681' }}>行数 (0=自动)</Text>
+            <Text style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>行数 (0=自动)</Text>
             <InputNumber
               size="small"
               min={0}
@@ -102,7 +102,7 @@ export default function ConfigPanel({ config, onChange }: ConfigPanelProps) {
             />
           </div>
           <div>
-            <Text style={{ fontSize: 11, color: '#6E7681' }}>列间距</Text>
+            <Text style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>列间距</Text>
             <InputNumber
               size="small"
               min={60}
@@ -114,7 +114,7 @@ export default function ConfigPanel({ config, onChange }: ConfigPanelProps) {
             />
           </div>
           <div>
-            <Text style={{ fontSize: 11, color: '#6E7681' }}>行间距</Text>
+            <Text style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>行间距</Text>
             <InputNumber
               size="small"
               min={60}
@@ -130,7 +130,7 @@ export default function ConfigPanel({ config, onChange }: ConfigPanelProps) {
         <Divider style={{ margin: '16px 0 12px' }} />
 
         {/* 颜色 */}
-        <Text strong style={{ fontSize: 12, color: '#8B949E' }}>自定义颜色</Text>
+        <Text strong style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>自定义颜色</Text>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
           {([
             { key: 'floor' as const, label: '地板颜色' },
@@ -139,7 +139,7 @@ export default function ConfigPanel({ config, onChange }: ConfigPanelProps) {
             { key: 'chairColor' as const, label: '椅子颜色' },
           ]).map(({ key, label }) => (
             <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 12, color: '#8B949E' }}>{label}</Text>
+              <Text style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>{label}</Text>
               <ColorPicker
                 size="small"
                 value={config.colors[key]}
@@ -152,10 +152,10 @@ export default function ConfigPanel({ config, onChange }: ConfigPanelProps) {
         <Divider style={{ margin: '16px 0 12px' }} />
 
         {/* 显示选项 */}
-        <Text strong style={{ fontSize: 12, color: '#8B949E' }}>显示选项</Text>
+        <Text strong style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>显示选项</Text>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={{ fontSize: 12, color: '#8B949E' }}>显示名称标签</Text>
+            <Text style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>显示名称标签</Text>
             <Switch
               size="small"
               checked={config.showLabels}
@@ -163,7 +163,7 @@ export default function ConfigPanel({ config, onChange }: ConfigPanelProps) {
             />
           </div>
           <div>
-            <Text style={{ fontSize: 12, color: '#8B949E' }}>动画速度</Text>
+            <Text style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>动画速度</Text>
             <Slider
               min={0.1}
               max={3}

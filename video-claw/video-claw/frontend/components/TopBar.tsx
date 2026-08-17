@@ -77,7 +77,7 @@ function ProviderSelect({
     <select
       value={value}
       onChange={e => onChange(e.target.value)}
-      className="bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 outline-none w-full"
+      className="bg-[var(--vc-surface-2)] border border-[var(--vc-border)] rounded-lg px-2 py-1.5 text-xs text-[var(--vc-text)] outline-none w-full"
     >
       {providers.map(pg => (
         <optgroup key={pg.provider} label={pg.label}>
@@ -187,8 +187,8 @@ function ModelSelector({
         className={clsx(
           'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
           open
-            ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
-            : 'text-gray-500 hover:bg-gray-50'
+            ? 'bg-[var(--vc-brand-weak)] text-[var(--vc-brand)] ring-1 ring-[var(--vc-brand)]'
+            : 'text-[var(--vc-text-2)] hover:bg-[var(--vc-surface-2)]'
         )}
         title="生成配置"
       >
@@ -198,29 +198,29 @@ function ModelSelector({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-72 bg-white rounded-xl shadow-lg border border-gray-200 p-3 z-50 space-y-2.5">
+        <div className="absolute right-0 top-full mt-1 w-72 bg-[var(--vc-surface)] rounded-xl shadow-[var(--vc-shadow)] border border-[var(--vc-border)] p-3 z-50 space-y-2.5">
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] text-gray-400 font-medium">LLM 模型</span>
+            <span className="text-[10px] text-[var(--vc-text-3)] font-medium">LLM 模型</span>
             <ProviderSelect value={config.llm_model} providers={llmProviders} onChange={v => update('llm_model', v)} />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] text-gray-400 font-medium">VLM 评估模型</span>
+            <span className="text-[10px] text-[var(--vc-text-3)] font-medium">VLM 评估模型</span>
             <ProviderSelect value={config.vlm_model} providers={vlmProviders} onChange={v => update('vlm_model', v)} />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] text-gray-400 font-medium">文生图</span>
+            <span className="text-[10px] text-[var(--vc-text-3)] font-medium">文生图</span>
             <ProviderSelect value={config.image_t2i_model} providers={t2iProviders} onChange={v => update('image_t2i_model', v)} />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] text-gray-400 font-medium">图生图</span>
+            <span className="text-[10px] text-[var(--vc-text-3)] font-medium">图生图</span>
             <ProviderSelect value={config.image_it2i_model} providers={i2iProviders} onChange={v => update('image_it2i_model', v)} />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] text-gray-400 font-medium">视频生成方式</span>
+            <span className="text-[10px] text-[var(--vc-text-3)] font-medium">视频生成方式</span>
             <select
               value={config.video_generation_mode}
               onChange={e => updateVideoMode(e.target.value as VideoGenerationMode)}
-              className="bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 outline-none w-full"
+              className="bg-[var(--vc-surface-2)] border border-[var(--vc-border)] rounded-lg px-2 py-1.5 text-xs text-[var(--vc-text)] outline-none w-full"
             >
               {VIDEO_GENERATION_MODES.map(item => (
                 <option key={item.id} value={item.id}>{item.label}</option>
@@ -228,11 +228,11 @@ function ModelSelector({
             </select>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] text-gray-400 font-medium">{activeVideoLabel}模型</span>
+            <span className="text-[10px] text-[var(--vc-text-3)] font-medium">{activeVideoLabel}模型</span>
             <ProviderSelect value={activeVideoModel} providers={activeVideoProviders} onChange={updateActiveVideoModel} />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] text-gray-400 font-medium">视频比例</span>
+            <span className="text-[10px] text-[var(--vc-text-3)] font-medium">视频比例</span>
             <div className="flex gap-0.5">
               {VIDEO_RATIOS.map(r => (
                 <button
@@ -240,13 +240,13 @@ function ModelSelector({
                   onClick={() => update('video_ratio', r.id)}
                   className={`flex flex-col items-center gap-0.5 p-1 rounded border transition-all ${
                     config.video_ratio === r.id
-                      ? 'border-indigo-500 bg-indigo-50'
-                      : 'border-gray-200 hover:border-gray-300'
+                      ? 'border-[var(--vc-brand)] bg-[var(--vc-brand-weak)]'
+                      : 'border-[var(--vc-border)] hover:border-[var(--vc-border-strong)]'
                   }`}
                   title={r.label}
                 >
                   <div
-                    className="bg-gray-600 rounded-sm"
+                    className="bg-[var(--vc-text-2)] rounded-sm"
                     style={{
                       width: r.ratio === '16:9' ? '16px' :
                              r.ratio === '9:16' ? '9px' :
@@ -262,17 +262,17 @@ function ModelSelector({
                              '7px',
                     }}
                   />
-                  <span className="text-[8px] text-gray-500">{r.label}</span>
+                  <span className="text-[8px] text-[var(--vc-text-2)]">{r.label}</span>
                 </button>
               ))}
             </div>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] text-gray-400 font-medium">视频分辨率</span>
+            <span className="text-[10px] text-[var(--vc-text-3)] font-medium">视频分辨率</span>
             <select
               value={config.video_resolution}
               onChange={e => update('video_resolution', e.target.value)}
-              className="bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 outline-none w-full"
+              className="bg-[var(--vc-surface-2)] border border-[var(--vc-border)] rounded-lg px-2 py-1.5 text-xs text-[var(--vc-text)] outline-none w-full"
             >
               {VIDEO_RESOLUTIONS.map(item => (
                 <option key={item.id} value={item.id}>{item.label}</option>
@@ -284,9 +284,9 @@ function ModelSelector({
               type="checkbox"
               checked={!!config.enable_concurrency}
               onChange={e => update('enable_concurrency', e.target.checked)}
-              className="w-3.5 h-3.5 rounded border-gray-300 text-blue-500 focus:ring-blue-500/30"
+              className="w-3.5 h-3.5 rounded border-[var(--vc-border-strong)] text-[var(--vc-brand)] focus:ring-[var(--vc-brand)]"
             />
-            <span className="text-gray-500">并发生成</span>
+            <span className="text-[var(--vc-text-2)]">并发生成</span>
           </label>
         </div>
       )}
@@ -311,17 +311,17 @@ export default function TopBar({
   const getStageIcon = (status: StageStatus, isActive: boolean) => {
     switch (status) {
       case 'completed':
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
+        return <CheckCircle className="w-4 h-4 text-[var(--vc-green)]" />;
       case 'running':
-        return <Loader className="w-4 h-4 text-blue-500 animate-spin" />;
+        return <Loader className="w-4 h-4 text-[var(--vc-brand)] animate-spin" />;
       case 'waiting':
-        return <Edit3 className="w-4 h-4 text-amber-500" />;
+        return <Edit3 className="w-4 h-4 text-[var(--vc-amber)]" />;
       case 'error':
-        return <AlertCircle className="w-4 h-4 text-red-500" />;
+        return <AlertCircle className="w-4 h-4 text-[var(--vc-red)]" />;
       default:
         return (
           <Circle
-            className={clsx('w-4 h-4', isActive ? 'text-blue-400' : 'text-gray-300')}
+            className={clsx('w-4 h-4', isActive ? 'text-[var(--vc-brand)]' : 'text-[var(--vc-text-3)]')}
           />
         );
     }
@@ -329,7 +329,7 @@ export default function TopBar({
 
   return (
     <>
-    <header className="fixed top-0 right-0 left-[var(--app-sidebar-width)] z-30 h-14 bg-white border-b border-gray-200 flex items-center px-4 min-w-0 transition-[left] duration-300">
+    <header className="fixed top-0 right-0 left-[var(--app-sidebar-width)] z-30 h-[52px] bg-[var(--vc-surface)] border-b border-[var(--vc-border)] flex items-center px-4 min-w-0 transition-[left] duration-300">
       {/* Logo & 名称 */}
       <button
         onClick={onHomeClick}
@@ -341,14 +341,14 @@ export default function TopBar({
           className="w-8 h-8 rounded-lg object-contain"
         />
         <div className="flex flex-col leading-tight">
-          <span className="font-bold text-sm text-gray-800 tracking-tight">
+          <span className="font-bold text-sm text-[var(--vc-text)] tracking-tight">
             ST-Claw
           </span>
         </div>
       </button>
 
       {/* 分隔线 */}
-      {hasSession && <div className="w-px h-6 bg-gray-200 mr-4 flex-shrink-0" />}
+      {hasSession && <div className="w-px h-6 bg-[var(--vc-border)] mr-4 flex-shrink-0" />}
 
       {/* 阶段进度条 */}
       {hasSession && (
@@ -364,8 +364,8 @@ export default function TopBar({
                     className={clsx(
                       'w-6 h-px flex-shrink-0',
                       stageStatuses[STAGES[idx - 1].id] === 'completed'
-                        ? 'bg-green-300'
-                        : 'bg-gray-200'
+                        ? 'bg-[var(--vc-green)]'
+                        : 'bg-[var(--vc-border)]'
                     )}
                   />
                 )}
@@ -374,12 +374,12 @@ export default function TopBar({
                   className={clsx(
                     'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap flex-shrink-0',
                     isActive
-                      ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
+                      ? 'bg-[var(--vc-brand-weak)] text-[var(--vc-brand)] ring-1 ring-[var(--vc-brand)]'
                       : status === 'completed'
-                        ? 'text-green-700 hover:bg-green-50'
+                        ? 'text-[var(--vc-green)] hover:bg-[var(--vc-green-weak)]'
                         : status === 'error'
-                          ? 'text-red-600 hover:bg-red-50'
-                          : 'text-gray-500 hover:bg-gray-50'
+                          ? 'text-[var(--vc-red)] hover:bg-[var(--vc-red-weak)]'
+                          : 'text-[var(--vc-text-2)] hover:bg-[var(--vc-surface-2)]'
                   )}
                 >
                   {getStageIcon(status, isActive)}
@@ -405,8 +405,8 @@ export default function TopBar({
             className={clsx(
               'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
               autoMode
-                ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
-                : 'text-gray-500 hover:bg-gray-50'
+                ? 'bg-[var(--vc-amber-weak)] text-[var(--vc-amber)] ring-1 ring-[var(--vc-amber)]'
+                : 'text-[var(--vc-text-2)] hover:bg-[var(--vc-surface-2)]'
             )}
             title={autoMode ? '代理模式：自动执行全流程' : '手动模式：每阶段需确认'}
           >
@@ -419,7 +419,7 @@ export default function TopBar({
         {isRunning && (
           <button
             onClick={onStop}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-medium transition-colors ring-1 ring-red-200"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--vc-red-weak)] text-[var(--vc-red)] hover:bg-[var(--vc-red-weak)] rounded-lg text-xs font-medium transition-colors ring-1 ring-[var(--vc-red)]"
             title="停止执行"
           >
             <Square className="w-3.5 h-3.5 fill-current" />
@@ -432,12 +432,12 @@ export default function TopBar({
           <div
             className={clsx(
               'px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-1',
-              projectStatus === 'running' && 'bg-blue-50 text-blue-700',
-              projectStatus === 'waiting' && 'bg-amber-50 text-amber-700',
-              projectStatus === 'completed' && 'bg-green-50 text-green-700',
-              projectStatus === 'pending' && 'bg-gray-50 text-gray-600',
-              projectStatus === 'error' && 'bg-red-50 text-red-700',
-              projectStatus === 'stopped' && 'bg-orange-50 text-orange-700'
+              projectStatus === 'running' && 'bg-[var(--vc-brand-weak)] text-[var(--vc-brand)]',
+              projectStatus === 'waiting' && 'bg-[var(--vc-amber-weak)] text-[var(--vc-amber)]',
+              projectStatus === 'completed' && 'bg-[var(--vc-green-weak)] text-[var(--vc-green)]',
+              projectStatus === 'pending' && 'bg-[var(--vc-surface-2)] text-[var(--vc-text-2)]',
+              projectStatus === 'error' && 'bg-[var(--vc-red-weak)] text-[var(--vc-red)]',
+              projectStatus === 'stopped' && 'bg-[var(--vc-amber-weak)] text-[var(--vc-amber)]'
             )}
             title="项目状态"
           >
@@ -457,7 +457,7 @@ export default function TopBar({
 
       </div>
     </header>
-    <div className="h-14 flex-shrink-0" />
+    <div className="h-[52px] flex-shrink-0" />
     </>
   );
 }
