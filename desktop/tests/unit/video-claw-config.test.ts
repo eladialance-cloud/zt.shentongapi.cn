@@ -146,6 +146,28 @@ describe('syncVideoClawConfig', () => {
     }
   })
 
+  it('存量配置 openai 段被设置页重置为上游地址时同步指回 llm-proxy 网关（修复 401）', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vc-sync5-'))
+    try {
+      ensureVideoClawConfig(dir, OPTS)
+      const cfg = join(dir, 'config.yaml')
+      // 模拟 ST-Claw 设置页/旧配置把 openai 段还原成默认上游（api_key 保留 llm Key 但 base_url 指向 api.openai.com）
+      const stale = readFileSync(cfg, 'utf-8')
+        .replace('base_url: https://zt.shentongapi.cn/api/llm-proxy/v1', 'base_url: https://api.openai.com/v1')
+        .replace('  port: 8000', '  port: 9000')
+      writeFileSync(cfg, stale, 'utf-8')
+      syncVideoClawConfig(dir, OPTS)
+      const after = readFileSync(cfg, 'utf-8')
+      // 网关地址必须恢复（openai/deepseek/llmproxy 全部指向平台网关）
+      const gatewayCount = after.split('https://zt.shentongapi.cn/api/llm-proxy/v1').length - 1
+      expect(gatewayCount).toBeGreaterThanOrEqual(3)
+      expect(after).not.toContain('base_url: https://api.openai.com/v1')
+      expect(after).toContain('  port: 9000') // 用户改过的端口保留
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('顶层 models 默认值变化时同步（旧默认模型已失效）', () => {
     const dir = mkdtempSync(join(tmpdir(), 'vc-sync5-'))
     try {

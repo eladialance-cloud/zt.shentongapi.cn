@@ -31,6 +31,7 @@ function buildService() {
       refundCredits: async () => undefined,
     } as any,
     {} as any,
+    { generateImage: async () => ({ url: 'https://img.example.com/a.png' }) } as any,
     llmFileRepo,
   );
   return { svc, modelRepo, llmFileRepo };
@@ -302,6 +303,7 @@ describe('LlmProxyService.chatCompletions 专用参数注入', () => {
         refundCredits: async () => undefined,
       } as any,
       {} as any,
+      { generateImage: async () => ({ url: 'https://img.example.com/a.png' }) } as any,
       llmFileRepo,
     );
     return { svc, modelRepo, llmFileRepo, llmClient };
@@ -456,7 +458,7 @@ describe('LlmProxyService.resolveModelId 用户选择优先于 OpenClaw 内部�
       { find: async () => [], findOne: async () => null } as any,
       {} as any, {} as any, {} as any, {} as any,
       { getUserLevel: async () => 0, applyDiscount: (p: number) => p } as any,
-      {} as any, {} as any, {} as any,
+      {} as any, {} as any, { generateImage: async () => ({ url: 'https://img.example.com/a.png' }) } as any, {} as any,
     );
   }
   it('OpenClaw 内部别名 openai/gpt-5.5（后台存在同名启用模型）→ 优先用户默认对话模型', async () => {
@@ -476,5 +478,110 @@ describe('LlmProxyService.resolveModelId 用户选择优先于 OpenClaw 内部�
   it('未知模型且无默认 → 兜底 DEFAULT_LLM_MODEL / deepseek-chat', async () => {
     const svc = buildSvc(buildUserRepo(null));
     assert.equal(await (svc as any).resolveModelId('unknown-model', 1), process.env.DEFAULT_LLM_MODEL || 'deepseek-chat');
+  });
+});
+describe('LlmProxyService.imagesGeneration 网关图片生成（适配模板路由）', () => {
+  function buildImageService() {
+    const genClient: any = {
+      generateImage: async () => ({ url: 'https://img.example.com/a.png' }),
+    };
+    const svc = new LlmProxyService(
+      { findOne: async () => ({ id: 1, status: 'active', llmProxyKey: 'sk-shentong-test' }) } as any,
+      {
+        findOne: async () => ({
+          modelId: 'qwen-image-3.0',
+          modelType: 'image',
+          isActive: true,
+          providerId: 12,
+          upstreamModelId: 'qwen-image-3.0',
+          pricePerImage: 10,
+          generationParams: {},
+        }),
+      } as any,
+      {
+        findOne: async () => ({
+          id: 12,
+          baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+          apiKey: 'enc-key',
+          slug: 'dashscope',
+          status: 'active',
+          config: { vendorKey: 'aliyun-dashscope' },
+        }),
+      } as any,
+      {} as any,
+      { decryptAes: () => 'sk-real-key' } as any,
+      {} as any,
+      { getUserLevel: async () => 0, applyDiscount: (p: number) => p } as any,
+      {
+        freezeCredits: async () => ({ id: 9 }),
+        settleCredits: async () => undefined,
+        refundCredits: async () => undefined,
+      } as any,
+      {} as any,
+      genClient,
+      { findOne: async () => null, save: async (e: any) => e, create: (e: any) => e } as any,
+    );
+    return { svc, genClient };
+  }
+
+  it('DashScope 图片模型走适配模板（endpoint=供应商 baseUrl + 解密 Key + 上游模型）并返回 OpenAI 兼容 url', async () => {
+    const { svc, genClient } = buildImageService();
+    const captured: any = {};
+    genClient.generateImage = async (cfg: any) => {
+      captured.cfg = cfg;
+      return { url: 'https://img.example.com/out.png' };
+    };
+    const out = await svc.imagesGeneration('sk-shentong-test', {
+      model: 'qwen-image-3.0',
+      prompt: '一只猫',
+      size: '1024x1024',
+    });
+    assert.equal(out.data.length, 1);
+    assert.equal((out.data[0] as any).url, 'https://img.example.com/out.png');
+    assert.equal(captured.cfg.endpoint, 'https://dashscope.aliyuncs.com/compatible-mode/v1');
+    assert.equal(captured.cfg.apiKey, 'sk-real-key');
+    assert.equal(captured.cfg.model, 'qwen-image-3.0');
+    assert.equal(captured.cfg.size, '1024x1024');
+    assert.ok(captured.cfg.adapter && captured.cfg.adapter.imagesPath);
+  });
+
+  it('b64 结果映射为 OpenAI 兼容 b64_json', async () => {
+    const { svc, genClient } = buildImageService();
+    genClient.generateImage = async () => ({ b64: 'QUJD' });
+    const out = await svc.imagesGeneration('sk-shentong-test', { model: 'qwen-image-3.0', prompt: 'x' });
+    assert.equal((out.data[0] as any).b64_json, 'QUJD');
+  });
+
+  it('模型无可用供应商凭据时报错（不静默 401）', async () => {
+    const svc = new LlmProxyService(
+      { findOne: async () => ({ id: 1, status: 'active', llmProxyKey: 'sk-shentong-test' }) } as any,
+      {
+        findOne: async () => ({
+          modelId: 'qwen-image-3.0',
+          modelType: 'image',
+          isActive: true,
+          providerId: null,
+          pricePerImage: 10,
+          generationParams: {},
+        }),
+      } as any,
+      { findOne: async () => null } as any,
+      {} as any,
+      { decryptAes: () => 'k' } as any,
+      {} as any,
+      { getUserLevel: async () => 0, applyDiscount: (p: number) => p } as any,
+      {
+        freezeCredits: async () => ({ id: 9 }),
+        settleCredits: async () => undefined,
+        refundCredits: async () => undefined,
+      } as any,
+      {} as any,
+      { generateImage: async () => ({ url: 'x' }) } as any,
+      { findOne: async () => null, save: async (e: any) => e, create: (e: any) => e } as any,
+    );
+    await assert.rejects(
+      svc.imagesGeneration('sk-shentong-test', { model: 'qwen-image-3.0', prompt: 'x' }),
+      (e: any) => e instanceof BadRequestException,
+    );
   });
 });

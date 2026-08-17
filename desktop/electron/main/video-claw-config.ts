@@ -471,6 +471,21 @@ export function syncVideoClawConfig(
     })
     if (llmproxyPatch !== null) patched = llmproxyPatch
 
+    // 1.5) openai / deepseek 段：平台托管 provider 必须指向 llm-proxy 网关
+    //（api_key=当前用户静态 Key、base_url=网关；否则 GPT/Sora 图片与 llmproxy 对话会
+    //  直连上游（如 api.openai.com）导致 401，旧配置/ST-Claw 设置页保存后常出现该状态）
+    const openaiPatch = replaceYamlSectionFields(patched, /^ {0,2}openai:\s*$/, 4, {
+      api_key: opts.apiKey,
+      base_url: opts.llmProxyBaseUrl,
+    })
+    if (openaiPatch !== null) patched = openaiPatch
+
+    const deepseekPatch = replaceYamlSectionFields(patched, /^ {0,2}deepseek:\s*$/, 4, {
+      api_key: opts.apiKey,
+      base_url: opts.llmProxyBaseUrl,
+    })
+    if (deepseekPatch !== null) patched = deepseekPatch
+
     // 2) 顶层 models 段：默认模型跟随后台当前启用模型（旧默认值可能已失效/下架）
     const modelsPatch = replaceYamlSectionFields(patched, /^models:\s*$/, 2, {
       llm: opts.llmModel,

@@ -18,6 +18,7 @@ import { ModelProviderEntity } from '../../admin-model/entities/model-provider.e
 import { LlmFileEntity } from '../entities/llm-file.entity';
 import { resolveRelay } from '../../admin-model/utils/relay-resolver';
 import { MediaGenerationService } from '../../media-generation/media-generation.service';
+import { GenerationClientService, buildMediaGenerationAdapter, GenerationAdapterConfig } from '../../media-generation/generation-client.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -35,6 +36,7 @@ export class LlmProxyService {
     private readonly pricingService: PricingService,
     private readonly creditsService: CreditsService,
     private readonly mediaGeneration: MediaGenerationService,
+    private readonly genClient: GenerationClientService,
     @InjectRepository(LlmFileEntity) private readonly llmFileRepo: Repository<LlmFileEntity>,
   ) {}
 
@@ -642,33 +644,52 @@ export class LlmProxyService {
     return { price: finalPrice, frozenTxnId: frozen.id };
   }
 
-  /** 文生图/图生图（OpenAI 兼容 /v1/images/generations，同步） */
+  /** 解析图片/视频/语音模型的上游供应商（绑定优先，回退全局中转；与 media-generation 共用适配模板） */
+  private async resolveMediaUpstream(model: ModelEntity): Promise<{
+    provider: ModelProviderEntity;
+    decryptedKey: string;
+    adapter: GenerationAdapterConfig;
+  }> {
+    let provider = model.providerId
+      ? await this.providerRepository.findOne({ where: { id: model.providerId, status: 'active' } })
+      : null;
+    if (!provider) provider = await resolveRelay(this.providerRepository);
+    if (!provider?.apiKey || !provider?.baseUrl) {
+      throw new BadRequestException('模型无可用中转凭据（Base URL / API Key）');
+    }
+    let decryptedKey = '';
+    try {
+      decryptedKey = this.encryptionService.decryptAes(provider.apiKey as string);
+    } catch { /* 解密失败走下方报错 */ }
+    if (!decryptedKey) throw new BadRequestException('供应商 API Key 解密失败');
+    const adapter = buildMediaGenerationAdapter(provider, model.generationParams ?? {});
+    return { provider, decryptedKey, adapter };
+  }
+
+  /** 文生图/图生图（OpenAI 兼容 /v1/images/generations 同步返回；DashScope 原生异步模型走适配模板提交+轮询） */
   async imagesGeneration(
     apiKey: string,
     body: { model?: string; prompt: string; size?: string; n?: number },
   ): Promise<{ created: number; data: Array<Record<string, unknown>> }> {
     const { userId } = await this.verifyApiKey(apiKey);
     const model = await this.resolveMediaModel('image', body.model, userId);
-    const target = await this.resolveUpstreamTarget(model.modelId);
-    if (!target) throw new BadRequestException('模型无可用中转凭据（Base URL / API Key）');
+    const { provider, decryptedKey, adapter } = await this.resolveMediaUpstream(model);
     const sourceId = `proxy-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const { price, frozenTxnId } = await this.freezePerCall(userId, model.pricePerImage ?? 10, sourceId);
     try {
-      const url = target.endpoint.replace(/\/+$/, '') + '/images/generations';
-      const reqBody: Record<string, unknown> = { model: target.upstreamModelId, prompt: body.prompt, n: body.n ?? 1 };
-      if (body.size) reqBody.size = body.size;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${target.apiKey}` },
-        body: JSON.stringify(reqBody),
-        signal: AbortSignal.timeout(120000),
+      const result = await this.genClient.generateImage({
+        endpoint: provider.baseUrl,
+        apiKey: decryptedKey,
+        adapter,
+        model: model.upstreamModelId || model.modelId,
+        prompt: body.prompt,
+        size: body.size,
       });
-      const text = await res.text();
-      let json: any = null;
-      try { json = JSON.parse(text); } catch { /* 非 JSON 响应 */ }
-      if (!res.ok) throw new BadRequestException(`文生图上游错误(${res.status}): ${text.slice(0, 300)}`);
       if (frozenTxnId) { try { await this.creditsService.settleCredits(userId, frozenTxnId, price); } catch (_e) {} }
-      const data = Array.isArray(json?.data) ? json.data : [];
+      const data: Array<Record<string, unknown>> = [];
+      if (result.b64) data.push({ b64_json: result.b64 });
+      if (result.url) data.push({ url: result.url });
+      if (data.length === 0) throw new BadRequestException('上游未返回图片数据（无 b64_json / url）');
       return { created: Math.floor(Date.now() / 1000), data };
     } catch (err) {
       if (frozenTxnId) { try { await this.creditsService.refundCredits(userId, frozenTxnId); } catch (_e) {} }

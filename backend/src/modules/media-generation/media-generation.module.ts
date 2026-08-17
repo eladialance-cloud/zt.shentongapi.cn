@@ -20,6 +20,6 @@ import { AdminOssModule } from '../admin-oss/admin-oss.module';
   ],
   controllers: [MediaGenerationController],
   providers: [MediaGenerationService, GenerationClientService],
-  exports: [MediaGenerationService],
+  exports: [MediaGenerationService, GenerationClientService],
 })
 export class MediaGenerationModule {}
