@@ -1028,9 +1028,9 @@ describe('buildMediaGenerationAdapter 厂商模板兜底合并（测试=运行�
       },
       null,
     );
-    assert.equal(adapter.imagesPath, 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis');
+    assert.equal(adapter.imagesPath, 'https://dashscope.aliyuncs.com/api/v1/services/aigc/image-generation/generation');
     assert.equal(adapter.imageTaskPath, 'https://dashscope.aliyuncs.com/api/v1/tasks/{id}');
-    assert.equal(adapter.imageResultUrlPath, 'output.results[0].url');
+    assert.equal(adapter.imageResultUrlPath, 'output.choices[0].message.content[0].image');
     assert.equal((adapter.imageRequestTemplate as Record<string, unknown>)?.model, '{upstreamModelId}');
     assert.equal(adapter.async, true);
     assert.equal(adapter.videosPath, 'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis');

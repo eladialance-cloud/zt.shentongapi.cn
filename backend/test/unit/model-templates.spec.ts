@@ -96,9 +96,9 @@ describe('模型市场预设库不变量', () => {
       /^https:\/\/dashscope\.aliyuncs\.com\/api\/v1\/services\/aigc\/video-generation\/video-synthesis$/,
     );
     assert.equal(String(g.taskPath), 'https://dashscope.aliyuncs.com/api/v1/tasks/{id}');
-    assert.match(String(g.imagesPath), /^https:\/\/dashscope\.aliyuncs\.com\/api\/v1\/services\/aigc\/text2image\/image-synthesis$/);
+    assert.match(String(g.imagesPath), /^https:\/\/dashscope\.aliyuncs\.com\/api\/v1\/services\/aigc\/image-generation\/generation$/);
     assert.equal(String(g.imageTaskPath), 'https://dashscope.aliyuncs.com/api/v1/tasks/{id}');
-    assert.equal(String(g.imageResultUrlPath), 'output.results[0].url');
+    assert.equal(String(g.imageResultUrlPath), 'output.choices[0].message.content[0].image');
   });
 
   it('openai / deepseek 预设已加入', () => {

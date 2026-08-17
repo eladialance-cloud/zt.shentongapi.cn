@@ -273,10 +273,10 @@ describe('callModesMeta 动态表单元数据', () => {
 });
 
 describe('模板库接口', () => {
-  it('templateList 返回 36 条模板', async () => {
+  it('templateList 返回 39 条模板', async () => {
     const { svc } = buildAdminService();
     const list = await svc.templateList();
-    assert.equal(list.length, 36);
+    assert.equal(list.length, 39);
     assert.ok(list.some((t: any) => t.key === 'qwen-plus'));
     assert.ok(list.some((t: any) => t.key === 'wanx-sketch'), '缺少 wanx-sketch 模板');
   });
@@ -720,7 +720,7 @@ describe('按 callMode 的测试调用 - 存量供应商模板兜底', () => {
     assert.equal(r.success, true);
     assert.equal(
       genCfg.adapter.imagesPath,
-      'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis',
+      'https://dashscope.aliyuncs.com/api/v1/services/aigc/image-generation/generation',
     );
     assert.equal(genCfg.model, 'wanx2.1-t2i-turbo');
     assert.equal(saved[0].connectionStatus, 'connected');
