@@ -46,7 +46,7 @@ class GPTVLClient:
         
         kwargs = {"api_key": self.api_key, "timeout": self.timeout}
         
-        self.base_url = base_url
+        self.base_url = base_url or Config.OPENAI_BASE_URL
         if proxy is None:
             proxy = Config.provider_proxy("openai")
         if proxy:
