@@ -238,8 +238,8 @@ export class MediaGenerationService implements OnModuleInit {
     return out;
   }
 
-  /** 产物落盘并登记文件记录 */
-  private async saveGeneratedMedia(
+  /** 产物落盘并登记文件记录（llm-proxy 网关图片转存复用） */
+  async saveGeneratedMedia(
     userId: number,
     kind: 'image' | 'video',
     callMode: string,

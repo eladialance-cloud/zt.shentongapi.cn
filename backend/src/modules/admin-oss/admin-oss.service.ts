@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, FindOptionsWhere } from 'typeorm';
 import { SysOssConfigEntity } from './entities/sys-oss-config.entity';
@@ -17,6 +17,7 @@ import { OssUploadService } from './oss-upload.service';
  */
 @Injectable()
 export class AdminOssService {
+  private readonly logger = new Logger(AdminOssService.name);
   constructor(
     @InjectRepository(SysOssConfigEntity)
     private readonly ossConfigRepo: Repository<SysOssConfigEntity>,
@@ -121,6 +122,7 @@ export class AdminOssService {
     id: number,
     dto: UpdateOssConfigDto,
   ): Promise<SysOssConfigEntity> {
+    this.logger.log(`updateConfig dto=${JSON.stringify(dto)}`);
     const config = await this.getConfigInternal(id);
 
     // 如果设为默认，先取消其他默认配置
@@ -134,12 +136,16 @@ export class AdminOssService {
     // 归一化：isEnabled -> isActive；domain -> extraConfig.cdnUrl
     const normalized = this.normalizeDto(dto);
 
-    // 加密敏感字段（仅传入时更新）
-    if (dto.accessKey !== undefined && dto.accessKey !== null) {
+    // 加密敏感字段（仅传入且非掩码/非空串时更新，避免编辑时覆盖真实密钥）
+    if (dto.accessKey && dto.accessKey !== '******') {
       normalized.accessKey = this.encryptionService.encryptAes(dto.accessKey);
+    } else {
+      delete normalized.accessKey;
     }
-    if (dto.secretKey !== undefined && dto.secretKey !== null) {
+    if (dto.secretKey && dto.secretKey.trim() !== '') {
       normalized.secretKey = this.encryptionService.encryptAes(dto.secretKey);
+    } else {
+      delete normalized.secretKey;
     }
 
     // 未传 domain 时保留原 extra_config（避免编辑表单未改域名时清空）

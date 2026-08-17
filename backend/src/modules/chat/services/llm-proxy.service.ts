@@ -686,9 +686,21 @@ export class LlmProxyService {
         size: body.size,
       });
       if (frozenTxnId) { try { await this.creditsService.settleCredits(userId, frozenTxnId, price); } catch (_e) {} }
+      // 转存到系统 OSS/COS（成功返回持久化 URL；失败降级返回上游原始地址，保证用户端可显示）
+      let storedUrl: string | undefined;
+      try {
+        storedUrl = await this.mediaGeneration.saveGeneratedMedia(userId, 'image', 'image', result);
+      } catch (e) {
+        this.logger.warn(`图片转存存储失败，返回上游地址: ${(e as Error).message}`);
+      }
       const data: Array<Record<string, unknown>> = [];
-      if (result.b64) data.push({ b64_json: result.b64 });
-      if (result.url) data.push({ url: result.url });
+      if (result.b64) {
+        if (storedUrl?.startsWith('http')) data.push({ url: storedUrl });
+        else data.push({ b64_json: result.b64 });
+      }
+      if (result.url) {
+        data.push({ url: storedUrl?.startsWith('http') ? storedUrl : result.url });
+      }
       if (data.length === 0) throw new BadRequestException('上游未返回图片数据（无 b64_json / url）');
       return { created: Math.floor(Date.now() / 1000), data };
     } catch (err) {
