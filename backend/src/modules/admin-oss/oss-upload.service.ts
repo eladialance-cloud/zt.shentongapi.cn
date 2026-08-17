@@ -1,4 +1,4 @@
-﻿import { Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
@@ -174,7 +174,13 @@ export class OssUploadService {
     config: SysOssConfigEntity, accessKey: string | undefined, secretKey: string | undefined,
     key: string, buffer: Buffer, mime: string,
   ): Promise<void> {
-    const COS = loadSdk('cos-nodejs-sdk');
+    // 优先官方新版 SDK，回退旧包名（cos-nodejs-sdk）
+    let COS: any;
+    try {
+      COS = loadSdk('cos-nodejs-sdk-v5');
+    } catch {
+      COS = loadSdk('cos-nodejs-sdk');
+    }
     const cos = new COS({ SecretId: accessKey, SecretKey: secretKey });
     await new Promise<void>((resolve, reject) => {
       cos.putObject(
