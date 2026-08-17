@@ -37,6 +37,9 @@ extraResources:
     to: mcp/mcp-gateway-server.js
   - from: runtime/manifest.json
     to: runtime/manifest.json
+  # 内置 Hermes 技能目录（st-claw-controller 等，随包分发；Hermes 启动时同步到 HERMES_HOME/skills）
+  - from: resources/hermes/skills
+    to: hermes/skills
   # 内置 OpenClaw 技能目录（缺失会导致 openclaw.json extraDirs 指向失效路径、OpenClaw 启动校验失败）
   - from: resources/openclaw/skills
     to: openclaw/skills

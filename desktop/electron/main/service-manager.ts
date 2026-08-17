@@ -141,6 +141,57 @@ function buildHermesEnv(): NodeJS.ProcessEnv {
 }
 
 
+/** 内置 Hermes 技能目录（打包后位于 resources/hermes/skills，开发环境位于 desktop/resources/hermes/skills） */
+function getHermesBundledSkillsDir(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'hermes', 'skills')
+    : path.join(process.cwd(), 'resources', 'hermes', 'skills')
+}
+
+/** 递归收集目录下所有文件（相对路径） */
+function collectFiles(dir: string, prefix = ''): string[] {
+  const out: string[] = []
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const rel = prefix ? prefix + '/' + entry.name : entry.name
+    if (entry.isDirectory()) out.push(...collectFiles(path.join(dir, entry.name), rel))
+    else if (entry.isFile()) out.push(rel)
+  }
+  return out
+}
+
+/**
+ * 将内置 Hermes 技能同步到 $HERMES_HOME/skills/（Hermes 固定扫描本地 skills 目录）。
+ * - 目标缺失或内容不同才复制：新版本内置技能自动覆盖，用户对其它技能的本地修改不受影响；
+ * - 源目录不存在（打包遗漏）时静默跳过，不抛错。
+ */
+function syncHermesSkills(): void {
+  try {
+    const srcRoot = getHermesBundledSkillsDir()
+    if (!fs.existsSync(srcRoot)) return
+    const home = getHermesHome()
+    fs.mkdirSync(home, { recursive: true })
+    const dstRoot = path.join(home, 'skills')
+    let copied = 0
+    for (const skill of fs.readdirSync(srcRoot, { withFileTypes: true })) {
+      if (!skill.isDirectory()) continue
+      for (const rel of collectFiles(path.join(srcRoot, skill.name))) {
+        const src = path.join(srcRoot, skill.name, rel)
+        const dst = path.join(dstRoot, skill.name, rel)
+        const changed = !fs.existsSync(dst) || !fs.readFileSync(dst).equals(fs.readFileSync(src))
+        if (!changed) continue
+        fs.mkdirSync(path.dirname(dst), { recursive: true })
+        fs.copyFileSync(src, dst)
+        copied++
+      }
+    }
+    if (copied > 0) {
+      console.log(`[service-manager] Hermes 内置技能已同步（${copied} 个文件）: ${srcRoot} -> ${dstRoot}`)
+    }
+  } catch (err) {
+    console.warn('[service-manager] hermes skills 同步失败（忽略）: ' + (err instanceof Error ? err.message : String(err)))
+  }
+}
+
 /** OpenClaw 数据目录（状态/配置隔离，避免写入默认 ~/.openclaw 导致权限或路径冲突） */
 function getOpenClawHome(): string {
   return path.join(app.getPath('userData'), 'openclaw-home')
@@ -1015,7 +1066,8 @@ export class ServiceManager extends EventEmitter {
         await ensureVideoClawConfigSafe()
       }
       if (name === 'hermes') {
-        // 等待 config.yaml 写完再启动 Hermes（登录后同步 llm-proxy 网关配置，解决 No inference provider configured）
+        // 同步内置技能（st-claw-controller 等）到 HERMES_HOME/skills，再等待 config.yaml 写完再启动 Hermes
+        syncHermesSkills()
         await ensureHermesConfigSafe()
       }
 
