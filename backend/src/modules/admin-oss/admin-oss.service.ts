@@ -1,8 +1,9 @@
-﻿import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not } from 'typeorm';
+import { Repository, Not, FindOptionsWhere } from 'typeorm';
 import { SysOssConfigEntity } from './entities/sys-oss-config.entity';
-import { CreateOssConfigDto, UpdateOssConfigDto } from './dto/admin-oss.dto';
+import { CreateOssConfigDto, UpdateOssConfigDto, OssProvider } from './dto/admin-oss.dto';
+import { FileEntity } from '../file/entities/file.entity';
 import { EncryptionService } from '../../common/services/encryption.service';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -19,24 +20,34 @@ export class AdminOssService {
   constructor(
     @InjectRepository(SysOssConfigEntity)
     private readonly ossConfigRepo: Repository<SysOssConfigEntity>,
+    @InjectRepository(FileEntity)
+    private readonly fileRepo: Repository<FileEntity>,
     private readonly encryptionService: EncryptionService,
     private readonly ossUploadService: OssUploadService,
   ) {}
 
   /**
-   * 获取所有OSS配置列表
-   * 返回时脱敏：access_key/secret_key 不明文暴露
+   * 获取OSS配置列表（分页 + 过滤）
+   * 返回 { list, total }，access_key/secret_key 脱敏
    */
-  async listConfigs(): Promise<SysOssConfigEntity[]> {
-    const configs = await this.ossConfigRepo.find({
+  async listConfigs(query: {
+    page?: number;
+    pageSize?: number;
+    provider?: OssProvider;
+    isActive?: boolean;
+  }): Promise<{ list: SysOssConfigEntity[]; total: number }> {
+    const page = Math.max(1, Number(query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+    const where: FindOptionsWhere<SysOssConfigEntity> = {};
+    if (query.provider) where.provider = query.provider;
+    if (query.isActive !== undefined) where.isActive = query.isActive;
+    const [rows, total] = await this.ossConfigRepo.findAndCount({
+      where,
       order: { isDefault: 'DESC', createdAt: 'DESC' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
     });
-    // 脱敏：access_key/secret_key 只显示是否存在
-    return configs.map((c) => ({
-      ...c,
-      accessKey: c.accessKey ? '******' : undefined,
-      secretKey: c.secretKey ? '******' : undefined,
-    }));
+    return { list: rows.map((c) => this.desensitize(c)), total };
   }
 
   /**
@@ -48,12 +59,7 @@ export class AdminOssService {
     if (!config) {
       throw new NotFoundException(`OSS配置 #${id} 不存在`);
     }
-    // 脱敏
-    return {
-      ...config,
-      accessKey: config.accessKey ? '******' : undefined,
-      secretKey: config.secretKey ? '******' : undefined,
-    };
+    return this.desensitize(config);
   }
 
   /**
@@ -79,7 +85,7 @@ export class AdminOssService {
 
   /**
    * 创建OSS配置
-   * access_key / secret_key 加密后存储
+   * access_key / secret_key 加密后存储；domain 落 extra_config.cdnUrl
    */
   async createConfig(dto: CreateOssConfigDto): Promise<SysOssConfigEntity> {
     // 如果设为默认，先取消其他默认配置
@@ -90,24 +96,21 @@ export class AdminOssService {
       );
     }
 
+    // 归一化：isEnabled -> isActive；domain -> extraConfig.cdnUrl
+    const normalized = this.normalizeDto(dto);
+
     // 加密敏感字段
-    const encryptedDto = { ...dto };
-    if (dto.accessKey) {
-      encryptedDto.accessKey = this.encryptionService.encryptAes(dto.accessKey);
+    if (normalized.accessKey) {
+      normalized.accessKey = this.encryptionService.encryptAes(normalized.accessKey as string);
     }
-    if (dto.secretKey) {
-      encryptedDto.secretKey = this.encryptionService.encryptAes(dto.secretKey);
+    if (normalized.secretKey) {
+      normalized.secretKey = this.encryptionService.encryptAes(normalized.secretKey as string);
     }
 
-    const config = this.ossConfigRepo.create(encryptedDto);
+    const config = this.ossConfigRepo.create(normalized as Partial<SysOssConfigEntity>);
     const saved = await this.ossConfigRepo.save(config);
 
-    // 脱敏返回
-    return {
-      ...saved,
-      accessKey: saved.accessKey ? '******' : undefined,
-      secretKey: saved.secretKey ? '******' : undefined,
-    };
+    return this.desensitize(saved);
   }
 
   /**
@@ -128,24 +131,26 @@ export class AdminOssService {
       );
     }
 
+    // 归一化：isEnabled -> isActive；domain -> extraConfig.cdnUrl
+    const normalized = this.normalizeDto(dto);
+
     // 加密敏感字段（仅传入时更新）
-    const encryptedUpdate = { ...dto };
     if (dto.accessKey !== undefined && dto.accessKey !== null) {
-      encryptedUpdate.accessKey = this.encryptionService.encryptAes(dto.accessKey);
+      normalized.accessKey = this.encryptionService.encryptAes(dto.accessKey);
     }
     if (dto.secretKey !== undefined && dto.secretKey !== null) {
-      encryptedUpdate.secretKey = this.encryptionService.encryptAes(dto.secretKey);
+      normalized.secretKey = this.encryptionService.encryptAes(dto.secretKey);
     }
 
-    Object.assign(config, encryptedUpdate);
+    // 未传 domain 时保留原 extra_config（避免编辑表单未改域名时清空）
+    if (dto.domain === undefined) {
+      delete normalized.extraConfig;
+    }
+
+    Object.assign(config, normalized);
     const saved = await this.ossConfigRepo.save(config);
 
-    // 脱敏返回
-    return {
-      ...saved,
-      accessKey: saved.accessKey ? '******' : undefined,
-      secretKey: saved.secretKey ? '******' : undefined,
-    };
+    return this.desensitize(saved);
   }
 
   /**
@@ -198,30 +203,86 @@ export class AdminOssService {
   }
 
   /**
-   * 获取存储统计信息
+   * 获取存储统计信息（基于 files 表真实数据）
    */
   async getStorageStats(id: number): Promise<{
+    configId: number;
     provider: string;
     bucket: string;
-    totalBytes: number;
-    usedBytes: number;
+    usedStorage: number;
     fileCount: number;
-    usagePercent: number;
+    monthlyUploadCount: number;
+    monthlyDownloadTraffic: number;
+    lastUploadAt?: string;
   }> {
     const config = await this.getConfigInternal(id);
-
-    const totalBytes = 100 * 1024 * 1024 * 1024;
-    const usedBytes = Math.floor(Math.random() * 50 * 1024 * 1024 * 1024);
-    const fileCount = Math.floor(Math.random() * 10000) + 100;
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const agg = (await this.fileRepo
+      .createQueryBuilder('f')
+      .select('COUNT(*)', 'fileCount')
+      .addSelect('COALESCE(SUM(f.size), 0)', 'usedBytes')
+      .addSelect(
+        "COALESCE(SUM(CASE WHEN f.created_at >= :monthStart THEN 1 ELSE 0 END), 0)",
+        'monthlyUploadCount',
+      )
+      .setParameter('monthStart', monthStart)
+      .getRawOne()) as
+      | { fileCount?: string; usedBytes?: string; monthlyUploadCount?: string }
+      | undefined;
+    const last = await this.fileRepo.findOne({ order: { createdAt: 'DESC' } });
 
     return {
+      configId: id,
       provider: config.provider,
       bucket: config.bucket || '-',
-      totalBytes,
-      usedBytes,
-      fileCount,
-      usagePercent: Number(((usedBytes / totalBytes) * 100).toFixed(2)),
+      usedStorage: Number(agg?.usedBytes ?? 0),
+      fileCount: Number(agg?.fileCount ?? 0),
+      monthlyUploadCount: Number(agg?.monthlyUploadCount ?? 0),
+      monthlyDownloadTraffic: 0,
+      lastUploadAt: last?.createdAt ? last.createdAt.toISOString() : undefined,
     };
+  }
+
+  /**
+   * 脱敏返回：access_key/secret_key 只显示是否存在
+   */
+  private desensitize(config: SysOssConfigEntity): SysOssConfigEntity {
+    return {
+      ...config,
+      accessKey: config.accessKey ? '******' : undefined,
+      secretKey: config.secretKey ? '******' : undefined,
+    };
+  }
+
+  /**
+   * 归一化入参：isEnabled -> isActive；domain -> extraConfig.cdnUrl
+   */
+  private normalizeDto(
+    dto: CreateOssConfigDto | UpdateOssConfigDto,
+  ): Record<string, unknown> {
+    const out: Record<string, unknown> = {
+      ...(dto as unknown as Record<string, unknown>),
+    };
+    // 兼容旧前端字段 isEnabled
+    if (out.isEnabled !== undefined && out.isActive === undefined) {
+      out.isActive = out.isEnabled;
+    }
+    delete out.isEnabled;
+    // CDN 域名 -> extraConfig.cdnUrl
+    const extra: Record<string, unknown> = {
+      ...((out.extraConfig as Record<string, unknown>) ?? {}),
+    };
+    if (typeof out.domain === 'string' && out.domain.trim() !== '') {
+      extra.cdnUrl = out.domain.trim();
+    } else if (out.domain === '') {
+      delete extra.cdnUrl;
+    }
+    delete out.domain;
+    if (Object.keys(extra).length > 0) {
+      out.extraConfig = extra;
+    }
+    return out;
   }
 
   /**
@@ -235,5 +296,3 @@ export class AdminOssService {
     return config;
   }
 }
-
-

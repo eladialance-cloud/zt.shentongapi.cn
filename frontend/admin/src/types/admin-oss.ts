@@ -4,7 +4,7 @@
 import type { AdminPaginatedResult } from './admin-auth'
 
 /** OSS 提供商类型 */
-export type OssProvider = 'tencent' | 'aliyun' | 'qiniu' | 'aws' | 'minio'
+export type OssProvider = 'local' | 'tencent' | 'aliyun' | 'qiniu' | 'aws' | 'minio'
 
 /** OSS 配置项 */
 export interface AdminOssConfig {
@@ -23,12 +23,14 @@ export interface AdminOssConfig {
   accessKey: string
   /** Secret Key（后端返回时已脱敏） */
   secretKey: string
-  /** CDN 域名 */
+  /** CDN 域名（后端存于 extraConfig.cdnUrl，前端读取时映射为 domain） */
   domain?: string
+  /** 额外配置（CDN 域名等） */
+  extraConfig?: { cdnUrl?: string }
   /** 是否为默认配置 */
   isDefault: boolean
   /** 是否启用 */
-  isEnabled: boolean
+  isActive: boolean
   createdAt: string
   updatedAt: string
 }
@@ -38,7 +40,7 @@ export interface AdminOssQuery {
   page?: number
   pageSize?: number
   provider?: OssProvider | ''
-  isEnabled?: boolean | ''
+  isActive?: boolean | ''
 }
 
 /** 创建 OSS 配置 DTO */
@@ -52,7 +54,7 @@ export interface CreateAdminOssConfigDto {
   secretKey: string
   domain?: string
   isDefault?: boolean
-  isEnabled?: boolean
+  isActive?: boolean
 }
 
 /** 更新 OSS 配置 DTO */
@@ -66,7 +68,7 @@ export interface UpdateAdminOssConfigDto {
   secretKey?: string
   domain?: string
   isDefault?: boolean
-  isEnabled?: boolean
+  isActive?: boolean
 }
 
 /** 测试连接结果 */

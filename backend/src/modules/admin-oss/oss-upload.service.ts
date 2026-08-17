@@ -76,6 +76,8 @@ export class OssUploadService {
         return `https://${config.bucket}.qnssl.com/${objectKey}`;
       case 'minio':
         return `${(config.endpoint || '').replace(/\/+$/, '')}/${config.bucket}/${objectKey}`;
+      case 'aws':
+        return `${(config.endpoint || `https://s3.${region || 'us-east-1'}.amazonaws.com`).replace(/\/+$/, '')}/${config.bucket}/${objectKey}`;
       default:
         return '';
     }
@@ -116,6 +118,9 @@ export class OssUploadService {
         break;
       case 'minio':
         await this.putMinio(config, accessKey, secretKey, objectKey, buffer, target.mime);
+        break;
+      case 'aws':
+        await this.putS3(config, accessKey, secretKey, objectKey, buffer, target.mime);
         break;
       default:
         return null;
@@ -218,6 +223,20 @@ export class OssUploadService {
       region: config.region || 'us-east-1',
       credentials: { accessKeyId: accessKey, secretAccessKey: secretKey },
       forcePathStyle: true,
+    });
+    await client.send(new PutObjectCommand({ Bucket: config.bucket, Key: key, Body: buffer, ContentType: mime }));
+  }
+
+  private async putS3(
+    config: SysOssConfigEntity, accessKey: string | undefined, secretKey: string | undefined,
+    key: string, buffer: Buffer, mime: string,
+  ): Promise<void> {
+    const { S3Client, PutObjectCommand } = loadSdk('@aws-sdk/client-s3');
+    const client = new S3Client({
+      endpoint: config.endpoint || undefined,
+      region: config.region || 'us-east-1',
+      credentials: { accessKeyId: accessKey, secretAccessKey: secretKey },
+      forcePathStyle: !!config.endpoint,
     });
     await client.send(new PutObjectCommand({ Bucket: config.bucket, Key: key, Body: buffer, ContentType: mime }));
   }

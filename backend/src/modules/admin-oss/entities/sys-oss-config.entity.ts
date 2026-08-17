@@ -3,7 +3,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
 
 /**
  * 系统OSS配置实体
- * 存储各云存储服务商的连接配置，支持 local/aliyun/tencent/qiniu/minio。
+ * 存储各云存储服务商的连接配置，支持 local/aliyun/tencent/qiniu/minio/aws。
  * access_key / secret_key 以 AES-256-GCM 加密存储（P0安全修复）。
  */
 @Entity('sys_oss_config')
@@ -14,10 +14,10 @@ export class SysOssConfigEntity extends BaseEntity {
   @Index()
   @Column({
     type: 'enum',
-    enum: ['local', 'aliyun', 'tencent', 'qiniu', 'minio'],
+    enum: ['local', 'aliyun', 'tencent', 'qiniu', 'minio', 'aws'],
     default: 'local',
   })
-  provider: 'local' | 'aliyun' | 'tencent' | 'qiniu' | 'minio';
+  provider: 'local' | 'aliyun' | 'tencent' | 'qiniu' | 'minio' | 'aws';
 
   @Column({ length: 256, nullable: true })
   endpoint?: string;

@@ -125,7 +125,7 @@ describe('AdminOssService.testConnection 云映射（不触碰文件系统）', 
     const repo: any = { findOne: async () => ({ id: 1, provider: 'aliyun' }) };
     const enc: any = {};
     const probe: any = { probeConfigId: async () => ({ ok: true, latencyMs: 42, message: 'ok' }) };
-    const svc = new AdminOssService(repo, enc, probe);
+    const svc = new AdminOssService(repo, {} as any, enc, probe);
     const r = await svc.testConnection(1);
     assert.deepEqual(r, { success: true, provider: 'aliyun', latency: 42, message: 'ok' });
   });
@@ -133,7 +133,7 @@ describe('AdminOssService.testConnection 云映射（不触碰文件系统）', 
     const repo: any = { findOne: async () => ({ id: 2, provider: 'qiniu' }) };
     const enc: any = {};
     const probe: any = { probeConfigId: async () => ({ ok: false, latencyMs: 7, message: 'qiniu 连接失败: refused' }) };
-    const svc = new AdminOssService(repo, enc, probe);
+    const svc = new AdminOssService(repo, {} as any, enc, probe);
     const r = await svc.testConnection(2);
     assert.deepEqual(r, { success: false, provider: 'qiniu', latency: 7, message: 'qiniu 连接失败: refused' });
   });

@@ -62,6 +62,7 @@ const PROVIDER_OPTIONS: Array<{ label: string; value: OssProvider }> = [
 ]
 
 const PROVIDER_LABEL: Record<OssProvider, string> = {
+  local: '本地存储',
   tencent: '腾讯云 COS',
   aliyun: '阿里云 OSS',
   qiniu: '七牛云',
@@ -70,6 +71,7 @@ const PROVIDER_LABEL: Record<OssProvider, string> = {
 }
 
 const PROVIDER_COLOR: Record<OssProvider, string> = {
+  local: 'default',
   tencent: 'blue',
   aliyun: 'orange',
   qiniu: 'green',
@@ -87,7 +89,7 @@ interface OssFormValues {
   secretKey: string
   domain?: string
   isDefault: boolean
-  isEnabled: boolean
+  isActive: boolean
 }
 
 /** 格式化字节为可读字符串 */
@@ -125,7 +127,13 @@ export default function AdminOss() {
       const query: AdminOssQuery = { page, pageSize: PAGE_SIZE }
       const result = await listOssConfigs(query)
       const r = result as AdminPaginatedResult<AdminOssConfig>
-      setItems(r.list || [])
+      // 后端 domain 存于 extraConfig.cdnUrl，映射到列表字段便于展示/回填
+      setItems(
+        (r.list || []).map((it) => ({
+          ...it,
+          domain: it.extraConfig?.cdnUrl ?? it.domain
+        }))
+      )
       setTotal(r.total || 0)
     } catch (err) {
       console.error('[AdminOss] load failed:', err)
@@ -145,7 +153,7 @@ export default function AdminOss() {
     form.setFieldsValue({
       provider: 'tencent',
       isDefault: false,
-      isEnabled: true
+      isActive: true
     })
     setEditOpen(true)
   }
@@ -160,9 +168,9 @@ export default function AdminOss() {
       endpoint: item.endpoint,
       accessKey: item.accessKey,
       secretKey: '',
-      domain: item.domain,
+      domain: item.extraConfig?.cdnUrl ?? item.domain,
       isDefault: item.isDefault,
-      isEnabled: item.isEnabled
+      isActive: item.isActive
     })
     setEditOpen(true)
   }
@@ -181,7 +189,7 @@ export default function AdminOss() {
           accessKey: values.accessKey,
           domain: values.domain,
           isDefault: values.isDefault,
-          isEnabled: values.isEnabled
+          isActive: values.isActive
         }
         // 仅在用户输入了新 secretKey 时才提交
         if (values.secretKey && values.secretKey.trim()) {
@@ -200,7 +208,7 @@ export default function AdminOss() {
           secretKey: values.secretKey,
           domain: values.domain,
           isDefault: values.isDefault,
-          isEnabled: values.isEnabled
+          isActive: values.isActive
         }
         await createOssConfig(dto)
         message.success('OSS 配置已创建')
@@ -315,8 +323,8 @@ export default function AdminOss() {
     },
     {
       title: '启用',
-      dataIndex: 'isEnabled',
-      key: 'isEnabled',
+      dataIndex: 'isActive',
+      key: 'isActive',
       width: 80,
       render: (v: boolean) =>
         v ? (
@@ -506,7 +514,7 @@ export default function AdminOss() {
             <Form.Item name="isDefault" label="设为默认" valuePropName="checked">
               <Switch />
             </Form.Item>
-            <Form.Item name="isEnabled" label="启用" valuePropName="checked">
+            <Form.Item name="isActive" label="启用" valuePropName="checked">
               <Switch />
             </Form.Item>
           </div>

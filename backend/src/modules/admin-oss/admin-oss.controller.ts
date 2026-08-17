@@ -7,13 +7,14 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AdminOssService } from './admin-oss.service';
 import { AdminGuard } from '../admin-auth/admin.guard';
 import { Public } from '../../common/decorators/public.decorator';
-import { CreateOssConfigDto, UpdateOssConfigDto } from './dto/admin-oss.dto';
+import { CreateOssConfigDto, UpdateOssConfigDto, OssProvider } from './dto/admin-oss.dto';
 
 /**
  * 管理端OSS配置控制器
@@ -42,8 +43,18 @@ export class AdminOssController {
   @Public()
   @UseGuards(AdminGuard)
   @ApiOperation({ summary: '获取OSS配置列表' })
-  async listConfigs() {
-    return this.service.listConfigs();
+  async listConfigs(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('provider') provider?: OssProvider,
+    @Query('isActive') isActive?: string,
+  ) {
+    return this.service.listConfigs({
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+      provider,
+      isActive: isActive === undefined ? undefined : isActive === 'true',
+    });
   }
 
   @Get('configs/:id')

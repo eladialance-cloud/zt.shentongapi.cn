@@ -4,7 +4,7 @@ import { PartialType } from '@nestjs/swagger';
 /**
  * OSS服务商类型
  */
-export type OssProvider = 'local' | 'aliyun' | 'tencent' | 'qiniu' | 'minio';
+export type OssProvider = 'local' | 'aliyun' | 'tencent' | 'qiniu' | 'minio' | 'aws';
 
 /**
  * 创建OSS配置DTO
@@ -14,7 +14,7 @@ export class CreateOssConfigDto {
   @MaxLength(64)
   name: string;
 
-  @IsEnum(['local', 'aliyun', 'tencent', 'qiniu', 'minio'])
+  @IsEnum(['local', 'aliyun', 'tencent', 'qiniu', 'minio', 'aws'])
   provider: OssProvider;
 
   @IsOptional()
@@ -46,6 +46,21 @@ export class CreateOssConfigDto {
   @IsBoolean()
   isDefault?: boolean;
 
+  /** 是否启用（兼容旧前端字段 isEnabled，创建时即可指定） */
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isEnabled?: boolean;
+
+  /** CDN 域名（落 extra_config.cdnUrl，用于生成公有读外链） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  domain?: string;
+
   @IsOptional()
   @IsObject()
   extraConfig?: Record<string, unknown>;
@@ -53,10 +68,6 @@ export class CreateOssConfigDto {
 
 /**
  * 更新OSS配置DTO
- * 继承自 CreateOssConfigDto 的部分字段，额外增加 isActive 字段
+ * 继承自 CreateOssConfigDto 的部分字段
  */
-export class UpdateOssConfigDto extends PartialType(CreateOssConfigDto) {
-  @IsOptional()
-  @IsBoolean()
-  isActive?: boolean;
-}
+export class UpdateOssConfigDto extends PartialType(CreateOssConfigDto) {}
