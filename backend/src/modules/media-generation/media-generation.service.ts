@@ -204,7 +204,14 @@ export class MediaGenerationService implements OnModuleInit {
       return rawUrl;
     }
     try {
-      const addresses = await dnsLookup(hostname, { all: true });
+      // DNS 解析加 5s 超时：上游 CDN 域名解析卡住会在下载前无声挂起（任务永远 processing 且无日志）
+      const addresses = await Promise.race([
+        dnsLookup(hostname, { all: true }),
+        new Promise<never>((_, reject) => {
+          const timer = setTimeout(() => reject(new Error('DNS 解析超时(5s)')), 5000);
+          timer.unref?.();
+        }),
+      ]);
       if (addresses.some(({ address }) => isPrivate(address))) {
         throw new BadRequestException('上游返回的产物 URL 指向内网地址');
       }
