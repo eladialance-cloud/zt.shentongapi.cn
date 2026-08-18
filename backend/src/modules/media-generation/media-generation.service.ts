@@ -495,7 +495,7 @@ export class MediaGenerationService implements OnModuleInit {
       }, (cfg.adapter.timeoutMs || 10 * 60 * 1000) + 5 * 60 * 1000);
       watchdog.unref?.();
 
-      const interval = (cfg.adapter.pollInterval || 5) * 1000;
+      const interval = cfg.adapter.pollInterval || 3000; // 与 generation-client.ts 一致：pollInterval 单位为毫秒
       const maxAttempts = Math.ceil((cfg.adapter.timeoutMs || 10 * 60 * 1000) / interval);
       let pollFailStreak = 0;
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
