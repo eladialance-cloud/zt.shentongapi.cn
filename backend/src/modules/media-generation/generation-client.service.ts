@@ -376,7 +376,7 @@ export class GenerationClientService {
     };
     // 图生视频：首帧图注入 input.media（模板内 {media} 占位符或强制注入）
     if (cfg.inputImages?.length) {
-      vars.media = cfg.inputImages.map((url) => ({ type: 'image', url }));
+      vars.media = cfg.inputImages.map((url) => ({ type: 'first_frame', url }));
     }
     // 兼容 curl 解析出的模板占位符 {imageUrl0}~{imageUrl3}
     const imgUrls = (cfg.inputImages ?? []).map((v) => (/^https?:\/\//i.test(v) ? v : ''));
