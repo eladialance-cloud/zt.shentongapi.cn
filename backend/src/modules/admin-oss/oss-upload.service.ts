@@ -161,14 +161,28 @@ export class OssUploadService {
     provider: string,
     key: string,
   ): Promise<void> {
+    // 统一上传超时（60s）：SDK 内部无超时时（如腾讯云 cos.putObject）挂起会导致任务永久卡死，
+    // 超时抛错后由上层降级本地落盘，保证生成任务能正常收尾。
+    const withTimeout = (acl?: string): Promise<void> => {
+      let timer: NodeJS.Timeout | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('OSS 上传超时(60s): provider=' + provider + ' key=' + key)),
+          60000,
+        );
+      });
+      return Promise.race([run(acl), timeout]).finally(() => {
+        if (timer) clearTimeout(timer);
+      }) as Promise<void>;
+    };
     try {
-      await run('public-read');
+      await withTimeout('public-read');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger?.warn?.(
         'OSS 设置公有读失败，回退默认 ACL: provider=' + provider + ' key=' + key + ' err=' + msg,
       );
-      await run(undefined);
+      await withTimeout(undefined);
     }
   }
 
