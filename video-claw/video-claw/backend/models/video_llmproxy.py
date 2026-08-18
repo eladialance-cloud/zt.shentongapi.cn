@@ -52,6 +52,16 @@ class LlmProxyVideoClient:
             "Content-Type": "application/json",
         }
 
+    @staticmethod
+    def _unwrap(data: dict) -> dict:
+        """解平台统一响应信封 {code,data,message,timestamp}，兼容无信封直连网关。"""
+        if isinstance(data, dict) and "code" in data:
+            if data.get("code") not in (0, "0", None):
+                raise RuntimeError(f"llm-proxy 返回错误(code={data.get('code')}): {data.get('message') or str(data)[:300]}")
+            inner = data.get("data")
+            return inner if isinstance(inner, dict) else data
+        return data
+
     def _encode_image(self, image_path: Optional[str]) -> Optional[str]:
         """本地图片 -> data URL（网关 media-generation 按需读取 image_url）。"""
         if not image_path or not os.path.exists(image_path):
@@ -81,12 +91,13 @@ class LlmProxyVideoClient:
                 f"llm-proxy 视频任务提交失败: HTTP {resp.status_code}: {resp.text[:300]}"
             )
         data = resp.json() or {}
-        task_id = data.get("id") or data.get("task_id") or data.get("data", {}).get("id")
+        inner = self._unwrap(data)
+        task_id = inner.get("id") or inner.get("task_id")
         if not task_id:
             raise RuntimeError(
                 f"llm-proxy 视频任务响应缺少任务 ID: {str(data)[:300]}"
             )
-        return {"task_id": str(task_id), "status": data.get("status")}
+        return {"task_id": str(task_id), "status": inner.get("status")}
 
     def _poll(self, task_id: str, poll_interval: float = 5.0, max_attempts: int = 240) -> dict:
         url = f"{self.base_url}/videos/generations/{task_id}"
@@ -97,11 +108,12 @@ class LlmProxyVideoClient:
                     f"llm-proxy 视频任务查询失败: HTTP {resp.status_code}: {resp.text[:300]}"
                 )
             data = resp.json() or {}
-            status = str(data.get("status") or data.get("task_status") or "").lower()
+            inner = self._unwrap(data)
+            status = str(inner.get("status") or inner.get("task_status") or "").lower()
             if status in ("done", "succeeded", "completed", "success"):
-                return data
+                return inner
             if status in ("failed", "error", "cancelled", "canceled"):
-                error = data.get("error") or data.get("message") or "任务失败"
+                error = inner.get("error") or inner.get("message") or "任务失败"
                 raise RuntimeError(f"llm-proxy 视频生成失败: {str(error)[:300]}")
             logger.info(
                 "LlmProxyVideoClient: 任务 %s 状态=%s（%s/%s）",
@@ -114,6 +126,7 @@ class LlmProxyVideoClient:
         raise RuntimeError(f"llm-proxy 视频生成超时（{max_attempts * poll_interval:.0f}s），任务 ID={task_id}")
 
     def _extract_video_url(self, data: dict) -> Optional[str]:
+        data = self._unwrap(data)
         urls = data.get("resultUrls") or data.get("result_urls") or []
         if isinstance(urls, str):
             urls = [urls]

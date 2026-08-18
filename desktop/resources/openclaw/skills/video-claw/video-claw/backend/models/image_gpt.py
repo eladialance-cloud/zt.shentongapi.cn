@@ -48,6 +48,7 @@ class ImageGPT:
         self.base_url = base_url or Config.OPENAI_BASE_URL
         if proxy is None:
             proxy = Config.provider_proxy("openai")
+        self.proxy = proxy
         if proxy:
             kwargs["http_client"] = httpx.Client(
                 proxy=proxy,
@@ -76,6 +77,43 @@ class ImageGPT:
             logger.warning("Failed to encode image %s: %s", image_path, e)
             return image_path
 
+    def _post_generation(self, payload):
+        """POST {base}/images/generations，兼容平台统一响应信封 {code,data,message,timestamp}。"""
+        url = self.base_url.rstrip("/") + "/images/generations"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        client_kwargs = {"timeout": self.timeout}
+        if self.proxy:
+            client_kwargs["proxy"] = self.proxy
+        with httpx.Client(**client_kwargs) as client:
+            resp = client.post(url, headers=headers, json=payload)
+        text = resp.text or ""
+        if resp.status_code >= 400:
+            raise RuntimeError(f"图片接口 HTTP {resp.status_code}: {text[:300]}")
+
+        try:
+            body = resp.json()
+        except Exception:
+            body = None
+
+        # 平台统一信封: {"code":0,"data":...,"message":"success","timestamp":...}
+        # 兼容直连 OpenAI 式网关（无信封，data 直接是列表）两种形态
+        if isinstance(body, dict) and "code" in body:
+            if body.get("code") not in (0, "0", None):
+                raise RuntimeError(f"图片生成失败(code={body.get('code')}): {body.get('message') or text[:300]}")
+            inner = body.get("data")
+        else:
+            inner = body
+
+        # inner 可能是 {"created":..., "data":[...]}，也可能是 [...]
+        if isinstance(inner, dict) and isinstance(inner.get("data"), list):
+            return inner["data"]
+        if isinstance(inner, list):
+            return inner
+        raise RuntimeError(f"无法识别的图片响应: {text[:300]}")
+
     def generate_image(self, prompt, size="1024x1024", quality="high", model="gpt-image-2",
                        save_dir=None, image_urls=None):
         """Generate a single image, download it, and return the local file path.
@@ -84,53 +122,57 @@ class ImageGPT:
             prompt: 图片描述提示词
             size: 图片尺寸
             quality: 图片质量
-            model: 模型名称 (sora_image / gpt-image-2)
+            model: 模型名称 (sora_image / gpt-image-2 / llm-proxy 模型)
             save_dir: 保存目录（不传则返回 URL 或 base64）
             image_urls: 参考图片 URL 列表（仅 gpt-image-2 支持）
         """
 
         attempts = 0
         last_error = None
-        
+
         # 处理参考图片
         extra_body = {}
         if image_urls and isinstance(image_urls, list) and len(image_urls) > 0:
             # 中转站通常支持通过 extra_body 传递 image_url 或 ref_image
-            # 这里我们将第一张图作为参考图
             ref_images = [self._encode_image_to_base64(image_urls[i]) for i in range(min(len(image_urls), 6))]
             extra_body = {"image_url": ref_images}
 
+        payload = {"model": model, "prompt": prompt, "size": size, "quality": quality, "n": 1}
+        payload.update(extra_body)
+
         while attempts < self.max_attempts:
             try:
-                response = self.client.images.generate(
-                    model=model,
-                    prompt=prompt,
-                    size=size,
-                    quality=quality,
-                    n=1,
-                    extra_body=extra_body
-                )
-                
-                if not response or not response.data:
-                    raise RuntimeError("OpenAI API 返回数据为空")
+                items = self._post_generation(payload)
 
-                img_data = response.data[0]
-                file_path = None
+                if not items:
+                    raise RuntimeError("API 返回数据为空")
+
+                img = items[0]
+                if not isinstance(img, dict):
+                    # 兼容 OpenAI SDK 风格对象
+                    if hasattr(img, 'b64_json'):
+                        img = {'b64_json': img.b64_json}
+                    elif hasattr(img, 'url'):
+                        img = {'url': img.url}
+                    else:
+                        raise RuntimeError("未在响应中找到 url 或 b64_json")
+
+                b64 = img.get('b64_json') or img.get('b64')
+                url = img.get('url')
 
                 # 1. 处理 Base64 格式 (中转站常用)
-                if hasattr(img_data, 'b64_json') and img_data.b64_json:
+                if b64:
                     if save_dir:
                         os.makedirs(save_dir, exist_ok=True)
                         file_name = f"gpt_{int(time.time())}_{uuid.uuid4().hex[:6]}.png"
                         file_path = os.path.join(save_dir, file_name)
                         with open(file_path, "wb") as f:
-                            f.write(base64.b64decode(img_data.b64_json))
+                            f.write(base64.b64decode(b64))
                         return file_path
-                    return img_data.b64_json
+                    return b64
 
                 # 2. 处理 URL 格式
-                elif hasattr(img_data, 'url') and img_data.url:
-                    url = img_data.url
+                elif url:
                     if save_dir:
                         os.makedirs(save_dir, exist_ok=True)
                         file_name = f"gpt_{int(time.time())}_{uuid.uuid4().hex[:6]}.png"
@@ -138,15 +180,16 @@ class ImageGPT:
                         if self.image_processor.download_image(url, file_path, proxies=Config.requests_proxies("openai")):
                             return file_path
                         return url
-                
+
                 raise RuntimeError("未在响应中找到 url 或 b64_json")
-            except Exception as e:
+            except (httpx.HTTPError, TimeoutError, OSError) as e:
+                # 网络类错误才重试；业务/解析错误直接抛出
                 last_error = e
-                # Other errors: wait before retry
+                attempts += 1
+                if attempts >= self.max_attempts:
+                    break
                 logger.warning("OpenAI image generation failed; retrying in 10 seconds: %s", e)
                 time.sleep(10)
-                break  # Break inner loop to retry all models
-            attempts += 1
         raise Exception(f"Max attempts reached, failed to generate image. Last error: {last_error}")
 
     def generate_images(self, prompt, count=4, size="1024x1024", quality="standard", model=None):

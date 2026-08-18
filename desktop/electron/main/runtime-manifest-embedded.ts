@@ -35,7 +35,7 @@ export const EMBEDDED_MANIFEST: RuntimeManifest = {
         "linux-x64": 0
       },
       "sha256": {
-        "win32-x64": "86e5037279fd9448ea62d9a438bbc2abe982ff52a4ea62df1dc91a26aca08025",
+        "win32-x64": "",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""
@@ -64,7 +64,7 @@ export const EMBEDDED_MANIFEST: RuntimeManifest = {
         "linux-x64": 0
       },
       "sha256": {
-        "win32-x64": "185b701ee53a608bbbb70e708c17948cf98116fcb13b44f9cd7354dd0b3ea223",
+        "win32-x64": "",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""
@@ -93,7 +93,7 @@ export const EMBEDDED_MANIFEST: RuntimeManifest = {
         "linux-x64": 0
       },
       "sha256": {
-        "win32-x64": "36d94571f4abcb9c967bd657654e3c4a04a003bee1785ffefeec4ee8ddf4d848",
+        "win32-x64": "",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""
@@ -122,7 +122,7 @@ export const EMBEDDED_MANIFEST: RuntimeManifest = {
         "linux-x64": 0
       },
       "sha256": {
-        "win32-x64": "937be9e85acf513d47a819e5f61e9276f3151aa63e7f612e5854e6124adc6378",
+        "win32-x64": "",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""
@@ -145,13 +145,13 @@ export const EMBEDDED_MANIFEST: RuntimeManifest = {
         "linux-x64": ""
       },
       "size": {
-        "win32-x64": 294438048,
+        "win32-x64": 294917005,
         "darwin-x64": 0,
         "darwin-arm64": 0,
         "linux-x64": 0
       },
       "sha256": {
-        "win32-x64": "012e5034136d3d5119b153108cf132d47ed41e532395f435f29d4bd7cd3d7884",
+        "win32-x64": "326c704e9f346a885af24608293e6728f0e5edbe85e0f9eec80b56d1e8e6c7f5",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""

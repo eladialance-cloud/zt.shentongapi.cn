@@ -1,4 +1,4 @@
-/** 模型配置模板库 seed —— 后台"从模板创建"数据源 + 模型市场预设库
+﻿/** 模型配置模板库 seed —— 后台"从模板创建"数据源 + 模型市场预设库
  * 参考价单位：积分/千token 或 /张 /次 /分钟；管理员可改。
  * 关联规格: docs/superpowers/specs/2026-08-14-llm-call-modes-oss-design.md 第 5 节
  *          docs/superpowers/specs/2026-08-14-model-market-design.md 第 3 节
@@ -62,7 +62,7 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       imageRequestTemplate: { model: '{upstreamModelId}', input: { messages: [{ role: 'user', content: [{ type: 'text', text: '{prompt}' }] }] }, parameters: { n: 1, size: '{size}' } },
       videosPath: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis',
       taskPath: 'https://dashscope.aliyuncs.com/api/v1/tasks/{id}',
-      requestTemplate: { model: '{upstreamModelId}', input: { prompt: '{prompt}' }, parameters: { resolution: '{resolution}', duration: '{duration}', fps: '{fps}' } },
+      requestTemplate: { model: '{upstreamModelId}', input: { prompt: '{prompt}' }, parameters: { resolution: '{resolutionTier}', duration: '{duration}', fps: '{fps}' } },
       taskIdPath: 'output.task_id',
       statusPath: 'output.task_status',
       successValues: ['SUCCEEDED'],

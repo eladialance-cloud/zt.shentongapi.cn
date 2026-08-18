@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable,
   Logger,
   BadRequestException,
@@ -749,7 +749,7 @@ export class LlmProxyService {
   /** 文生视频/图生视频（异步任务制，复用 MediaGenerationService 的作业/退款链路） */
   async videoGeneration(
     apiKey: string,
-    body: { model?: string; prompt: string; resolution?: string; duration?: number; fps?: number; inputImages?: string[] },
+    body: { model?: string; prompt: string; resolution?: string; duration?: number; fps?: number; inputImages?: string[]; image_url?: string },
   ) {
     const { userId } = await this.verifyApiKey(apiKey);
     const model = await this.resolveMediaModel('video', body.model, userId);
@@ -759,7 +759,7 @@ export class LlmProxyService {
       resolution: body.resolution,
       duration: body.duration,
       fps: body.fps,
-      inputImages: body.inputImages,
+      inputImages: body.inputImages?.length ? body.inputImages : (body.image_url ? [body.image_url] : []),
     });
   }
 

@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+﻿import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PROVIDER_TEMPLATES } from '../admin-model/constants/model-templates';
 import { normalizeResolutionTier, upstreamResolution } from './billing';
 
@@ -370,12 +370,13 @@ export class GenerationClientService {
       upstreamModelId: cfg.model,
       prompt: cfg.prompt,
       resolution: res,
+      resolutionTier: normalizeResolutionTier(cfg.resolution ?? ''),
       duration: cfg.duration ?? 5,
       fps: cfg.fps ?? '',
     };
     // 图生视频：首帧图注入 input.media（模板内 {media} 占位符或强制注入）
     if (cfg.inputImages?.length) {
-      vars.media = cfg.inputImages.map((url) => ({ type: 'first_frame', url }));
+      vars.media = cfg.inputImages.map((url) => ({ type: 'image', url }));
     }
     // 兼容 curl 解析出的模板占位符 {imageUrl0}~{imageUrl3}
     const imgUrls = (cfg.inputImages ?? []).map((v) => (/^https?:\/\//i.test(v) ? v : ''));

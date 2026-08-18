@@ -36,6 +36,8 @@ const QINIU_ZONE_BY_REGION: Record<string, string> = {
 
 @Injectable()
 export class OssUploadService {
+  private readonly logger = new (require('@nestjs/common').Logger)(OssUploadService.name);
+
   constructor(
     @InjectRepository(SysOssConfigEntity)
     private readonly ossConfigRepo: Repository<SysOssConfigEntity>,
@@ -153,6 +155,23 @@ export class OssUploadService {
     }
   }
 
+  /** 尽力设置公有读：无 PutObjectAcl 权限时回退默认 ACL 并告警，保证 resolvePublicUrl 公开外链可用 */
+  private async putWithPublicRead(
+    run: (acl?: string) => Promise<void>,
+    provider: string,
+    key: string,
+  ): Promise<void> {
+    try {
+      await run('public-read');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger?.warn?.(
+        'OSS 设置公有读失败，回退默认 ACL: provider=' + provider + ' key=' + key + ' err=' + msg,
+      );
+      await run(undefined);
+    }
+  }
+
   // ============ provider 上传实现（动态 require，生产前须安装 SDK） ============
 
   private async putAliyun(
@@ -167,7 +186,12 @@ export class OssUploadService {
       bucket: config.bucket,
       endpoint: config.endpoint || undefined,
     });
-    await client.put(key, buffer, { mime });
+    const putAli = async (acl?: string) => {
+      const opts = { mime } as Record<string, unknown>;
+      if (acl) opts.headers = { 'x-oss-object-acl': acl };
+      await client.put(key, buffer, opts);
+    };
+    await this.putWithPublicRead(putAli, 'aliyun', key);
   }
 
   private async putTencent(
@@ -182,18 +206,21 @@ export class OssUploadService {
       COS = loadSdk('cos-nodejs-sdk');
     }
     const cos = new COS({ SecretId: accessKey, SecretKey: secretKey });
-    await new Promise<void>((resolve, reject) => {
-      cos.putObject(
-        {
-          Bucket: config.bucket,
-          Region: config.region,
-          Key: key,
-          Body: buffer,
-          ContentType: mime,
-        },
-        (err: Error | null) => (err ? reject(err) : resolve()),
-      );
-    });
+    const putTc = (acl?: string) =>
+      new Promise<void>((resolve, reject) => {
+        cos.putObject(
+          {
+            Bucket: config.bucket,
+            Region: config.region,
+            Key: key,
+            Body: buffer,
+            ContentType: mime,
+            ...(acl ? { ACL: acl } : {}),
+          },
+          (err: Error | null) => (err ? reject(err) : resolve()),
+        );
+      });
+    await this.putWithPublicRead(putTc, 'tencent', key);
   }
 
   private async putQiniu(
@@ -230,7 +257,17 @@ export class OssUploadService {
       credentials: { accessKeyId: accessKey, secretAccessKey: secretKey },
       forcePathStyle: true,
     });
-    await client.send(new PutObjectCommand({ Bucket: config.bucket, Key: key, Body: buffer, ContentType: mime }));
+    const putMi = (acl?: string) =>
+      client.send(
+        new PutObjectCommand({
+          Bucket: config.bucket,
+          Key: key,
+          Body: buffer,
+          ContentType: mime,
+          ...(acl ? { ACL: acl } : {}),
+        }),
+      );
+    await this.putWithPublicRead(putMi, 'minio', key);
   }
 
   private async putS3(
@@ -244,6 +281,16 @@ export class OssUploadService {
       credentials: { accessKeyId: accessKey, secretAccessKey: secretKey },
       forcePathStyle: !!config.endpoint,
     });
-    await client.send(new PutObjectCommand({ Bucket: config.bucket, Key: key, Body: buffer, ContentType: mime }));
+    const putAws = (acl?: string) =>
+      client.send(
+        new PutObjectCommand({
+          Bucket: config.bucket,
+          Key: key,
+          Body: buffer,
+          ContentType: mime,
+          ...(acl ? { ACL: acl } : {}),
+        }),
+      );
+    await this.putWithPublicRead(putAws, 'aws', key);
   }
 }

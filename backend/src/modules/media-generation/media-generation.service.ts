@@ -470,6 +470,7 @@ export class MediaGenerationService implements OnModuleInit {
 
       const interval = (cfg.adapter.pollInterval || 5) * 1000;
       const maxAttempts = Math.ceil((cfg.adapter.timeoutMs || 10 * 60 * 1000) / interval);
+      let pollFailStreak = 0;
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         await this.sleep(interval);
         let status: 'processing' | 'done' | 'failed' = 'processing';
@@ -477,8 +478,20 @@ export class MediaGenerationService implements OnModuleInit {
         try {
           const r = await this.genClient.pollVideoTask({ endpoint: cfg.endpoint, apiKey: cfg.apiKey, adapter: cfg.adapter, taskId });
           status = r.status; url = r.url;
+          pollFailStreak = 0;
         } catch (err) {
+          pollFailStreak++;
           this.logger.warn(`视频任务轮询异常(attempt ${attempt}): ${(err as Error).message}`);
+          if (pollFailStreak >= 3) {
+            const job = await this.jobRepo.findOne({ where: { id: jobId } });
+            if (job && job.status !== 'done') {
+              job.status = 'failed';
+              job.error = `上游任务轮询连续失败: ${(err as Error).message}`.slice(0, 500);
+              await this.jobRepo.save(job);
+              try { if (job.frozenTxnId) await this.creditsService.refundCredits(job.userId, job.frozenTxnId); } catch (e) { this.logger.warn(`视频轮询失败退款异常: ${(e as Error).message}`); }
+            }
+            return;
+          }
           continue;
         }
         if (status === 'done') {

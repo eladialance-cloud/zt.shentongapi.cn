@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller, Get, Post, Body, Headers, Param, Res, BadRequestException, UploadedFile, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -95,7 +95,7 @@ export class LlmProxyController {
   @Post('v1/videos/generations')
   async videoGenerations(
     @Headers('authorization') auth: string,
-    @Body() body: { model?: string; prompt: string; resolution?: string; duration?: number; fps?: number; inputImages?: string[] },
+    @Body() body: { model?: string; prompt: string; resolution?: string; duration?: number; fps?: number; inputImages?: string[]; image_url?: string },
   ) {
     const token = this.extractToken(auth);
     return this.llmProxyService.videoGeneration(token, body);

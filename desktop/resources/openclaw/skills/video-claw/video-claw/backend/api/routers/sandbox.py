@@ -54,23 +54,25 @@ def _save_history(history: List[dict]):
 
 
 def _normalize_path(path: str) -> str:
-    """将绝对路径转换为相对路径格式 result/..."""
+    """将绝对路径转换为相对路径格式 result/...（兼容 Windows/Linux 路径分隔符）"""
     if not path:
         return path
+    # 统一为正斜杠，避免 Windows 反斜杠破坏 URL
+    path = path.replace("\\", "/")
     # 如果已经是相对路径，直接返回
-    if not path.startswith('/'):
+    if not os.path.isabs(path):
         # 确保以 result/ 开头
         if not path.startswith('result/'):
             return f"result/{path}"
         return path
     # 绝对路径，提取相对于 CODE_DIR 的部分
-    code_dir = settings.CODE_DIR
-    if path.startswith(code_dir):
-        relative = path[len(code_dir):].lstrip('/')
+    code_dir = settings.CODE_DIR.replace("\\", "/").rstrip("/")
+    if path.startswith(code_dir + "/"):
+        relative = path[len(code_dir):].lstrip("/")
         # 直接返回 result/... 格式，因为 /code/ 会映射到 CODE_DIR
         return relative
     # 其他绝对路径，尝试提取文件名
-    return path.split('/')[-1]
+    return path.split("/")[-1]
 
 
 def _convert_output_paths(output_data: dict) -> dict:
