@@ -262,6 +262,7 @@ export class MediaGenerationService implements OnModuleInit {
       buffer = Buffer.from(result.b64, 'base64');
     } else if (result.url) {
       const safeUrl = await this.validateResultUrl(result.url);
+      this.logger.log('产物下载开始 kind=' + kind + ' url=' + safeUrl.slice(0, 120));
       const res = await fetch(safeUrl, { signal: AbortSignal.timeout(120000) });
       if (!res.ok) throw new BadRequestException(`下载生成产物失败(${res.status})`);
       const contentLength = Number(res.headers.get('content-length') || 0);
@@ -269,6 +270,7 @@ export class MediaGenerationService implements OnModuleInit {
         throw new BadRequestException('生成产物超过 512MB 大小限制');
       }
       buffer = Buffer.from(await res.arrayBuffer());
+      this.logger.log('产物下载完成 kind=' + kind + ' size=' + buffer.length);
       if (buffer.length > 512 * 1024 * 1024) {
         throw new BadRequestException('生成产物超过 512MB 大小限制');
       }
@@ -289,6 +291,7 @@ export class MediaGenerationService implements OnModuleInit {
       if (oss) {
         targetPath = oss.url;
         storageType = oss.storageType;
+        this.logger.log('产物上传完成 kind=' + kind + ' target=' + targetPath + ' storage=' + storageType);
       } else {
         // 未配置 OSS / provider=local：回退本地落盘（与上传失败降级共用 saveLocalFallback）
         this.logger.debug(`OSS 未启用（upload 返回 null），回退本地落盘: ${fileName}`);
@@ -474,6 +477,23 @@ export class MediaGenerationService implements OnModuleInit {
     try {
       const { taskId } = await this.genClient.submitVideo(cfg);
       await this.jobRepo.update(jobId, { status: 'processing', params: { ...(await this.jobRepo.findOne({ where: { id: jobId } }))?.params, externalTaskId: taskId } });
+      this.logger.log('视频任务已提交 job=' + jobId + ' task=' + taskId);
+
+      // 看门狗：即使某个环节无超时地卡死（如网络栈挂起），也会在超时后失败并退款，杜绝永久“生成中”
+      const watchdog = setTimeout(async () => {
+        try {
+          const wj = await this.jobRepo.findOne({ where: { id: jobId } });
+          if (wj && wj.status === 'processing') {
+            wj.status = 'failed';
+            wj.error = '视频任务看门狗超时，已失败并退还积分';
+            await this.jobRepo.save(wj);
+            try { if (wj.frozenTxnId) await this.creditsService.refundCredits(wj.userId, wj.frozenTxnId); } catch (e) { this.logger.warn('视频看门狗退款异常: ' + (e as Error).message); }
+          }
+        } catch (e) {
+          this.logger.warn('视频看门狗异常: ' + (e as Error).message);
+        }
+      }, (cfg.adapter.timeoutMs || 10 * 60 * 1000) + 5 * 60 * 1000);
+      watchdog.unref?.();
 
       const interval = (cfg.adapter.pollInterval || 5) * 1000;
       const maxAttempts = Math.ceil((cfg.adapter.timeoutMs || 10 * 60 * 1000) / interval);
@@ -486,6 +506,7 @@ export class MediaGenerationService implements OnModuleInit {
           const r = await this.genClient.pollVideoTask({ endpoint: cfg.endpoint, apiKey: cfg.apiKey, adapter: cfg.adapter, taskId });
           status = r.status; url = r.url;
           pollFailStreak = 0;
+          this.logger.log('视频任务轮询 job=' + jobId + ' attempt=' + attempt + ' status=' + status);
         } catch (err) {
           pollFailStreak++;
           this.logger.warn(`视频任务轮询异常(attempt ${attempt}): ${(err as Error).message}`);
@@ -502,6 +523,7 @@ export class MediaGenerationService implements OnModuleInit {
           continue;
         }
         if (status === 'done') {
+          this.logger.log('视频任务上游完成 job=' + jobId + ' 开始下载转存');
           const job = await this.jobRepo.findOne({ where: { id: jobId } });
           if (!job) return;
           try {
@@ -529,6 +551,7 @@ export class MediaGenerationService implements OnModuleInit {
         }
       }
       // 超时
+      this.logger.log('视频任务轮询超时 job=' + jobId);
       const job = await this.jobRepo.findOne({ where: { id: jobId } });
       if (job && job.status !== 'done') {
         job.status = 'failed';
