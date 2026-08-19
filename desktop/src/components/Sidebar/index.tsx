@@ -1,7 +1,7 @@
 ﻿/**
  * Sidebar — v5.0 Kimi 风格极简导航
  * 主导航 10 项（工作台/需求对话/任务中心/AI团队/素材库/发布中心/数据分析/知识库/ST-Claw/AI办公室），固定展开不折叠
- * 次级入口 9 项（工作流/渠道/Agent市场/MCP市场/插件/Hermes/积分/设置/服务）收纳到左下角「更多」弹出菜单
+ * 次级入口 7 项（技能市场/工作流/渠道/Hermes/积分/设置/服务）收纳到左下角「更多」弹出菜单
  */
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Avatar, Dropdown, type MenuProps } from 'antd'
@@ -16,10 +16,8 @@ import {
   BookOpen,
   Clapperboard,
   Building2,
+  Store,
   Workflow,
-  Bot,
-  Plug,
-  Puzzle,
   Zap,
   Coins,
   Settings,
@@ -53,11 +51,9 @@ const PRIMARY_NAV: NavItem[] = [
 
 /** 次级入口（隐藏收纳，通过左下角「更多」展开） */
 const MORE_NAV: NavItem[] = [
+  { key: 'skill-market', label: '技能市场', icon: Store,     path: '/skill-market' },
   { key: 'workflow',     label: '工作流',   icon: Workflow,  path: '/workflow' },
   { key: 'channels',     label: '渠道',     icon: Send,      path: '/channels' },
-  { key: 'agent-market', label: 'Agent市场',icon: Bot,       path: '/agent-market' },
-  { key: 'mcp-market',   label: 'MCP市场',  icon: Plug,      path: '/mcp-market' },
-  { key: 'plugins',      label: '插件',     icon: Puzzle,    path: '/plugins' },
   { key: 'hermes',       label: 'Hermes',   icon: Zap,       path: '/hermes' },
   { key: 'credits',      label: '积分',     icon: Coins,     path: '/credits' },
   { key: 'settings',     label: '设置',     icon: Settings,  path: '/settings' },

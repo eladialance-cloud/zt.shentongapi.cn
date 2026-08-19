@@ -16,6 +16,12 @@ import {
   buildBriefPayload,
   briefToAnswers,
   isWizardMode,
+  parseNaturalRequirement,
+  stripNaturalFields,
+  hasNaturalFields,
+  loadCustomTemplates,
+  saveCustomTemplates,
+  getEffectiveStepSchema,
 } from '@/pages/Chat/demand-schema'
 import type { StepItem, DemandAnswers } from '@/pages/Chat/demand-schema'
 import type { BriefItem } from '@/api/brief-api'
@@ -341,5 +347,77 @@ describe('demand-schema: 步骤类型约束', () => {
     expect(typeof step.label).toBe('string')
     expect(typeof step.question).toBe('string')
     expect(typeof step.required).toBe('boolean')
+  })
+})
+
+describe('demand-schema: 自然语言一句话收集（C）', () => {
+  test('parseNaturalRequirement：识别平台/受众/风格/截止', () => {
+    const parsed = parseNaturalRequirement('为新品写 3 条小红书种草文案，目标 25-40 岁注重品质的妈妈群体，带货转化，本周四前')
+    expect(parsed.platform).toBe('小红书')
+    expect(parsed.audience).toContain('25-40 岁')
+    expect(parsed.style).toBe('种草')
+    expect(parsed.deadline).toBe('本周四')
+  })
+
+  test('parseNaturalRequirement：多平台去重并顿号连接', () => {
+    const parsed = parseNaturalRequirement('发小红书和公众号，再同步到小红书')
+    expect(parsed.platform).toBe('小红书、公众号')
+  })
+
+  test('parseNaturalRequirement：无匹配字段返回空对象', () => {
+    const parsed = parseNaturalRequirement('随便想想')
+    expect(parsed).toEqual({})
+  })
+
+  test('parseNaturalRequirement：空输入返回空对象', () => {
+    expect(parseNaturalRequirement('')).toEqual({})
+    expect(parseNaturalRequirement('   ')).toEqual({})
+  })
+
+  test('parseNaturalRequirement：日期与天后截止识别', () => {
+    expect(parseNaturalRequirement('下周三前交付').deadline).toBe('下周三')
+    expect(parseNaturalRequirement('3天后发').deadline).toBe('3天后')
+    expect(parseNaturalRequirement('8月20日上线').deadline).toBe('8月20日')
+  })
+
+  test('stripNaturalFields：剥离已识别字段保留核心任务', () => {
+    const parsed = parseNaturalRequirement('为新品写 3 条小红书种草文案，25-40 岁妈妈，本周四前')
+    const core = stripNaturalFields('为新品写 3 条小红书种草文案，25-40 岁妈妈，本周四前', parsed)
+    expect(core).toContain('为新品写')
+    expect(core).toContain('3 条')
+    expect(core).toContain('文案')
+    expect(core).not.toContain('小红书')
+  })
+
+  test('hasNaturalFields：命中任一字段即为 true', () => {
+    expect(hasNaturalFields({ platform: '知乎' })).toBe(true)
+    expect(hasNaturalFields({})).toBe(false)
+  })
+})
+
+describe('demand-schema: 模板可配置（A）', () => {
+  beforeEach(() => {
+    saveCustomTemplates(null)
+  })
+
+  test('loadCustomTemplates：未保存时返回 null', () => {
+    expect(loadCustomTemplates()).toBeNull()
+  })
+
+  test('saveCustomTemplates：保存后可读回，清除后恢复 null', () => {
+    const tpl = { boss: [{ key: 'task', label: '任务', question: '这次做什么？', required: true }] }
+    saveCustomTemplates(tpl)
+    expect(loadCustomTemplates()).toEqual(tpl)
+    saveCustomTemplates(null)
+    expect(loadCustomTemplates()).toBeNull()
+  })
+
+  test('getEffectiveStepSchema：无自定义模板时返回内置默认', () => {
+    const steps = getEffectiveStepSchema('boss')
+    expect(steps.map((s) => s.key)).toEqual(['task', 'target', 'audience', 'platform', 'style', 'material', 'deadline'])
+  })
+
+  test('getEffectiveStepSchema：free 模式返回空数组', () => {
+    expect(getEffectiveStepSchema('free')).toEqual([])
   })
 })

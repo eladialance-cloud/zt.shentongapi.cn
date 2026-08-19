@@ -905,3 +905,8 @@
   max-height: 460px;
   overflow-y: auto;
 }
+
+.summaryValueInput {
+  flex: 1;
+  font-size: 13px;
+}

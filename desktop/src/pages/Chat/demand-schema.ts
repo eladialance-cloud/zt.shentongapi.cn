@@ -270,3 +270,105 @@ export function briefToAnswers(mode: DemandMode, brief: BriefItem): DemandAnswer
     deadline: brief.deadline ?? extractLabeledLine(goal, '截止：'),
   }
 }
+
+/* ===== 模板可配置（A）：自定义需求模板（localStorage 持久化） ===== */
+
+const TEMPLATE_STORAGE_KEY = 'demand-wizard-template:v1'
+
+export interface DemandTemplate {
+  boss?: StepItem[]
+  client?: StepItem[]
+}
+
+/** 读取自定义模板（非浏览器环境 / 未保存 / 数据损坏时返回 null） */
+export function loadCustomTemplates(): DemandTemplate | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(TEMPLATE_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as DemandTemplate
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+/** 保存自定义模板；传 null 或无有效内容时清除存储 */
+export function saveCustomTemplates(tpl: DemandTemplate | null): void {
+  if (typeof window === 'undefined') return
+  try {
+    if (!tpl || (!tpl.boss && !tpl.client)) {
+      window.localStorage.removeItem(TEMPLATE_STORAGE_KEY)
+    } else {
+      window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(tpl))
+    }
+  } catch {
+    /* 忽略配额等异常 */
+  }
+}
+
+/** 生效步骤表：自定义模板优先（仅接受合法键，空文案回退默认），否则内置默认 */
+export function getEffectiveStepSchema(mode: DemandMode): StepItem[] {
+  if (mode === 'free') return []
+  const key = mode === 'boss' ? 'boss' : 'client'
+  const custom = loadCustomTemplates()?.[key]
+  const validKeys = new Set(STEP_SCHEMAS[key].map((s) => s.key))
+  if (Array.isArray(custom) && custom.length > 0) {
+    const cleaned = custom
+      .filter((s) => s && validKeys.has(s.key))
+      .map((s) => {
+        const def = STEP_SCHEMAS[key].find((d) => d.key === s.key)
+        return {
+          key: s.key,
+          label: (s.label && s.label.trim()) || def?.label || s.key,
+          question: (s.question && s.question.trim()) || def?.question || '',
+          required: s.required ?? def?.required ?? false,
+        }
+      })
+    if (cleaned.length > 0) return cleaned
+  }
+  return STEP_SCHEMAS[key]
+}
+
+/* ===== 自然语言一句话收集（C）：从一段话中抽取平台/受众/风格/截止 ===== */
+
+const PLATFORM_KEYWORDS = ['小红书', '公众号', '视频号', '知乎', '抖音', '快手', '哔哩哔哩', 'B站', 'b站', '微博', '头条', '百家号']
+const STYLE_KEYWORDS = ['干货', '故事', '热点', '测评', '评测', '种草', '口播', '剧情', '搞笑', '教程', '知识', '情感', 'vlog', 'Vlog']
+
+/** 抽取一句话需求中的字段（启发式，无匹配的键不输出） */
+export function parseNaturalRequirement(text: string): Partial<DemandAnswers> {
+  const result: Partial<DemandAnswers> = {}
+  if (!text) return result
+  const trimmed = text.trim()
+  const platforms = PLATFORM_KEYWORDS.filter((k) => trimmed.includes(k))
+  if (platforms.length > 0) result.platform = [...new Set(platforms)].join('、')
+  const style = STYLE_KEYWORDS.find((k) => trimmed.includes(k))
+  if (style) result.style = style
+  const audience = trimmed.match(
+    /(\d{1,2}\s*[-~到至]\s*\d{1,2}\s*岁[\u4e00-\u9fa5]{0,10})|(\d{1,2}\s*岁[\u4e00-\u9fa5]{0,10})|((?:宝妈|妈妈|家长|学生|白领|职场人|年轻人|中老年|男性|女性|人群|群体|粉丝|用户)[\u4e00-\u9fa5]{0,10})/,
+  )
+  if (audience) result.audience = audience[0]
+  const deadline = trimmed.match(
+    /(今天|明天|后天|本周[一二三四五六日天内]{0,2}|下周[一二三四五六日天内]{0,2}|周[一二三四五六日天]|\d{1,2}月\d{1,2}日|\d{4}[-/年]\d{1,2}[-/月]\d{1,2}日?|\d+天后)/,
+  )
+  if (deadline) result.deadline = deadline[0]
+  return result
+}
+
+/** 从一句话需求中剥离已抽取字段，得到核心任务描述 */
+export function stripNaturalFields(text: string, parsed: Partial<DemandAnswers>): string {
+  if (!text) return ''
+  let rest = text
+  for (const v of [parsed.platform, parsed.style, parsed.audience, parsed.deadline]) {
+    if (v) rest = rest.split(v).join(' ')
+  }
+  return rest
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[，,、。；;]+$/, '')
+}
+
+/** 是否命中自然语言抽取（存在可填充字段） */
+export function hasNaturalFields(parsed: Partial<DemandAnswers>): boolean {
+  return Boolean(parsed.platform || parsed.style || parsed.audience || parsed.deadline)
+}

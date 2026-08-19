@@ -134,13 +134,13 @@
         "linux-x64": ""
       },
       "size": {
-        "win32-x64": 294917005,
+        "win32-x64": 285667421,
         "darwin-x64": 0,
         "darwin-arm64": 0,
         "linux-x64": 0
       },
       "sha256": {
-        "win32-x64": "326c704e9f346a885af24608293e6728f0e5edbe85e0f9eec80b56d1e8e6c7f5",
+        "win32-x64": "4bdfe7e47e3c5ba65c3c609ce9cbb78d5301bb5de1a7ae35e229da564e639aad",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""

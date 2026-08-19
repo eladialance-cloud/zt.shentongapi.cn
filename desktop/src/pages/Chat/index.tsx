@@ -16,6 +16,7 @@ import { MessageList } from './components/MessageList'
 import { MessageInput } from './components/MessageInput'
 import { MediaGenerationModal } from './components/MediaGenerationModal'
 import { DemandModeBar, DemandWizard } from './DemandMode'
+import { DemandTemplateEditor } from './DemandTemplateEditor'
 import { ConversationSettings } from './ConversationSettings'
 import { HistoryBriefs } from './HistoryBriefs'
 import {
@@ -73,6 +74,8 @@ export default function Chat() {
 
   // ===== 对话设置抽屉 / 历史简报 Modal =====
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [templateOpen, setTemplateOpen] = useState(false)
+  const [templateVersion, setTemplateVersion] = useState(0)
   const [historyOpen, setHistoryOpen] = useState(false)
 
   // ===== 当前会话与消息 =====
@@ -690,6 +693,7 @@ export default function Chat() {
             prefillTitle={historyPrefillTitle}
             prefill={historyPrefill}
             publishing={briefPublishing}
+            templateVersion={templateVersion}
             onPublish={(answers) => void handlePublishBrief(answers)}
           />
         )}
@@ -723,6 +727,7 @@ export default function Chat() {
             setGenerationType(type)
             setGenerationOpen(true)
           }}
+          onOpenDemandTemplate={() => setTemplateOpen(true)}
         />
 
         {/* ③ 历史简报 Modal（类型/状态筛选 → 详情 → 使用此简报） */}
@@ -730,6 +735,13 @@ export default function Chat() {
           open={historyOpen}
           onClose={() => setHistoryOpen(false)}
           onUseBrief={handleUseHistoryBrief}
+        />
+
+        {/* 需求模板设置（老板模式 / 客户会议模式自定义） */}
+        <DemandTemplateEditor
+          open={templateOpen}
+          onClose={() => setTemplateOpen(false)}
+          onSaved={() => setTemplateVersion((v) => v + 1)}
         />
       </div>
     </div>

@@ -11,11 +11,14 @@ import {
   DEMAND_MODE_DESC,
   DEMAND_MODE_LABELS,
   DEMAND_MODES,
-  getStepSchema,
+  getEffectiveStepSchema,
+  hasNaturalFields,
   isWizardMode,
   nextStep,
+  parseNaturalRequirement,
   prevStep,
   resumeIndex,
+  stripNaturalFields,
   validateStep,
 } from './demand-schema'
 import type { DemandAnswers, DemandMode } from './demand-schema'
@@ -58,6 +61,8 @@ interface DemandWizardProps {
   prefillTitle?: string | null
   /** 历史简报预填答案（只问差异点：定位首个缺失必填键） */
   prefill?: DemandAnswers | null
+  /** 模板版本（保存自定义模板后递增，用于刷新向导步骤） */
+  templateVersion?: number
   /** 发布中 */
   publishing?: boolean
   /** 发布简报（父组件负责 API + 离线兜底 + 成功提示） */
@@ -69,9 +74,10 @@ export function DemandWizard({
   prefillTitle,
   prefill,
   publishing = false,
+  templateVersion = 0,
   onPublish,
 }: DemandWizardProps) {
-  const steps = useMemo(() => getStepSchema(mode), [mode])
+  const steps = useMemo(() => getEffectiveStepSchema(mode), [mode, templateVersion])
   const [answers, setAnswers] = useState<DemandAnswers>(prefill || {})
   const [stepIndex, setStepIndex] = useState(() => resumeIndex(mode, prefill || {}))
   const [lines, setLines] = useState<WizardLine[]>([])
@@ -97,7 +103,11 @@ export function DemandWizard({
           : '需求信息已收集完整，请确认下方「需求汇总卡」后发布简报。',
       }])
     } else {
-      setLines([{ role: 'ai', text: historyHint + steps[idx].question }])
+      const hint =
+        idx === 0
+          ? '\n💡 也可以一句话说完需求（例如「为新品写 3 条小红书种草文案，25-40 岁妈妈，带货转化，本周四前」），我会自动拆分。'
+          : ''
+      setLines([{ role: 'ai', text: historyHint + steps[idx].question + hint }])
     }
   }, [mode, prefill, prefillTitle, steps])
 
@@ -107,7 +117,7 @@ export function DemandWizard({
     if (el) el.scrollTop = el.scrollHeight
   }, [lines, done])
 
-  /** 提交当前步答案并推进 */
+  /** 提交当前步答案并推进（命中自然语言字段时自动合并拆分） */
   const handleSubmit = () => {
     const step = steps[stepIndex]
     if (!step) return
@@ -116,11 +126,37 @@ export function DemandWizard({
       message.warning('「' + step.label + '」为必填项，请填写后继续')
       return
     }
+    const parsed = parseNaturalRequirement(value)
+    const hasParsed = hasNaturalFields(parsed)
     const nextAnswers = { ...answers, [step.key]: value }
+    if (hasParsed) {
+      // 自然语言合并：剥离已识别字段回填核心任务，其余字段预填
+      if (step.key === 'task') nextAnswers.task = stripNaturalFields(value, parsed)
+      for (const k of Object.keys(parsed) as Array<keyof DemandAnswers>) {
+        if (!nextAnswers[k]) nextAnswers[k] = parsed[k]
+      }
+    }
     setAnswers(nextAnswers)
     setLines((prev) => [...prev, { role: 'user', text: value }])
     setInput('')
-    advance(nextAnswers)
+    if (hasParsed) smartAdvance(nextAnswers)
+    else advance(nextAnswers)
+  }
+
+  /** 自然语言合并后：跳到首个缺失必填键；必填齐全直接汇总 */
+  const smartAdvance = (nextAnswers: DemandAnswers) => {
+    const next = resumeIndex(mode, nextAnswers)
+    if (next >= steps.length) {
+      setStepIndex(steps.length)
+      setDone(true)
+      setLines((prev) => [
+        ...prev,
+        { role: 'ai', text: '✅ 已从描述中识别需求信息，请确认下方「需求汇总卡」后发布简报。' },
+      ])
+    } else {
+      setStepIndex(next)
+      setLines((prev) => [...prev, { role: 'ai', text: steps[next].question }])
+    }
   }
 
   /** 跳过当前步（仅可跳过步显示按钮） */
@@ -157,18 +193,6 @@ export function DemandWizard({
       const next = [...prev]
       if (next.length && next[next.length - 1].role === 'ai') next.pop()
       return next
-    })
-  }
-
-  /** 汇总卡「修改需求」：回到最后一步继续问答 */
-  const handleModify = () => {
-    const last = Math.max(0, steps.length - 1)
-    setDone(false)
-    setStepIndex(last)
-    setLines((prev) => {
-      const next = [...prev]
-      if (next.length && next[next.length - 1].role === 'ai') next.pop()
-      return [...next, { role: 'ai', text: steps[last].question }]
     })
   }
 
@@ -215,18 +239,22 @@ export function DemandWizard({
           <div className={styles.summaryCard}>
             <div className={styles.summaryCardTitle}>📋 需求汇总卡</div>
             {steps.map((s) => {
-              const v = answers[s.key]
               return (
                 <div key={s.key} className={styles.summaryRow}>
                   <div className={styles.summaryLabel}>
                     {s.label}{s.required ? ' *' : ''}
                   </div>
-                  <div className={styles.summaryValue}>{v?.trim() || '（未填写）'}</div>
+                  <Input
+                    size="small"
+                    className={styles.summaryValueInput}
+                    value={answers[s.key] || ''}
+                    placeholder="未填写"
+                    onChange={(e) => setAnswers((prev) => ({ ...prev, [s.key]: e.target.value }))}
+                  />
                 </div>
               )
             })}
             <div className={styles.summaryActions}>
-              <Button icon={<SendOutlined />} onClick={handleModify}>修改需求</Button>
               <Button
                 type="primary"
                 icon={<SendOutlined />}

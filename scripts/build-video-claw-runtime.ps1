@@ -45,7 +45,7 @@ $py = Join-Path $stage "python\python.exe"
 if (-not (Test-Path $py)) { throw "python.exe 不存在: $py" }
 & $py -m pip --disable-pip-version-check --version | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "pip 不可用" }
-& $py -m pip install --disable-pip-version-check --no-warn-script-location numpy dashscope python-docx PyPDF2 cffi playwright
+& $py -m pip install --disable-pip-version-check --no-warn-script-location numpy dashscope python-docx PyPDF2 cffi playwright edge-tts
 if ($LASTEXITCODE -ne 0) { throw "pip install 失败，请检查网络后重试" }
 # 依赖冒烟：cffi 是 cryptography 的传递依赖，hermes 嵌入式 python 自带 cryptography 但缺 cffi，
 # pip 对已满足的依赖不会补装其传递依赖，导致 dashscope 导入崩溃（后端启动即退出）。

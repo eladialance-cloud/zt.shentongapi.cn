@@ -8,6 +8,7 @@ import type { SelectProps } from 'antd'
 import {
   ApiOutlined,
   DatabaseOutlined,
+  EditOutlined,
   ExperimentOutlined,
   GlobalOutlined,
   ReloadOutlined,
@@ -52,6 +53,8 @@ interface ConversationSettingsProps {
   onKnowledgeBaseChange: (id?: number) => void
   /** 打开文生图/文生视频弹窗 */
   onOpenGeneration: (type: 'image' | 'video') => void
+  /** 打开需求模板设置 */
+  onOpenDemandTemplate?: () => void
 }
 
 export function ConversationSettings({
@@ -71,6 +74,7 @@ export function ConversationSettings({
   onAgentChange,
   onKnowledgeBaseChange,
   onOpenGeneration,
+  onOpenDemandTemplate,
 }: ConversationSettingsProps) {
   /** 模型下拉选项（按模型类型分组 + 自定义模型） */
   const modelSelectProps: SelectProps = useMemo(() => {
@@ -265,6 +269,15 @@ export function ConversationSettings({
           </Button>
         </Space>
         <div className={styles.settingsTip}>生成结果以助手消息插入当前对话，并扣除相应积分</div>
+      </div>
+
+      {/* 需求模板（老板模式 / 客户会议模式步骤文案自定义） */}
+      <div className={styles.settingsSection}>
+        <div className={styles.settingsLabel}>需求模板</div>
+        <Button icon={<EditOutlined />} onClick={onOpenDemandTemplate}>
+          自定义老板模式 / 客户会议提问
+        </Button>
+        <div className={styles.settingsTip}>修改各步骤提问文案与必填规则，保存在本机</div>
       </div>
     </Drawer>
   )
