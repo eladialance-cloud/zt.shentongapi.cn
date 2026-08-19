@@ -149,6 +149,7 @@ class LlmProxyVideoClient:
         self,
         prompt: str,
         image_path: Optional[str] = None,
+        input_images: Optional[list[str]] = None,
         save_path: str = "",
         model: str = "wan2.7-i2v",
         duration: int = 5,
@@ -179,9 +180,17 @@ class LlmProxyVideoClient:
             payload["negative_prompt"] = str(negative_prompt)
         if seed is not None:
             payload["seed"] = int(seed)
-        image_data = self._encode_image(image_path)
-        if image_data:
-            payload["image_url"] = image_data
+        encoded_inputs: list[str] = []
+        for item in input_images or []:
+            encoded = self._encode_image(item)
+            if encoded and encoded not in encoded_inputs:
+                encoded_inputs.append(encoded)
+        if encoded_inputs:
+            payload["inputImages"] = encoded_inputs
+        else:
+            image_data = self._encode_image(image_path)
+            if image_data:
+                payload["image_url"] = image_data
 
         submitted = self._submit(payload)
         task_id = submitted["task_id"]

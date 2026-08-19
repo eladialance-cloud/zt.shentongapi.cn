@@ -1,4 +1,4 @@
-// Jest 全局设置 (H-12)
+﻿// Jest 全局设置 (H-12)
 //
 // 在每个测试文件执行前自动加载：
 // 1. 引入 @testing-library/jest-dom 扩展 expect 匹配器 (toBeInTheDocument 等)
@@ -58,6 +58,13 @@ const mockElectronAPI = {
     initialize: jest.fn(),
     isDegraded: jest.fn(() => false),
     close: jest.fn(),
+    briefs: {
+      list: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      remove: jest.fn(),
+      markSynced: jest.fn(),
+    },
   },
   service: {
     getStatus: jest.fn(),

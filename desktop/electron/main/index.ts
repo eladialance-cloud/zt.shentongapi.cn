@@ -1,4 +1,4 @@
-// Electron 主进程入口
+﻿// Electron 主进程入口
 
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import log from 'electron-log'
@@ -50,6 +50,7 @@ import {
 } from './local-market/local-content-manager'
 import type { MarketItemType } from '../shared/types'
 import type { ServiceName, SyncQueueItem, SyncQueueRow } from '../shared/types'
+import type { LocalBrief } from '../shared/types'
 
 // 日志落盘：主进程 console 输出同步写入 userData/logs/main.log，便于远程排查
 // 注意：必须先禁用 electron-log 的 console 传输，否则 log.* → console 传输 → console.*(已包装) → log.* 会递归；
@@ -434,6 +435,162 @@ function registerIpcHandlers(): void {
     } catch (err) {
       console.error('[ipc] syncQueue:exists failed:', err)
       return false
+    }
+  })
+
+  // ===== 本地需求单（一期 MVP：本地优先，降级返回空/空操作） =====
+  const BRIEF_COLUMNS = `
+  id, client_brief_id AS clientBriefId, user_id AS userId, title, goal,
+  target_audience AS targetAudience, platforms, style, deadline, status,
+  source_chat_session_id AS sourceChatSessionId, source_chat_summary AS sourceChatSummary,
+  cloud_synced AS cloudSynced, created_at AS createdAt, updated_at AS updatedAt
+`
+
+  const random8 = (): string => Math.random().toString(36).slice(2, 10)
+
+  interface BriefRow extends Omit<LocalBrief, 'platforms'> {
+    platforms: unknown
+  }
+
+  interface CreateBriefInput {
+    userId: number
+    title: string
+    goal?: string
+    targetAudience?: string
+    platforms?: string[]
+    style?: string
+    deadline?: string | null
+    status?: LocalBrief['status']
+    sourceChatSessionId?: number | null
+    sourceChatSummary?: string | null
+  }
+
+  type UpdateBriefPatch = Partial<
+    Pick<LocalBrief, 'title' | 'goal' | 'targetAudience' | 'platforms' | 'style' | 'deadline' | 'status'>
+  >
+
+  const deserializeBrief = (row: BriefRow): LocalBrief => ({
+    ...row,
+    platforms:
+      row.platforms == null
+        ? undefined
+        : typeof row.platforms === 'string'
+          ? JSON.parse(row.platforms)
+          : row.platforms
+  })
+
+  ipcMain.handle('db:briefs:list', async (): Promise<LocalBrief[]> => {
+    if (localDb.isDegraded()) return []
+    try {
+      const rows = await localDb.all<BriefRow>(
+        `SELECT ${BRIEF_COLUMNS} FROM local_briefs ORDER BY created_at DESC`
+      )
+      return rows.map(deserializeBrief)
+    } catch (err) {
+      console.error('[ipc] db:briefs:list failed:', err)
+      return []
+    }
+  })
+
+  ipcMain.handle('db:briefs:create', async (_event, input: CreateBriefInput): Promise<LocalBrief | null> => {
+    if (localDb.isDegraded()) return null
+    try {
+      const clientBriefId = `lb_${Date.now()}_${random8()}`
+      const result = await localDb.run(
+        `INSERT INTO local_briefs (client_brief_id, user_id, title, goal, target_audience, platforms, style, deadline, status, source_chat_session_id, source_chat_summary)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          clientBriefId,
+          input.userId,
+          input.title,
+          input.goal ?? null,
+          input.targetAudience ?? null,
+          input.platforms ? JSON.stringify(input.platforms) : null,
+          input.style ?? null,
+          input.deadline ?? null,
+          input.status ?? 'draft',
+          input.sourceChatSessionId ?? null,
+          input.sourceChatSummary ?? null
+        ]
+      )
+      const row = await localDb.get<BriefRow>(
+        `SELECT ${BRIEF_COLUMNS} FROM local_briefs WHERE id = ?`,
+        [result.lastID]
+      )
+      return row ? deserializeBrief(row) : null
+    } catch (err) {
+      console.error('[ipc] db:briefs:create failed:', err)
+      return null
+    }
+  })
+
+  ipcMain.handle('db:briefs:update', async (_event, id: number, patch: UpdateBriefPatch): Promise<LocalBrief | undefined> => {
+    if (localDb.isDegraded()) return undefined
+    try {
+      const sets: string[] = []
+      const params: unknown[] = []
+      if (patch.title !== undefined) {
+        sets.push('title = ?')
+        params.push(patch.title)
+      }
+      if (patch.goal !== undefined) {
+        sets.push('goal = ?')
+        params.push(patch.goal)
+      }
+      if (patch.targetAudience !== undefined) {
+        sets.push('target_audience = ?')
+        params.push(patch.targetAudience)
+      }
+      if (patch.platforms !== undefined) {
+        sets.push('platforms = ?')
+        params.push(JSON.stringify(patch.platforms))
+      }
+      if (patch.style !== undefined) {
+        sets.push('style = ?')
+        params.push(patch.style)
+      }
+      if (patch.deadline !== undefined) {
+        sets.push('deadline = ?')
+        params.push(patch.deadline)
+      }
+      if (patch.status !== undefined) {
+        sets.push('status = ?')
+        params.push(patch.status)
+      }
+      if (sets.length > 0) {
+        sets.push('updated_at = CURRENT_TIMESTAMP')
+        params.push(id)
+        await localDb.run(`UPDATE local_briefs SET ${sets.join(', ')} WHERE id = ?`, params)
+      }
+      const row = await localDb.get<BriefRow>(
+        `SELECT ${BRIEF_COLUMNS} FROM local_briefs WHERE id = ?`,
+        [id]
+      )
+      return row ? deserializeBrief(row) : undefined
+    } catch (err) {
+      console.error('[ipc] db:briefs:update failed:', err)
+      return undefined
+    }
+  })
+
+  ipcMain.handle('db:briefs:remove', async (_event, id: number): Promise<void> => {
+    if (localDb.isDegraded()) return
+    try {
+      await localDb.run('DELETE FROM local_briefs WHERE id = ?', [id])
+    } catch (err) {
+      console.error('[ipc] db:briefs:remove failed:', err)
+    }
+  })
+
+  ipcMain.handle('db:briefs:markSynced', async (_event, clientBriefId: string): Promise<void> => {
+    if (localDb.isDegraded()) return
+    try {
+      await localDb.run(
+        `UPDATE local_briefs SET cloud_synced = 1, updated_at = CURRENT_TIMESTAMP WHERE client_brief_id = ?`,
+        [clientBriefId]
+      )
+    } catch (err) {
+      console.error('[ipc] db:briefs:markSynced failed:', err)
     }
   })
 

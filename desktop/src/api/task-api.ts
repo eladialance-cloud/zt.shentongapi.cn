@@ -80,4 +80,30 @@ export function listN8nWorkflows(
     params: query,
   })
 }
-export default { listTasks, createTask, cancelTask, listN8nWorkflows }
+/** 统一任务源：team=团队 task=我的任务 hermes=Hermes 调用日志 */
+export type UnifiedTaskSource = 'team' | 'task' | 'hermes'
+
+/** 统一任务状态：todo=待执行 running=执行中 done=成功 failed=失败 cancelled=已取消 */
+export type UnifiedTaskStatus = 'todo' | 'running' | 'done' | 'failed' | 'cancelled'
+
+/** 统一任务项 GET /tasks/unified */
+export interface UnifiedTaskItem {
+  source: UnifiedTaskSource
+  sourceId: number
+  title: string
+  status: UnifiedTaskStatus
+  rawStatus: string
+  assignee?: string
+  createdAt: string
+  finishedAt?: string | null
+  briefId?: number | null
+}
+
+/** 统一任务列表 GET /tasks/unified?status=&source=&page=&pageSize= */
+export function getUnifiedTasks(
+  query: { status?: UnifiedTaskStatus; source?: UnifiedTaskSource; page?: number; pageSize?: number } = {},
+): Promise<TaskListResult<UnifiedTaskItem>> {
+  return httpClient.get<TaskListResult<UnifiedTaskItem>>('/tasks/unified', { params: query })
+}
+
+export default { listTasks, createTask, cancelTask, listN8nWorkflows, getUnifiedTasks }

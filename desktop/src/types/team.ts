@@ -65,6 +65,10 @@ export interface TeamTask {
   result?: unknown
   createdAt: string
   completedAt?: string
+  /** 关联需求单 ID（二期） */
+  briefId?: number
+  /** 关联执行记录（tasks.id 或 hermesTaskId，二期） */
+  executionRef?: string
 }
 
 /** 创建团队-成员 DTO（员工名称/职位/选择 Agent） */

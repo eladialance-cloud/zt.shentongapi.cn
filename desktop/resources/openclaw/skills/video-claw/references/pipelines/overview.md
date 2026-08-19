@@ -98,6 +98,11 @@ curl "http://localhost:8000/api/models?media_type=image&ability=reference_image&
 curl "http://localhost:8000/api/models?media_type=video&ability=action_transfer&verified_only=true"
 curl "http://localhost:8000/api/models?media_type=video&ability=digital_human&verified_only=true"
 ```
+> 兜底说明：平台只上架通用 i2v 等模型时，`action_transfer` / `digital_human` / `reference_image`
+> 等专属能力筛选会返回空；此时接口自动退回同媒体类型的已验证模型（视频模型如 `wan2.7-i2v`），
+> 可直接作为 pipeline 的 `video_model` / `image_model` 使用。
+> 平台能力边界（llm-proxy）：平台视频通道仅支持首帧图（`inputImages`），图片通道仅 t2i；
+> 动作迁移/数字人参考音频等能力需平台开放 `video_edit` / `image_edit` 通道并上架对应模型后生效。
 
 常用能力：
 

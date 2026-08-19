@@ -81,6 +81,8 @@ export interface PublishPlan {
   reviewStatus: "pending" | "approved" | "rejected"
   reviewComment?: string
   publishResult?: Record<string, unknown>
+  taskId?: number | null
+  assetIds?: number[] | null
   scheduledAt?: string
   publishedAt?: string
   userId: number
@@ -96,6 +98,8 @@ export interface CreatePublishPlanDto {
   targetPlatforms: string[]
   mode?: PublishMode
   scheduledAt?: string
+  taskId?: number
+  assetIds?: number[]
 }
 
 /** 渠道消息 */

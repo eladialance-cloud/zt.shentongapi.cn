@@ -50,9 +50,11 @@ const EMOTE_ACTIONS = [
 interface OfficeCanvasProps {
   /** 场景就绪后回调，供外部控制暂停/继续等 */
   onSceneReady?: (scene: OfficeScene) => void
+  /** 员工菜单「查看任务」回调：打开该成员的任务抽屉 */
+  onAgentOpenTasks?: (agentId: string, memberId?: number) => void
 }
 
-export default function OfficeCanvas({ onSceneReady }: OfficeCanvasProps) {
+export default function OfficeCanvas({ onSceneReady, onAgentOpenTasks }: OfficeCanvasProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<OfficeScene | null>(null)
   const readyRef = useRef(false)
@@ -199,6 +201,20 @@ export default function OfficeCanvas({ onSceneReady }: OfficeCanvasProps) {
 
           {!menu.pickingTarget ? (
             <>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ color: 'var(--color-text-tertiary)', fontSize: 11, marginBottom: 4 }}>任务</div>
+                <button
+                  type="button"
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: 6, fontSize: 13, color: 'var(--color-text-primary)' }}
+                  onClick={() => {
+                    onAgentOpenTasks?.(menu.agent.id, menu.agent.memberId);
+                    setMenu(null);
+                  }}
+                >
+                  查看任务
+                </button>
+              </div>
+
               <div style={{ marginBottom: 10 }}>
                 <div style={{ color: 'var(--color-text-tertiary)', fontSize: 11, marginBottom: 4 }}>互动</div>
                 <button

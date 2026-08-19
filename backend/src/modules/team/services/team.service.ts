@@ -339,6 +339,14 @@ export class TeamService {
       result: unknown;
     }>,
   ): Promise<TeamTaskEntity> {
+    // 归属校验：仅团队创建者可修改团队任务（防跨团队越权读写）
+    const team = await this.teamRepo.findOne({ where: { id: teamId } });
+    if (!team) {
+      BusinessException.throw(ErrorCode.NOT_FOUND, "团队不存在");
+    }
+    if (team.creatorId !== userId) {
+      BusinessException.throw(ErrorCode.FORBIDDEN, "仅团队创建者可修改任务");
+    }
     const task = await this.taskRepo.findOne({ where: { id: taskId, teamId } });
     if (!task) {
       BusinessException.throw(ErrorCode.NOT_FOUND, "任务不存在");

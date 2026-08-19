@@ -1,4 +1,4 @@
-// 路由配置
+﻿// 路由配置
 // 默认路由：onboarding_completed=false 重定向到 /onboarding，否则到 /dashboard
 // Task 34: 用户端已认证路由使用 MainLayout 包裹（顶栏+侧边栏+内容区+底栏）
 import { createHashRouter, Navigate } from "react-router-dom";
@@ -44,6 +44,11 @@ import TeamBoard from "@/pages/Team/Board";
 import Settings from "@/pages/Settings";
 import ServiceManager from "@/pages/ServiceManager";
 import VideoClaw from "@/pages/VideoClaw";
+import BriefsList from "@/pages/Briefs";
+import BriefsNew from "@/pages/Briefs/New";
+import BriefsDetail from "@/pages/Briefs/Detail";
+import TaskCenter from "@/pages/TaskCenter";
+import AssetsPage from "@/pages/Assets";
 import MainLayout from "@/components/MainLayout";
 import { useAuthStore } from "@/store";
 
@@ -83,6 +88,11 @@ const router = createHashRouter([
     ),
     children: [
       { path: "/dashboard", element: <Dashboard /> },
+      { path: "/briefs", element: <BriefsList /> },
+      { path: "/briefs/new", element: <BriefsNew /> },
+      { path: "/briefs/:id", element: <BriefsDetail /> },
+      { path: "/task-center", element: <TaskCenter /> },
+      { path: "/assets", element: <AssetsPage /> },
       { path: "/chat", element: <Chat /> },
       { path: "/credits", element: <Credits /> },
       { path: "/credits/recharge", element: <CreditsRecharge /> },

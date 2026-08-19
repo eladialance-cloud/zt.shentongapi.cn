@@ -46,6 +46,11 @@ export async function createPublishPlan(dto: CreatePublishPlanDto): Promise<Publ
   return httpClient.post<PublishPlan>("/channels/publish/plans", dto);
 }
 
+/** PATCH /channels/publish/plans/:id（草稿/待审核可改） */
+export async function updatePublishPlan(id: number, dto: Partial<CreatePublishPlanDto>): Promise<PublishPlan> {
+  return httpClient.patch<PublishPlan>(`/channels/publish/plans/${id}`, dto);
+}
+
 /** GET /channels/publish/plans/:id */
 export async function getPublishPlan(id: number): Promise<PublishPlan> {
   return httpClient.get<PublishPlan>(`/channels/publish/plans/${id}`);
@@ -77,5 +82,6 @@ export async function cancelPublish(id: number): Promise<PublishPlan> {
 export default {
   listChannels, createChannel, getChannel, updateChannel, deleteChannel,
   listPublishPlans, createPublishPlan, getPublishPlan,
+  updatePublishPlan,
   submitForReview, reviewPlan, executePublish, cancelPublish,
 };

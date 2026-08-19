@@ -774,7 +774,15 @@ def _merged_model_config() -> dict[str, Any]:
                     **_platform_capabilities(types),
                     **{key: value for key, value in platform_caps.items() if value is not None},
                 }
-                platform_caps.setdefault("api_contract_verified", True)
+            # 已知模型（ID 与静态表一致）：继承静态表的能力标签（action_transfer / digital_human /
+            # reference_image 等 pipeline 专属标签），平台只下发 type 时不会丢失这些能力。
+            static_meta = MODEL_CONFIG.get("models", {}).get(mid)
+            static_caps = static_meta.get("capabilities") if static_meta else None
+            if isinstance(static_caps, dict) and static_caps:
+                for key in ("ability_type", "ability_types", "adapter_ability_types"):
+                    if key in static_caps:
+                        platform_caps[key] = deepcopy(static_caps[key])
+            platform_caps.setdefault("api_contract_verified", True)
             models[mid] = {
                 "name": item.get("name") or mid,
                 "provider": "llmproxy",
@@ -860,6 +868,11 @@ def model_records(media_type: Optional[str] = None) -> list[dict[str, Any]]:
     return records
 
 
+# 平台模型仅按 type 提供通用能力标签时，以下 pipeline 专属能力会筛选落空；
+# 允许退回同媒体类型的已验证模型，保证动作迁移/数字人口播的「生成配置」仍能读到模型。
+_PIPELINE_FALLBACK_ABILITIES = {"action_transfer", "digital_human", "reference_image"}
+
+
 def list_api_models(
     media_type: Optional[str] = None,
     required_adapter_abilities: Optional[list[str]] = None,
@@ -870,7 +883,15 @@ def list_api_models(
     if verified_only:
         records = [record for record in records if record.get("api_contract_verified", True)]
     if required:
-        records = [record for record in records if required.intersection(model_ability_tags(record))]
+        matched = [record for record in records if required.intersection(model_ability_tags(record))]
+        if matched:
+            return matched
+        # 平台仅上架通用 i2v 等模型时，action_transfer / digital_human / reference_image 等
+        # pipeline 专属能力筛选会全部落空；退回同媒体类型的已验证模型，保证「生成配置」
+        # 仍能读取到视频/图片模型（最终以任务启动时的参数校验为准）。
+        if media_type and required.intersection(_PIPELINE_FALLBACK_ABILITIES):
+            return records
+        return []
     return records
 
 

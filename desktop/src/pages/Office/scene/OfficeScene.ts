@@ -225,20 +225,33 @@ export class OfficeScene {
     canvas.style.maxHeight = '100%'
   }
 
-  /** 动态替换员工名单（Hermes 任务关联团队时调用）：名字/颜色/任务跟随团队 */
-  setRoster(entries: Array<{ id: string; name: string; color: number; task?: string }>): void {
+  /** 动态替换员工名单（团队真实成员接入时调用）：名字/颜色/任务/memberId 跟随团队 */
+  setRoster(
+    entries: Array<{ id: string; name: string; color: number; task?: string; memberId?: number }>,
+  ): void {
     this.agents = this.agents.map((agent, i) => {
       const entry = entries[i];
       if (!entry) {
         return { ...agent, name: '待命', state: 'idle', currentTask: undefined };
       }
-      return {
+      const next: Agent = {
         ...agent,
         id: entry.id,
         name: entry.name,
         color: entry.color,
         currentTask: entry.task || agent.currentTask,
+        memberId: entry.memberId,
       };
+      // id 变化时把实体登记到新 key 下，保证实体/点击事件拿到最新数据
+      const entity = this.agentEntities.get(agent.id);
+      if (entity) {
+        if (entity.agentId !== next.id) {
+          this.agentEntities.delete(agent.id);
+          this.agentEntities.set(next.id, entity);
+        }
+        entity.apply(next);
+      }
+      return next;
     });
     this.pushDataToEntities();
     setOfficeAgents(this.agents);
@@ -464,7 +477,7 @@ export class OfficeScene {
         event.stopPropagation()
         this.options.onAgentClick?.({
           agent: { ...entity.data },
-          rosterNo: this.agents.findIndex((a) => a.id === agent.id) + 1,
+          rosterNo: this.agents.findIndex((a) => a.id === entity.data.id) + 1,
           clientX: event.clientX,
           clientY: event.clientY,
         })

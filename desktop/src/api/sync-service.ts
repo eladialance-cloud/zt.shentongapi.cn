@@ -16,6 +16,9 @@
 import { httpClient } from "./http-client";
 import { wsClient } from "./ws-client";
 import { offlineQueue } from "./offline-queue";
+import { createBrief } from "./brief-api";
+import type { CreateBriefPayload } from "./brief-api";
+import { markLocalBriefSynced } from "./local-brief-api";
 import type { SyncQueueItem, SyncQueueRow } from "@shared/types";
 
 /** 上行同步批量响应 */
@@ -79,6 +82,8 @@ class SyncService {
   private pulling = false;
   /** 是否已初始化 */
   private initialized = false;
+  /** ws/网络事件监听是否已绑定（跨 init/destroy 复用，避免登出重登重复绑定） */
+  private listenersBound = false;
 
   /** 事件处理器 */
   private handlers = new Map<string, Set<EventHandler>>();
@@ -124,14 +129,16 @@ class SyncService {
       });
     });
 
-    // 2. 监听 wsClient 推送事件 → 更新本地缓存
-    this.registerPushListeners();
+    // 2. ws 事件监听只绑定一次（跨 init/destroy 复用，避免重复监听）
+    if (!this.listenersBound) {
+      this.listenersBound = true;
+      this.registerPushListeners();
 
-    // 3. 监听 wsClient 增量拉取结果
-    wsClient.on("ws:sync:result", (data: unknown) => {
-      this.handlePullResult(data as SyncPullResponse);
-    });
-
+      // 3. 监听 wsClient 增量拉取结果
+      wsClient.on("ws:sync:result", (data: unknown) => {
+        this.handlePullResult(data as SyncPullResponse);
+      });
+    }
     // 4. 启动定时上行同步（每 5 分钟）
     this.syncTimer = setInterval(() => {
       this.pushPendingQueue().catch((err) => {
@@ -206,8 +213,40 @@ class SyncService {
     });
   }
 
-  /** 推送一批记录到云端 */
+  /** 推送一批记录到云端（brief 单独补建，其余走通用 /sync/batch 记账） */
   private async pushBatch(items: SyncQueueRow[]): Promise<void> {
+    const briefItems = items.filter((item) => item.entity_type === "brief");
+    const genericItems = items.filter((item) => item.entity_type !== "brief");
+
+    if (briefItems.length > 0) {
+      await this.pushBriefItems(briefItems);
+    }
+    if (genericItems.length > 0) {
+      await this.pushGenericItems(genericItems);
+    }
+  }
+
+  /**
+   * 推送 brief 待同步记录：逐条调云端 POST /briefs 补建。
+   * 与通用 /sync/batch 不同（batch 只记账不落地实体），brief 必须真实创建；
+   * 成功后队列置 synced + 本地 local_briefs 标 cloud_synced=1，防止重复补建。
+   */
+  private async pushBriefItems(items: SyncQueueRow[]): Promise<void> {
+    for (const item of items) {
+      try {
+        const payload = (item.payload ?? {}) as CreateBriefPayload;
+        await createBrief(payload);
+        await this.markSynced(item);
+        await markLocalBriefSynced(String(item.entity_id));
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        await this.markFailed(item, errorMsg);
+      }
+    }
+  }
+
+  /** 通用实体批量上报（/sync/batch，服务端按 clientTxnId 幂等去重记账） */
+  private async pushGenericItems(items: SyncQueueRow[]): Promise<void> {
     // 构造请求体（只取 SyncQueueItem 需要的字段）
     const payload: { items: SyncQueueItem[] } = {
       items: items.map((row) => ({

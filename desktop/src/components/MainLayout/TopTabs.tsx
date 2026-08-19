@@ -9,9 +9,7 @@ import type { MenuProps } from 'antd'
 import {
   HomeOutlined,
   MessageOutlined,
-  RobotOutlined,
   ApartmentOutlined,
-  ApiOutlined,
   BookOutlined,
   TeamOutlined,
   SettingOutlined,
@@ -19,6 +17,7 @@ import {
   AppstoreOutlined,
   ToolOutlined,
   SendOutlined,
+  MoneyCollectOutlined,
   EllipsisOutlined
 } from '@ant-design/icons'
 import styles from './styles.module.css'
@@ -31,22 +30,20 @@ interface TabItem {
 }
 
 const CORE_TABS: TabItem[] = [
-  { key: 'dashboard', label: '首页', icon: <HomeOutlined />, path: '/dashboard' },
+  { key: 'dashboard', label: '工作台', icon: <HomeOutlined />, path: '/dashboard' },
   { key: 'chat', label: '对话', icon: <MessageOutlined />, path: '/chat' },
-  { key: 'team', label: '团队', icon: <TeamOutlined />, path: '/team' },
   { key: 'office', label: 'AI办公室', icon: <DesktopOutlined />, path: '/office' },
-  { key: 'creator', label: 'Agent', icon: <RobotOutlined />, path: '/creator' },
-  { key: 'workflow', label: '工作流', icon: <ApartmentOutlined />, path: '/workflow' },
-  { key: 'channels', label: '渠道', icon: <SendOutlined />, path: '/channels' },
+  { key: 'market', label: '技能市场', icon: <AppstoreOutlined />, path: '/skill-market' },
 ]
 
 const MORE_TABS: TabItem[] = [
-  { key: 'plugins', label: '插件', icon: <ApiOutlined />, path: '/plugins' },
+  { key: 'team', label: '团队', icon: <TeamOutlined />, path: '/team' },
   { key: 'knowledge', label: '知识库', icon: <BookOutlined />, path: '/knowledge' },
-  { key: 'agents', label: 'Agent市场', icon: <AppstoreOutlined />, path: '/agent-market' },
-  { key: 'mcp-config', label: 'MCP配置', icon: <ToolOutlined />, path: '/mcp-market' },
-  { key: 'publish', label: '发布', icon: <SendOutlined />, path: '/publish' },
+  { key: 'channels', label: '渠道', icon: <SendOutlined />, path: '/channels' },
+  { key: 'workflow', label: '工作流', icon: <ApartmentOutlined />, path: '/workflow' },
+  { key: 'credits', label: '积分', icon: <MoneyCollectOutlined />, path: '/credits' },
   { key: 'settings', label: '设置', icon: <SettingOutlined />, path: '/settings' },
+  { key: 'services', label: '服务', icon: <ToolOutlined />, path: '/services' },
 ]
 
 export default function TopTabs() {

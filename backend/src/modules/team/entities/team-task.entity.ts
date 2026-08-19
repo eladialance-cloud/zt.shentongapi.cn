@@ -46,6 +46,14 @@ export class TeamTaskEntity {
   @Column({ name: "result", type: "json", nullable: true })
   result?: unknown;
 
+  /** 关联需求单 ID（briefs.id；T1 DB 已加列，实体补列） */
+  @Column({ name: "brief_id", type: "bigint", nullable: true })
+  briefId?: number;
+
+  /** 执行引用（需求单派发批次标识） */
+  @Column({ name: "execution_ref", length: 128, nullable: true })
+  executionRef?: string;
+
   @CreateDateColumn({ name: "created_at" })
   createdAt: Date;
 

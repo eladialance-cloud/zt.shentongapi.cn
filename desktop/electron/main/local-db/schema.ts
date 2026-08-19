@@ -1,5 +1,5 @@
 // 本地数据库 Schema 定义
-// 5 张本地表，字段命名与云端 MySQL 对齐（snake_case）
+// 6 张本地表，字段命名与云端 MySQL 对齐（snake_case）
 
 export const SCHEMA_SQL = `
 -- 1. 本地对话会话表（对应云端 chat_sessions）
@@ -86,10 +86,30 @@ CREATE TABLE IF NOT EXISTS local_sync_queue (
   synced_at DATETIME
 );
 
+-- 6. 本地需求单表（一期本地 MVP；二期同步云端 briefs）
+CREATE TABLE IF NOT EXISTS local_briefs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_brief_id VARCHAR(64) UNIQUE NOT NULL,
+  user_id BIGINT NOT NULL,
+  title VARCHAR(128) NOT NULL,
+  goal TEXT,
+  target_audience VARCHAR(255),
+  platforms JSON,
+  style VARCHAR(512),
+  deadline DATETIME,
+  status VARCHAR(16) DEFAULT 'draft',
+  source_chat_session_id BIGINT,
+  source_chat_summary TEXT,
+  cloud_synced BOOLEAN DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_local_chat_sessions_user_id ON local_chat_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_local_chat_messages_session_id ON local_chat_messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_local_workflow_executions_user_id ON local_workflow_executions(user_id);
 CREATE INDEX IF NOT EXISTS idx_local_plugin_call_logs_user_id ON local_plugin_call_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_local_sync_queue_status ON local_sync_queue(status);
+CREATE INDEX IF NOT EXISTS idx_local_briefs_user_id ON local_briefs(user_id);
 `

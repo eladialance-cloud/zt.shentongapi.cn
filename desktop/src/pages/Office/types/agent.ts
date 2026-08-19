@@ -46,6 +46,8 @@ export interface Agent {
   customAnimation?: string
   /** 简笔 fallback 左右翻转 */
   facing: 1 | -1
+  /** 关联的团队成员 ID（真实数据接入后用于打开任务抽屉） */
+  memberId?: number
   /** Spine 四向：走路时按位移更新 */
   viewFacing?: ChibiFacing
   mission?: DeskVisitMission

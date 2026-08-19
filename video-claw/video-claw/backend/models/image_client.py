@@ -215,18 +215,18 @@ class ImageClient:
             # --- GPT/Sora Logic ---
             try:
                 logger.info("ImageClient routed to GPT/llm-proxy: model=%s", model)
+                # 平台 OpenAI 兼容图片通道：参考图透传给 ImageGPT（extra_body.image_url），
+                # 是否生效取决于平台适配器（当前 llm-proxy /images/generations 仅 t2i）。
                 if image_paths:
-                    logger.warning("Sora/GPT model only supports Text-to-Image. Ignoring reference images.")
-                
-                # OpenAI uses 'x' separator, e.g. 1024x1024
-                # Attempt to map size if needed or just replace '*'
+                    logger.info("GPT/llm-proxy image with %d reference image(s)", len(image_paths))
                 gpt_size = size.replace('*', 'x') if size else "1024x1024"
 
                 path = self.gpt_client.generate_image(
                     prompt=prompt,
                     size=gpt_size,
                     model=model,
-                    save_dir=save_dir
+                    save_dir=save_dir,
+                    image_urls=image_paths,
                 )
                 
                 if path and os.path.exists(path):

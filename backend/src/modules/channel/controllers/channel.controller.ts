@@ -101,12 +101,32 @@ export class ChannelController {
       targetPlatforms: string[];
       mode?: "manual" | "scheduled" | "auto";
       scheduledAt?: Date;
+      taskId?: number;
+      assetIds?: number[];
     },
   ) {
     return this.publishService.createPlan(userId, body);
   }
 
-  @Get("publish/plans/:planId")
+  @Patch("publish/plans/:planId")
+  @ApiOperation({ summary: "更新发布计划（草稿/待审核可改）" })
+  updatePublishPlan(
+    @CurrentUser("userId") userId: number,
+    @Param("planId") planId: string,
+    @Body() body: {
+      title?: string;
+      content?: string;
+      mediaUrls?: string[];
+      targetPlatforms?: string[];
+      mode?: "manual" | "scheduled" | "auto";
+      scheduledAt?: Date;
+      taskId?: number;
+      assetIds?: number[];
+    },
+  ) {
+    return this.publishService.updatePlan(userId, Number(planId), body);
+  }
+
   @ApiOperation({ summary: "发布计划详情" })
   getPublishPlan(
     @CurrentUser("userId") userId: number,

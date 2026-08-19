@@ -1,0 +1,125 @@
+/* 需求单模块样式 — 与 Team/Channels 一致的 Kimi 风格（白/灰分层 · 1px 细边框 · 12px 圆角） */
+
+.pageContainer {
+  min-height: 100%;
+  background: var(--color-bg-root);
+  color: var(--color-text-primary);
+  padding: 24px 32px 48px;
+  overflow-y: auto;
+}
+.pageContainer::-webkit-scrollbar { width: 8px; }
+.pageContainer::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar-thumb);
+  border-radius: 4px;
+}
+
+/* ===== 页头 ===== */
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.pageTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.pageTitleText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pageTitleIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--color-brand-bg);
+  color: var(--color-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.headerActions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* ===== 按钮（Kimi 式：primary 实心蓝 / ghost 描边） ===== */
+.primaryBtn {
+  background: var(--color-brand) !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
+}
+.primaryBtn:hover:not(:disabled) {
+  background: var(--color-brand-hover) !important;
+}
+.backBtn {
+  background: transparent !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-secondary) !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
+}
+.backBtn:hover:not(:disabled) {
+  color: var(--color-text-primary) !important;
+  border-color: var(--color-border-hover) !important;
+  background: var(--color-bg-hover) !important;
+}
+
+/* ===== 列表 ===== */
+.tableCard {
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+/* ===== 新建 / 详情 ===== */
+.formCard,
+.detailCard {
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  padding: 24px;
+  max-width: 720px;
+}
+.detailCard { max-width: 960px; }
+.actionsRow { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 24px; }
+.hintText { font-size: 12px; color: var(--color-text-tertiary); margin-top: 12px; }
+/* ===== AI 拆解 ===== */
+.dispatchPending {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  margin-top: 16px;
+  border: 1px dashed var(--color-border);
+  border-radius: 12px;
+}
+.dispatchPendingText {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+.dispatchSection {
+  margin-top: 16px;
+}
+.dispatchTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 8px;
+}
+.dispatchDesc {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  margin-top: 2px;
+}

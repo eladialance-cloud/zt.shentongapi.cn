@@ -48,6 +48,23 @@ export class TaskController {
     return this.taskService.listTasks(user.userId, mergedQuery);
   }
 
+  @Get('unified')
+  @ApiOperation({ summary: '获取统一任务列表（三源合并）' })
+  async unified(
+    @CurrentUser() user: ICurrentUser,
+    @Query('status') status?: string,
+    @Query('source') source?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.taskService.getUnifiedTasks(user.userId, {
+      status,
+      source,
+      page: parseInt(page ?? '', 10) || undefined,
+      pageSize: parseInt(pageSize ?? '', 10) || undefined,
+    });
+  }
+
   @Get(':id')
   @ApiOperation({ summary: '获取任务详情' })
   async detail(

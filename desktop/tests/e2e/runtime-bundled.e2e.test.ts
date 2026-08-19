@@ -79,7 +79,7 @@ function makeManifest(version: string): RuntimeManifest {
 }
 
 /** 全部服务名 */
-const SERVICE_NAMES: ServiceName[] = ['n8n', 'openclaw', 'mcp', 'hermes']
+const SERVICE_NAMES: ServiceName[] = ['n8n', 'openclaw', 'mcp', 'hermes', 'video-claw']
 /** 平台-架构组合（downloadUrl / sha256 字段 key） */
 const PLATFORM_ARCH_KEYS = [
   'win32-x64',
@@ -92,7 +92,7 @@ const PLATFORM_KEYS = ['win32', 'darwin', 'linux']
 
 describe('SubTask 10.5 - 运行时解析与校验', () => {
   describe('Runtime Manifest', () => {
-    it('should load manifest.json with all 4 services', () => {
+    it('should load manifest.json with all 5 services', () => {
       // act
       const manifest = loadManifest()
 
@@ -106,7 +106,8 @@ describe('SubTask 10.5 - 运行时解析与校验', () => {
         'hermes',
         'mcp',
         'n8n',
-        'openclaw'
+        'openclaw',
+        'video-claw'
       ])
 
       // assert - 每个服务具备 version / entry / downloadUrl / sha256 字段
@@ -242,7 +243,8 @@ describe('SubTask 10.5 - 运行时解析与校验', () => {
           expect(entry[key].length).toBeGreaterThan(0)
         }
         // win32 入口是 <name>.exe.cmd 包装脚本（内部调用 node <name>.exe）
-        expect(entry.win32).toMatch(/\.exe\.cmd$/)
+        // video-claw uses video-claw.cmd (see runtime-manifest-embedded.ts)
+        expect(entry.win32).toMatch(/\.cmd$/)
       }
     })
 

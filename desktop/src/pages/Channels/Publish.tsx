@@ -1,15 +1,18 @@
-﻿// 发布管理页
-import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+﻿// 发布管理页（三期 3.2/3.4：列表 + 日历视图；审核 通过/打回/直接修改；创建可关联素材）
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Button, Card, Empty, Form, Input, Modal, Select,
-  Spin, Tag, message, DatePicker,
+  Button, Calendar, Card, DatePicker, Empty, Form, Input, Modal, Select,
+  Spin, Tabs, Tag, message,
 } from "antd";
+import type { Dayjs } from "dayjs";
+import dayjs from "dayjs";
 import {
   PlusOutlined, SendOutlined, CheckOutlined,
-  CloseOutlined, ReloadOutlined,
+  CloseOutlined, ReloadOutlined, EditOutlined,
 } from "@ant-design/icons";
 import * as channelApi from "@/api/channel-api";
+import { listMediaAssets } from "@/api/media-asset-api";
+import type { MediaAsset } from "@/api/media-asset-api";
 import type { PublishPlan, PublishStatus } from "@/types/channel";
 import styles from "../Team/styles.module.css";
 
@@ -36,12 +39,24 @@ function formatTime(v: unknown): string {
   return new Date(v as string).toLocaleString("zh-CN", { hour12: false });
 }
 
+interface PlanFormValues {
+  title: string;
+  content?: string;
+  targetPlatforms: string[];
+  mode?: "manual" | "scheduled" | "auto";
+  scheduledAt?: Dayjs | null;
+  assetIds?: number[];
+}
+
 export default function PublishList() {
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<PublishPlan[]>([]);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [form] = Form.useForm();
+  const [activeTab, setActiveTab] = useState("list");
+  const [modalOpen, setModalOpen] = useState(false);
+  /** null=创建；对象=直接修改该计划 */
+  const [editing, setEditing] = useState<PublishPlan | null>(null);
+  const [assetOptions, setAssetOptions] = useState<MediaAsset[]>([]);
+  const [form] = Form.useForm<PlanFormValues>();
   const [saving, setSaving] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -49,33 +64,72 @@ export default function PublishList() {
     try {
       const list = await channelApi.listPublishPlans();
       setPlans(list || []);
-    } catch (err) {
+    } catch {
       message.error("加载发布计划失败");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { void loadData(); }, [loadData]);
+  // 素材选项（供创建/编辑计划关联，最多取 200 条）
+  const loadAssets = useCallback(async () => {
+    try {
+      const res = await listMediaAssets({ archived: false, page: 1, pageSize: 200 });
+      setAssetOptions(res.list || []);
+    } catch {
+      setAssetOptions([]);
+    }
+  }, []);
 
-  const handleCreate = async () => {
+  useEffect(() => { void loadData(); }, [loadData]);
+  useEffect(() => { void loadAssets(); }, [loadAssets]);
+
+  const openCreate = () => {
+    setEditing(null);
+    form.resetFields();
+    form.setFieldsValue({ mode: "manual" });
+    setModalOpen(true);
+  };
+
+  const openEdit = (plan: PublishPlan) => {
+    setEditing(plan);
+    form.resetFields();
+    form.setFieldsValue({
+      title: plan.title,
+      content: plan.content,
+      targetPlatforms: plan.targetPlatforms,
+      mode: plan.mode,
+      scheduledAt: plan.scheduledAt ? dayjs(plan.scheduledAt) : null,
+      assetIds: plan.assetIds ?? undefined,
+    });
+    setModalOpen(true);
+  };
+
+  const handleSubmit = async () => {
     try {
       const vals = await form.validateFields();
       setSaving(true);
-      await channelApi.createPublishPlan({
+      const dto = {
         title: vals.title,
         content: vals.content,
         targetPlatforms: vals.targetPlatforms,
         mode: vals.mode || "manual",
         scheduledAt: vals.scheduledAt?.toISOString(),
-      });
-      message.success("发布计划创建成功");
-      setCreateOpen(false);
+        assetIds: vals.assetIds,
+      };
+      if (editing) {
+        await channelApi.updatePublishPlan(editing.id, dto);
+        message.success("发布计划已更新");
+      } else {
+        await channelApi.createPublishPlan(dto);
+        message.success("发布计划创建成功");
+      }
+      setModalOpen(false);
       form.resetFields();
       void loadData();
     } catch (err: any) {
       if (err?.errorFields) return;
-      message.error("创建失败: " + (err as Error).message);
+      message.error((editing ? "保存失败: " : "创建失败: ") + (err as Error).message);
     } finally {
       setSaving(false);
     }
@@ -111,88 +165,144 @@ export default function PublishList() {
     }
   };
 
+  // ===== 日历视图数据：按日期分组（定时/发布时间） =====
+  const plansByDate = useMemo(() => {
+    const map = new Map<string, PublishPlan[]>();
+    for (const plan of plans) {
+      const key = plan.status === "published" ? plan.publishedAt : plan.scheduledAt;
+      if (!key) continue;
+      const date = dayjs(key).format("YYYY-MM-DD");
+      const list = map.get(date) ?? [];
+      list.push(plan);
+      map.set(date, list);
+    }
+    return map;
+  }, [plans]);
+
+  const cellRender = (date: Dayjs, info: { type: string }) => {
+    if (info.type !== "date") return null;
+    const dayPlans = plansByDate.get(date.format("YYYY-MM-DD"));
+    if (!dayPlans?.length) return null;
+    return (
+      <ul style={{ margin: 0, padding: 0, listStyle: "none", fontSize: 12 }}>
+        {dayPlans.slice(0, 3).map((plan) => {
+          const st = STATUS_MAP[plan.status] || { label: plan.status, color: "default" };
+          return (
+            <li key={plan.id} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 2 }}>
+              <Tag color={st.color} style={{ marginRight: 4 }}>{st.label}</Tag>
+              {plan.title}
+            </li>
+          );
+        })}
+        {dayPlans.length > 3 && <li style={{ color: "var(--color-text-secondary)" }}>+{dayPlans.length - 3} 更多</li>}
+      </ul>
+    );
+  };
+
   return (
     <div className={styles.pageContainer}>
       <div className={styles.pageHeader}>
         <div className={styles.pageTitle}><span className={styles.pageTitleIcon}><SendOutlined /></span><span>发布管理</span></div>
         <div className={styles.headerActions}>
           <Button className={styles.backBtn} icon={<ReloadOutlined />} onClick={loadData}>刷新</Button>
-          <Button type="primary" className={styles.primaryBtn} icon={<PlusOutlined />}
-            onClick={() => { form.resetFields(); setCreateOpen(true); }}>
+          <Button type="primary" className={styles.primaryBtn} icon={<PlusOutlined />} onClick={openCreate}>
             创建发布计划
           </Button>
         </div>
       </div>
 
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={[
+          { key: "list", label: "列表" },
+          { key: "calendar", label: "日历" },
+        ]}
+        style={{ marginBottom: 16 }}
+      />
+
       <Spin spinning={loading}>
-        {plans.length === 0 && !loading ? (
-          <Empty description="暂无发布计划" style={{ marginTop: 80 }} />
-        ) : (
-          <div className={styles.teamGrid}>
-            {plans.map((plan) => {
-              const st = STATUS_MAP[plan.status] || { label: plan.status, color: "default" };
-              return (
-                <Card key={plan.id} className={styles.teamCard} bordered={false}>
-                  <div className={styles.teamCardTitle}>
-                    <SendOutlined style={{ marginRight: 6, color: "var(--color-brand)" }} />
-                    {plan.title}
-                  </div>
-                  <div className={styles.teamCardDesc}>
-                    {plan.content?.substring(0, 80) || "暂无内容"}
-                  </div>
-                  <div className={styles.teamCardMeta}>
-                    <Tag color={st.color}>{st.label}</Tag>
-                    <span>目标: {plan.targetPlatforms.join(", ")}</span>
-                    {plan.scheduledAt && <span>定时: {formatTime(plan.scheduledAt)}</span>}
-                  </div>
-                  <div
-                    className={styles.teamCardActions}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ flexWrap: "wrap", gap: 4 }}
-                  >
-                    {plan.status === "draft" && (
-                      <Button size="small" className={styles.taskMoveBtn}
-                        onClick={() => handleAction(plan, "submit")}>
-                        提交审核
-                      </Button>
-                    )}
-                    {plan.status === "pending_review" && (
-                      <>
+        {activeTab === "list" ? (
+          plans.length === 0 && !loading ? (
+            <Empty description="暂无发布计划" style={{ marginTop: 80 }} />
+          ) : (
+            <div className={styles.teamGrid}>
+              {plans.map((plan) => {
+                const st = STATUS_MAP[plan.status] || { label: plan.status, color: "default" };
+                return (
+                  <Card key={plan.id} className={styles.teamCard} bordered={false}>
+                    <div className={styles.teamCardTitle}>
+                      <SendOutlined style={{ marginRight: 6, color: "var(--color-brand)" }} />
+                      {plan.title}
+                    </div>
+                    <div className={styles.teamCardDesc}>
+                      {plan.content?.substring(0, 80) || "暂无内容"}
+                    </div>
+                    <div className={styles.teamCardMeta}>
+                      <Tag color={st.color}>{st.label}</Tag>
+                      <span>目标: {plan.targetPlatforms.join(", ")}</span>
+                      {plan.scheduledAt && <span>定时: {formatTime(plan.scheduledAt)}</span>}
+                      {plan.taskId != null && <Tag color="purple">关联任务 #{plan.taskId}</Tag>}
+                      {plan.assetIds && plan.assetIds.length > 0 && <Tag color="cyan">素材 {plan.assetIds.length} 个</Tag>}
+                    </div>
+                    <div
+                      className={styles.teamCardActions}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ flexWrap: "wrap", gap: 4 }}
+                    >
+                      {(plan.status === "draft" || plan.status === "pending_review") && (
+                        <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(plan)}>
+                          直接修改
+                        </Button>
+                      )}
+                      {plan.status === "draft" && (
+                        <Button size="small" className={styles.taskMoveBtn}
+                          onClick={() => handleAction(plan, "submit")}>
+                          提交审核
+                        </Button>
+                      )}
+                      {plan.status === "pending_review" && (
+                        <>
+                          <Button size="small" type="primary" className={styles.primaryBtn}
+                            icon={<CheckOutlined />} onClick={() => handleAction(plan, "approve")}>
+                            通过
+                          </Button>
+                          <Button size="small" danger icon={<CloseOutlined />}
+                            onClick={() => handleAction(plan, "reject")}>
+                            打回
+                          </Button>
+                        </>
+                      )}
+                      {plan.status === "approved" && (
                         <Button size="small" type="primary" className={styles.primaryBtn}
-                          icon={<CheckOutlined />} onClick={() => handleAction(plan, "approve")}>
-                          通过
+                          icon={<SendOutlined />} onClick={() => handleAction(plan, "execute")}>
+                          执行发布
                         </Button>
-                        <Button size="small" danger icon={<CloseOutlined />}
-                          onClick={() => handleAction(plan, "reject")}>
-                          拒绝
+                      )}
+                      {plan.status === "published" && (
+                        <Tag color="green">✅ 已发布 {plan.publishedAt ? formatTime(plan.publishedAt) : ""}</Tag>
+                      )}
+                      {plan.status !== "published" && plan.status !== "rejected" && (
+                        <Button size="small" onClick={() => handleAction(plan, "cancel")}>
+                          退回草稿
                         </Button>
-                      </>
-                    )}
-                    {plan.status === "approved" && (
-                      <Button size="small" type="primary" className={styles.primaryBtn}
-                        icon={<SendOutlined />} onClick={() => handleAction(plan, "execute")}>
-                        执行发布
-                      </Button>
-                    )}
-                    {plan.status === "published" && (
-                      <Tag color="green">✅ 已发布 {plan.publishedAt ? formatTime(plan.publishedAt) : ""}</Tag>
-                    )}
-                    {plan.status !== "published" && plan.status !== "rejected" && (
-                      <Button size="small" onClick={() => handleAction(plan, "cancel")}>
-                        退回草稿
-                      </Button>
-                    )}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )
+        ) : (
+          <Card bordered={false} style={{ borderRadius: 12, border: "1px solid var(--color-border)" }}>
+            <Calendar fullscreen cellRender={cellRender} />
+          </Card>
         )}
       </Spin>
 
-      <Modal title="创建发布计划" open={createOpen} onOk={handleCreate}
-        onCancel={() => { setCreateOpen(false); form.resetFields(); }}
-        confirmLoading={saving} okText="创建" cancelText="取消" destroyOnClose width={560}>
+      <Modal title={editing ? "直接修改发布计划" : "创建发布计划"} open={modalOpen} onOk={handleSubmit}
+        onCancel={() => { setModalOpen(false); form.resetFields(); }}
+        confirmLoading={saving} okText={editing ? "保存" : "创建"} cancelText="取消" destroyOnClose width={560}>
         <Form form={form} layout="vertical">
           <Form.Item label="标题" name="title" rules={[{ required: true, message: "请输入标题" }]}>
             <Input placeholder="如: AI办公工具种草笔记" />
@@ -202,6 +312,15 @@ export default function PublishList() {
           </Form.Item>
           <Form.Item label="目标平台" name="targetPlatforms" rules={[{ required: true, message: "请选择至少一个平台" }]}>
             <Select mode="multiple" options={PLATFORM_OPTIONS} placeholder="选择发布平台" />
+          </Form.Item>
+          <Form.Item label="关联素材" name="assetIds">
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="从素材库选择（图片/视频/音频/文件）"
+              options={assetOptions.map((a) => ({ value: a.id, label: `${a.title}（${a.assetType}）` }))}
+              optionFilterProp="label"
+            />
           </Form.Item>
           <Form.Item label="发布模式" name="mode" initialValue="manual">
             <Select options={[

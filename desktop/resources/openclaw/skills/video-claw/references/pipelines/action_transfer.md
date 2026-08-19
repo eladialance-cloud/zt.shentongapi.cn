@@ -87,6 +87,12 @@ curl "http://localhost:8000/api/tasks/{task_id}"
 ```bash
 curl "http://localhost:8000/api/models?media_type=video&ability=action_transfer&verified_only=true"
 ```
+> 兜底说明：若上述能力筛选返回空（平台未上架动作迁移专属模型），可退用任意已验证的视频模型
+> 平台能力边界（llm-proxy）：当前 `/v1/videos/generations` 只支持首帧图生视频（`inputImages`），
+> 暂不支持输入动作视频/参考视频。即使选到支持 `action_transfer` 的模型，也需要平台开放
+> `video_edit` 通道（`/videos/edits`）并上架 `wan2.7-videoedit` 等模型后才能获得真正的动作迁移效果；
+> 在此之前退用的 i2v 模型只会把参考图作为首帧生成普通图生视频。
+> （如 `wan2.7-i2v`）作为 `video_model`，生成效果以实际模型能力为准。
 
 ## 前端入口
 

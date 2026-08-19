@@ -3,8 +3,9 @@
 // 官方 = 管理后台发布；我的 = 用户安装/使用过的内容
 
 import { useState } from "react";
-import { Tabs } from "antd";
+import { Button, Tabs } from "antd";
 import { ShopOutlined } from "@ant-design/icons";
+import { useNavigate } from "react-router-dom";
 import PluginMarket from "@/pages/Plugin";
 import WorkflowList from "@/pages/Workflow";
 import AgentMarket from "@/pages/AgentMarket";
@@ -33,6 +34,7 @@ const CATEGORY_TABS: Array<{ key: Category; label: string }> = [
 ];
 
 export default function SkillMarket() {
+  const navigate = useNavigate();
   const [scope, setScope] = useState<Scope>("official");
   const [category, setCategory] = useState<Category>("plugin");
 
@@ -78,6 +80,10 @@ export default function SkillMarket() {
           </div>
           <span>技能市场</span>
         
+        </div>
+        <div className={styles.marketLinks}>
+          <Button type="link" onClick={() => navigate("/agent-market")}>Agent 市场</Button>
+          <Button type="link" onClick={() => navigate("/mcp-market")}>MCP 市场</Button>
         </div>
       </div>
 

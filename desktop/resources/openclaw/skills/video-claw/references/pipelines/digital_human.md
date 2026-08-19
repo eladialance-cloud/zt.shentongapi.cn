@@ -118,6 +118,12 @@ curl "http://localhost:8000/api/tasks/{task_id}"
 curl "http://localhost:8000/api/models?media_type=video&ability=digital_human&verified_only=true"
 curl "http://localhost:8000/api/models?media_type=image&ability=reference_image&verified_only=true"
 ```
+> 兜底说明：若上述能力筛选返回空（平台未上架数字人口播/参考图专属模型），视频模型可退用已验证的
+> 平台能力边界（llm-proxy）：当前视频通道只支持首帧图（`inputImages`），不支持参考音频/口型驱动；
+> 图片通道 `/images/generations` 目前按 t2i 处理（参考图字段被忽略）。因此数字人口播目前实际效果为
+> 「角色图首帧 + 本地 TTS 配音」，口型同步/数字人效果需要平台开放 `image_edit`、`video_edit` 通道
+> 并上架 `wan2.7-r2v` 等模型。
+> i2v 视频模型（如 `wan2.7-i2v`），图片模型可退用已验证的文生图模型（如 `wan2.7-image-pro`）。
 
 ## 前端入口
 

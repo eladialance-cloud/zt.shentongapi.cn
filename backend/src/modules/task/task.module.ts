@@ -6,6 +6,10 @@ import { TaskController } from './controllers/task.controller';
 import { AdminTaskController } from './controllers/admin-task.controller';
 import { TaskService } from './services/task.service';
 import { AdminAuthModule } from '../admin-auth/admin-auth.module';
+import { TeamEntity } from '../team/entities/team.entity';
+import { TeamMemberEntity } from '../team/entities/team-member.entity';
+import { TeamTaskEntity } from '../team/entities/team-task.entity';
+import { HermesCallLogEntity } from '../hermes/entities/hermes-call-log.entity';
 
 /**
  * 任务模块
@@ -14,7 +18,14 @@ import { AdminAuthModule } from '../admin-auth/admin-auth.module';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AgentTaskEntity, TaskOutputItemEntity]),
+    TypeOrmModule.forFeature([
+      AgentTaskEntity,
+      TaskOutputItemEntity,
+      TeamTaskEntity,
+      TeamMemberEntity,
+      TeamEntity,
+      HermesCallLogEntity,
+    ]),
     AdminAuthModule,
   ],
   controllers: [TaskController, AdminTaskController],

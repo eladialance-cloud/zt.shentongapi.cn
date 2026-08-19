@@ -1,4 +1,4 @@
-// 预加载脚本 - 通过 contextBridge 暴露安全 API 给渲染进程
+﻿// 预加载脚本 - 通过 contextBridge 暴露安全 API 给渲染进程
 // 启用 contextIsolation: true，nodeIntegration: false
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
@@ -18,6 +18,7 @@ import type {
   MarketItemDetail,
   OpenClawChatMessage,
   OpenClawChatMessagePayload,
+  LocalBrief,
   LlmIntegration,
   OpenClawToolCall,
   OpenClawChatDonePayload,
@@ -107,6 +108,13 @@ const electronAPI: ElectronAPI = {
     // 登出时关闭数据库（fire-and-forget）
     close: () => {
       ipcRenderer.send('db:close')
+    },
+    briefs: {
+      list: () => ipcRenderer.invoke('db:briefs:list') as Promise<LocalBrief[]>,
+      create: (input) => ipcRenderer.invoke('db:briefs:create', input) as Promise<LocalBrief | null>,
+      update: (id, patch) => ipcRenderer.invoke('db:briefs:update', id, patch) as Promise<LocalBrief | undefined>,
+      remove: (id) => ipcRenderer.invoke('db:briefs:remove', id) as Promise<void>,
+      markSynced: (clientBriefId) => ipcRenderer.invoke('db:briefs:markSynced', clientBriefId) as Promise<void>
     }
   },
   market: {

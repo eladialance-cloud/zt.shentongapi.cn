@@ -1,4 +1,4 @@
-// 知识库列表页 — Kimi 风格（v2.0）
+﻿// 知识库列表页 — Kimi 风格（v2.0）
 // 布局：顶部标题 + 新建按钮 + 知识库卡片网格
 // 调用 GET /knowledge/bases、POST /knowledge/bases、DELETE /knowledge/bases/:id
 
@@ -23,6 +23,7 @@ import type {
 } from "@/types/knowledge";
 import { useSystemStore } from "@/store/system";
 import { NetworkError } from "@/utils/errors";
+import { openAdminUrl } from "@/utils/admin-url";
 import styles from "./styles.module.css";
 
 /** 格式化时间 */
@@ -274,6 +275,13 @@ export default function KnowledgeList() {
                   />
                   <span className={styles.filterHint}>
                     管理后台按行业发布的官方知识库，可在聊天中选择挂载使用
+                  <a
+                    className={styles.filterHint}
+                    style={{ cursor: "pointer", textDecoration: "underline" }}
+                    onClick={() => openAdminUrl("/admin/content/knowledge-bases")}
+                  >
+                    管理官方库 →
+                  </a>
                   </span>
                 </div>
                 <Spin spinning={officialLoading}>

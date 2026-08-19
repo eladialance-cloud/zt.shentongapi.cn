@@ -1,4 +1,4 @@
-// SubTask 36.1: 客户端 ↔ 云端同步链路测试
+﻿// SubTask 36.1: 客户端 ↔ 云端同步链路测试
 //
 // 测试场景：
 // 1. 上行批量上报：150 条记录分 2 批（100+50），client_txn_id 幂等去重
@@ -37,17 +37,23 @@ jest.mock('@/api/http-client', () => ({
   }
 }))
 
-// Mock offlineQueue
+// Mock offlineQueue（enqueue 委托到 electronAPI，模拟真实 IPC 链路）
 jest.mock('@/api/offline-queue', () => ({
   offlineQueue: {
     isOnline: jest.fn(() => true),
     onOnline: jest.fn(),
-    enqueue: jest.fn()
+    enqueue: jest.fn(async (item: unknown) => {
+      const api = (globalThis as unknown as { electronAPI?: { syncQueue?: { enqueue?: (i: unknown) => unknown } } }).electronAPI
+      return api?.syncQueue?.enqueue ? api.syncQueue.enqueue(item) : undefined
+    })
   },
   default: {
     isOnline: jest.fn(() => true),
     onOnline: jest.fn(),
-    enqueue: jest.fn()
+    enqueue: jest.fn(async (item: unknown) => {
+      const api = (globalThis as unknown as { electronAPI?: { syncQueue?: { enqueue?: (i: unknown) => unknown } } }).electronAPI
+      return api?.syncQueue?.enqueue ? api.syncQueue.enqueue(item) : undefined
+    })
   }
 }))
 
@@ -316,14 +322,69 @@ describe('SubTask 36.1 - 客户端 ↔ 云端同步链路测试', () => {
       expect(payload.items).toHaveLength(5)
     })
 
+    describe('brief 离线补传', () => {
+      it('brief 待同步记录应调用 POST /briefs 补建并标记本地已同步', async () => {
+        // arrange
+        const briefRows = [generateSyncQueueRow(1, {
+          entity_type: 'brief',
+          entity_id: 'lb_abc',
+          client_txn_id: 'local-brief-lb_abc',
+          payload: { title: '离线简报', platforms: ['douyin'] }
+        })]
+        mockGetPending.mockResolvedValueOnce(briefRows).mockResolvedValueOnce([])
+        mockHttpPost.mockResolvedValue({ id: 1, title: '离线简报' })
+        const mockBriefMarkSynced = jest.fn().mockResolvedValue(undefined)
+        installElectronAPI({
+          syncQueue: {
+            getPending: mockGetPending,
+            updateStatus: mockUpdateStatus,
+            enqueue: jest.fn(),
+            exists: jest.fn().mockResolvedValue(false)
+          },
+          db: {
+            briefs: { markSynced: mockBriefMarkSynced }
+          }
+        } as unknown as ElectronAPI)
+
+        // act
+        await syncService.pushPendingQueue()
+
+        // assert：brief 走真实 POST /briefs，不走 /sync/batch
+        expect(mockHttpPost).toHaveBeenCalledTimes(1)
+        expect(mockHttpPost.mock.calls[0][0]).toBe('/briefs')
+        expect(mockHttpPost.mock.calls[0][1]).toEqual({ title: '离线简报', platforms: ['douyin'] })
+        // 队列置 synced + 本地 local_briefs 标 cloud_synced=1
+        expect(mockUpdateStatus).toHaveBeenCalledWith(1, 'synced', 0)
+        expect(mockBriefMarkSynced).toHaveBeenCalledWith('lb_abc')
+      })
+
+      it('brief 补建失败应保持 pending 并增加 retry_count', async () => {
+        // arrange
+        const briefRows = [generateSyncQueueRow(1, {
+          entity_type: 'brief',
+          entity_id: 'lb_abc',
+          payload: { title: 'x' }
+        })]
+        mockGetPending.mockResolvedValueOnce(briefRows).mockResolvedValueOnce([])
+        mockHttpPost.mockRejectedValue(new Error('cloud down'))
+
+        // act
+        await syncService.pushPendingQueue()
+
+        // assert：走重试队列，不丢数据
+        expect(mockHttpPost).toHaveBeenCalledTimes(1)
+        expect(mockUpdateStatus).toHaveBeenCalledWith(1, 'pending', 1, 'cloud down')
+      })
+    })
+
     it('整批请求失败时所有条目应保持 pending 并增加 retry_count', async () => {
       // arrange
       const rows = generateRows(1, 2)
       mockGetPending.mockResolvedValueOnce(rows).mockResolvedValueOnce([])
       mockHttpPost.mockRejectedValue(new Error('网络错误'))
 
-      // act
-      await expect(syncService.pushPendingQueue()).rejects.toThrow('网络错误')
+      // act（pushPendingQueue 内部捕获并 emit sync:push:error，不向调用方抛错）
+      await syncService.pushPendingQueue()
 
       // assert
       expect(mockUpdateStatus).toHaveBeenCalledTimes(2)

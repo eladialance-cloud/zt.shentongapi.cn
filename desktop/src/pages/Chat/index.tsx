@@ -4,12 +4,14 @@
 // 样式：赛博科技深色风格
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Button, Select, Tooltip, message } from 'antd'
 import type { SelectProps } from 'antd'
 import {
   RobotOutlined,
   ThunderboltOutlined,
   DatabaseOutlined,
+  FileTextOutlined,
   GlobalOutlined,
   ApiOutlined,
   ReloadOutlined
@@ -64,6 +66,8 @@ const GLOBAL_KB_VALUE = '__global__'
 const CHAT_ACTIVE_SESSION_KEY = 'chat:active-session'
 
 export default function Chat() {
+  const navigate = useNavigate()
+
   // ===== 当前会话与消息 =====
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -706,6 +710,21 @@ export default function Chat() {
               className={styles.selectorItem}
               popupMatchSelectWidth={false}
             />
+            <Tooltip title="把当前结论转为需求单">
+              <Button
+                type="text"
+                size="small"
+                icon={<FileTextOutlined />}
+                disabled={!activeSession}
+                onClick={() => {
+                  const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
+                  const summary = lastAssistant?.content?.slice(0, 200) || activeSession?.title || ''
+                  navigate(`/briefs/new?from=chat&session=${activeSession?.id ?? ''}&summary=${encodeURIComponent(summary)}`)
+                }}
+              >
+                转为需求
+              </Button>
+            </Tooltip>
           </div>
         </div>
 

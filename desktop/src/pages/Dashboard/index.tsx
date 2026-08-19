@@ -1,7 +1,7 @@
-// 工作台 - Kimi 风格（v5.0）
+﻿// 工作台 - Kimi 风格（v5.0）
 // 定位: AI 办公入口首页（主导航已移除「仪表盘」，Logo/根路由进入本页）
-// 结构: 问候区 + 4 统计卡 + (快捷入口 + 最近任务)
-// 数据: 积分余额/会话/团队/服务均接真实数据，失败降级为占位
+// 结构: 问候区 + 5 统计卡 + (快捷入口 + 最近任务)
+// 数据: 积分/会话/团队/服务/发布计划/云端需求单均接真实数据，失败降级为占位
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -13,24 +13,31 @@ import {
   BookOpen,
   UserPlus,
   Store,
-  Coins,
+  FileText,
+  Inbox,
+  Send,
   Server,
   Zap,
   Users,
+  BarChart3,
   type LucideIcon,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
-import { useCreditsStore } from '@/store/credits'
 import { useSystemStore } from '@/store/system'
-import { getBalance, getTransactions } from '@/api/credits-api'
+import { getTransactions } from '@/api/credits-api'
 import { listSessions } from '@/api/chat-api'
 import { listTeams } from '@/api/team-api'
 import { listServices } from '@/api/service-manager-api'
+import { listPublishPlans } from '@/api/channel-api'
+import { listBriefs } from '@/api/brief-api'
 import type { CreditTransaction } from '@/types/credits'
 import type { ChatSession } from '@/types/chat'
 import type { Team } from '@/types/team'
 import type { ServiceInfo } from '@/types/service-manager'
+import type { PublishPlan } from '@/types/channel'
+import type { BriefItem } from '@/api/brief-api'
 import styles from './styles.module.css'
+import { openAdminUrl } from '@/utils/admin-url'
 
 function pad(n: number): string {
   return n < 10 ? '0' + n : String(n)
@@ -79,6 +86,7 @@ interface QuickEntry {
 }
 
 const QUICK_ENTRIES: QuickEntry[] = [
+  { key: 'brief', label: '新建需求', icon: FileText, path: '/briefs/new' },
   { key: 'chat', label: '发起对话', icon: MessageSquare, path: '/chat' },
   { key: 'video', label: '生成视频', icon: Clapperboard, path: '/video-claw' },
   { key: 'workflow', label: '创建工作流', icon: Workflow, path: '/workflow' },
@@ -90,7 +98,6 @@ const QUICK_ENTRIES: QuickEntry[] = [
 export default function Dashboard() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
-  const balance = useCreditsStore((s) => s.balance)
   const backendAvailable = useSystemStore((s) => s.backendAvailable)
 
   const [loading, setLoading] = useState(true)
@@ -98,6 +105,8 @@ export default function Dashboard() {
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [teams, setTeams] = useState<Team[]>([])
   const [services, setServices] = useState<ServiceInfo[] | null>(null)
+  const [publishPlans, setPublishPlans] = useState<PublishPlan[]>([])
+  const [briefs, setBriefs] = useState<BriefItem[]>([])
 
   const loadAll = useCallback(async () => {
     setLoading(true)
@@ -105,8 +114,7 @@ export default function Dashboard() {
       const weekStart = new Date()
       weekStart.setDate(weekStart.getDate() - 6)
       const end = new Date()
-      const [, txnRes, sessionRes, teamRes, svcRes] = await Promise.all([
-        getBalance().catch(() => undefined),
+      const [txnRes, sessionRes, teamRes, svcRes, [publishPlanRes, briefRes]] = await Promise.all([
         getTransactions({
           type: 'settle',
           startDate: dateStr(weekStart),
@@ -116,6 +124,10 @@ export default function Dashboard() {
         listSessions({ pageSize: 8 }).catch(() => ({ list: [], total: 0 }) as never),
         listTeams().catch(() => [] as Team[]),
         listServices().catch(() => null as ServiceInfo[] | null),
+        Promise.all([
+          listPublishPlans().catch(() => [] as PublishPlan[]),
+          listBriefs({ status: 'draft', pageSize: 100 }).catch(() => ({ list: [], total: 0 }) as never),
+        ]),
       ])
       const txnList = (txnRes as { list?: CreditTransaction[] }).list || []
       const sessionList = (sessionRes as { list?: ChatSession[] }).list || []
@@ -123,6 +135,8 @@ export default function Dashboard() {
       setSessions(sessionList)
       setTeams(teamRes || [])
       setServices(svcRes)
+      setPublishPlans(publishPlanRes)
+      setBriefs((briefRes as { list?: BriefItem[] }).list || [])
     } catch (err) {
       console.error('[Workbench] load failed:', err)
     } finally {
@@ -134,10 +148,6 @@ export default function Dashboard() {
     void loadAll()
   }, [loadAll])
 
-  // 余额实时刷新（登录后自动拉取）
-  useEffect(() => {
-    void useCreditsStore.getState().fetchBalance()
-  }, [])
 
   /** 今日 AI 任务数（今日结算笔数） */
   const todayTasks = useMemo(() => {
@@ -155,6 +165,32 @@ export default function Dashboard() {
   const memberTotal = useMemo(
     () => teams.reduce((sum, t) => sum + (Number(t.memberCount) || 0), 0),
     [teams],
+  )
+
+  /** 待我处理：待审核发布计划 + 云端草稿需求单 */
+  const pendingReview = useMemo(
+    () =>
+      (publishPlans ?? []).filter(
+        (p) => p.status === 'pending_review' || p.reviewStatus === 'pending',
+      ).length,
+    [publishPlans],
+  )
+
+  const draftBriefs = useMemo(
+    () => (briefs ?? []).filter((b) => b.status === 'draft').length,
+    [briefs],
+  )
+
+  const todoCount = pendingReview + draftBriefs
+
+  /** 今日发布：scheduledAt 是今天的发布计划 */
+  const todayPublishes = useMemo(
+    () =>
+      (publishPlans ?? []).filter((p) => {
+        const d = new Date(p.scheduledAt ?? '')
+        return !Number.isNaN(d.getTime()) && dayKey(d) === dayKey(new Date())
+      }).length,
+    [publishPlans],
   )
 
   /** 最近任务（取最近会话，按来源打标签） */
@@ -200,58 +236,25 @@ export default function Dashboard() {
       <div className={styles.stats}>
         <div
           className={styles.statCard}
-          onClick={() => navigate('/credits')}
+          onClick={() => navigate('/publish')}
           role="button"
           tabIndex={0}
         >
           <span className={styles.statIcon}>
-            <Coins size={20} />
+            <Inbox size={20} />
           </span>
           <div className={styles.statInfo}>
-            <div className={styles.statLabel}>积分余额</div>
-            <div className={styles.statValue}>{balance.toLocaleString()}</div>
-            <div className={styles.statSub}>点击前往积分中心</div>
-          </div>
-        </div>
-
-        <div
-          className={styles.statCard}
-          onClick={() => navigate('/services')}
-          role="button"
-          tabIndex={0}
-        >
-          <span className={styles.statIcon}>
-            <Server size={20} />
-          </span>
-          <div className={styles.statInfo}>
-            <div className={styles.statLabel}>运行中服务</div>
-            <div className={styles.statValue}>
-              {runningServices != null ? (
-                <>
-                  {runningServices}
-                  <span className={styles.statValueSuffix}>/ {services?.length ?? 0}</span>
-                </>
-              ) : backendAvailable ? (
-                '在线'
-              ) : (
-                '—'
-              )}
-            </div>
+            <div className={styles.statLabel}>待我处理</div>
+            <div className={styles.statValue}>{todoCount}</div>
             <div className={styles.statSub}>
-              {runningServices != null
-                ? runningServices > 0
-                  ? '服务运行正常'
-                  : '暂无运行中服务'
-                : backendAvailable
-                  ? '后端服务已连接'
-                  : '点击查看服务状态'}
+              {pendingReview} 条待审核发布 + {draftBriefs} 条草稿需求
             </div>
           </div>
         </div>
 
         <div
           className={styles.statCard}
-          onClick={() => navigate('/credits/consumption')}
+          onClick={() => navigate('/task-center')}
           role="button"
           tabIndex={0}
         >
@@ -259,9 +262,25 @@ export default function Dashboard() {
             <Zap size={20} />
           </span>
           <div className={styles.statInfo}>
-            <div className={styles.statLabel}>今日 AI 任务</div>
+            <div className={styles.statLabel}>进行中</div>
             <div className={styles.statValue}>{todayTasks}</div>
-            <div className={styles.statSub}>查看任务明细</div>
+            <div className={styles.statSub}>按今日结算估算</div>
+          </div>
+        </div>
+
+        <div
+          className={styles.statCard}
+          onClick={() => navigate('/publish')}
+          role="button"
+          tabIndex={0}
+        >
+          <span className={styles.statIcon}>
+            <Send size={20} />
+          </span>
+          <div className={styles.statInfo}>
+            <div className={styles.statLabel}>今日发布</div>
+            <div className={styles.statValue}>{todayPublishes}</div>
+            <div className={styles.statSub}>查看发布计划</div>
           </div>
         </div>
 
@@ -275,12 +294,56 @@ export default function Dashboard() {
             <Users size={20} />
           </span>
           <div className={styles.statInfo}>
-            <div className={styles.statLabel}>团队成员</div>
+            <div className={styles.statLabel}>团队状态</div>
             <div className={styles.statValue}>{memberTotal}</div>
             <div className={styles.statSub}>{teams.length} 个团队</div>
           </div>
         </div>
+
+        <div
+          className={styles.statCard}
+          onClick={() => navigate('/services')}
+          role="button"
+          tabIndex={0}
+        >
+          <span className={styles.statIcon}>
+            <Server size={20} />
+          </span>
+          <div className={styles.statInfo}>
+            <div className={styles.statLabel}>服务健康</div>
+            <div className={styles.statValue}>
+              {runningServices != null ? (
+                <>
+                  {runningServices}
+                  <span className={styles.statValueSuffix}>/ {services?.length ?? 0}</span>
+                </>
+              ) : backendAvailable ? (
+                '在线'
+              ) : (
+                '—'
+              )}
+            </div>
+            <div className={styles.statSub}>查看服务</div>
+          </div>
+        </div>
+        <div
+          className={styles.statCard}
+          onClick={() => openAdminUrl("/admin/stats")}
+          role="button"
+          tabIndex={0}
+        >
+          <span className={styles.statIcon}>
+            <BarChart3 size={20} />
+          </span>
+          <div className={styles.statInfo}>
+            <div className={styles.statLabel}>数据分析</div>
+            <div className={styles.statValue}>报表</div>
+            <div className={styles.statSub}>打开管理后台完整报表</div>
+          </div>
+        </div>
+
       </div>
+
 
       {showSkeleton ? (
         <div className={styles.loadingWrap}>

@@ -1,4 +1,4 @@
-// SubTask 36.2: 计费全链路测试
+﻿// SubTask 36.2: 计费全链路测试
 //
 // 测试场景：
 // 1. freeze → settle → refund 完整链路
@@ -317,7 +317,7 @@ describe('SubTask 36.2 - 计费全链路测试', () => {
       // assert
       const sumAmount = state.transactions.reduce((sum, t) => sum + t.amount, 0)
       const balanceChange = finalBalance - initialBalance
-      expect(sumAmount).toBe(balanceChange) // -10 + (-8) = -8? No: -10 + 2 = -8
+      // freeze 是占用（hold）非真实消费，sumAmount 不能直接与 balanceChange 对等，见下方 realSum 校验
       // freeze: -10, settle: -8 → sum = -18? No.
       // Let me re-check: freeze amount = -10, settle amount = -actualCost = -8
       // sum = -10 + (-8) = -18. But balanceChange = 92 - 100 = -8.

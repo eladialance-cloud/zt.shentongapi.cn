@@ -1,4 +1,4 @@
-// 应用根组件 - 全局配置与路由挂载
+﻿// 应用根组件 - 全局配置与路由挂载
 // v2：Kimi 风格主题应用 — system/light/dark + data-theme 驱动 CSS 变量
 
 import { useEffect, useMemo, useState } from 'react'
@@ -9,6 +9,7 @@ import router from '@/router'
 import { useSettingsStore, resolveThemeMode, systemPrefersDark } from '@/store/settings'
 import { useAuthStore } from '@/store/auth'
 import { fetchLlmProxyKey } from '@/api/chat-api'
+import { syncService } from '@/api/sync-service'
 import { lightTheme, darkTheme } from '@/theme/antd-theme'
 
 export default function App() {
@@ -41,8 +42,17 @@ export default function App() {
     void initialize()
   }, [initialize])
 
-  // 登录态变化 → 同步用户 llm-proxy 静态 Key 到主进程（注入 OpenClaw，供应商 Key 在服务器）
+  // 登录态变化 → 启动/停止离线同步服务（网络恢复自动补传 local_sync_queue）
   const accessToken = useAuthStore((s) => s.accessToken)
+  useEffect(() => {
+    if (accessToken) {
+      syncService.init()
+    } else {
+      syncService.destroy()
+    }
+  }, [accessToken])
+
+  // 登录态变化 → 同步用户 llm-proxy 静态 Key 到主进程（注入 OpenClaw，供应商 Key 在服务器）
   useEffect(() => {
     let cancelled = false
     const sync = async () => {

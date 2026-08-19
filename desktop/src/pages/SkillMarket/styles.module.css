@@ -44,6 +44,12 @@
   flex-shrink: 0;
 }
 
+.marketLinks {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .content {
   min-height: 320px;
 }

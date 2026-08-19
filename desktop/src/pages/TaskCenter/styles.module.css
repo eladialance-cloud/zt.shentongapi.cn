@@ -1,0 +1,122 @@
+/* 统一任务中心 —— Kimi 风格（白/灰分层 · 1px 细边框 · 12px 圆角） */
+
+.pageContainer {
+  min-height: 100%;
+  background: var(--color-bg-root);
+  color: var(--color-text-primary);
+  padding: 24px 32px 48px;
+  overflow-y: auto;
+}
+.pageContainer::-webkit-scrollbar { width: 8px; }
+.pageContainer::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar-thumb);
+  border-radius: 4px;
+}
+
+/* ===== 页头 ===== */
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.pageTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.pageTitleIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--color-brand-bg);
+  color: var(--color-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.headerActions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.ghostBtn {
+  background: transparent !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text-secondary) !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
+}
+.ghostBtn:hover:not(:disabled) {
+  color: var(--color-text-primary) !important;
+  border-color: var(--color-border-hover) !important;
+  background: var(--color-bg-hover) !important;
+}
+
+/* ===== 筛选栏 ===== */
+.filterBar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.filterItem { display: flex; align-items: center; gap: 8px; }
+.filterLabel { font-size: 12px; color: var(--color-text-tertiary); }
+.filterCount { font-size: 12px; color: var(--color-text-tertiary); margin-left: auto; }
+
+/* ===== 表格卡片 ===== */
+.tableCard {
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.selectedRow { background: var(--color-brand-light) !important; }
+.selectedRow:hover > td { background: var(--color-brand-light) !important; }
+
+/* ===== 任务流面板 ===== */
+.flowCard {
+  margin-top: 16px;
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  padding: 16px 20px 20px;
+}
+.flowHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.flowTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.flowSelected {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.flowSelectedTitle {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.flowSelectedMeta { color: var(--color-text-tertiary); }
+.flowEmpty { padding: 24px 0; }

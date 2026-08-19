@@ -1,0 +1,141 @@
+﻿/* 素材库模块样式 — 与 Briefs/Team 一致的 Kimi 风格 */
+
+.pageContainer {
+  min-height: 100%;
+  background: var(--color-bg-root);
+  color: var(--color-text-primary);
+  padding: 24px 32px 48px;
+  overflow-y: auto;
+}
+.pageContainer::-webkit-scrollbar { width: 8px; }
+.pageContainer::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar-thumb);
+  border-radius: 4px;
+}
+
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.pageTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.pageTitleIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--color-brand-bg);
+  color: var(--color-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.headerActions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.primaryBtn {
+  background: var(--color-brand) !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
+}
+.primaryBtn:hover:not(:disabled) {
+  background: var(--color-brand-hover) !important;
+}
+.backBtn {
+  border-radius: 8px !important;
+  border: 1px solid var(--color-border) !important;
+  background: var(--color-bg-card) !important;
+}
+
+.filterCard {
+  border-radius: 12px !important;
+  border: 1px solid var(--color-border) !important;
+  background: var(--color-bg-card) !important;
+  margin-bottom: 16px;
+  box-shadow: none !important;
+}
+.tableCard {
+  border-radius: 12px !important;
+  border: 1px solid var(--color-border) !important;
+  background: var(--color-bg-card) !important;
+  box-shadow: none !important;
+}
+
+/* ===== 网格 ===== */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+.assetCard {
+  border-radius: 12px !important;
+  border: 1px solid var(--color-border) !important;
+  background: var(--color-bg-card) !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+.assetCard :global(.ant-card-body) {
+  padding: 0;
+}
+.previewBox {
+  height: 140px;
+  background: var(--color-bg-hover);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.audioPreview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  width: 100%;
+}
+.fileName {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.assetMeta {
+  padding: 10px 12px 12px;
+}
+.assetTitle {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detailPreview {
+  max-height: 320px;
+  overflow: auto;
+  background: var(--color-bg-hover);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}

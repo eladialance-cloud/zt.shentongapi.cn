@@ -52,4 +52,10 @@ export class PublishPlanEntity extends BaseEntity {
   @Index()
   @Column({ name: "user_id", type: "bigint" })
   userId: number;
+
+  @Column({ name: "task_id", type: "bigint", nullable: true })
+  taskId?: number;
+
+  @Column({ name: "asset_ids", type: "json", nullable: true })
+  assetIds?: number[];
 }

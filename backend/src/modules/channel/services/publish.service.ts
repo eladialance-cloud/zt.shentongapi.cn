@@ -33,6 +33,8 @@ export class PublishService {
       targetPlatforms: string[];
       mode?: "manual" | "scheduled" | "auto";
       scheduledAt?: Date;
+      taskId?: number;
+      assetIds?: number[];
     },
   ): Promise<PublishPlanEntity> {
     const plan = this.planRepo.create({
@@ -45,7 +47,36 @@ export class PublishService {
       status: "draft",
       reviewStatus: "pending",
       scheduledAt: data.scheduledAt,
+      taskId: data.taskId,
+      assetIds: data.assetIds,
     });
+    return this.planRepo.save(plan);
+  }
+
+  async updatePlan(
+    userId: number,
+    planId: number,
+    data: {
+      title?: string;
+      content?: string;
+      mediaUrls?: string[];
+      targetPlatforms?: string[];
+      mode?: "manual" | "scheduled" | "auto";
+      scheduledAt?: Date;
+      taskId?: number;
+      assetIds?: number[];
+    },
+  ): Promise<PublishPlanEntity> {
+    const plan = await this.getPlan(userId, planId);
+    if (plan.status === "published") throw new Error("已发布的计划不可修改");
+    if (data.title !== undefined) plan.title = data.title;
+    if (data.content !== undefined) plan.content = data.content;
+    if (data.mediaUrls !== undefined) plan.mediaUrls = data.mediaUrls;
+    if (data.targetPlatforms !== undefined) plan.targetPlatforms = data.targetPlatforms;
+    if (data.mode !== undefined) plan.mode = data.mode;
+    if (data.scheduledAt !== undefined) plan.scheduledAt = data.scheduledAt;
+    if (data.taskId !== undefined) plan.taskId = data.taskId;
+    if (data.assetIds !== undefined) plan.assetIds = data.assetIds;
     return this.planRepo.save(plan);
   }
 

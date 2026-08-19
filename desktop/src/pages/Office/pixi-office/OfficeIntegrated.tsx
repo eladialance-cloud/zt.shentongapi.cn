@@ -4,7 +4,7 @@
 // 全部暂停/继续 = 暂停/恢复画布场景（ticker）
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, Empty, Form, Input, Modal, Select, Tag, message } from 'antd'
+import { Button, Drawer, Empty, Form, Input, Modal, Select, Tag, message } from 'antd'
 import OfficeCanvas from './OfficeCanvas'
 import styles from './office.module.css'
 import type { OfficeScene } from '../scene/OfficeScene'
@@ -17,9 +17,18 @@ import {
   type TaskType,
 } from '@/api/task-api'
 import { listInstances as listHermesInstances, getCallLogs } from '@/api/hermes-api'
-import { listSelectableAgents, listMembers } from '@/api/team-api'
-import type { SelectableAgent } from '@/types/team'
+import { listSelectableAgents } from '@/api/team-api'
+import type { SelectableAgent, TeamMember, TeamTask, TeamTaskStatus, TeamTaskPriority } from '@/types/team'
 import { AGENT_ROSTER } from '../scene/layout/officeLayout'
+import {
+  refreshOfficeData,
+  membersToRoster,
+  getOfficeMembers,
+  getOfficeMemberByAgentId,
+  getOfficeTasksByMemberId,
+  getOfficeTeamId,
+} from '../store/officeStore'
+import { updateOfficeTaskStatus } from '../services/officeBridge'
 
 // ─── 展示映射 ───
 
@@ -38,6 +47,33 @@ const TASK_TYPE_LABEL: Record<TaskType, string> = {
   multi_agent: '多智能体',
   codex: 'Codex',
 };
+
+/** 团队任务（team_tasks）状态展示映射 */
+const TEAM_TASK_STATUS_META: Record<TeamTaskStatus, { label: string; color: string }> = {
+  pending: { label: '待处理', color: 'orange' },
+  in_progress: { label: '进行中', color: 'blue' },
+  completed: { label: '已完成', color: 'green' },
+  failed: { label: '失败', color: 'red' },
+};
+
+const TEAM_TASK_PRIORITY_LABEL: Record<TeamTaskPriority, string> = {
+  low: '低',
+  medium: '中',
+  high: '高',
+  urgent: '紧急',
+};
+
+/** 团队任务状态流转：pending→in_progress→completed，failed 可重试为 pending */
+const TASK_STATUS_ACTIONS: Record<
+  TeamTaskStatus,
+  { next: TeamTaskStatus; label: string } | null
+> = {
+  pending: { next: 'in_progress', label: '开始处理' },
+  in_progress: { next: 'completed', label: '标记完成' },
+  completed: null,
+  failed: { next: 'pending', label: '重试' },
+};
+
 
 /** 三源统一任务流条目 */
 interface OfficeFeedItem {
@@ -72,14 +108,6 @@ const AGENT_STATE_LABEL: Record<string, string> = {
   talking: '对话中',
 }
 
-function hexToNumber(hex?: string): number | null {
-  if (!hex) return null
-  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim())
-  if (!m) return null
-  return parseInt(m[1], 16)
-}
-
-/** 默认员工名单（无团队任务时显示） */
 const DEFAULT_ROSTER: Array<{ id: string; name: string; color: number; task?: string }> =
   AGENT_ROSTER.map((r) => ({ id: r.id, name: r.name, color: r.color, task: r.task }))
 
@@ -104,7 +132,7 @@ function formatTime(iso?: string | null): string {
 
 export default function OfficeIntegrated() {
   const sceneRef = useRef<OfficeScene | null>(null);
-  const pendingRosterRef = useRef<Array<{ id: string; name: string; color: number; task?: string }> | null>(null);
+  const pendingRosterRef = useRef<Array<{ id: string; name: string; color: number; task?: string; memberId?: number }> | null>(null);
   const [createForm] = Form.useForm();
   const [meetingForm] = Form.useForm();
 
@@ -119,12 +147,15 @@ export default function OfficeIntegrated() {
   const [submitting, setSubmitting] = useState(false);
   const [taskModalMode, setTaskModalMode] = useState<'today' | 'completed' | 'pending' | null>(null);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
-  const [sceneAgents, setSceneAgents] = useState<Array<{ id: string; name: string; state?: string; currentTask?: string }>>([]);
+  const [sceneAgents, setSceneAgents] = useState<Array<{ id: string; name: string; state?: string; currentTask?: string; memberId?: number }>>([]);
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [feed, setFeed] = useState<OfficeFeedItem[]>([]);
   const [hermesTotal, setHermesTotal] = useState(0);
   const [n8nTotal, setN8nTotal] = useState(0);
+  const [taskDrawer, setTaskDrawer] = useState<{ member: TeamMember; tasks: TeamTask[] } | null>(null);
+  /** 正在流转状态的团队任务 id（抽屉按钮 loading） */
+  const [taskActionLoading, setTaskActionLoading] = useState<number | null>(null);
 
   /** 加载 Hermes 任务（每个实例取最近 5 条） */
   const loadHermesFeed = useCallback(async (): Promise<OfficeFeedItem[]> => {
@@ -195,40 +226,8 @@ export default function OfficeIntegrated() {
   }, []);
 
   /** 从 Hermes 最新任务找到关联的 OPC 团队，返回动态员工名单 */
-  const loadOfficeRoster = useCallback(async (): Promise<Array<{ id: string; name: string; color: number; task?: string }> | null> => {
-    try {
-      const instances = await listHermesInstances();
-      const pages = await Promise.all(
-        instances.slice(0, 3).map((inst) =>
-          getCallLogs(inst.id, { page: 1, pageSize: 5 }).catch(() => null),
-        ),
-      );
-      for (const page of pages) {
-        if (!page) continue;
-        for (const log of page.list || []) {
-          if (log.teamId != null) {
-            const members = await listMembers(log.teamId).catch(() => []);
-            if (members.length > 0) {
-              return members
-                .filter((m) => m.isActive !== false)
-                .map((m, i) => ({
-                  id: 'team-' + m.agentId,
-                  name: m.agentName || m.roleTitle || '员工' + (i + 1),
-                  color: hexToNumber(m.themeColor) ?? AGENT_ROSTER[i % AGENT_ROSTER.length]?.color ?? 0x2563eb,
-                  task: m.roleTitle,
-                }));
-            }
-          }
-        }
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }, []);
-
   const applyRoster = useCallback(
-    (roster: Array<{ id: string; name: string; color: number; task?: string }> | null) => {
+    (roster: Array<{ id: string; name: string; color: number; task?: string; memberId?: number }> | null) => {
       pendingRosterRef.current = roster;
       if (roster) {
         sceneRef.current?.setRoster(roster);
@@ -254,15 +253,15 @@ export default function OfficeIntegrated() {
 
   const loadData = useCallback(async () => {
     try {
-      const [all, done, agentList, hermesItems, n8nItems, roster] = await Promise.all([
+      const [all, done, agentList, hermesItems, n8nItems, officeLoaded] = await Promise.all([
         listTasks({ page: 1, pageSize: 8 }),
         listTasks({ page: 1, pageSize: 1, status: 'success' }),
         listSelectableAgents().catch(() => [] as SelectableAgent[]),
         loadHermesFeed(),
         loadN8nFeed(),
-        loadOfficeRoster(),
+        refreshOfficeData(),
       ]);
-      applyRoster(roster);
+      applyRoster(officeLoaded ? membersToRoster() : null);
       setTaskTotal(all.total);
       setCompletedTotal(done.total);
       setAgents(agentList);
@@ -291,12 +290,17 @@ export default function OfficeIntegrated() {
         listTasks({ page: 1, pageSize: 1, status: 'running' }),
       ]);
       setPendingTotal(q.total + r.total);
+
+      // 抽屉打开时同步该成员的最新任务（PATCH 后 / 定时刷新）
+      setTaskDrawer((cur) =>
+        cur ? { ...cur, tasks: getOfficeTasksByMemberId(cur.member.id) } : cur,
+      );
     } catch {
       // 数据加载失败不打断使用，数字保持当前值
     } finally {
       setLoading(false);
     }
-  }, [loadHermesFeed, loadN8nFeed, loadOfficeRoster, applyRoster]);
+  }, [loadHermesFeed, loadN8nFeed, applyRoster]);
 
   useEffect(() => {
     void loadData();
@@ -405,6 +409,7 @@ export default function OfficeIntegrated() {
       (sceneRef.current?.getAgents() ?? []).map((a) => ({
         id: a.id,
         name: a.name,
+        memberId: a.memberId,
         state: a.state,
         currentTask: a.currentTask,
       })),
@@ -435,6 +440,58 @@ export default function OfficeIntegrated() {
     }
   };
 
+
+
+  /** 打开某位员工的任务抽屉（优先 memberId，其次按场景 agent id 反查） */
+  const openTasksForAgent = (agentId: string, memberId?: number) => {
+    const member =
+      memberId != null
+        ? (getOfficeMembers().find((m) => m.id === memberId) ?? null)
+        : (getOfficeMemberByAgentId(agentId) ?? null);
+    if (!member) {
+      message.info('该员工暂无团队成员数据，无法查看任务');
+      return;
+    }
+    setTaskDrawer({ member, tasks: getOfficeTasksByMemberId(member.id) });
+  };
+
+  /** 任务状态流转（PATCH /teams/:teamId/tasks/:taskId） */
+  const handleTaskStatusChange = async (task: TeamTask) => {
+    const action = TASK_STATUS_ACTIONS[task.status];
+    const team = getOfficeTeamId();
+    if (!action || team == null) {
+      message.warning('当前团队不可用或该状态无需流转');
+      return;
+    }
+    setTaskActionLoading(task.id);
+    // 先乐观更新，随后 loadData 拉取真实结果覆盖
+    setTaskDrawer((cur) =>
+      cur
+        ? {
+            ...cur,
+            tasks: cur.tasks.map((t) =>
+              t.id === task.id ? { ...t, status: action.next } : t,
+            ),
+          }
+        : cur,
+    );
+    try {
+      await updateOfficeTaskStatus(team, task.id, action.next);
+      message.success('任务状态已更新');
+      void loadData();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '状态更新失败';
+      message.error(msg);
+      // 回滚乐观更新
+      setTaskDrawer((cur) =>
+        cur
+          ? { ...cur, tasks: getOfficeTasksByMemberId(cur.member.id) }
+          : cur,
+      );
+    } finally {
+      setTaskActionLoading(null);
+    }
+  };
 
   const detailItems =
     taskModalMode === 'completed'
@@ -490,7 +547,8 @@ export default function OfficeIntegrated() {
         {/* 画布区 */}
         <div className={styles.canvasColumn}>
           <div className={styles.canvasWrap}>
-            <OfficeCanvas onSceneReady={(scene) => { sceneRef.current = scene; if (pendingRosterRef.current) scene.setRoster(pendingRosterRef.current); }} />
+            <OfficeCanvas onAgentOpenTasks={(agentId, memberId) => openTasksForAgent(agentId, memberId)}
+            onSceneReady={(scene) => { sceneRef.current = scene; if (pendingRosterRef.current) scene.setRoster(pendingRosterRef.current); }} />
           </div>
 
           {/* 底部工具栏 */}
@@ -640,6 +698,9 @@ export default function OfficeIntegrated() {
               <div
                 key={agent.id}
                 className={styles.agentRow}
+                onClick={() => openTasksForAgent(agent.id, agent.memberId)}
+                style={{ cursor: 'pointer' }}
+                title="点击查看该员工的任务"
               >
                 <span className={styles.agentAvatar}>
                   {agent.name ? agent.name.slice(0, 1) : '员'}
@@ -653,7 +714,19 @@ export default function OfficeIntegrated() {
                 </div>
                 <Button
                   size="small"
-                  onClick={() => {
+                  type="primary"
+                  ghost
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openTasksForAgent(agent.id, agent.memberId);
+                  }}
+                >
+                  查看任务
+                </Button>
+                <Button
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setRenameTarget({ id: agent.id, name: agent.name });
                     setRenameValue(agent.name);
                   }}
@@ -714,6 +787,96 @@ export default function OfficeIntegrated() {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* 员工任务抽屉（团队成员 team_tasks） */}
+      <Drawer
+        title={taskDrawer ? (taskDrawer.member.agentName || taskDrawer.member.roleTitle) + ' 的任务' : ''}
+        open={taskDrawer !== null}
+        onClose={() => setTaskDrawer(null)}
+        width={420}
+        styles={{ body: { padding: 16 } }}
+        extra={
+          taskDrawer ? (
+            <Tag color="blue" style={{ margin: 0 }}>
+              {taskDrawer.member.roleEmoji ? taskDrawer.member.roleEmoji + ' ' : ''}
+              {taskDrawer.member.roleTitle || '团队成员'}
+            </Tag>
+          ) : null
+        }
+      >
+        {taskDrawer && (
+          <div>
+            {/* 成员信息头 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <span className={styles.agentAvatar}>
+                {taskDrawer.member.agentName ? taskDrawer.member.agentName.slice(0, 1) : '员'}
+              </span>
+              <div>
+                <div className={styles.agentName}>{taskDrawer.member.agentName || taskDrawer.member.roleTitle}</div>
+                <div className={styles.agentState}>
+                  {taskDrawer.member.roleTitle || '未设置职能'}
+                  {taskDrawer.tasks.length > 0 ? ' · ' + taskDrawer.tasks.length + ' 个任务' : ''}
+                </div>
+              </div>
+            </div>
+
+            {taskDrawer.tasks.length === 0 ? (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={'该员工暂无任务'}
+                style={{ margin: '24px 0' }}
+              />
+            ) : (
+              <div className={styles.modalList}>
+                {taskDrawer.tasks.map((t) => {
+                  const statusMeta = TEAM_TASK_STATUS_META[t.status];
+                  const action = TASK_STATUS_ACTIONS[t.status];
+                  const loading = taskActionLoading === t.id;
+                  return (
+                    <div key={t.id} className={styles.modalItem}>
+                      <div className={styles.modalItemTop}>
+                        <span className={styles.modalItemTitle}>{t.title}</span>
+                        <Tag color={statusMeta.color} style={{ margin: 0, fontSize: 10, flexShrink: 0 }}>
+                          {statusMeta.label}
+                        </Tag>
+                      </div>
+                      <div className={styles.modalItemSub}>
+                        <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                          <Tag style={{ margin: 0, fontSize: 10 }}>
+                            {'优先级：' + TEAM_TASK_PRIORITY_LABEL[t.priority] || t.priority}
+                          </Tag>
+                          {t.dueDate ? <span>截止：{new Date(t.dueDate).toLocaleDateString('zh-CN')}</span> : null}
+                          <span>{formatTime(t.createdAt)}</span>
+                        </span>
+                      </div>
+                      {t.result != null ? (
+                        <div style={{ marginTop: 6, fontSize: 11, color: 'var(--color-text-secondary)', wordBreak: 'break-all' }}>
+                          <strong>结果：</strong>
+                          {typeof t.result === 'string'
+                            ? t.result
+                            : JSON.stringify(t.result)}
+                        </div>
+                      ) : null}
+                      {action ? (
+                        <div style={{ marginTop: 8, textAlign: 'right' }}>
+                          <Button
+                            size="small"
+                            type="primary"
+                            loading={loading}
+                            onClick={() => void handleTaskStatusChange(t)}
+                          >
+                            {action.label}
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </Drawer>
 
       {/* 底部间距 */}
       <div style={{ height: 10, flexShrink: 0 }} />

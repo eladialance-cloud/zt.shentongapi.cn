@@ -37,6 +37,7 @@ import { TeamModule } from './modules/team/team.module';
 import { HermesModule } from './modules/hermes/hermes.module';
 import { RuntimeModule } from './modules/runtime/runtime.module';
 import { TaskModule } from './modules/task/task.module';
+import { BriefsModule } from './modules/briefs/brief.module';
 import { CodexModule } from './modules/codex/codex.module';
 import { CommunityModule } from './modules/community/community.module';
 import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
@@ -69,6 +70,7 @@ import { VersionModule } from './modules/version/version.module';
 import { SearchModule } from './modules/search/search.module';
 import { MarketModule } from './modules/market/market.module';
 import { MediaGenerationModule } from './modules/media-generation/media-generation.module';
+import { MediaAssetsModule } from './modules/media-assets/media-asset.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 
@@ -121,6 +123,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     HermesModule,
     RuntimeModule,
     TaskModule,
+    BriefsModule,
     CodexModule,
     CommunityModule,
     AdminAuthModule,
@@ -153,6 +156,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     SearchModule,
     MarketModule,
     MediaGenerationModule,
+    MediaAssetsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -1,4 +1,4 @@
-// 测试工具文件 - Mock 工厂函数 + 测试数据生成器 + 常用 mock 数据
+﻿// 测试工具文件 - Mock 工厂函数 + 测试数据生成器 + 常用 mock 数据
 //
 // 该文件在 jest.config.ts 的 setupFilesAfterEnv 中被引用，
 // 同时也作为模块导出供各 e2e 测试文件按需引入。
@@ -90,7 +90,14 @@ export function createMockElectronAPI(): ElectronAPI {
     db: {
       initialize: jest.fn(),
       isDegraded: jest.fn(() => false),
-      close: jest.fn()
+      close: jest.fn(),
+      briefs: {
+        list: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+        remove: jest.fn(),
+        markSynced: jest.fn(),
+      },
     },
     syncQueue: {
       enqueue: jest.fn(),

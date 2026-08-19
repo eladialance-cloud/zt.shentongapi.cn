@@ -77,11 +77,16 @@ def _template_path(size: str, filename: str) -> str:
     return path
 
 
-def _render_preview_html(raw: str) -> str:
+def _render_preview_html(raw: str, size: str = "", filename: str = "") -> str:
+    # 每个模板显示自己的预览图（同目录同名图片），缺失时回退共用 demo 图
+    if size and filename:
+        preview_image = f"/api/pipelines/standard/templates/{size}/{quote(filename)}/preview-image"
+    else:
+        preview_image = DEMO_IMAGE_URL
     replacements = {
         **TEMPLATE_FIELD_DEFAULTS,
-        "image": DEMO_IMAGE_URL,
-        "media": f'<img class="template-media" style="width:100%;height:100%;object-fit:cover;display:block;" src="{DEMO_IMAGE_URL}" alt="">',
+        "image": preview_image,
+        "media": f'<img class="template-media" style="width:100%;height:100%;object-fit:cover;display:block;" src="{preview_image}" alt="">',
     }
 
     def repl(match: re.Match) -> str:
@@ -245,12 +250,27 @@ async def get_standard_templates():
 async def preview_standard_template(size: str, filename: str):
     path = _template_path(size, filename)
     with open(path, "r", encoding="utf-8") as f:
-        return HTMLResponse(_render_preview_html(f.read()))
+        return HTMLResponse(_render_preview_html(f.read(), size=size, filename=filename))
 
 
 @router.get("/api/pipelines/standard/templates/demo-image")
 async def demo_template_image():
     """精品模版预览占位图：优先返回本地 default_image.png，缺失时回退合法 SVG。"""
+    content, media_type = _demo_image_bytes()
+    return Response(content=content, media_type=media_type)
+
+
+@router.get("/api/pipelines/standard/templates/{size}/{filename}/preview-image")
+async def preview_template_image(size: str, filename: str):
+    """精品模版独立预览图：优先返回与模板同名的图片（png/jpg/jpeg/webp），缺失回退 demo 图。"""
+    if size not in TEMPLATE_SIZES or "/" in filename or "\\" in filename or not filename.endswith(".html"):
+        raise HTTPException(404, "Template not found")
+    base = os.path.splitext(filename)[0]
+    for ext, mime in ((".png", "image/png"), (".jpg", "image/jpeg"), (".jpeg", "image/jpeg"), (".webp", "image/webp")):
+        p = os.path.join(TEMPLATE_DIR, size, base + ext)
+        if os.path.exists(p):
+            with open(p, "rb") as fh:
+                return Response(content=fh.read(), media_type=mime)
     content, media_type = _demo_image_bytes()
     return Response(content=content, media_type=media_type)
 

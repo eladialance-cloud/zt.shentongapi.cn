@@ -1,20 +1,20 @@
-/**
+﻿/**
  * Sidebar — v5.0 Kimi 风格极简导航
- * 主导航 5 项（对话/ST-Claw/团队/AI办公室/知识库），固定展开不折叠
- * 次级入口收纳到左下角「用户 + 更多」弹出菜单
+ * 主导航 4 项（工作台/对话/AI办公室/技能市场），固定展开不折叠
+ * 次级入口 7 项（团队/知识库/渠道/工作流/积分/设置/服务）收纳到左下角「更多」弹出菜单
  */
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Avatar, Dropdown, type MenuProps } from 'antd'
 import {
   MessageSquare,
-  Clapperboard,
+  LayoutDashboard,
   Users,
   Building2,
   BookOpen,
   Workflow,
+  FolderOpen,
   Store,
   Send,
-  Zap,
   Coins,
   Settings,
   Server,
@@ -33,19 +33,19 @@ interface NavItem {
 
 /** 主导航（用户确认顺序） */
 const PRIMARY_NAV: NavItem[] = [
-  { key: 'chat', label: '对话', icon: MessageSquare, path: '/chat' },
-  { key: 'video-claw', label: 'ST-Claw', icon: Clapperboard, path: '/video-claw' },
-  { key: 'team', label: '团队', icon: Users, path: '/team' },
+  { key: 'dashboard', label: '工作台', icon: LayoutDashboard, path: '/dashboard' },
+  { key: 'chat', label: '对话 st-claw', icon: MessageSquare, path: '/chat' },
   { key: 'office', label: 'AI 办公室', icon: Building2, path: '/office' },
-  { key: 'knowledge', label: '知识库', icon: BookOpen, path: '/knowledge' },
+  { key: 'market', label: '技能市场', icon: Store, path: '/skill-market' },
 ]
 
 /** 次级入口（隐藏收纳，通过左下角「更多」展开） */
 const MORE_NAV: NavItem[] = [
-  { key: 'workflow', label: '工作流', icon: Workflow, path: '/workflow' },
-  { key: 'market', label: '市场', icon: Store, path: '/skill-market' },
+  { key: 'team', label: '团队', icon: Users, path: '/team' },
+  { key: 'assets', label: '素材库', icon: FolderOpen, path: '/assets' },
+  { key: 'knowledge', label: '知识库', icon: BookOpen, path: '/knowledge' },
   { key: 'channels', label: '渠道', icon: Send, path: '/channels' },
-  { key: 'automation', label: '自动化', icon: Zap, path: '/automation' },
+  { key: 'workflow', label: '工作流', icon: Workflow, path: '/workflow' },
   { key: 'credits', label: '积分', icon: Coins, path: '/credits' },
   { key: 'settings', label: '设置', icon: Settings, path: '/settings' },
   { key: 'services', label: '服务', icon: Server, path: '/services' },

@@ -1,4 +1,4 @@
-// 主进程 / 渲染进程共享类型定义
+﻿// 主进程 / 渲染进程共享类型定义
 // 该文件同时被 tsconfig.node.json 与 tsconfig.web.json 包含
 
 export type ServiceName = "openclaw" | "n8n" | "mcp" | "hermes" | "video-claw";
@@ -150,7 +150,7 @@ export interface RuntimeVerifyResult {
 
 /** 同步队列实体类型 */
 export type SyncEntityType =
-  "chat_session" | "chat_message" | "workflow_execution" | "plugin_call_log";
+  "chat_session" | "chat_message" | "workflow_execution" | "plugin_call_log" | "brief";
 
 /** 同步队列操作类型 */
 export type SyncOperation = "create" | "update" | "delete";
@@ -178,6 +178,25 @@ export interface SyncQueueRow {
   created_at: string;
   updated_at: string;
   synced_at: string | null;
+}
+
+/** 本地需求单（一期本地 MVP，字段命名与云端 briefs 对齐，snake_case 落库 camelCase 出参） */
+export interface LocalBrief {
+  id: number;
+  clientBriefId: string;
+  userId: number;
+  title: string;
+  goal?: string;
+  targetAudience?: string;
+  platforms?: string[];
+  style?: string;
+  deadline?: string | null;
+  status: "draft" | "confirmed" | "executing" | "completed" | "cancelled";
+  sourceChatSessionId?: number | null;
+  sourceChatSummary?: string | null;
+  cloudSynced: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // 设备指纹（采集本机硬件/系统特征生成 SHA-256 哈希）
@@ -391,6 +410,28 @@ export interface ElectronAPI {
     isDegraded(): boolean;
     /** 关闭本地数据库（登出时调用） */
     close(): void;
+    briefs: {
+      list(): Promise<LocalBrief[]>;
+      create(input: {
+        userId: number;
+        title: string;
+        goal?: string;
+        targetAudience?: string;
+        platforms?: string[];
+        style?: string;
+        deadline?: string | null;
+        status?: LocalBrief["status"];
+        sourceChatSessionId?: number | null;
+        sourceChatSummary?: string | null;
+      }): Promise<LocalBrief | null>;
+      update(
+        id: number,
+        patch: Partial<Pick<LocalBrief, "title" | "goal" | "targetAudience" | "platforms" | "style" | "deadline" | "status">>,
+      ): Promise<LocalBrief | undefined>;
+      remove(id: number): Promise<void>;
+      /** 标记本地需求单已同步到云端（按 clientBriefId） */
+      markSynced(clientBriefId: string): Promise<void>;
+    };
   };
   /** 同步队列操作（离线调用队列 + 上行同步） */
   /** 本地内容市场（下载安装官方内容到本地） */

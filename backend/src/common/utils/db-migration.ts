@@ -1292,6 +1292,101 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
     }
     logger.log('Backfilled models.video_per_second from video_prices (shortest-duration rate)');
 
+    // ===== 二期 Task 1：briefs / media_assets 建表 + 既有表加列（幂等 DDL） =====
+
+    // briefs 表：需求单（云端；一期 local_briefs 为离线 MVP）
+    const [briefsTable] = await queryRunner.query(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'briefs'`
+    );
+    if (!briefsTable) {
+      await queryRunner.query(`CREATE TABLE IF NOT EXISTS briefs (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id BIGINT NOT NULL,
+        title VARCHAR(128) NOT NULL,
+        goal TEXT,
+        target_audience VARCHAR(255),
+        platforms JSON,
+        style VARCHAR(512),
+        deadline DATETIME,
+        status ENUM('draft','confirmed','executing','completed','cancelled') NOT NULL DEFAULT 'draft',
+        dispatch_status ENUM('none','pending','done','failed') NOT NULL DEFAULT 'none',
+        dispatch_result JSON,
+        source_chat_session_id BIGINT,
+        source_chat_summary TEXT,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY idx_briefs_user_created (user_id, created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='需求单（云端；一期 local_briefs 为离线 MVP）'`);
+      logger.log('Created table: briefs');
+    }
+
+    // media_assets 表：素材资产库（种子：task_output_item / media_jobs）
+    const [mediaAssetsTable] = await queryRunner.query(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'media_assets'`
+    );
+    if (!mediaAssetsTable) {
+      await queryRunner.query(`CREATE TABLE IF NOT EXISTS media_assets (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id BIGINT NOT NULL,
+        source_type ENUM('task','media_job','manual') NOT NULL DEFAULT 'manual',
+        source_id BIGINT,
+        title VARCHAR(255) NOT NULL,
+        asset_type ENUM('image','video','audio','file') NOT NULL DEFAULT 'file',
+        url VARCHAR(1024) NOT NULL,
+        mime_type VARCHAR(128),
+        file_size BIGINT,
+        tags JSON,
+        archived TINYINT(1) NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY idx_media_assets_user (user_id),
+        KEY idx_media_assets_source (source_type, source_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='素材资产库（种子：task_output_item / media_jobs）'`);
+      logger.log('Created table: media_assets');
+    }
+
+    // 既有表加列（幂等）：team_tasks 关联 briefs 需求单
+    const [teamTasksBriefIdCol] = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'team_tasks' AND COLUMN_NAME = 'brief_id'`
+    );
+    if (!teamTasksBriefIdCol) {
+      await queryRunner.query(`ALTER TABLE team_tasks ADD COLUMN brief_id BIGINT NULL`);
+      logger.log('Added column: team_tasks.brief_id');
+    }
+
+    const [teamTasksExecutionRefCol] = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'team_tasks' AND COLUMN_NAME = 'execution_ref'`
+    );
+    if (!teamTasksExecutionRefCol) {
+      await queryRunner.query(`ALTER TABLE team_tasks ADD COLUMN execution_ref VARCHAR(128) NULL`);
+      logger.log('Added column: team_tasks.execution_ref');
+    }
+
+    // 既有表加列（幂等）：publish_plans 关联任务与素材资产
+    const [publishPlansTaskIdCol] = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'publish_plans' AND COLUMN_NAME = 'task_id'`
+    );
+    if (!publishPlansTaskIdCol) {
+      await queryRunner.query(`ALTER TABLE publish_plans ADD COLUMN task_id BIGINT NULL`);
+      logger.log('Added column: publish_plans.task_id');
+    }
+
+    const [publishPlansAssetIdsCol] = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'publish_plans' AND COLUMN_NAME = 'asset_ids'`
+    );
+    if (!publishPlansAssetIdsCol) {
+      await queryRunner.query(`ALTER TABLE publish_plans ADD COLUMN asset_ids JSON NULL`);
+      logger.log('Added column: publish_plans.asset_ids');
+    }
+
     logger.log('Startup migrations completed');
   } catch (err) {
     logger.error(`Startup migration failed: ${(err as Error).message}`);

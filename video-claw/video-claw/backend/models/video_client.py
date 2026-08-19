@@ -198,6 +198,8 @@ class VideoClient:
                 resolution,
                 negative_prompt,
                 seed,
+                reference_image_path=reference_image_path,
+                reference_image_paths=reference_image_paths,
             )
 
 
@@ -265,13 +267,26 @@ class VideoClient:
         resolution: Optional[str],
         negative_prompt: Optional[str],
         seed: Optional[int],
+        reference_image_path: Optional[str] = None,
+        reference_image_paths: Optional[list[str]] = None,
     ) -> str:
         """平台 llm-proxy 视频生成：提交异步任务 -> 轮询 -> 下载产物。"""
         if image_path and not os.path.exists(image_path):
             raise FileNotFoundError(f"输入图片不存在: {image_path}")
+        # 平台视频通道目前仅支持首帧图（inputImages）。数字人口播/动作迁移的
+        # 参考图在 image_path 为空时必须透传，否则首段会退化为纯文生视频。
+        input_images: list[str] = []
+        if image_path:
+            input_images.append(image_path)
+        if reference_image_path and reference_image_path not in input_images:
+            input_images.append(reference_image_path)
+        for ref in reference_image_paths or []:
+            if ref and ref not in input_images:
+                input_images.append(ref)
         return self.llmproxy_client.generate_video(
             prompt=prompt,
             image_path=image_path,
+            input_images=input_images or None,
             save_path=save_path,
             model=model,
             duration=int(duration),

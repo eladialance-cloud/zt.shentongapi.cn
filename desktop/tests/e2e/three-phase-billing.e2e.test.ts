@@ -1,4 +1,4 @@
-// SubTask 36.4: 三阶段计费测试
+﻿// SubTask 36.4: 三阶段计费测试
 //
 // 测试场景：
 // 1. 对话场景：estimateAndFreeze(10) → settleActualCost(8) → 验证余额正确
@@ -224,7 +224,7 @@ describe('SubTask 36.4 - 三阶段计费测试', () => {
 
     it('对话消耗低于预估时应退回差额', () => {
       // arrange
-      const initial = generateCreditAccount({ balance: 100 })
+      const initial = generateCreditAccount({ balance: 100, frozenBalance: 0, totalConsumed: 0 })
       const state = createBillingState(initial)
 
       // act
@@ -305,7 +305,7 @@ describe('SubTask 36.4 - 三阶段计费测试', () => {
       expect(state.account.balance).toBe(85) // 100 - 15 + 0 = 85
       expect(state.account.totalConsumed).toBe(15)
       expect(execution.creditsCost).toBe(15)
-      expect(mockHttpPost).toHaveBeenCalledWith('/workflows/1/execute', { input: 'test' })
+      expect(mockHttpPost).toHaveBeenCalledWith('/workflows/1/execute', { input: { input: 'test' } })
     })
 
     it('工作流执行失败时应退款', () => {
