@@ -148,7 +148,7 @@ export class KnowledgeBaseService {
       where: { id: kbId },
     });
 
-    if (!kb || kb.userId !== userId) {
+    if (!kb || Number(kb.userId) !== userId) {
       throw new NotFoundException('知识库不存在');
     }
 
@@ -175,7 +175,7 @@ export class KnowledgeBaseService {
   /** 获取知识库（不存在或非本人一律 404，避免泄露存在性） */
   async getBase(userId: number, kbId: number): Promise<KnowledgeBaseEntity> {
     const kb = await this.kbRepo.findOne({ where: { id: kbId } });
-    if (!kb || kb.userId !== userId) {
+    if (!kb || Number(kb.userId) !== userId) {
       throw new NotFoundException('知识库不存在');
     }
     return kb;
@@ -342,7 +342,7 @@ export class KnowledgeBaseService {
   ): Promise<SearchResultDto[]> {
     // 加载知识库并校验权限：本人私有库 或 已发布官方库
     const kb = await this.kbRepo.findOne({ where: { id: kbId } });
-    const isOwner = !!kb && kb.userId === userId;
+    const isOwner = !!kb && Number(kb.userId) === userId;
     const isOfficialPublished =
       !!kb && !!kb.isOfficial && kb.publishStatus === 'published';
     if (!kb || (!isOwner && !isOfficialPublished)) {
