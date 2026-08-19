@@ -1,6 +1,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../../common/decorators/public.decorator';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { AdminGuard } from '../../admin-auth/admin.guard';
 import { StatisticsService } from '../services/statistics.service';
 import { DashboardStatsService } from '../services/dashboard-stats.service';
@@ -20,6 +21,16 @@ export class StatisticsController {
   @ApiOperation({ summary: '健康检查' })
   health() {
     return this.service.health();
+  }
+
+  /**
+   * 用户侧数据分析总览
+   * 注意：不标注 @Public，沿用全局 JwtAuthGuard，按当前登录用户聚合
+   */
+  @Get('user-overview')
+  @ApiOperation({ summary: '用户侧数据分析总览（按当前用户聚合）' })
+  userOverview(@CurrentUser('userId') userId: number) {
+    return this.service.getUserOverview(userId);
   }
 }
 

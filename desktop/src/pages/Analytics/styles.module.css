@@ -1,0 +1,298 @@
+﻿/* 数据分析 — Kimi 风格（Task 7）
+   结构: 标题区 + 4 KPI 卡 + 30 天趋势/平台分布 + 简易周报/平台数据占位
+   原则: 白/灰分层 · 1px 细边框 · 12px 圆角 · 无渐变无重阴影 */
+
+.analytics {
+  min-height: 100%;
+  padding: 24px 28px;
+  background: var(--color-bg-root);
+}
+
+/* ===== 标题区 ===== */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.headerTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.headerIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--color-brand-bg);
+  color: var(--color-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.4px;
+  color: var(--color-text-primary);
+}
+
+.sub {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+}
+
+/* ===== KPI 卡 ===== */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.statCard {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border-secondary);
+  border-radius: var(--radius-lg);
+}
+
+.statIcon {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--color-brand-bg);
+  color: var(--color-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.statInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.statLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-tertiary);
+  margin-bottom: 4px;
+}
+
+.statValue {
+  font-size: 26px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+  color: var(--color-text-primary);
+}
+
+.statSub {
+  margin-top: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-tertiary);
+}
+
+/* ===== 通用卡片 ===== */
+.card {
+  min-width: 0;
+  padding: 20px;
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border-secondary);
+  border-radius: var(--radius-lg);
+}
+
+.cardTitle {
+  margin: 0 0 16px;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+  margin-bottom: 24px;
+}
+
+.grid2b {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+/* ===== 30 天柱状趋势（纯 CSS） ===== */
+.trendChart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 180px;
+  padding: 4px 2px 0;
+}
+
+.trendCol {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+}
+
+.trendBar {
+  width: 100%;
+  min-height: 2px;
+  border-radius: 3px 3px 0 0;
+  background: var(--color-brand);
+  opacity: 0.85;
+  transition: opacity var(--duration-fast) ease;
+}
+
+.trendCol:hover .trendBar {
+  opacity: 1;
+}
+
+.trendTicks {
+  display: flex;
+  gap: 3px;
+  margin-top: 8px;
+}
+
+.trendTick {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+}
+
+.trendEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 180px;
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+}
+
+/* ===== 平台分布 ===== */
+.platformList {
+  display: flex;
+  flex-direction: column;
+}
+
+.platformRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border-secondary);
+}
+
+.platformRow:last-child {
+  border-bottom: none;
+}
+
+.platformCount {
+  margin-left: auto;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+/* ===== 简易周报 ===== */
+.reportRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border-secondary);
+}
+
+.reportRow:last-of-type {
+  border-bottom: none;
+}
+
+.reportLabel {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.reportValue {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.reportSuffix {
+  margin-left: 2px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+  color: var(--color-text-tertiary);
+}
+
+.insight {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-brand-bg);
+  color: var(--color-brand);
+  font-size: 13px;
+}
+
+.placeholderHint {
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+}
+
+/* ===== 加载 / 空态 ===== */
+.loadingWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+}
+
+.emptyWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  gap: 12px;
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 1200px) {
+  .stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .grid2 {
+    grid-template-columns: 1fr;
+  }
+  .grid2b {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .analytics {
+    padding: 16px;
+  }
+  .stats {
+    grid-template-columns: 1fr;
+  }
+}

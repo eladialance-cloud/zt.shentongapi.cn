@@ -1,27 +1,35 @@
 // 对话页面（核心）
-// 布局：左侧会话列表（可折叠）+ 中间消息区 + 顶部选择器
-// 使用 antd Layout + Sider + Content
-// 样式：赛博科技深色风格
+// 布局：左侧会话列表 + 中间消息区（需求模式：自由对话 / 老板模式 / 客户会议模式）
+// 需求对话重构（Task 3）：页面只保留 4 块 —— 会话列表 / 需求模式 / 历史简报 / 对话设置
+// 原有对话能力全部保留：模型选择 / Agent / 知识库 / 素材生成 / 工具调用收进「对话设置」抽屉
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button, Select, Tooltip, message } from 'antd'
-import type { SelectProps } from 'antd'
+import { Button, Modal, Tooltip, message } from 'antd'
 import {
+  HistoryOutlined,
   RobotOutlined,
-  ThunderboltOutlined,
-  DatabaseOutlined,
-  FileTextOutlined,
-  GlobalOutlined,
-  ApiOutlined,
-  ReloadOutlined
+  SettingOutlined,
 } from '@ant-design/icons'
 import { SessionList } from './components/SessionList'
 import { MessageList } from './components/MessageList'
 import { MessageInput } from './components/MessageInput'
 import { MediaGenerationModal } from './components/MediaGenerationModal'
+import { DemandModeBar, DemandWizard } from './DemandMode'
+import { ConversationSettings } from './ConversationSettings'
+import { HistoryBriefs } from './HistoryBriefs'
+import {
+  buildBriefPayload,
+  briefToAnswers,
+  isWizardMode,
+} from './demand-schema'
+import type { DemandAnswers, DemandMode } from './demand-schema'
 import type { MediaJob } from '@/api/media-generation-api'
 import * as chatApi from '@/api/chat-api'
+import { createBriefWithOfflineFallback } from '@/api/brief-offline'
+import { confirmBrief } from '@/api/brief-api'
+import type { BriefItem } from '@/api/brief-api'
+import { useAuthStore } from '@/store'
 import type { OpenClawChatMessage } from '@shared/types'
 import {
   subscribeChatStream,
@@ -44,29 +52,28 @@ import type {
   UploadResult,
   ModelOption,
   AgentOption,
-  KnowledgeBaseOption
+  KnowledgeBaseOption,
 } from '@/types/chat'
 import type { Agent } from '@/types/agent'
 import styles from './styles.module.css'
-
-
-/** 模型分类分组标签（对话模型下拉） */
-const MODEL_TYPE_GROUP_LABEL: Record<string, string> = {
-  chat: '文本对话',
-  vision: '图片识图',
-  reasoning: '推理',
-  embedding: '向量',
-  audio: '音频'
-}
-
-/** 知识库选择器「全局搜索」的固定 value */
-const GLOBAL_KB_VALUE = '__global__'
 
 /** 当前会话本地记忆 Key：切页/切窗口后回到对话页自动恢复上次会话 */
 const CHAT_ACTIVE_SESSION_KEY = 'chat:active-session'
 
 export default function Chat() {
   const navigate = useNavigate()
+  const userId = useAuthStore((s) => s.user?.id)
+
+  // ===== 需求模式（自由对话默认 / 老板模式 / 客户会议模式） =====
+  const [demandMode, setDemandMode] = useState<DemandMode>('free')
+  const [historyPrefill, setHistoryPrefill] = useState<DemandAnswers | null>(null)
+  const [historyPrefillTitle, setHistoryPrefillTitle] = useState<string | null>(null)
+  const [wizardSeq, setWizardSeq] = useState(0)
+  const [briefPublishing, setBriefPublishing] = useState(false)
+
+  // ===== 对话设置抽屉 / 历史简报 Modal =====
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   // ===== 当前会话与消息 =====
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null)
@@ -89,7 +96,7 @@ export default function Chat() {
     activeSessionIdRef.current = activeSession?.id ?? null
   }, [activeSession])
 
-  // ===== 顶部选择器 =====
+  // ===== 顶部选择器（收进对话设置抽屉后状态仍保留在页面） =====
   const [modelId, setModelId] = useState<string>('')
   const [agentId, setAgentId] = useState<number | undefined>(undefined)
   const [knowledgeBaseId, setKnowledgeBaseId] = useState<number | undefined>(undefined)
@@ -107,7 +114,7 @@ export default function Chat() {
 
   /** 流式事件由全局对话流桥（store/chat-stream）常驻监听：切页不丢、完成后自动落库。 */
 
-  /** 加载市场 Agent 列表（用于顶部 Agent 选择器 + 价格提示） */
+  /** 加载市场 Agent 列表（用于 Agent 选择器 + 价格提示） */
   useEffect(() => {
     let cancelled = false
     void (async () => {
@@ -120,8 +127,8 @@ export default function Chat() {
             id: a.id,
             name: a.name,
             avatar: a.avatar,
-            description: a.description
-          }))
+            description: a.description,
+          })),
         )
         const priceMap: Record<number, Agent> = {}
         list.forEach((a) => {
@@ -137,7 +144,7 @@ export default function Chat() {
     }
   }, [])
 
-  /** 加载我的知识库 + 官方知识库（顶部知识库挂载选择器用） */
+  /** 加载我的知识库 + 官方知识库（知识库挂载选择器用） */
   useEffect(() => {
     let cancelled = false
     void (async () => {
@@ -155,7 +162,7 @@ export default function Chat() {
           })),
           ...(official?.list || []).map((k) => ({
             id: k.id,
-            name: k.industryName ? `${k.name} · ${k.industryName}` : k.name,
+            name: k.industryName ? k.name + ' · ' + k.industryName : k.name,
             description: k.description || '官方知识库',
           })),
         ]
@@ -318,7 +325,6 @@ export default function Chat() {
   }, [completionTick])
 
   /** 切换会话 */
-
   const handleSelectSession = useCallback(async (session: ChatSession | null) => {
     if (!session) {
       setActiveSession(null)
@@ -417,7 +423,7 @@ export default function Chat() {
         modelId: modelId || undefined,
       })
     },
-    [activeSession, messages, modelId]
+    [activeSession, messages, modelId],
   )
 
   /** 持久化消息到云端（切换会话/重启后历史仍可恢复） */
@@ -442,25 +448,25 @@ export default function Chat() {
       let mediaMarkdown = ''
       if (firstUrl) {
         mediaMarkdown = job.type === 'image'
-          ? `![${promptText}](${firstUrl})`
-          : `${firstUrl}`
+          ? '![' + promptText + '](' + firstUrl + ')'
+          : firstUrl
       }
-      const costText = job.creditsCost > 0 ? `（已扣除 ${job.creditsCost} 积分）` : ''
+      const costText = job.creditsCost > 0 ? '（已扣除 ' + job.creditsCost + ' 积分）' : ''
       const assistantMsg: ChatMessage = {
         id: Date.now() + 2,
         sessionId: activeSession?.id ?? 0,
         userId: 0,
         role: 'assistant',
-        content: `✨ ${typeLabel}完成${costText}\n${promptText ? `提示词：${promptText}\n` : ''}${mediaMarkdown}`.replace(/\n$/,''),
+        content: ('✨ ' + typeLabel + '完成' + costText + '\n' + (promptText ? '提示词：' + promptText + '\n' : '') + mediaMarkdown).replace(/\n$/, ''),
         status: 'done',
         creditsCost: job.creditsCost,
-        createdAt: new Date()
+        createdAt: new Date(),
       }
       setMessages((prev) => [...prev, assistantMsg])
       if (activeSession?.id) persistMessage(activeSession.id, assistantMsg)
       setGenerationOpen(false)
     },
-    [activeSession]
+    [activeSession],
   )
 
   /** 中断 OpenClaw 对话（本地 abort → 云端退款 → done 事件固化消息） */
@@ -511,73 +517,6 @@ export default function Chat() {
     }
   }
 
-  /** 选项数据构造 */
-  const modelSelectProps: SelectProps = useMemo(
-
-    () => {
-      const renderOption = (m: ModelOption) => ({
-        label: (
-          <span>
-            <ThunderboltOutlined style={{ color: 'var(--color-text-secondary)', marginRight: 6 }} />
-            {m.name}
-            {m.provider && (
-              <span style={{ color: 'var(--color-text-tertiary)', marginLeft: 6, fontSize: 11 }}>
-                ({m.provider})
-              </span>
-            )}
-            {m.modelType && m.modelType !== 'chat' && (
-              <span style={{ color: 'var(--color-purple)', marginLeft: 6, fontSize: 11 }}>
-                [{m.modelType}]
-              </span>
-            )}
-            {(m.inputPricePer1k != null || m.outputPricePer1k != null) && (
-              <span style={{ color: 'var(--color-accent)', marginLeft: 6, fontSize: 11 }}>
-                {m.inputPricePer1k ?? 0}/{m.outputPricePer1k ?? 0} 积分/千token
-              </span>
-            )}
-          </span>
-        ),
-        value: m.id
-      })
-      // 按模型分类分组（chat/vision/reasoning/...），保持后台 sortOrder 顺序
-      const groupMap = new Map<string, ReturnType<typeof renderOption>[]>()
-      for (const m of modelOptions) {
-        const key = m.modelType && m.modelType !== 'chat' ? m.modelType : 'chat'
-        if (!groupMap.has(key)) groupMap.set(key, [])
-        groupMap.get(key)!.push(renderOption(m))
-      }
-      const options = Array.from(groupMap.entries()).map(([key, items]) => ({
-        label: MODEL_TYPE_GROUP_LABEL[key] || key,
-        options: items
-      }))
-      // 自定义大模型（设置 → 大模型接入）：直连用户自己的 OpenAI 兼容端点
-      if (customIntegrations.length > 0) {
-        options.push({
-          label: '自定义模型',
-          options: customIntegrations.flatMap((c) =>
-            (c.models || []).map((m) => ({
-              label: (
-                <span>
-                  <ApiOutlined style={{ color: 'var(--color-text-secondary)', marginRight: 6 }} />
-                  {c.name} · {m.name || m.id}
-
-                </span>
-              ),
-              value: 'custom/' + c.id + '/' + m.id
-            }))
-          )
-        })
-      }
-      return {
-        options,
-        notFoundContent: modelLoading
-          ? '加载中...'
-          : '管理后台暂未上线模型，可在「设置 → 大模型接入」添加自定义模型',
-      }
-    },
-    [modelOptions, modelLoading, customIntegrations]
-  )
-
   /** 当前选中的 Agent（用于价格提示） */
   const selectedAgent = agentId != null ? agentPriceMap[agentId] : undefined
 
@@ -586,7 +525,7 @@ export default function Chat() {
     if (!selectedAgent) return ''
     const parts: string[] = []
     if (selectedAgent.pricePerCall > 0) {
-      parts.push(`${selectedAgent.pricePerCall} 积分/次`)
+      parts.push(selectedAgent.pricePerCall + ' 积分/次')
     }
     if (
       selectedAgent.pricePerToken.input > 0 ||
@@ -598,50 +537,75 @@ export default function Chat() {
     return parts.join(' + ')
   }, [selectedAgent])
 
-  const agentSelectProps: SelectProps = useMemo(
-    () => ({
-      options: agentOptions.map((a) => ({
-        label: (
-          <span>
-            <RobotOutlined style={{ color: 'var(--color-text-secondary)', marginRight: 6 }} />
-            {a.name}
-          </span>
-        ),
-        value: a.id
-      }))
-    }),
-    [agentOptions]
-  )
+  /** 模式切换：自由对话/老板/客户，清空历史预填避免串数据 */
+  const handleModeChange = (mode: DemandMode) => {
+    setDemandMode(mode)
+    setHistoryPrefill(null)
+    setHistoryPrefillTitle(null)
+    setWizardSeq((n) => n + 1)
+  }
 
-  const kbSelectProps: SelectProps = useMemo(
-    () => ({
-      options: [
-        {
-          label: (
-            <span>
-              <GlobalOutlined style={{ color: 'var(--color-text-secondary)', marginRight: 6 }} />
-              全局搜索（默认）
-            </span>
-          ),
-          value: GLOBAL_KB_VALUE
-        },
-        ...kbOptions.map((k) => ({
-          label: (
-            <span>
-              <DatabaseOutlined style={{ color: 'var(--color-text-secondary)', marginRight: 6 }} />
-              {k.name}
-            </span>
-          ),
-          value: k.id
-        })),
-      ],
-    }),
-    [kbOptions]
+  /** 使用历史简报：关闭 Modal，向导以简报内容预填，只问差异点 */
+  const handleUseHistoryBrief = (brief: BriefItem) => {
+    setHistoryOpen(false)
+    const targetMode: 'boss' | 'client' = demandMode === 'free' ? 'boss' : demandMode
+    setDemandMode(targetMode)
+    setHistoryPrefill(briefToAnswers(targetMode, brief))
+    setHistoryPrefillTitle(brief.title)
+    setWizardSeq((n) => n + 1)
+  }
+
+  /** 发布简报：云端创建 + 确认；失败走三期本地兜底（本地保存 + 离线队列）；停留对话页 */
+  const handlePublishBrief = useCallback(
+    async (answers: DemandAnswers) => {
+      if (!userId) {
+        message.warning('请先登录后再发布简报')
+        return
+      }
+      if (!isWizardMode(demandMode)) return
+      setBriefPublishing(true)
+      try {
+        const payload = buildBriefPayload(demandMode, answers, {
+          sourceChatSessionId: activeSession?.id ?? null,
+          sourceChatSummary: activeSession?.title ?? null,
+        })
+        const created = await createBriefWithOfflineFallback({ userId, payload })
+        if (created.source === 'local') {
+          message.success('网络不可用，已保存到本地，联网后自动同步', 4)
+          return
+        }
+        // 云端创建成功 → 确认简报；确认失败不弹成功文案（提示稍后在任务中心重试）
+        let confirmed = false
+        try {
+          await confirmBrief(created.brief.id)
+          confirmed = true
+        } catch (err) {
+          console.error('[Chat] confirm brief failed:', err)
+        }
+        if (confirmed) {
+          Modal.confirm({
+            title: '✅ 简报已发布',
+            content: '「' + payload.title + '」已创建并确认，AI 拆解任务已进入流水线。',
+            okText: '去任务中心',
+            cancelText: '继续对话',
+            onOk: () => navigate('/task-center'),
+          })
+        } else {
+          message.warning('简报已创建，但确认失败，请稍后在任务中心重试')
+        }
+      } catch (err) {
+        console.error('[Chat] publish brief failed:', err)
+        message.error('发布简报失败：' + (err as Error).message)
+      } finally {
+        setBriefPublishing(false)
+      }
+    },
+    [userId, demandMode, activeSession, navigate],
   )
 
   return (
     <div className={styles.chatContainer}>
-      {/* 左侧会话列表 */}
+      {/* ① 左侧会话列表（沿用现有 SessionList） */}
       <SessionList
         activeSessionId={activeSession?.id ?? null}
         defaultModelId={modelId}
@@ -651,122 +615,121 @@ export default function Chat() {
 
       {/* 中间消息区 */}
       <div className={styles.messageArea}>
-        {/* 顶部头部：会话标题 + 轻量选择器 */}
+        {/* 顶部头部：会话标题 + 历史简报 / 对话设置（上端入口） */}
         <div className={styles.chatHead}>
           <div className={styles.chatHeadTitle}>
             {activeSession?.title || '和 OpenClaw 对话'}
           </div>
           <div className={styles.chatHeadActions}>
-            <Tooltip title={modelId ? `当前模型：${modelId}` : '选择模型'}>
-              <Select
-                {...modelSelectProps}
-                value={modelId || undefined}
-                onChange={handleModelChange}
-                loading={modelLoading}
-                placeholder="选择模型"
-                variant="borderless"
-                className={styles.selectorItem}
-                popupMatchSelectWidth={false}
-                labelRender={({ value }) => {
-                  const m = modelOptions.find((x) => x.id === value)
-                  return <span className={styles.selectorText}>{m?.name || (value as string)}</span>
-                }}
-              />
-            </Tooltip>
-            <Tooltip title="刷新模型列表（同步管理后台最新模型）">
+            <Tooltip title="历史简报（调取过往需求，一键带入向导）">
               <Button
                 type="text"
                 size="small"
-                icon={<ReloadOutlined />}
-                loading={modelLoading}
-                onClick={() => void loadModels()}
-                className={styles.headerIconBtn}
-              />
-            </Tooltip>
-            <Select
-              {...agentSelectProps}
-              value={agentId}
-              onChange={(v) => setAgentId(v)}
-              placeholder="选择 Agent（可选）"
-              allowClear
-              variant="borderless"
-              className={styles.selectorItem}
-              popupMatchSelectWidth={false}
-            />
-            {agentPriceHint && (
-              <span className={styles.agentPriceHint}>{agentPriceHint}</span>
-            )}
-            <Select
-              {...kbSelectProps}
-              value={knowledgeBaseId ?? GLOBAL_KB_VALUE}
-              onChange={(v) =>
-                handleKnowledgeBaseChange(
-                  v === GLOBAL_KB_VALUE ? undefined : (v as number),
-                )
-              }
-              placeholder="全局搜索（默认）"
-              allowClear
-              variant="borderless"
-              className={styles.selectorItem}
-              popupMatchSelectWidth={false}
-            />
-            <Tooltip title="把当前结论转为需求单">
-              <Button
-                type="text"
-                size="small"
-                icon={<FileTextOutlined />}
-                disabled={!activeSession}
-                onClick={() => {
-                  const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
-                  const summary = lastAssistant?.content?.slice(0, 200) || activeSession?.title || ''
-                  navigate(`/briefs/new?from=chat&session=${activeSession?.id ?? ''}&summary=${encodeURIComponent(summary)}`)
-                }}
+                icon={<HistoryOutlined />}
+                onClick={() => setHistoryOpen(true)}
               >
-                转为需求
+                历史简报
+              </Button>
+            </Tooltip>
+            <Tooltip title="模型 / Agent / 知识库 / 素材生成设置">
+              <Button
+                type="text"
+                size="small"
+                icon={<SettingOutlined />}
+                onClick={() => setSettingsOpen(true)}
+              >
+                对话设置
               </Button>
             </Tooltip>
           </div>
         </div>
 
-        {/* 消息列表 */}
-        {activeSession ? (
-          <MessageList
-            messages={messages}
-            streaming={streaming}
-            streamingContent={streamingContent}
-            streamingToolCalls={streamingToolCalls}
-            agentPhase={agentPhase}
-          />
+        {/* ② 需求模式切换 */}
+        <DemandModeBar mode={demandMode} onChange={handleModeChange} />
+
+        {/* ③ 自由对话：原有消息区 + 输入（流式 / 素材生成 / 工具调用能力保留） */}
+        {demandMode === 'free' ? (
+          <>
+            {activeSession ? (
+              <MessageList
+                messages={messages}
+                streaming={streaming}
+                streamingContent={streamingContent}
+                streamingToolCalls={streamingToolCalls}
+                agentPhase={agentPhase}
+              />
+            ) : (
+              <div className={styles.messageListContainer}>
+                <div className={styles.emptyState}>
+                  <div className={styles.emptyStateIconWrap}>
+                    <RobotOutlined className={styles.emptyStateIcon} />
+                  </div>
+                  <div className={styles.emptyStateTitle}>和 OpenClaw 对话</div>
+                  <div className={styles.emptyStateTip}>
+                    对话由本地 OpenClaw 驱动，可自动调用 Hermes / N8N / MCP 帮你完成复杂任务。选择左侧对话开始聊天，或点击「新建对话」。也可以切换到老板模式 / 客户会议模式，按步骤收集需求并发布简报。
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <MessageInput
+              onSend={handleSend}
+              sending={streaming}
+              onAbort={handleAbort}
+              onOpenGeneration={(type) => {
+                setGenerationType(type)
+                setGenerationOpen(true)
+              }}
+            />
+          </>
         ) : (
-          <div className={styles.messageListContainer}>
-            <div className={styles.emptyState}>
-              <div className={styles.emptyStateIconWrap}>
-                <RobotOutlined className={styles.emptyStateIcon} />
-              </div>
-              <div className={styles.emptyStateTitle}>和 OpenClaw 对话</div>
-              <div className={styles.emptyStateTip}>
-                对话由本地 OpenClaw 驱动，可自动调用 Hermes / N8N / MCP 帮你完成复杂任务。选择左侧对话开始聊天，或点击「新建对话」。
-              </div>
-            </div>
-          </div>
+          /* ③ 需求模式向导（老板 7 键 / 客户 8 键，前端驱动逐步提问） */
+          <DemandWizard
+            key={demandMode + '-' + wizardSeq}
+            mode={demandMode}
+            prefillTitle={historyPrefillTitle}
+            prefill={historyPrefill}
+            publishing={briefPublishing}
+            onPublish={(answers) => void handlePublishBrief(answers)}
+          />
         )}
 
-        {/* 底部输入区 */}
-        <MessageInput
-          onSend={handleSend}
-          sending={streaming}
-          onAbort={handleAbort}
+        {/* 文生图/文生视频弹窗（对话设置抽屉 / 输入区均可打开） */}
+        <MediaGenerationModal
+          open={generationOpen}
+          onClose={() => setGenerationOpen(false)}
+          defaultType={generationType}
+          onComplete={handleGenerationComplete}
+        />
+
+        {/* ④ 对话设置抽屉（收纳模型选择 / Agent / 知识库 / 素材生成；不含积分余额） */}
+        <ConversationSettings
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          modelId={modelId}
+          modelOptions={modelOptions}
+          customIntegrations={customIntegrations}
+          modelLoading={modelLoading}
+          agentId={agentId}
+          agentOptions={agentOptions}
+          agentPriceHint={agentPriceHint}
+          knowledgeBaseId={knowledgeBaseId}
+          kbOptions={kbOptions}
+          onModelChange={(id) => void handleModelChange(id)}
+          onRefreshModels={() => void loadModels()}
+          onAgentChange={(id) => setAgentId(id)}
+          onKnowledgeBaseChange={(id) => void handleKnowledgeBaseChange(id)}
           onOpenGeneration={(type) => {
             setGenerationType(type)
             setGenerationOpen(true)
           }}
         />
 
-        <MediaGenerationModal
-          open={generationOpen}
-          onClose={() => setGenerationOpen(false)}
-          defaultType={generationType}
-          onComplete={handleGenerationComplete}
+        {/* ③ 历史简报 Modal（类型/状态筛选 → 详情 → 使用此简报） */}
+        <HistoryBriefs
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          onUseBrief={handleUseHistoryBrief}
         />
       </div>
     </div>

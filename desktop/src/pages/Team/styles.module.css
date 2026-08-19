@@ -323,3 +323,199 @@
   border-color: var(--color-brand) !important;
   background: var(--color-brand-bg) !important;
 }
+
+/* ===== 团队卡片头部（Task 5: 图标 + 忙闲 + 本周产出） ===== */
+.teamCardHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.teamIconBlock {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--color-brand-light);
+  color: var(--color-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 600;
+}
+.teamCardHeadInfo { flex: 1; min-width: 0; }
+.teamCardHead .teamCardTitle { margin-bottom: 0; }
+.teamCardStatus {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  margin-top: 4px;
+}
+.weekOutput { color: var(--color-success); font-weight: 500; }
+
+/* 未创建模板卡（虚线占位，点击创建打开向导） */
+.uncreatedCard {
+  background: var(--color-bg-container) !important;
+  border: 1px dashed var(--color-border) !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+  cursor: default;
+}
+.uncreatedCard:hover {
+  border-color: var(--color-brand) !important;
+}
+
+/* ===== 建团向导（3 步） ===== */
+.wizardSteps { margin-bottom: 20px; }
+.templateGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.templateCard {
+  position: relative;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  background: var(--color-bg-container);
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.templateCard:hover { border-color: var(--color-border-hover); }
+.templateCardSelected {
+  border-color: var(--color-brand) !important;
+  box-shadow: 0 0 0 1px var(--color-brand) inset;
+  background: var(--color-brand-bg);
+}
+.templateEmoji { font-size: 20px; margin-right: 8px; }
+.templateName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+}
+.templateDesc {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+.templateTag {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--color-brand-light);
+  color: var(--color-brand);
+}
+.wizardHint { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; }
+
+/* Step2 成员勾选 */
+.pickSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: 12px;
+}
+.pickList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 340px;
+  overflow-y: auto;
+  margin-bottom: 4px;
+}
+.pickRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--color-bg-container);
+}
+.pickRowChecked {
+  border-color: var(--color-brand);
+  background: var(--color-brand-bg);
+}
+.pickRowLabel { flex: 1; min-width: 0; }
+.pickRoleHint {
+  font-size: 11px;
+  color: var(--color-brand);
+  background: var(--color-brand-light);
+  border-radius: 999px;
+  padding: 1px 8px;
+  margin-left: 6px;
+}
+.pickEdit { display: flex; align-items: center; gap: 6px; }
+.pickEmojiInput { width: 56px !important; }
+.pickColorDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.wizardFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+/* Step3 成功页 */
+.successWrap { text-align: center; padding: 24px 0 8px; }
+.successEmoji { font-size: 44px; margin-bottom: 12px; }
+.successTitle {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 6px;
+}
+.successDesc { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 20px; }
+.successActions { display: flex; justify-content: center; gap: 10px; }
+
+/* 角色库多选 Modal */
+.roleLibSearch { margin-bottom: 10px; }
+.roleLibList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.roleLibRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.roleLibRow:hover { background: var(--color-bg-hover); }
+.roleLibAvatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--color-brand-light);
+  color: var(--color-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.roleLibAvatar img { width: 100%; height: 100%; object-fit: cover; }
+.roleLibName { font-size: 13px; color: var(--color-text-primary); }

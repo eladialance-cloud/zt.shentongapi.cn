@@ -10,6 +10,7 @@ import { httpClient } from './http-client'
 
 export type MediaAssetSourceType = 'task' | 'media_job' | 'manual'
 export type MediaAssetType = 'image' | 'video' | 'audio' | 'file'
+export type MediaAssetUsage = 'in_use' | 'selected' | 'unused'
 
 export interface MediaAsset {
   id: number
@@ -23,6 +24,8 @@ export interface MediaAsset {
   fileSize?: number | null
   tags?: string[] | null
   archived: boolean
+  /** 素材使用状态：in_use=被执行/已发布计划引用；selected=被草稿/待审计划引用；unused=无引用 */
+  usage?: MediaAssetUsage
   createdAt: string
   updatedAt: string
 }

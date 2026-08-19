@@ -49,6 +49,7 @@ import BriefsNew from "@/pages/Briefs/New";
 import BriefsDetail from "@/pages/Briefs/Detail";
 import TaskCenter from "@/pages/TaskCenter";
 import AssetsPage from "@/pages/Assets";
+import Analytics from "@/pages/Analytics";
 import MainLayout from "@/components/MainLayout";
 import { useAuthStore } from "@/store";
 
@@ -122,6 +123,7 @@ const router = createHashRouter([
       { path: "/channels", element: <ChannelList /> },
       { path: "/channels/:id", element: <ChannelDetail /> },
       { path: "/publish", element: <PublishList /> },
+      { path: "/analytics", element: <Analytics /> },
       // ===== Agent 市场 / MCP 市场 / 自动化 =====
       { path: "/agent-market", element: <AgentMarket /> },
       { path: "/agent-market/favorites", element: <AgentFavorites /> },

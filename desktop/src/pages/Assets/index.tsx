@@ -1,13 +1,15 @@
 ﻿// 素材库页（三期 3.1）—— 网格视图 + 类型/归档筛选 + 详情弹窗 + 手动登记 + 归档
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Button, Card, Descriptions, Empty, Form, Image, Input, Modal, Pagination, Select, Space, Spin, Switch, Tag, Typography, message,
+  Button, Card, Descriptions, Empty, Form, Image, Input, Modal, Pagination, Select, Space, Spin, Switch, Tabs, Tag, Typography, message,
 } from "antd";
 import {
   FileOutlined, FolderOutlined, LinkOutlined, PlusOutlined, ReloadOutlined,
 } from "@ant-design/icons";
 import { createMediaAsset, listMediaAssets, updateMediaAsset } from "@/api/media-asset-api";
 import type { MediaAsset, MediaAssetType } from "@/api/media-asset-api";
+import { paginateFiltered } from "./asset-group";
+import type { AssetTab } from "./asset-group";
 import styles from "./styles.module.css";
 
 const TYPE_OPTIONS = [
@@ -17,6 +19,22 @@ const TYPE_OPTIONS = [
   { value: "file", label: "文件" },
 ];
 
+/** 类型 Tab（对齐原型：全部/图片/文案/视频/文档；音频仅出现在「全部」） */
+const ASSET_TABS: { key: AssetTab; label: string }[] = [
+  { key: "all", label: "全部" },
+  { key: "image", label: "图片" },
+  { key: "text", label: "文案" },
+  { key: "video", label: "视频" },
+  { key: "document", label: "文档" },
+];
+
+/** usage 状态标签映射：使用中（蓝）/ 已选（橙）/ 未用（默认灰） */
+const USAGE_META: Record<string, { label: string; color?: string }> = {
+  in_use: { label: "使用中", color: "processing" },
+  selected: { label: "已选", color: "orange" },
+  unused: { label: "未用" },
+};
+
 const TYPE_LABELS: Record<MediaAssetType, string> = {
   image: "图片",
   video: "视频",
@@ -25,6 +43,9 @@ const TYPE_LABELS: Record<MediaAssetType, string> = {
 };
 
 const PAGE_SIZE = 12;
+/** 文案/文档 Tab 翻页聚合参数：每页 100 条，最多 20 页（2000 条）；超出部分截断 */
+const AGGREGATE_PAGE_SIZE = 100;
+const MAX_AGGREGATE_PAGES = 20;
 
 function formatSize(bytes?: number | null): string {
   if (bytes == null) return "-";
@@ -61,7 +82,7 @@ export default function AssetsPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const [typeFilter, setTypeFilter] = useState<MediaAssetType | undefined>();
+  const [tab, setTab] = useState<AssetTab>("all");
   const [showArchived, setShowArchived] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [detail, setDetail] = useState<MediaAsset | null>(null);
@@ -69,29 +90,57 @@ export default function AssetsPage() {
   const [saving, setSaving] = useState(false);
   const [actingId, setActingId] = useState<number | null>(null);
   const [form] = Form.useForm<CreateFormValues>();
+  /** 请求序号守卫：快速切换 Tab 时丢弃过期请求的结果 */
+  const seqRef = useRef(0);
 
-  const load = useCallback(async (targetPage = 1, type?: MediaAssetType, archived = false) => {
+  const load = useCallback(async (targetPage = 1, currentTab: AssetTab = "all", archived = false) => {
+    const seq = ++seqRef.current;
     setLoading(true);
     try {
-      const res = await listMediaAssets({
-        type,
-        archived,
-        page: targetPage,
-        pageSize: PAGE_SIZE,
-      });
-      setAssets(res.list);
-      setTotal(res.total);
+      if (currentTab === "text" || currentTab === "document") {
+        // 文案/文档按 mimeType 前端分组：翻页聚合拉取全部 type=file 素材后本地过滤分页
+        // （防御上限 MAX_AGGREGATE_PAGES 页 = 2000 条，超出截断，total 以实际取到的条数为准；
+        //   全部/图片/视频 Tab 仍走后端 type 过滤分页，不走此分支）
+        let all: MediaAsset[] = [];
+        for (let p = 1; p <= MAX_AGGREGATE_PAGES; p++) {
+          const res = await listMediaAssets({
+            type: "file",
+            archived,
+            page: p,
+            pageSize: AGGREGATE_PAGE_SIZE,
+          });
+          all = all.concat(res.list ?? []);
+          if (all.length >= (res.total ?? 0)) break;
+        }
+        if (seq !== seqRef.current) return; // 过期请求：丢弃结果
+        const paged = paginateFiltered(all, currentTab, targetPage, PAGE_SIZE);
+        setAssets(paged.list);
+        setTotal(paged.total);
+      } else {
+        const serverType: MediaAssetType | undefined =
+          currentTab === "all" ? undefined : currentTab === "image" || currentTab === "video" ? currentTab : undefined;
+        const res = await listMediaAssets({
+          type: serverType,
+          archived,
+          page: targetPage,
+          pageSize: PAGE_SIZE,
+        });
+        if (seq !== seqRef.current) return; // 过期请求：丢弃结果
+        setAssets(res.list);
+        setTotal(res.total);
+      }
       setPage(targetPage);
     } catch (err) {
+      if (seq !== seqRef.current) return; // 过期请求：不弹错误
       message.error("素材加载失败: " + (err as Error).message);
       setAssets([]);
       setTotal(0);
     } finally {
-      setLoading(false);
+      if (seq === seqRef.current) setLoading(false);
     }
   }, []);
 
-  useEffect(() => { void load(1, typeFilter, showArchived); }, [load, typeFilter, showArchived]);
+  useEffect(() => { void load(1, tab, showArchived); }, [load, tab, showArchived]);
 
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
@@ -105,7 +154,7 @@ export default function AssetsPage() {
       await updateMediaAsset(asset.id, { archived: !asset.archived });
       message.success(asset.archived ? "已恢复" : "已归档");
       if (detail?.id === asset.id) setDetail(null);
-      void load(page, typeFilter, showArchived);
+      void load(page, tab, showArchived);
     } catch (err) {
       message.error("操作失败: " + (err as Error).message);
     } finally {
@@ -127,7 +176,7 @@ export default function AssetsPage() {
       message.success("素材已登记");
       setCreateOpen(false);
       form.resetFields();
-      void load(1, typeFilter, showArchived);
+      void load(1, tab, showArchived);
     } catch (err) {
       message.error("登记失败: " + (err as Error).message);
     } finally {
@@ -180,7 +229,7 @@ export default function AssetsPage() {
           <span>素材库</span>
         </div>
         <div className={styles.headerActions}>
-          <Button className={styles.backBtn} icon={<ReloadOutlined />} onClick={() => void load(page, typeFilter, showArchived)}>刷新</Button>
+          <Button className={styles.backBtn} icon={<ReloadOutlined />} onClick={() => void load(page, tab, showArchived)}>刷新</Button>
           <Button type="primary" className={styles.primaryBtn} icon={<PlusOutlined />} onClick={() => { form.resetFields(); setCreateOpen(true); }}>
             登记素材
           </Button>
@@ -188,15 +237,13 @@ export default function AssetsPage() {
       </div>
 
       <Card className={styles.filterCard} bordered={false}>
+        <Tabs
+          activeKey={tab}
+          onChange={(k) => setTab(k as AssetTab)}
+          items={ASSET_TABS.map((t) => ({ key: t.key, label: t.label }))}
+          style={{ marginBottom: 4 }}
+        />
         <Space wrap size={12}>
-          <Select
-            allowClear
-            placeholder="素材类型"
-            style={{ width: 140 }}
-            options={TYPE_OPTIONS}
-            value={typeFilter}
-            onChange={(v) => setTypeFilter(v)}
-          />
           <Switch checked={showArchived} onChange={setShowArchived} checkedChildren="含已归档" unCheckedChildren="仅未归档" />
           <Input
             allowClear
@@ -227,9 +274,12 @@ export default function AssetsPage() {
                 <div className={styles.previewBox}>{renderPreview(asset)}</div>
                 <div className={styles.assetMeta}>
                   <div className={styles.assetTitle} title={asset.title}>{asset.title}</div>
-                  <Space size={4}>
+                  <Space size={4} wrap>
                     <Tag color={asset.assetType === "image" ? "blue" : asset.assetType === "video" ? "purple" : "default"}>
                       {TYPE_LABELS[asset.assetType] || asset.assetType}
+                    </Tag>
+                    <Tag color={USAGE_META[asset.usage ?? "unused"]?.color}>
+                      {USAGE_META[asset.usage ?? "unused"]?.label ?? "未用"}
                     </Tag>
                     {asset.archived && <Tag color="orange">已归档</Tag>}
                   </Space>
@@ -242,7 +292,7 @@ export default function AssetsPage() {
 
       {total > PAGE_SIZE && (
         <div className={styles.pager}>
-          <Pagination current={page} total={total} pageSize={PAGE_SIZE} showSizeChanger={false} onChange={(p) => void load(p, typeFilter, showArchived)} />
+          <Pagination current={page} total={total} pageSize={PAGE_SIZE} showSizeChanger={false} onChange={(p) => void load(p, tab, showArchived)} />
         </div>
       )}
 
@@ -269,6 +319,11 @@ export default function AssetsPage() {
             <Descriptions column={1} size="small" bordered style={{ marginTop: 12 }}>
               <Descriptions.Item label="标题">{detail.title}</Descriptions.Item>
               <Descriptions.Item label="类型">{TYPE_LABELS[detail.assetType] || detail.assetType}</Descriptions.Item>
+              <Descriptions.Item label="使用状态">
+                <Tag color={USAGE_META[detail.usage ?? "unused"]?.color}>
+                  {USAGE_META[detail.usage ?? "unused"]?.label ?? "未用"}
+                </Tag>
+              </Descriptions.Item>
               <Descriptions.Item label="来源">
                 {detail.sourceType === "task" ? "任务产出" : detail.sourceType === "media_job" ? "媒体生成" : "手动登记"}
                 {detail.sourceId != null ? ` #${detail.sourceId}` : ""}

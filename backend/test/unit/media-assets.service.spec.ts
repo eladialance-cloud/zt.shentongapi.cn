@@ -68,6 +68,7 @@ function makeService(
     taskItems?: any[];
     jobs?: any[];
     tasks?: any[];
+    plans?: any[];
   } = {},
 ) {
   const assetRepo = makeRepo(opts.assets ?? []);
@@ -89,13 +90,15 @@ function makeService(
         Object.entries(where ?? {}).every(([k, v]) => row[k] === v),
       ) ?? null,
   };
+  const publishPlanRepo = makeRepo(opts.plans ?? []);
   const svc = new MediaAssetService(
     assetRepo as any,
     taskOutputRepo as any,
     mediaJobRepo as any,
     agentTaskRepo as any,
+    publishPlanRepo as any,
   );
-  return { svc, assetRepo, taskOutputRepo, mediaJobRepo, agentTaskRepo };
+  return { svc, assetRepo, taskOutputRepo, mediaJobRepo, agentTaskRepo, publishPlanRepo };
 }
 
 function makeAsset(overrides: Partial<MediaAssetEntity> = {}): MediaAssetEntity {

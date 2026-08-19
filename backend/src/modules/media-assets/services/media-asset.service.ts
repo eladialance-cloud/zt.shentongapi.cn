@@ -4,6 +4,7 @@ import { Repository, In, FindOptionsWhere } from 'typeorm';
 import { MediaAssetEntity, MediaAssetType } from '../entities/media-asset.entity';
 import { TaskOutputItemEntity } from '../../task/entities/task-output-item.entity';
 import { AgentTaskEntity } from '../../task/entities/agent-task.entity';
+import { PublishPlanEntity } from '../../channel/entities/publish-plan.entity';
 import { MediaJobEntity } from '../../media-generation/entities/media-job.entity';
 import {
   CreateMediaAssetDto,
@@ -18,6 +19,23 @@ const TITLE_SUMMARY_MAX_LEN = 50;
 
 /** 可直通为素材类型的任务输出/媒体生成类型 */
 const MEDIA_TYPES: ReadonlySet<string> = new Set(['image', 'video', 'audio']);
+
+/** 素材使用状态：in_use=被执行/已发布计划引用；selected=被草稿/待审计划引用；unused=无引用 */
+export type MediaAssetUsage = 'in_use' | 'selected' | 'unused';
+
+/** 优先级：in_use > selected > unused */
+const USAGE_PRIORITY: Record<MediaAssetUsage, number> = {
+  in_use: 2,
+  selected: 1,
+  unused: 0,
+};
+
+/** 发布计划状态 → 素材使用状态（rejected/failed 不计入引用） */
+function usageForPlanStatus(status: string): MediaAssetUsage | null {
+  if (status === 'approved' || status === 'published') return 'in_use';
+  if (status === 'draft' || status === 'pending_review') return 'selected';
+  return null;
+}
 
 export interface ImportResult {
   imported: number;
@@ -46,6 +64,8 @@ export class MediaAssetService {
     private readonly mediaJobRepo: Repository<MediaJobEntity>,
     @InjectRepository(AgentTaskEntity)
     private readonly agentTaskRepo: Repository<AgentTaskEntity>,
+    @InjectRepository(PublishPlanEntity)
+    private readonly publishPlanRepo: Repository<PublishPlanEntity>,
   ) {}
 
   /**
@@ -72,7 +92,7 @@ export class MediaAssetService {
   async list(
     userId: number,
     query: MediaAssetQueryDto,
-  ): Promise<PaginatedResult<MediaAssetEntity>> {
+  ): Promise<PaginatedResult<MediaAssetEntity & { usage: MediaAssetUsage }>> {
     const page = Math.max(1, Number(query.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 10));
 
@@ -91,8 +111,31 @@ export class MediaAssetService {
       take: pageSize,
     });
 
+    // 一次性取当前用户全部发布计划，汇总每个素材被引用的最高优先级 usage
+    const plans = await this.publishPlanRepo.find({
+      where: { userId },
+      select: ['id', 'status', 'assetIds'],
+    });
+    const usageByAssetId = new Map<number, MediaAssetUsage>();
+    for (const plan of plans) {
+      const usage = usageForPlanStatus(plan.status);
+      if (!usage) continue;
+      // Number() 归一化防御：历史/第三方数据 assetIds 可能为 string，并过滤 NaN
+      for (const assetId of (plan.assetIds ?? []).map(Number).filter((id) => !Number.isNaN(id))) {
+        const current = usageByAssetId.get(assetId);
+        if (current === undefined || USAGE_PRIORITY[usage] > USAGE_PRIORITY[current]) {
+          usageByAssetId.set(assetId, usage);
+        }
+      }
+    }
+
+    const listWithUsage = list.map((asset) => ({
+      ...asset,
+      usage: usageByAssetId.get(asset.id) ?? 'unused',
+    }));
+
     return {
-      list,
+      list: listWithUsage,
       total,
       page,
       pageSize,

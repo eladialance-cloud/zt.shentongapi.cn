@@ -1,8 +1,8 @@
 ﻿// 发布管理页（三期 3.2/3.4：列表 + 日历视图；审核 通过/打回/直接修改；创建可关联素材）
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Button, Calendar, Card, DatePicker, Empty, Form, Input, Modal, Select,
-  Spin, Tabs, Tag, message,
+  Alert, Button, Calendar, Card, DatePicker, Empty, Form, Input, Modal, Select,
+  Spin, Tabs, Tag, Typography, message,
 } from "antd";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
@@ -10,6 +10,7 @@ import {
   PlusOutlined, SendOutlined, CheckOutlined,
   CloseOutlined, ReloadOutlined, EditOutlined,
 } from "@ant-design/icons";
+import { useNavigate } from "react-router-dom";
 import * as channelApi from "@/api/channel-api";
 import { listMediaAssets } from "@/api/media-asset-api";
 import type { MediaAsset } from "@/api/media-asset-api";
@@ -33,6 +34,21 @@ const PLATFORM_OPTIONS = [
   { value: "bilibili", label: "📺 B站" },
   { value: "wechat_mp", label: "💬 公众号" },
 ];
+
+/** 平台展示元信息：列表 Tag 与日历展示统一使用的标签与颜色映射 */
+export const PLATFORM_META: Record<string, { label: string; short: string; color: string }> = {
+  douyin: { label: "抖音", short: "抖音", color: "#161823" },
+  xiaohongshu: { label: "小红书", short: "小红书", color: "#ff2442" },
+  weibo: { label: "微博", short: "微博", color: "#ff5722" },
+  zhihu: { label: "知乎", short: "知乎", color: "#0084ff" },
+  bilibili: { label: "B站", short: "B站", color: "#fb7299" },
+  wechat_mp: { label: "公众号", short: "公众号", color: "#07c160" },
+};
+
+/** 平台 → 颜色（douyin 黑 / xiaohongshu 红 / weibo 橙红 / zhihu 蓝 / bilibili 粉 / wechat_mp 绿） */
+export const PLATFORM_COLORS: Record<string, string> = Object.fromEntries(
+  Object.entries(PLATFORM_META).map(([platform, meta]) => [platform, meta.color]),
+);
 
 function formatTime(v: unknown): string {
   if (!v) return "-";
@@ -58,6 +74,40 @@ export default function PublishList() {
   const [assetOptions, setAssetOptions] = useState<MediaAsset[]>([]);
   const [form] = Form.useForm<PlanFormValues>();
   const [saving, setSaving] = useState(false);
+  /** 渠道授权状态：加载成功才展示提示条；listChannels 失败静默不展示 */
+  const [channelsLoaded, setChannelsLoaded] = useState(false);
+  const [authorizedPlatforms, setAuthorizedPlatforms] = useState<Set<string>>(new Set());
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const channels = await channelApi.listChannels();
+        if (cancelled) return;
+        setAuthorizedPlatforms(new Set((channels ?? []).filter((c) => c.status === "active").map((c) => c.platform)));
+        setChannelsLoaded(true);
+      } catch {
+        // 拉取渠道失败：静默不展示授权提示条
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  /** 未授权平台：公众号=无 active 的 wechat_mp 渠道；小红书=渠道枚举不含，视为未授权 */
+  const unAuthedPlatforms = useMemo(() => {
+    if (!channelsLoaded) return [] as string[];
+    const list: string[] = [];
+    if (!authorizedPlatforms.has("wechat_mp")) list.push("wechat_mp");
+    if (!authorizedPlatforms.has("xiaohongshu")) list.push("xiaohongshu");
+    return list;
+  }, [channelsLoaded, authorizedPlatforms]);
+
+  /** 仅当当前发布计划列表命中未授权平台时才展示提示条 */
+  const showAuthAlert = useMemo(() => {
+    if (unAuthedPlatforms.length === 0) return false;
+    return plans.some((p) => (p.targetPlatforms ?? []).some((t) => unAuthedPlatforms.includes(t)));
+  }, [plans, unAuthedPlatforms]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -190,6 +240,14 @@ export default function PublishList() {
           return (
             <li key={plan.id} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 2 }}>
               <Tag color={st.color} style={{ marginRight: 4 }}>{st.label}</Tag>
+              {plan.targetPlatforms.slice(0, 2).map((p) => (
+                <span key={p} style={{ color: PLATFORM_COLORS[p] ?? "inherit", fontWeight: 500, marginRight: 3 }}>
+                  {PLATFORM_META[p]?.short ?? p}
+                </span>
+              ))}
+              {plan.targetPlatforms.length > 2 && (
+                <span style={{ color: "var(--color-text-secondary)", marginRight: 3 }}>+{plan.targetPlatforms.length - 2}</span>
+              )}
               {plan.title}
             </li>
           );
@@ -210,6 +268,20 @@ export default function PublishList() {
           </Button>
         </div>
       </div>
+
+      {showAuthAlert && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16, borderRadius: 10 }}
+          message={
+            <span>
+              部分平台尚未授权：{unAuthedPlatforms.map((p) => PLATFORM_META[p]?.label ?? p).join("、")}
+              <Typography.Link style={{ marginLeft: 8 }} onClick={() => navigate("/channels")}>去渠道管理</Typography.Link>
+            </span>
+          }
+        />
+      )}
 
       <Tabs
         activeKey={activeTab}
@@ -240,7 +312,10 @@ export default function PublishList() {
                     </div>
                     <div className={styles.teamCardMeta}>
                       <Tag color={st.color}>{st.label}</Tag>
-                      <span>目标: {plan.targetPlatforms.join(", ")}</span>
+                      <span>目标: </span>
+                      {plan.targetPlatforms.map((p) => (
+                        <Tag key={p} color={PLATFORM_COLORS[p] ?? "default"}>{PLATFORM_META[p]?.label ?? p}</Tag>
+                      ))}
                       {plan.scheduledAt && <span>定时: {formatTime(plan.scheduledAt)}</span>}
                       {plan.taskId != null && <Tag color="purple">关联任务 #{plan.taskId}</Tag>}
                       {plan.assetIds && plan.assetIds.length > 0 && <Tag color="cyan">素材 {plan.assetIds.length} 个</Tag>}

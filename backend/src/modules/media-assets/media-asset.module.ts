@@ -6,6 +6,7 @@ import { MediaAssetService } from './services/media-asset.service';
 import { TaskOutputItemEntity } from '../task/entities/task-output-item.entity';
 import { MediaJobEntity } from '../media-generation/entities/media-job.entity';
 import { AgentTaskEntity } from '../task/entities/agent-task.entity';
+import { PublishPlanEntity } from '../channel/entities/publish-plan.entity';
 
 /**
  * 素材资产模块
@@ -18,6 +19,7 @@ import { AgentTaskEntity } from '../task/entities/agent-task.entity';
       TaskOutputItemEntity,
       MediaJobEntity,
       AgentTaskEntity,
+      PublishPlanEntity,
     ]),
   ],
   controllers: [MediaAssetController],

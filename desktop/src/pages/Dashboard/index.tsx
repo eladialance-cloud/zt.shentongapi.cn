@@ -1,11 +1,11 @@
-﻿// 工作台 - Kimi 风格（v5.0）
-// 定位: AI 办公入口首页（主导航已移除「仪表盘」，Logo/根路由进入本页）
-// 结构: 问候区 + 5 统计卡 + (快捷入口 + 最近任务)
-// 数据: 积分/会话/团队/服务/发布计划/云端需求单均接真实数据，失败降级为占位
+﻿// 工作台 - Kimi 风格（v6.0 · 对齐四期原型）
+// 定位: AI 办公入口首页（老板每天第一屏：30 秒看清公司状态并直接处理审核）
+// 结构: 问候 Hero + 5 统计卡 + (待审核 + 今日发布) + (进行中任务 + AI 团队状态) + (快捷入口 + 最近任务)
+// 数据: 会话/团队/发布计划/云端需求单/统一任务均接真实数据，失败降级为空数组
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Spin } from 'antd'
+import { Button, Spin, Tag } from 'antd'
 import {
   MessageSquare,
   Clapperboard,
@@ -16,28 +16,46 @@ import {
   FileText,
   Inbox,
   Send,
-  Server,
   Zap,
   Users,
   BarChart3,
+  Plus,
   type LucideIcon,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
-import { useSystemStore } from '@/store/system'
-import { getTransactions } from '@/api/credits-api'
 import { listSessions } from '@/api/chat-api'
-import { listTeams } from '@/api/team-api'
-import { listServices } from '@/api/service-manager-api'
+import { listTeams, listMembers, listTasks } from '@/api/team-api'
 import { listPublishPlans } from '@/api/channel-api'
 import { listBriefs } from '@/api/brief-api'
-import type { CreditTransaction } from '@/types/credits'
+import { getUnifiedTasks } from '@/api/task-api'
+import type { UnifiedTaskItem } from '@/api/task-api'
 import type { ChatSession } from '@/types/chat'
-import type { Team } from '@/types/team'
-import type { ServiceInfo } from '@/types/service-manager'
+import type { Team, TeamMember, TeamTask } from '@/types/team'
 import type { PublishPlan } from '@/types/channel'
 import type { BriefItem } from '@/api/brief-api'
+import {
+  aggregateTeamStatus,
+  countWeekTasks,
+  filterInProgress,
+  filterPendingReview,
+  platformLabel,
+  todayPlans,
+  type TeamStatusRow,
+} from './cards'
+import ReviewQueue from './ReviewQueue'
+import TaskProgress from './TaskProgress'
+import TeamStatus from './TeamStatus'
 import styles from './styles.module.css'
-import { openAdminUrl } from '@/utils/admin-url'
+
+/** 发布状态 Tag 映射（工作台自包含，避免与 Publish 页跨页耦合） */
+const STATUS_MAP: Record<string, { label: string; color: string }> = {
+  draft: { label: '草稿', color: 'default' },
+  pending_review: { label: '待审核', color: 'orange' },
+  approved: { label: '已批准', color: 'blue' },
+  rejected: { label: '已拒绝', color: 'red' },
+  published: { label: '已发布', color: 'green' },
+  failed: { label: '失败', color: 'red' },
+}
 
 function pad(n: number): string {
   return n < 10 ? '0' + n : String(n)
@@ -45,10 +63,6 @@ function pad(n: number): string {
 
 function dayKey(d: Date): string {
   return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
-}
-
-function dateStr(d: Date): string {
-  return dayKey(d)
 }
 
 /** 最近任务时间显示：今天 HH:mm / 昨天 / M月d日 */
@@ -78,6 +92,14 @@ function formatDate(): string {
   return d.getMonth() + 1 + ' 月 ' + d.getDate() + ' 日 · ' + weekdays[d.getDay()]
 }
 
+/** 今日发布卡时间显示：HH:mm */
+function formatPublishTime(value?: string): string {
+  if (!value) return ''
+  const d = new Date(value)
+  if (isNaN(d.getTime())) return ''
+  return pad(d.getHours()) + ':' + pad(d.getMinutes())
+}
+
 interface QuickEntry {
   key: string
   label: string
@@ -98,45 +120,52 @@ const QUICK_ENTRIES: QuickEntry[] = [
 export default function Dashboard() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
-  const backendAvailable = useSystemStore((s) => s.backendAvailable)
 
   const [loading, setLoading] = useState(true)
-  const [settles, setSettles] = useState<CreditTransaction[]>([])
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [teams, setTeams] = useState<Team[]>([])
-  const [services, setServices] = useState<ServiceInfo[] | null>(null)
   const [publishPlans, setPublishPlans] = useState<PublishPlan[]>([])
   const [briefs, setBriefs] = useState<BriefItem[]>([])
+  const [unifiedTasks, setUnifiedTasks] = useState<UnifiedTaskItem[]>([])
+  const [membersByTeam, setMembersByTeam] = useState<Map<number, TeamMember[]>>(new Map())
+  const [weekTaskCountByTeam, setWeekTaskCountByTeam] = useState<Map<number, number>>(new Map())
 
   const loadAll = useCallback(async () => {
     setLoading(true)
     try {
-      const weekStart = new Date()
-      weekStart.setDate(weekStart.getDate() - 6)
-      const end = new Date()
-      const [txnRes, sessionRes, teamRes, svcRes, [publishPlanRes, briefRes]] = await Promise.all([
-        getTransactions({
-          type: 'settle',
-          startDate: dateStr(weekStart),
-          endDate: dateStr(end),
-          pageSize: 100,
-        }).catch(() => ({ list: [], total: 0 }) as never),
+      const [sessionRes, teamRes, publishPlanRes, briefRes, taskRes] = await Promise.all([
         listSessions({ pageSize: 8 }).catch(() => ({ list: [], total: 0 }) as never),
         listTeams().catch(() => [] as Team[]),
-        listServices().catch(() => null as ServiceInfo[] | null),
-        Promise.all([
-          listPublishPlans().catch(() => [] as PublishPlan[]),
-          listBriefs({ status: 'draft', pageSize: 100 }).catch(() => ({ list: [], total: 0 }) as never),
-        ]),
+        listPublishPlans().catch(() => [] as PublishPlan[]),
+        listBriefs({ status: 'draft', pageSize: 100 }).catch(() => ({ list: [], total: 0 }) as never),
+        getUnifiedTasks({ pageSize: 100 }).catch(() => ({ list: [], total: 0 }) as never),
       ])
-      const txnList = (txnRes as { list?: CreditTransaction[] }).list || []
-      const sessionList = (sessionRes as { list?: ChatSession[] }).list || []
-      setSettles(txnList)
-      setSessions(sessionList)
-      setTeams(teamRes || [])
-      setServices(svcRes)
+      const teamList = teamRes || []
+      setSessions((sessionRes as { list?: ChatSession[] }).list || [])
+      setTeams(teamList)
       setPublishPlans(publishPlanRes)
       setBriefs((briefRes as { list?: BriefItem[] }).list || [])
+      setUnifiedTasks((taskRes as { list?: UnifiedTaskItem[] }).list || [])
+
+      // AI 团队状态：逐个团队拉成员 + 任务（任一失败只降级该团队）
+      const members = new Map<number, TeamMember[]>()
+      const weekCounts = new Map<number, number>()
+      await Promise.all(
+        teamList.map(async (team) => {
+          try {
+            const [memberRes, taskRes2] = await Promise.all([
+              listMembers(team.id),
+              listTasks(team.id, { pageSize: 50 }),
+            ])
+            members.set(team.id, memberRes)
+            weekCounts.set(team.id, countWeekTasks((taskRes2 as { list?: TeamTask[] }).list || []))
+          } catch (err) {
+            console.warn('[Workbench] 加载团队 ' + team.id + ' 数据失败:', err)
+          }
+        }),
+      )
+      setMembersByTeam(members)
+      setWeekTaskCountByTeam(weekCounts)
     } catch (err) {
       console.error('[Workbench] load failed:', err)
     } finally {
@@ -148,49 +177,37 @@ export default function Dashboard() {
     void loadAll()
   }, [loadAll])
 
+  /** 进行中任务数（统一任务 status=running） */
+  const inProgressCount = useMemo(
+    () => filterInProgress(unifiedTasks, Number.MAX_SAFE_INTEGER).length,
+    [unifiedTasks],
+  )
 
-  /** 今日 AI 任务数（今日结算笔数） */
-  const todayTasks = useMemo(() => {
-    const today = dayKey(new Date())
-    return settles.filter((s) => dayKey(new Date(s.createdAt)) === today).length
-  }, [settles])
+  /** 待我处理：待审核发布计划 + 云端草稿需求单 */
+  const pendingReview = useMemo(
+    () => filterPendingReview(publishPlans, Number.MAX_SAFE_INTEGER).length,
+    [publishPlans],
+  )
+  const draftBriefs = useMemo(
+    () => (briefs ?? []).filter((b) => b.status === 'draft').length,
+    [briefs],
+  )
+  const todoCount = pendingReview + draftBriefs
 
-  /** 运行中服务 */
-  const runningServices = useMemo(() => {
-    if (!services) return null
-    return services.filter((s) => s.status === 'running').length
-  }, [services])
+  /** 今日发布：scheduledAt 是今天的发布计划 */
+  const todayList = useMemo(() => todayPlans(publishPlans, dayKey(new Date())), [publishPlans])
+  const todayPublishes = todayList.length
 
-  /** 团队成员总数 / 团队数 */
+  /** 团队成员总数 */
   const memberTotal = useMemo(
     () => teams.reduce((sum, t) => sum + (Number(t.memberCount) || 0), 0),
     [teams],
   )
 
-  /** 待我处理：待审核发布计划 + 云端草稿需求单 */
-  const pendingReview = useMemo(
-    () =>
-      (publishPlans ?? []).filter(
-        (p) => p.status === 'pending_review' || p.reviewStatus === 'pending',
-      ).length,
-    [publishPlans],
-  )
-
-  const draftBriefs = useMemo(
-    () => (briefs ?? []).filter((b) => b.status === 'draft').length,
-    [briefs],
-  )
-
-  const todoCount = pendingReview + draftBriefs
-
-  /** 今日发布：scheduledAt 是今天的发布计划 */
-  const todayPublishes = useMemo(
-    () =>
-      (publishPlans ?? []).filter((p) => {
-        const d = new Date(p.scheduledAt ?? '')
-        return !Number.isNaN(d.getTime()) && dayKey(d) === dayKey(new Date())
-      }).length,
-    [publishPlans],
+  /** 团队状态聚合行 */
+  const teamRows = useMemo<TeamStatusRow[]>(
+    () => aggregateTeamStatus(teams, membersByTeam, weekTaskCountByTeam),
+    [teams, membersByTeam, weekTaskCountByTeam],
   )
 
   /** 最近任务（取最近会话，按来源打标签） */
@@ -220,16 +237,31 @@ export default function Dashboard() {
     [sessions],
   )
 
-  const showSkeleton = loading && settles.length === 0 && sessions.length === 0
+  const showSkeleton =
+    loading && sessions.length === 0 && publishPlans.length === 0 && unifiedTasks.length === 0
 
   return (
     <div className={styles.workbench}>
-      {/* 问候区 */}
-      <header className={styles.head}>
-        <h2 className={styles.title}>
-          {greeting()}，{user?.username || '用户'}
-        </h2>
-        <p className={styles.sub}>今天是 {formatDate()}，团队一切正常运转</p>
+      {/* 问候 Hero */}
+      <header className={styles.hero}>
+        <div className={styles.heroInfo}>
+          <h2 className={styles.title}>
+            {greeting()}，{user?.username || '用户'}
+          </h2>
+          <p className={styles.sub}>
+            今天是 {formatDate()} · {inProgressCount} 个任务进行中 · {pendingReview} 条待审核 ·{' '}
+            {todayPublishes} 个今日发布
+          </p>
+        </div>
+        <Button
+          type="primary"
+          size="large"
+          className={styles.heroBtn}
+          icon={<Plus size={18} />}
+          onClick={() => navigate('/chat')}
+        >
+          新建任务 · 先聊需求
+        </Button>
       </header>
 
       {/* 统计卡 */}
@@ -263,8 +295,8 @@ export default function Dashboard() {
           </span>
           <div className={styles.statInfo}>
             <div className={styles.statLabel}>进行中</div>
-            <div className={styles.statValue}>{todayTasks}</div>
-            <div className={styles.statSub}>按今日结算估算</div>
+            <div className={styles.statValue}>{inProgressCount}</div>
+            <div className={styles.statSub}>查看任务中心</div>
           </div>
         </div>
 
@@ -302,33 +334,7 @@ export default function Dashboard() {
 
         <div
           className={styles.statCard}
-          onClick={() => navigate('/services')}
-          role="button"
-          tabIndex={0}
-        >
-          <span className={styles.statIcon}>
-            <Server size={20} />
-          </span>
-          <div className={styles.statInfo}>
-            <div className={styles.statLabel}>服务健康</div>
-            <div className={styles.statValue}>
-              {runningServices != null ? (
-                <>
-                  {runningServices}
-                  <span className={styles.statValueSuffix}>/ {services?.length ?? 0}</span>
-                </>
-              ) : backendAvailable ? (
-                '在线'
-              ) : (
-                '—'
-              )}
-            </div>
-            <div className={styles.statSub}>查看服务</div>
-          </div>
-        </div>
-        <div
-          className={styles.statCard}
-          onClick={() => openAdminUrl("/admin/stats")}
+          onClick={() => navigate('/analytics')}
           role="button"
           tabIndex={0}
         >
@@ -338,78 +344,133 @@ export default function Dashboard() {
           <div className={styles.statInfo}>
             <div className={styles.statLabel}>数据分析</div>
             <div className={styles.statValue}>报表</div>
-            <div className={styles.statSub}>打开管理后台完整报表</div>
+            <div className={styles.statSub}>打开数据分析报表</div>
           </div>
         </div>
-
       </div>
-
 
       {showSkeleton ? (
         <div className={styles.loadingWrap}>
           <Spin size="large" tip="正在加载工作台数据..." />
         </div>
       ) : (
-        <div className={styles.grid}>
-          {/* 快捷入口 */}
-          <section className={styles.card}>
-            <h3 className={styles.cardTitle}>快捷入口</h3>
-            <div className={styles.quickGrid}>
-              {QUICK_ENTRIES.map((entry) => {
-                const Icon = entry.icon
-                return (
-                  <div
-                    key={entry.key}
-                    className={styles.quickItem}
-                    onClick={() => navigate(entry.path)}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <span className={styles.quickIcon}>
-                      <Icon size={20} />
-                    </span>
-                    <span className={styles.quickLabel}>{entry.label}</span>
-                  </div>
-                )
-              })}
-            </div>
-          </section>
+        <>
+          {/* 待审核 + 今日发布 */}
+          <div className={styles.cardsRow}>
+            <ReviewQueue plans={publishPlans} onChanged={() => void loadAll()} />
 
-          {/* 最近任务 */}
-          <section className={styles.card}>
-            <h3 className={styles.cardTitle}>
-              <span>最近任务</span>
-              <span
-                className={styles.cardMore}
-                onClick={() => navigate('/chat')}
-                role="button"
-                tabIndex={0}
-              >
-                查看全部
-              </span>
-            </h3>
-            {recentTasks.length === 0 ? (
-              <div className={styles.emptyHint}>暂无任务记录，去发起第一段对话吧</div>
-            ) : (
-              <div className={styles.taskList}>
-                {recentTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className={styles.taskRow}
-                    onClick={() => navigate('/chat')}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <span className={styles.taskDot} style={{ background: task.color }} />
-                    <span className={styles.taskTitle}>{task.title}</span>
-                    <span className={styles.taskTag}>{task.tag}</span>
-                    <span className={styles.taskTime}>{task.time}</span>
-                  </div>
-                ))}
+            <section className={styles.card}>
+              <h3 className={styles.cardTitle}>
+                <span>今日发布</span>
+                <span
+                  className={styles.cardMore}
+                  onClick={() => navigate('/publish')}
+                  role="button"
+                  tabIndex={0}
+                >
+                  查看全部
+                </span>
+              </h3>
+              {todayList.length === 0 ? (
+                <div className={styles.emptyHint}>今天暂无排期发布，去创建发布计划吧</div>
+              ) : (
+                <div className={styles.publishList}>
+                  {todayList.map((plan) => {
+                    const st = STATUS_MAP[plan.status] || { label: plan.status, color: 'default' }
+                    return (
+                      <div
+                        key={plan.id}
+                        className={styles.publishRow}
+                        onClick={() => navigate('/publish')}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        <div className={styles.publishInfo}>
+                          <div className={styles.publishTitle}>{plan.title}</div>
+                          <div className={styles.publishMeta}>
+                            <span className={styles.publishPlatform}>
+                              {platformLabel(plan.targetPlatforms)}
+                            </span>
+                            <span className={styles.publishTime}>
+                              {formatPublishTime(plan.scheduledAt)}
+                            </span>
+                          </div>
+                        </div>
+                        <Tag color={st.color}>{st.label}</Tag>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+          </div>
+
+          {/* 进行中任务 + AI 团队状态 */}
+          <div className={styles.cardsRow}>
+            <TaskProgress tasks={unifiedTasks} />
+            <TeamStatus rows={teamRows} />
+          </div>
+
+          {/* 快捷入口 + 最近任务 */}
+          <div className={styles.grid}>
+            <section className={styles.card}>
+              <h3 className={styles.cardTitle}>快捷入口</h3>
+              <div className={styles.quickGrid}>
+                {QUICK_ENTRIES.map((entry) => {
+                  const Icon = entry.icon
+                  return (
+                    <div
+                      key={entry.key}
+                      className={styles.quickItem}
+                      onClick={() => navigate(entry.path)}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <span className={styles.quickIcon}>
+                        <Icon size={20} />
+                      </span>
+                      <span className={styles.quickLabel}>{entry.label}</span>
+                    </div>
+                  )
+                })}
               </div>
-            )}
-          </section>
-        </div>
+            </section>
+
+            <section className={styles.card}>
+              <h3 className={styles.cardTitle}>
+                <span>最近任务</span>
+                <span
+                  className={styles.cardMore}
+                  onClick={() => navigate('/chat')}
+                  role="button"
+                  tabIndex={0}
+                >
+                  查看全部
+                </span>
+              </h3>
+              {recentTasks.length === 0 ? (
+                <div className={styles.emptyHint}>暂无任务记录，去发起第一段对话吧</div>
+              ) : (
+                <div className={styles.taskList}>
+                  {recentTasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className={styles.taskRow}
+                      onClick={() => navigate('/chat')}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <span className={styles.taskDot} style={{ background: task.color }} />
+                      <span className={styles.taskTitle}>{task.title}</span>
+                      <span className={styles.taskTag}>{task.tag}</span>
+                      <span className={styles.taskTime}>{task.time}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        </>
       )}
     </div>
   )

@@ -720,3 +720,188 @@
   background: var(--color-media-bg);
   flex-shrink: 0;
 }
+
+/* ===== 需求对话重构（Task 3）：需求模式 / 向导 / 汇总卡 / 设置抽屉 / 历史简报 ===== */
+
+.demandModeBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--color-border-secondary);
+  background: var(--color-bg-base);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.demandModeBarLabel {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.demandModeHint {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+/* 向导对话区（气泡式逐步提问） */
+.wizardArea {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 760px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.wizardInputArea {
+  padding: 12px 24px 16px;
+  background: transparent;
+  border-top: 1px solid var(--color-border-secondary);
+  flex-shrink: 0;
+}
+
+.wizardInputRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 8px 8px 8px 12px;
+  box-shadow: var(--shadow-sm);
+  max-width: 760px;
+  margin: 0 auto;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.wizardInputRow:focus-within {
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 3px var(--color-brand-light);
+}
+
+/* 需求汇总卡 */
+.summaryCard {
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 12px;
+  background: var(--color-bg-container);
+  padding: 16px 18px;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.summaryCardTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 6px;
+}
+
+.summaryRow {
+  display: flex;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 13px;
+  border-bottom: 1px dashed var(--color-border-secondary);
+}
+
+.summaryLabel {
+  width: 64px;
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+}
+
+.summaryValue {
+  flex: 1;
+  color: var(--color-text-primary);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.summaryActions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.summaryTip {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+/* 对话设置抽屉 */
+.settingsSection {
+  margin-bottom: 22px;
+}
+
+.settingsLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+}
+
+.settingsRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settingsTip {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  line-height: 1.6;
+}
+
+/* 历史简报 Modal */
+.historyBriefList {
+  max-height: 420px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.historyBriefItem {
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.historyBriefItem:hover {
+  border-color: var(--color-brand);
+  background: var(--color-brand-bg);
+}
+
+.historyBriefItemTitle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.historyBriefItemMeta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+.historyBriefDetail {
+  max-height: 460px;
+  overflow-y: auto;
+}

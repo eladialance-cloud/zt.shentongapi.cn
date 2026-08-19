@@ -1,4 +1,4 @@
-/* Dashboard 工作台 — Kimi 风格（v5.0）
+﻿/* Dashboard 工作台 — Kimi 风格（v5.0）
    结构: 问候区 + 4 统计卡 + (快捷入口 + 最近任务)
    原则: 白/灰分层 · 1px 细边框 · 12px 圆角 · 无渐变无重阴影 */
 
@@ -25,6 +25,25 @@
   margin: 0;
   font-size: 13px;
   color: var(--color-text-tertiary);
+}
+
+
+/* ===== 问候 Hero（含新建任务按钮） ===== */
+.hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.heroInfo {
+  min-width: 0;
+}
+
+.heroBtn {
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
 }
 
 /* ===== 统计卡 ===== */
@@ -103,6 +122,280 @@
   align-items: center;
   justify-content: center;
   min-height: 320px;
+}
+
+
+/* ===== 卡片双列区（待审核+今日发布 / 进行中任务+团队状态） ===== */
+.cardsRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+  align-items: start;
+}
+
+/* ===== 待审核卡 ===== */
+.reviewList {
+  display: flex;
+  flex-direction: column;
+}
+
+.reviewRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border-secondary);
+}
+
+.reviewRow:last-child {
+  border-bottom: none;
+}
+
+.reviewInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.reviewTitle {
+  font-size: 13px;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reviewMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.reviewTime {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+}
+
+.reviewActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ===== 今日发布卡 ===== */
+.publishList {
+  display: flex;
+  flex-direction: column;
+}
+
+.publishRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border-secondary);
+  cursor: pointer;
+  transition: background var(--duration-fast) ease;
+}
+
+.publishRow:hover {
+  background: var(--color-bg-hover);
+}
+
+.publishRow:last-child {
+  border-bottom: none;
+}
+
+.publishInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.publishTitle {
+  font-size: 13px;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.publishMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.publishPlatform {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.publishTime {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+}
+
+/* ===== 进行中任务卡 ===== */
+.taskProgList {
+  display: flex;
+  flex-direction: column;
+}
+
+.taskProgRow {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border-secondary);
+  cursor: pointer;
+  transition: background var(--duration-fast) ease;
+}
+
+.taskProgRow:hover {
+  background: var(--color-bg-hover);
+}
+
+.taskProgRow:last-child {
+  border-bottom: none;
+}
+
+.taskProgHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.taskProgTitle {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.taskProgBar {
+  position: relative;
+  margin-top: 8px;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-hover);
+  overflow: hidden;
+}
+
+.taskProgFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 40%;
+  border-radius: var(--radius-full);
+  background: var(--color-brand);
+  animation: taskProgSlide 1.6s var(--ease-in-out) infinite;
+}
+
+@keyframes taskProgSlide {
+  0% {
+    left: -40%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+.taskProgFoot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.taskProgTime {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+}
+
+/* ===== AI 团队状态卡 ===== */
+.teamList {
+  display: flex;
+  flex-direction: column;
+}
+
+.teamRow {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border-secondary);
+  cursor: pointer;
+  transition: background var(--duration-fast) ease;
+}
+
+.teamRow:hover {
+  background: var(--color-bg-hover);
+}
+
+.teamRow:last-child {
+  border-bottom: none;
+}
+
+.teamHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.teamName {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.teamWeek {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+}
+
+.teamMeters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.teamMeterItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.teamMeterDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.busy {
+  background: var(--color-brand);
+}
+
+.idle {
+  background: var(--color-text-disabled);
+}
+
+.teamTotal {
+  margin-left: auto;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
 }
 
 /* ===== 双列区（快捷入口 + 最近任务） ===== */
@@ -260,6 +553,9 @@
     grid-template-columns: repeat(2, 1fr);
   }
   .grid {
+    grid-template-columns: 1fr;
+  }
+  .cardsRow {
     grid-template-columns: 1fr;
   }
 }

@@ -381,3 +381,93 @@
   padding: 24px;
   max-width: 640px;
 }
+
+/* ===== 6 分类卡视图 ===== */
+.categoryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+.categoryCard {
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.categoryCard:hover {
+  border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.categoryAllCard {
+  background: var(--color-bg-layout);
+  border-style: dashed;
+}
+.categoryCardIcon {
+  height: 64px;
+  background: var(--color-brand-bg);
+  color: var(--color-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.categoryCardBody {
+  padding: 14px 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.categoryCardName {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.categoryCardCount {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-brand);
+  line-height: 1.2;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.categoryCardCountLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+}
+.categoryCardMeta {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+.categoryCardFooter {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border-secondary);
+}
+
+/* ===== 分类过滤列表视图 ===== */
+.listHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.listHeaderTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.listHeaderMeta {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}

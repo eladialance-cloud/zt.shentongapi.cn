@@ -1,18 +1,19 @@
-// 团队列表页 — Kimi 风格（v2.0）
-// 核心变化: 创建团队时可为每个 Agent 指定自定义职能
+// 团队列表页 — Kimi 风格（v2.1）
+// Task 5: 卡片对齐原型（图标 + 人数忙闲聚合 + 本周产出任务数 + 进入团队管理）
+//         + 未创建模板卡（创建 → 3 步建团向导）+ 删除确认
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Button, Card, Empty, Form, Input, Modal, Popconfirm, Select, Spin, message,
-} from "antd";
-import { ArrowLeft, BookOpen, Eye, Plus, Trash2, UserRound, Users } from "lucide-react";
+import { Button, Card, Empty, Popconfirm, Spin, message } from "antd";
+import { ArrowLeft, BookOpen, Eye, Plus, Trash2, Users } from "lucide-react";
 import * as teamApi from "@/api/team-api";
-import type { Team, CreateTeamDto, SelectableAgent } from "@/types/team";
+import type { Team, TeamMember, TeamTask } from "@/types/team";
 import type { KnowledgeBase } from "@/types/knowledge";
 import { listKnowledgeBases } from "@/api/knowledge-api";
 import { useSystemStore } from "@/store/system";
 import { NetworkError } from "@/utils/errors";
+import { countWeekOutput, findUncreatedTemplates, templateTeamName } from "./wizard";
+import CreateWizard from "./CreateWizard";
 import styles from "./styles.module.css";
 
 function formatTime(value: unknown): string {
@@ -22,34 +23,63 @@ function formatTime(value: unknown): string {
   return d.toLocaleString("zh-CN", { hour12: false });
 }
 
-interface CreateFormValues {
-  name: string;
-  description?: string;
-  knowledgeBaseId?: number;
-  memberAgentIds?: Array<number | string>;
-  members?: Array<{
-    agentName?: string;
-    roleTitle?: string;
-    agentId?: number | string;
-  }>;
+/** 卡片图标：先取 avatar（非 URL 的 emoji），再按名称关键词，最后首字符色块 */
+function teamIconFor(team: Team): { emoji?: string; char?: string } {
+  const avatar = team.avatar;
+  if (avatar && avatar.trim() && !/^(https?:|data:|blob:)/i.test(avatar.trim())) {
+    return { emoji: avatar.trim() };
+  }
+  const name = team.name || "";
+  if (/内容|文案/.test(name)) return { emoji: "📝" };
+  if (/运营|发布/.test(name)) return { emoji: "📣" };
+  if (/电商|选品|上架/.test(name)) return { emoji: "🛒" };
+  if (/商务|销售/.test(name)) return { emoji: "💼" };
+  return { char: (name.charAt(0) || "团").toUpperCase() };
 }
+
+const ICON_COLORS = [
+  "#6366f1", "#8b5cf6", "#ec4899", "#f43f5e",
+  "#f97316", "#eab308", "#22c55e", "#14b8a6",
+];
 
 export default function TeamList() {
   const navigate = useNavigate();
   const backendAvailable = useSystemStore((s) => s.backendAvailable);
   const [loading, setLoading] = useState(true);
   const [teams, setTeams] = useState<Team[]>([]);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createForm] = Form.useForm<CreateFormValues>();
-  const [creating, setCreating] = useState(false);
-  const [agents, setAgents] = useState<SelectableAgent[]>([]);
+  const [membersByTeam, setMembersByTeam] = useState<Map<number, TeamMember[]>>(new Map());
+  const [outputByTeam, setOutputByTeam] = useState<Map<number, number>>(new Map());
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+
+  // 建团向导
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardTemplate, setWizardTemplate] = useState<string | undefined>(undefined);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const list = await teamApi.listTeams();
       setTeams(list || []);
+
+      // 每团队并行拉成员 + 任务（忙闲聚合 + 本周产出），任一失败只降级该团队
+      const members = new Map<number, TeamMember[]>();
+      const outputs = new Map<number, number>();
+      await Promise.all(
+        (list || []).map(async (team) => {
+          try {
+            const [memberRes, taskRes] = await Promise.all([
+              teamApi.listMembers(team.id),
+              teamApi.listTasks(team.id, { pageSize: 100 }),
+            ]);
+            members.set(team.id, memberRes || []);
+            outputs.set(team.id, countWeekOutput((taskRes as { list?: TeamTask[] })?.list ?? []));
+          } catch (err) {
+            console.warn(`[TeamList] 团队 ${team.id} 忙闲/产出加载失败:`, err);
+          }
+        }),
+      );
+      setMembersByTeam(members);
+      setOutputByTeam(outputs);
     } catch (err) {
       console.error("[TeamList] load failed:", err);
       if (!(err instanceof NetworkError) || backendAvailable) {
@@ -59,15 +89,6 @@ export default function TeamList() {
       setLoading(false);
     }
   }, [backendAvailable]);
-
-  const loadAgents = useCallback(async () => {
-    try {
-      const list = await teamApi.listLocalSelectableAgents();
-      setAgents(list || []);
-    } catch (err) {
-      console.error("[TeamList] load agents failed:", err);
-    }
-  }, []);
 
   useEffect(() => { void loadData(); }, [loadData]);
 
@@ -80,44 +101,23 @@ export default function TeamList() {
     }
   }, []);
 
-  const handleOpenCreate = () => {
-    void loadAgents();
-    void loadKnowledgeBases();
-    createForm.resetFields();
-    setCreateOpen(true);
+  useEffect(() => { void loadKnowledgeBases(); }, [loadKnowledgeBases]);
+
+  /** 未创建的模板团队（如电商团队），点击「创建」打开向导并预选模板 */
+  const uncreated = useMemo(() => findUncreatedTemplates(teams), [teams]);
+
+  const openWizard = (templateId?: string) => {
+    setWizardTemplate(templateId);
+    setWizardOpen(true);
   };
 
-  const handleCreate = async () => {
-    try {
-      const values = await createForm.validateFields();
-      setCreating(true);
-      const members = (values.members || [])
-        .filter((m) => m && m.agentId != null)
-        .map((m) => ({
-          agentId: m.agentId as number | string,
-          agentName: m.agentName || undefined,
-          roleTitle: m.roleTitle || "团队成员",
-        }));
-      const dto: CreateTeamDto = {
-        name: values.name,
-        description: values.description,
-        knowledgeBaseId: values.knowledgeBaseId,
-        members: members.length > 0 ? members : undefined,
-        memberAgentIds: members.length === 0 ? values.memberAgentIds || [] : undefined,
-      };
-      const team = await teamApi.createTeam(dto);
+  const handleCreated = useCallback(
+    (team: Team) => {
       message.success(`团队 "${team.name}" 创建成功`);
-      setCreateOpen(false);
-      createForm.resetFields();
-      setTeams((prev) => [...prev, team]);
-    } catch (err) {
-      if (err && typeof err === "object" && "errorFields" in err) return;
-      console.error("[TeamList] create failed:", err);
-      message.error("创建团队失败: " + (err as Error).message);
-    } finally {
-      setCreating(false);
-    }
-  };
+      void loadData();
+    },
+    [loadData],
+  );
 
   const handleDelete = async (team: Team) => {
     try {
@@ -151,7 +151,7 @@ export default function TeamList() {
             type="primary"
             className={styles.primaryBtn}
             icon={<Plus size={14} />}
-            onClick={handleOpenCreate}
+            onClick={() => openWizard()}
           >
             创建团队
           </Button>
@@ -159,35 +159,107 @@ export default function TeamList() {
       </div>
 
       <Spin spinning={loading}>
-        {teams.length === 0 && !loading ? (
+        {teams.length === 0 && uncreated.length === 0 && !loading ? (
           <Empty description="暂无团队，点击右上角创建" style={{ marginTop: 80 }} />
         ) : (
           <div className={styles.teamGrid}>
-            {teams.map((team) => (
+            {teams.map((team) => {
+              const icon = teamIconFor(team);
+              const members = membersByTeam.get(team.id);
+              const busy = (members || []).filter((m) => m.isActive).length;
+              const idle = (members || []).length - busy;
+              const output = outputByTeam.get(team.id) ?? 0;
+              return (
+                <Card
+                  key={team.id}
+                  className={styles.teamCard}
+                  bordered={false}
+                  styles={{ body: { padding: 20 } }}
+                  onClick={() => navigate(`/team/${team.id}`)}
+                >
+                  <div className={styles.teamCardHead}>
+                    <div
+                      className={styles.teamIconBlock}
+                      style={
+                        icon.emoji
+                          ? undefined
+                          : { background: ICON_COLORS[team.id % ICON_COLORS.length], color: "#fff" }
+                      }
+                    >
+                      {icon.emoji ?? icon.char}
+                    </div>
+                    <div className={styles.teamCardHeadInfo}>
+                      <div className={styles.teamCardTitle}>{team.name}</div>
+                      <div className={styles.teamCardStatus}>
+                        {members
+                          ? `${members.length} 名员工 · ${busy}忙${idle}闲`
+                          : `共 ${team.memberCount} 人`}
+                        <span className={styles.weekOutput}>本周产出 {output} 项</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className={styles.teamCardDesc}>
+                    {team.description || "暂无描述"}
+                  </div>
+                  <div className={styles.teamCardMeta}>
+                    {team.knowledgeBaseId != null && (
+                      <span className={styles.metaItem} title="关联知识库">
+                        <BookOpen size={12} />
+                        {knowledgeBases.find((kb) => kb.id === team.knowledgeBaseId)?.name ||
+                          `知识库 #${team.knowledgeBaseId}`}
+                      </span>
+                    )}
+                    <span className={styles.metaItem}>创建于 {formatTime(team.createdAt)}</span>
+                  </div>
+                  <div
+                    className={styles.teamCardActions}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Button
+                      size="small"
+                      type="primary"
+                      className={styles.primaryBtn}
+                      icon={<Eye size={14} />}
+                      onClick={() => navigate(`/team/${team.id}`)}
+                    >
+                      进入团队管理
+                    </Button>
+                    <Popconfirm
+                      title="确定删除该团队吗？"
+                      description="将同步移除所有成员与任务关联"
+                      onConfirm={() => handleDelete(team)}
+                      okText="删除"
+                      cancelText="取消"
+                      okButtonProps={{ danger: true }}
+                    >
+                      <Button size="small" danger icon={<Trash2 size={14} />}>
+                        删除
+                      </Button>
+                    </Popconfirm>
+                  </div>
+                </Card>
+              );
+            })}
+
+            {/* 未创建模板卡：虚线占位，点击「创建」打开建团向导（预选该模板） */}
+            {uncreated.map((tpl) => (
               <Card
-                key={team.id}
-                className={styles.teamCard}
+                key={tpl.id}
+                className={styles.uncreatedCard}
                 bordered={false}
                 styles={{ body: { padding: 20 } }}
-                onClick={() => navigate(`/team/${team.id}`)}
               >
-                <div className={styles.teamCardTitle}>{team.name}</div>
-                <div className={styles.teamCardDesc}>
-                  {team.description || "暂无描述"}
+                <div className={styles.teamCardHead}>
+                  <div className={styles.teamIconBlock}>{tpl.emoji}</div>
+                  <div className={styles.teamCardHeadInfo}>
+                    <div className={styles.teamCardTitle}>{templateTeamName(tpl)}</div>
+                    <div className={styles.teamCardStatus}>
+                      <span>未创建</span>
+                      <span className={styles.weekOutput}>本周产出 -</span>
+                    </div>
+                  </div>
                 </div>
-                <div className={styles.teamCardMeta}>
-                  <span className={styles.metaItem}>
-                    <UserRound size={12} />
-                    {team.memberCount} 成员
-                  </span>
-                  {team.knowledgeBaseId != null && (
-                    <span className={styles.metaItem} title="关联知识库">
-                      <BookOpen size={12} />
-                      {knowledgeBases.find((kb) => kb.id === team.knowledgeBaseId)?.name || `知识库 #${team.knowledgeBaseId}`}
-                    </span>
-                  )}
-                  <span className={styles.metaItem}>创建于 {formatTime(team.createdAt)}</span>
-                </div>
+                <div className={styles.teamCardDesc}>{tpl.description}</div>
                 <div
                   className={styles.teamCardActions}
                   onClick={(e) => e.stopPropagation()}
@@ -196,23 +268,11 @@ export default function TeamList() {
                     size="small"
                     type="primary"
                     className={styles.primaryBtn}
-                    icon={<Eye size={14} />}
-                    onClick={() => navigate(`/team/${team.id}`)}
+                    icon={<Plus size={14} />}
+                    onClick={() => openWizard(tpl.id)}
                   >
-                    查看详情
+                    创建
                   </Button>
-                  <Popconfirm
-                    title="确定删除该团队吗？"
-                    description="将同步移除所有成员与任务关联"
-                    onConfirm={() => handleDelete(team)}
-                    okText="删除"
-                    cancelText="取消"
-                    okButtonProps={{ danger: true }}
-                  >
-                    <Button size="small" danger icon={<Trash2 size={14} />}>
-                      删除
-                    </Button>
-                  </Popconfirm>
                 </div>
               </Card>
             ))}
@@ -220,109 +280,12 @@ export default function TeamList() {
         )}
       </Spin>
 
-      <Modal
-        title="创建团队"
-        open={createOpen}
-        onOk={handleCreate}
-        onCancel={() => { setCreateOpen(false); createForm.resetFields(); }}
-        confirmLoading={creating}
-        okText="创建"
-        cancelText="取消"
-        destroyOnClose
-      >
-        <Form form={createForm} layout="vertical">
-          <Form.Item
-            label="团队名称"
-            name="name"
-            rules={[
-              { required: true, message: "请输入团队名称" },
-              { max: 64, message: "名称最大 64 个字符" },
-            ]}
-          >
-            <Input placeholder="如: 营销内容生产团队" />
-          </Form.Item>
-          <Form.Item
-            label="团队描述"
-            name="description"
-            rules={[{ max: 256, message: "描述最大 256 个字符" }]}
-          >
-            <Input.TextArea rows={3} placeholder="可选，团队职责描述" maxLength={256} showCount />
-          </Form.Item>
-          <Form.Item
-            label="团队知识库"
-            name="knowledgeBaseId"
-            extra="可选，团队共享的知识库"
-          >
-            <Select
-              placeholder="选择知识库（可选）"
-              options={knowledgeBases.map((kb) => ({ label: kb.name, value: kb.id }))}
-              allowClear
-              style={{ width: "100%" }}
-              notFoundContent={knowledgeBases.length === 0 ? "暂无知识库" : undefined}
-            />
-          </Form.Item>
-
-          <div style={{ fontWeight: 600, margin: "8px 0 4px" }}>AI 员工</div>
-          <Form.List name="members">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map(({ key, name, ...restField }) => (
-                  <div
-                    key={key}
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      marginBottom: 8,
-                      alignItems: "flex-start",
-                      background: "var(--color-bg-layout)",
-                      borderRadius: 10,
-                      padding: 10,
-                    }}
-                  >
-                    <Form.Item
-                      {...restField}
-                      name={[name, "agentName"]}
-                      rules={[{ required: true, message: "填写员工名称" }]}
-                      style={{ marginBottom: 0, flex: 1, minWidth: 0 }}
-                    >
-                      <Input placeholder="员工名称，如：王明" maxLength={32} />
-                    </Form.Item>
-                    <Form.Item
-                      {...restField}
-                      name={[name, "roleTitle"]}
-                      style={{ marginBottom: 0, flex: 1, minWidth: 0 }}
-                    >
-                      <Input placeholder="职位，如：内容总监" maxLength={32} />
-                    </Form.Item>
-                    <Form.Item
-                      {...restField}
-                      name={[name, "agentId"]}
-                      rules={[{ required: true, message: "选择 Agent" }]}
-                      style={{ marginBottom: 0, flex: 1, minWidth: 0 }}
-                    >
-                      <Select
-                        placeholder="选择 Agent"
-                        options={agents.map((a) => ({ label: a.name, value: a.id }))}
-                        notFoundContent={agents.length === 0 ? "暂无可用 Agent" : undefined}
-                      />
-                    </Form.Item>
-                    <Button
-                      type="text"
-                      danger
-                      icon={<Trash2 size={14} />}
-                      onClick={() => remove(name)}
-                      style={{ marginTop: 2 }}
-                    />
-                  </div>
-                ))}
-                <Button type="dashed" block icon={<Plus size={14} />} onClick={() => add()}>
-                  添加 AI 员工
-                </Button>
-              </>
-            )}
-          </Form.List>
-        </Form>
-      </Modal>
+      <CreateWizard
+        open={wizardOpen}
+        initialTemplateId={wizardTemplate}
+        onCancel={() => setWizardOpen(false)}
+        onCreated={handleCreated}
+      />
     </div>
   );
 }

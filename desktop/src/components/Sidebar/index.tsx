@@ -1,20 +1,27 @@
 ﻿/**
  * Sidebar — v5.0 Kimi 风格极简导航
- * 主导航 4 项（工作台/对话/AI办公室/技能市场），固定展开不折叠
- * 次级入口 7 项（团队/知识库/渠道/工作流/积分/设置/服务）收纳到左下角「更多」弹出菜单
+ * 主导航 10 项（工作台/需求对话/任务中心/AI团队/素材库/发布中心/数据分析/知识库/ST-Claw/AI办公室），固定展开不折叠
+ * 次级入口 10 项（技能市场/工作流/渠道/Agent市场/MCP市场/插件/Hermes/积分/设置/服务）收纳到左下角「更多」弹出菜单
  */
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Avatar, Dropdown, type MenuProps } from 'antd'
 import {
-  MessageSquare,
   LayoutDashboard,
+  MessageSquareText,
+  ListTodo,
   Users,
-  Building2,
-  BookOpen,
-  Workflow,
   FolderOpen,
-  Store,
   Send,
+  BarChart3,
+  BookOpen,
+  Clapperboard,
+  Building2,
+  Store,
+  Workflow,
+  Bot,
+  Plug,
+  Puzzle,
+  Zap,
   Coins,
   Settings,
   Server,
@@ -33,22 +40,30 @@ interface NavItem {
 
 /** 主导航（用户确认顺序） */
 const PRIMARY_NAV: NavItem[] = [
-  { key: 'dashboard', label: '工作台', icon: LayoutDashboard, path: '/dashboard' },
-  { key: 'chat', label: '对话 st-claw', icon: MessageSquare, path: '/chat' },
-  { key: 'office', label: 'AI 办公室', icon: Building2, path: '/office' },
-  { key: 'market', label: '技能市场', icon: Store, path: '/skill-market' },
+  { key: 'dashboard',   label: '工作台',   icon: LayoutDashboard,   path: '/dashboard' },
+  { key: 'briefs',      label: '需求对话', icon: MessageSquareText, path: '/chat' },
+  { key: 'task-center', label: '任务中心', icon: ListTodo,          path: '/task-center' },
+  { key: 'team',        label: 'AI 团队',  icon: Users,             path: '/team' },
+  { key: 'assets',      label: '素材库',   icon: FolderOpen,        path: '/assets' },
+  { key: 'publish',     label: '发布中心', icon: Send,              path: '/publish' },
+  { key: 'analytics',   label: '数据分析', icon: BarChart3,         path: '/analytics' },
+  { key: 'knowledge',   label: '知识库',   icon: BookOpen,          path: '/knowledge' },
+  { key: 'video-claw',  label: 'ST-Claw',  icon: Clapperboard,      path: '/video-claw' },
+  { key: 'office',      label: 'AI 办公室',icon: Building2,         path: '/office' },
 ]
 
 /** 次级入口（隐藏收纳，通过左下角「更多」展开） */
 const MORE_NAV: NavItem[] = [
-  { key: 'team', label: '团队', icon: Users, path: '/team' },
-  { key: 'assets', label: '素材库', icon: FolderOpen, path: '/assets' },
-  { key: 'knowledge', label: '知识库', icon: BookOpen, path: '/knowledge' },
-  { key: 'channels', label: '渠道', icon: Send, path: '/channels' },
-  { key: 'workflow', label: '工作流', icon: Workflow, path: '/workflow' },
-  { key: 'credits', label: '积分', icon: Coins, path: '/credits' },
-  { key: 'settings', label: '设置', icon: Settings, path: '/settings' },
-  { key: 'services', label: '服务', icon: Server, path: '/services' },
+  { key: 'skill-market', label: '技能市场', icon: Store,     path: '/skill-market' },
+  { key: 'workflow',     label: '工作流',   icon: Workflow,  path: '/workflow' },
+  { key: 'channels',     label: '渠道',     icon: Send,      path: '/channels' },
+  { key: 'agent-market', label: 'Agent市场',icon: Bot,       path: '/agent-market' },
+  { key: 'mcp-market',   label: 'MCP市场',  icon: Plug,      path: '/mcp-market' },
+  { key: 'plugins',      label: '插件',     icon: Puzzle,    path: '/plugins' },
+  { key: 'hermes',       label: 'Hermes',   icon: Zap,       path: '/hermes' },
+  { key: 'credits',      label: '积分',     icon: Coins,     path: '/credits' },
+  { key: 'settings',     label: '设置',     icon: Settings,  path: '/settings' },
+  { key: 'services',     label: '服务',     icon: Server,    path: '/services' },
 ]
 
 export default function Sidebar() {

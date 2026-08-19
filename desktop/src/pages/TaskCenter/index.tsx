@@ -1,4 +1,4 @@
-// 统一任务中心 —— 三源合并（团队 / 我的任务 / Hermes 调用日志）+ TaskFlow 任务流时间线
+// 统一任务中心 —— 三源合并（团队 / 我的任务 / Hermes 调用日志）+ 动态流水线
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Empty, Select, Spin, Table, Tag } from "antd";
 import type { TableColumnsType } from "antd";
@@ -7,19 +7,16 @@ import * as teamApi from "@/api/team-api";
 import * as taskApi from "@/api/task-api";
 import type { UnifiedTaskItem } from "@/api/task-api";
 import * as hermesApi from "@/api/hermes-api";
-import TaskFlow from "@/components/TaskFlow";
-import type { TaskFlowTarget } from "@/components/TaskFlow";
-import type { TeamMember } from "@/types/team";
 import {
   mapHermesStatus,
   mapTaskStatus,
   mapTeamStatus,
   sortByCreatedAtDesc,
   SOURCE_TAG_META,
-  STATUS_COLORS,
   STATUS_TAG_META,
 } from "./unified";
 import type { UnifiedTask, UnifiedTaskSource, UnifiedTaskStatus } from "./unified";
+import PipelineView from "./PipelineView";
 import styles from "./styles.module.css";
 
 /** 时间格式化（与 Channels 页一致） */
@@ -82,24 +79,19 @@ const COLUMNS: TableColumnsType<UnifiedTask> = [
 
 interface TeamSourceResult {
   tasks: UnifiedTask[];
-  membersByTeam: Map<number, TeamMember[]>;
   teamIdByKey: Map<string, number>;
 }
 
-/** team 源：listTeams() → 每个团队 listTasks(pageSize 50)，同时拉成员供 TaskFlow 多目标渲染 */
+/** team 源：listTeams() → 每个团队 listTasks(pageSize 50)；返回任务 + taskId→teamId 映射（老板动作 PATCH 用） */
 async function loadTeamSource(): Promise<TeamSourceResult> {
   const tasks: UnifiedTask[] = [];
-  const membersByTeam = new Map<number, TeamMember[]>();
   const teamIdByKey = new Map<string, number>();
   try {
     const teams = await teamApi.listTeams();
     await Promise.all(
       teams.map(async (team) => {
         try {
-          const [taskRes, memberRes] = await Promise.all([
-            teamApi.listTasks(team.id, { pageSize: 50 }),
-            teamApi.listMembers(team.id),
-          ]);
+          const taskRes = await teamApi.listTasks(team.id, { pageSize: 50 });
           for (const t of taskRes.list) {
             const key = `team:${t.id}`;
             tasks.push({
@@ -114,7 +106,6 @@ async function loadTeamSource(): Promise<TeamSourceResult> {
             });
             teamIdByKey.set(key, team.id);
           }
-          membersByTeam.set(team.id, memberRes);
         } catch (err) {
           console.warn(`[TaskCenter] 加载团队 ${team.id} 数据失败:`, err);
         }
@@ -123,7 +114,30 @@ async function loadTeamSource(): Promise<TeamSourceResult> {
   } catch (err) {
     console.warn("[TaskCenter] 加载团队列表失败:", err);
   }
-  return { tasks, membersByTeam, teamIdByKey };
+  return { tasks, teamIdByKey };
+}
+
+/** 仅取团队任务 taskId→teamId 映射（统一接口主路径补充 teamId，供老板动作 PATCH /teams/:teamId/tasks/:taskId） */
+async function loadTeamIdMap(): Promise<Map<string, number>> {
+  const teamIdByKey = new Map<string, number>();
+  try {
+    const teams = await teamApi.listTeams();
+    await Promise.all(
+      teams.map(async (team) => {
+        try {
+          const taskRes = await teamApi.listTasks(team.id, { pageSize: 50 });
+          for (const t of taskRes.list) {
+            teamIdByKey.set(`team:${t.id}`, team.id);
+          }
+        } catch (err) {
+          console.warn(`[TaskCenter] 加载团队 ${team.id} 任务映射失败:`, err);
+        }
+      })
+    );
+  } catch (err) {
+    console.warn("[TaskCenter] 加载团队列表失败:", err);
+  }
+  return teamIdByKey;
 }
 
 /** task 源：task-api.listTasks(pageSize 50)（模块级导出，命名空间调用避免与 team-api 冲突） */
@@ -178,7 +192,6 @@ async function loadHermesSource(): Promise<UnifiedTask[]> {
 /** 三源并发拉取：任一源失败只降级为空数组，不阻断整体 */
 async function loadAll(): Promise<{
   tasks: UnifiedTask[];
-  membersByTeam: Map<number, TeamMember[]>;
   teamIdByKey: Map<string, number>;
 }> {
   const [teamResult, myTasks, hermesTasks] = await Promise.all([
@@ -188,7 +201,6 @@ async function loadAll(): Promise<{
   ]);
   return {
     tasks: sortByCreatedAtDesc([...teamResult.tasks, ...myTasks, ...hermesTasks]),
-    membersByTeam: teamResult.membersByTeam,
     teamIdByKey: teamResult.teamIdByKey,
   };
 }
@@ -214,9 +226,9 @@ async function loadUnifiedSource(
 export default function TaskCenter() {
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<UnifiedTask[]>([]);
-  const [membersByTeam, setMembersByTeam] = useState<Map<number, TeamMember[]>>(new Map());
   const [teamIdByKey, setTeamIdByKey] = useState<Map<string, number>>(new Map());
   const [selected, setSelected] = useState<UnifiedTask | null>(null);
+  const [refreshSeq, setRefreshSeq] = useState(0);
   const [statusFilter, setStatusFilter] = useState<UnifiedTaskStatus | "all">("all");
   const [sourceFilter, setSourceFilter] = useState<UnifiedTaskSource | "all">("all");
 
@@ -228,17 +240,18 @@ export default function TaskCenter() {
     } satisfies { status?: UnifiedTaskStatus; source?: UnifiedTaskSource };
     try {
       // 二期：优先走后端统一任务接口（后端已完成统一 status 映射与合并，筛选透传后端）
-      const unifiedTasks = await loadUnifiedSource(query);
+      const [unifiedTasks, teamIdMap] = await Promise.all([
+        loadUnifiedSource(query),
+        loadTeamIdMap(),
+      ]);
       setTasks(unifiedTasks);
-      setMembersByTeam(new Map());
-      setTeamIdByKey(new Map());
+      setTeamIdByKey(teamIdMap);
     } catch (err) {
       // 一期降级：unified 接口不可用时回退到前端三源并发合并（原有代码路径保留）
       console.warn("[TaskCenter] 统一任务接口不可用，降级到一期三源合并:", err);
       try {
         const result = await loadAll();
         setTasks(result.tasks);
-        setMembersByTeam(result.membersByTeam);
         setTeamIdByKey(result.teamIdByKey);
       } catch (err2) {
         console.warn("[TaskCenter] 加载任务失败:", err2);
@@ -253,10 +266,16 @@ export default function TaskCenter() {
     void loadData();
   }, [loadData]);
 
-  // 重载后若选中任务已不存在，则清除选中
+  // 重载后：任务不存在则清除选中；存在则重绑到新任务对象并递增刷新版本号，
+  // 使 PipelineView 重挂载（key 变化）重取 outputs，避免面板展示陈旧步骤/状态
   useEffect(() => {
-    if (selected && !tasks.some((t) => t.key === selected.key)) {
-      setSelected(null);
+    if (!selected) return;
+    const fresh = tasks.find((t) => t.key === selected.key) ?? null;
+    if (fresh !== selected) {
+      setSelected(fresh);
+      if (fresh) {
+        setRefreshSeq((s) => s + 1);
+      }
     }
   }, [tasks, selected]);
 
@@ -269,27 +288,6 @@ export default function TaskCenter() {
       ),
     [tasks, statusFilter, sourceFilter]
   );
-
-  // 多目标模式：起点为选中任务，目标为该任务所属团队成员的坐标/标签
-  const flowTargets = useMemo<TaskFlowTarget[] | null>(() => {
-    if (!selected || selected.source !== "team") return null;
-    const teamId = teamIdByKey.get(selected.key);
-    if (teamId == null) return null;
-    const members = membersByTeam.get(teamId);
-    if (!members || members.length === 0) return null;
-    const targets: TaskFlowTarget[] = [{ x: 80, y: 120 }];
-    const count = Math.min(members.length, 6);
-    const startX = 300;
-    const step = Math.min(150, (820 - startX - 40) / count);
-    members.slice(0, count).forEach((m, i) => {
-      targets.push({
-        x: startX + i * step,
-        y: i % 2 === 0 ? 60 : 180,
-        label: m.roleEmoji ? `${m.roleEmoji} ${m.agentName}` : m.agentName,
-      });
-    });
-    return targets;
-  }, [selected, teamIdByKey, membersByTeam]);
 
   const selectedMeta = selected ? STATUS_TAG_META[selected.status] : null;
 
@@ -355,7 +353,7 @@ export default function TaskCenter() {
 
       <div className={styles.flowCard}>
         <div className={styles.flowHeader}>
-          <span className={styles.flowTitle}>任务流时间线</span>
+          <span className={styles.flowTitle}>任务流水线</span>
           {selected && selectedMeta && (
             <div className={styles.flowSelected}>
               <Tag color={selectedMeta.color}>{selectedMeta.label}</Tag>
@@ -367,16 +365,13 @@ export default function TaskCenter() {
           )}
         </div>
         {!selected ? (
-          <Empty className={styles.flowEmpty} description="点击表格行查看该任务的任务流" />
-        ) : flowTargets ? (
-          <TaskFlow multiTargets={flowTargets} width={860} height={240} />
+          <Empty className={styles.flowEmpty} description="点击表格行查看该任务的流水线" />
         ) : (
-          <TaskFlow
-            from={{ x: 80, y: 120 }}
-            to={{ x: 480, y: 120 }}
-            themeColor={STATUS_COLORS[selected.status]}
-            width={860}
-            height={240}
+          <PipelineView
+            key={`${selected.key}-${refreshSeq}`}
+            task={selected}
+            teamId={teamIdByKey.get(selected.key)}
+            onUpdated={loadData}
           />
         )}
       </div>
