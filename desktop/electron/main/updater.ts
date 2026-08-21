@@ -178,18 +178,19 @@ export class AppUpdater {
     })
 
     autoUpdater.on('update-downloaded', () => {
-      // Task 9.2：更新下载完成后清理旧的 userData/runtime/ 补丁
-      // 新版本应用自带新的 resources/runtime/，下次启动 loadManifest() 会自动读取新的内置 manifest
-      // 清理旧补丁避免使用过期的下载补丁
+      // Task 9.2：更新后仅清理运行时下载残留（.tmp 断点续传临时文件）
+      // 已下载安装的服务运行时（hermes/openclaw/n8n/mcp/video-claw）保留，
+      // 避免用户每次升级后都需要重新下载数百 MB 运行时。
       try {
         const userDataPath = app.getPath('userData')
         const userDataRuntime = path.join(userDataPath, 'runtime')
-        if (fs.existsSync(userDataRuntime)) {
-          fs.rmSync(userDataRuntime, { recursive: true, force: true })
-          console.log('[updater] Cleaned up old userData runtime patches after update')
+        const tmpDir = path.join(userDataRuntime, '.tmp')
+        if (fs.existsSync(tmpDir)) {
+          fs.rmSync(tmpDir, { recursive: true, force: true })
+          console.log('[updater] Cleaned up runtime download temp files after update')
         }
       } catch (err) {
-        console.warn('[updater] Failed to clean up userData runtime:', err)
+        console.warn('[updater] Failed to clean up runtime temp files:', err)
       }
 
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
