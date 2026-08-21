@@ -16,6 +16,8 @@ export interface UnifiedTask {
   createdAt: string
   finishedAt?: string | null
   briefId?: number
+  /** 团队任务原始 result（Hermes 编排结果，含 steps，供流水线展示） */
+  result?: unknown
 }
 
 /** 团队任务状态 → 统一状态 */

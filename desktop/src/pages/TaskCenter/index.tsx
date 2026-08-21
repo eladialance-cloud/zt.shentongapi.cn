@@ -43,6 +43,9 @@ const SOURCE_FILTER_OPTIONS: { value: UnifiedTaskSource | "all"; label: string }
   { value: "hermes", label: "Hermes" },
 ];
 
+/** 后台静默刷新间隔：需求单确认后 AI 拆解为异步派发，进入页面后自动轮询补全新任务 */
+const TASK_CENTER_REFRESH_MS = 10_000;
+
 const COLUMNS: TableColumnsType<UnifiedTask> = [
   { title: "标题", dataIndex: "title", ellipsis: true },
   {
@@ -103,6 +106,7 @@ async function loadTeamSource(): Promise<TeamSourceResult> {
               assignee: t.assigneeName,
               createdAt: t.createdAt,
               finishedAt: t.completedAt ?? null,
+              result: t.result,
             });
             teamIdByKey.set(key, team.id);
           }
@@ -232,38 +236,44 @@ export default function TaskCenter() {
   const [statusFilter, setStatusFilter] = useState<UnifiedTaskStatus | "all">("all");
   const [sourceFilter, setSourceFilter] = useState<UnifiedTaskSource | "all">("all");
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    const query = {
-      status: statusFilter === "all" ? undefined : statusFilter,
-      source: sourceFilter === "all" ? undefined : sourceFilter,
-    } satisfies { status?: UnifiedTaskStatus; source?: UnifiedTaskSource };
-    try {
-      // 二期：优先走后端统一任务接口（后端已完成统一 status 映射与合并，筛选透传后端）
-      const [unifiedTasks, teamIdMap] = await Promise.all([
-        loadUnifiedSource(query),
-        loadTeamIdMap(),
-      ]);
-      setTasks(unifiedTasks);
-      setTeamIdByKey(teamIdMap);
-    } catch (err) {
-      // 一期降级：unified 接口不可用时回退到前端三源并发合并（原有代码路径保留）
-      console.warn("[TaskCenter] 统一任务接口不可用，降级到一期三源合并:", err);
+  const loadData = useCallback(
+    async (quiet = false) => {
+      if (!quiet) setLoading(true);
+      const query = {
+        status: statusFilter === "all" ? undefined : statusFilter,
+        source: sourceFilter === "all" ? undefined : sourceFilter,
+      } satisfies { status?: UnifiedTaskStatus; source?: UnifiedTaskSource };
       try {
-        const result = await loadAll();
-        setTasks(result.tasks);
-        setTeamIdByKey(result.teamIdByKey);
-      } catch (err2) {
-        console.warn("[TaskCenter] 加载任务失败:", err2);
-        setTasks([]);
+        // 二期：优先走后端统一任务接口（后端已完成统一 status 映射与合并，筛选透传后端）
+        const [unifiedTasks, teamIdMap] = await Promise.all([
+          loadUnifiedSource(query),
+          loadTeamIdMap(),
+        ]);
+        setTasks(unifiedTasks);
+        setTeamIdByKey(teamIdMap);
+      } catch (err) {
+        // 一期降级：unified 接口不可用时回退到前端三源并发合并（原有代码路径保留）
+        console.warn("[TaskCenter] 统一任务接口不可用，降级到一期三源合并:", err);
+        try {
+          const result = await loadAll();
+          setTasks(result.tasks);
+          setTeamIdByKey(result.teamIdByKey);
+        } catch (err2) {
+          console.warn("[TaskCenter] 加载任务失败:", err2);
+          setTasks([]);
+        }
+      } finally {
+        if (!quiet) setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [statusFilter, sourceFilter]);
+    },
+    [statusFilter, sourceFilter]
+  );
 
   useEffect(() => {
     void loadData();
+    // 需求单确认后后台异步拆解派发，静默轮询让新任务自动出现，无需手动刷新
+    const timer = window.setInterval(() => void loadData(true), TASK_CENTER_REFRESH_MS);
+    return () => window.clearInterval(timer);
   }, [loadData]);
 
   // 重载后：任务不存在则清除选中；存在则重绑到新任务对象并递增刷新版本号，
@@ -305,7 +315,7 @@ export default function TaskCenter() {
             className={styles.ghostBtn}
             icon={<ReloadOutlined />}
             loading={loading}
-            onClick={loadData}
+            onClick={() => void loadData(false)}
           >
             刷新
           </Button>
@@ -371,7 +381,7 @@ export default function TaskCenter() {
             key={`${selected.key}-${refreshSeq}`}
             task={selected}
             teamId={teamIdByKey.get(selected.key)}
-            onUpdated={loadData}
+            onUpdated={() => void loadData(true)}
           />
         )}
       </div>

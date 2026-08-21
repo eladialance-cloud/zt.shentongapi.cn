@@ -8,7 +8,9 @@ import type { UpdateTeamTaskDto } from "@/types/team";
 import type { UnifiedTask } from "./unified";
 import {
   parsePipeline,
+  parseTeamSteps,
   pipelineActions,
+  taskQuickAction,
   topicCandidates,
   type PipelineStep,
   type TaskOutputItem,
@@ -100,8 +102,16 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
     void loadOutputs();
   }, [loadOutputs]);
 
-  const steps = useMemo(() => parsePipeline(task, outputs), [task, outputs]);
+  /** team 源：优先展示 Hermes 编排步骤（result.steps，含执行成员）；无则按状态推导单步 */
+  const steps = useMemo(() => {
+    if (task.source === "team") {
+      const teamSteps = parseTeamSteps(task.result);
+      if (teamSteps.length > 0) return teamSteps;
+    }
+    return parsePipeline(task, outputs);
+  }, [task, outputs]);
   const candidates = useMemo(() => topicCandidates(outputs), [outputs]);
+  const quickAction = useMemo(() => taskQuickAction(task), [task]);
 
   /** 老板动作统一入口：PATCH /teams/:teamId/tasks/:taskId 更新状态 + 写备注，成功后刷新列表 */
   const patchTask = useCallback(
@@ -171,6 +181,15 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
     setRejectComment("");
   };
 
+  /** 任务级快速操作：待办 → 开始执行；失败 → 重试（PATCH 状态流转 + 刷新列表） */
+  const handleQuickAction = useCallback(async () => {
+    if (!quickAction) return;
+    await patchTask(
+      { status: quickAction.status, description: quickAction.description },
+      quickAction.successText
+    );
+  }, [quickAction, patchTask]);
+
   return (
     <Spin spinning={loading}>
       {steps.length === 0 ? (
@@ -207,9 +226,14 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
                     <span style={{ fontWeight: 600, color: "var(--color-text-primary)" }}>
                       {step.step}
                     </span>
-                    {step.agentName && (
+                    {(step.agentName || step.assigneeName) && (
                       <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
-                        负责：{step.agentName}
+                        负责：{step.agentName || step.assigneeName}
+                      </span>
+                    )}
+                    {!step.agentName && !step.assigneeName && task.source === "team" && (
+                      <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
+                        负责：子代理
                       </span>
                     )}
                     <Tag color={tag.color}>{tag.label}</Tag>
@@ -249,6 +273,22 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
                             </Button>
                           </>
                         )}
+                      </div>
+                    </Tooltip>
+                  )}
+                  {!action && quickAction && (
+                    <Tooltip
+                      title={!canAct && !updating ? "该任务未关联团队任务，无法执行操作" : undefined}
+                    >
+                      <div style={{ display: "inline-flex", gap: 8, marginTop: 8 }}>
+                        <Button
+                          size="small"
+                          type="primary"
+                          disabled={!canAct}
+                          onClick={() => void handleQuickAction()}
+                        >
+                          {quickAction.label}
+                        </Button>
                       </div>
                     </Tooltip>
                   )}

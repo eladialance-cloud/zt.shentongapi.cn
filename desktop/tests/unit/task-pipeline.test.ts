@@ -1,7 +1,9 @@
 // 任务中心动态流水线 pipeline.ts 单测：Hermes 拆解解析 / 动作矩阵 / 候选选题
 import {
   parsePipeline,
+  parseTeamSteps,
   pipelineActions,
+  taskQuickAction,
   topicCandidates,
   type PipelineAction,
   type PipelineStep,
@@ -223,5 +225,66 @@ describe("topicCandidates 候选选题提取", () => {
     expect(topicCandidates(undefined)).toEqual([]);
     expect(topicCandidates([])).toEqual([]);
     expect(topicCandidates([outputItem({ contentJson: { pipeline: [] } })])).toEqual([]);
+  });
+});
+
+describe("parseTeamSteps（Hermes 编排步骤，团队驱动执行）", () => {
+  it("result.steps 数组 → PipelineStep[]（done/active/waiting 映射 + assigneeName）", () => {
+    const steps = parseTeamSteps({
+      steps: [
+        { name: "需求理解", status: "done", assigneeName: "内容AI" },
+        { name: "文案撰写", status: "running", assigneeName: "内容AI" },
+        { name: "终审", status: "pending" },
+      ],
+    });
+    expect(steps).toEqual([
+      { step: "需求理解", status: "done", assigneeName: "内容AI" },
+      { step: "文案撰写", status: "active", assigneeName: "内容AI" },
+      { step: "终审", status: "waiting" },
+    ]);
+  });
+  it("无 steps 或非法 → []", () => {
+    expect(parseTeamSteps(null)).toEqual([]);
+    expect(parseTeamSteps({})).toEqual([]);
+    expect(parseTeamSteps({ steps: "x" })).toEqual([]);
+  });
+});
+
+describe("taskQuickAction 任务级快速操作（任务中心开始任务/重试）", () => {
+  const teamTask: UnifiedTask = {
+    ...task,
+    key: "team:1",
+    source: "team",
+  };
+
+  it("团队待办任务 → 开始任务（todo → in_progress）", () => {
+    expect(taskQuickAction({ ...teamTask, status: "todo" })).toEqual({
+      kind: "start",
+      label: "开始任务",
+      status: "in_progress",
+      successText: "任务已开始执行",
+      description: "[老板] 开始执行任务",
+    });
+  });
+
+  it("团队失败任务 → 重试（failed → pending）", () => {
+    const action = taskQuickAction({ ...teamTask, status: "failed" });
+    expect(action).not.toBeNull();
+    expect(action?.kind).toBe("retry");
+    expect(action?.status).toBe("pending");
+    expect(action?.label).toBe("重试");
+  });
+
+  it("团队执行中/已完成/已取消 → null", () => {
+    expect(taskQuickAction({ ...teamTask, status: "running" })).toBeNull();
+    expect(taskQuickAction({ ...teamTask, status: "done" })).toBeNull();
+    expect(taskQuickAction({ ...teamTask, status: "cancelled" })).toBeNull();
+  });
+
+  it("非团队来源（task/hermes）即使待办 → null", () => {
+    expect(taskQuickAction({ ...task, status: "todo" })).toBeNull();
+    expect(
+      taskQuickAction({ ...task, key: "hermes:1", source: "hermes", status: "todo" })
+    ).toBeNull();
   });
 });

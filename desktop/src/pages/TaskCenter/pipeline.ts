@@ -12,6 +12,8 @@ export interface PipelineStep {
   step: string;
   agentId?: number | string;
   agentName?: string;
+  /** 执行成员（团队驱动执行）：team_task.result.steps[].assigneeName；缺省表示 Hermes 原生子代理 */
+  assigneeName?: string;
   status: PipelineStepStatus;
 }
 
@@ -106,6 +108,32 @@ function deriveSingleStep(task: UnifiedTask): PipelineStep {
 }
 
 /**
+ * Hermes 编排步骤（team_task.result.steps，团队驱动执行）→ 流水线步骤。
+ * 契约对齐 desktop/electron/main/hermes-result.ts 的 HermesStep：
+ *   { name, status: done|running|pending, assigneeName?, assigneeMemberId? }
+ * 无 steps / 非法 → []（调用方回退按状态推导单步）。
+ */
+export function parseTeamSteps(result: unknown): PipelineStep[] {
+  if (!result || typeof result !== "object") return [];
+  const steps = (result as Record<string, unknown>).steps;
+  if (!Array.isArray(steps)) return [];
+  const out: PipelineStep[] = [];
+  for (const raw of steps) {
+    if (!raw || typeof raw !== "object") continue;
+    const r = raw as Record<string, unknown>;
+    const name = typeof r.name === "string" ? r.name.trim() : "";
+    if (!name) continue;
+    const assigneeName = typeof r.assigneeName === "string" ? r.assigneeName : undefined;
+    out.push({
+      step: name,
+      status: mapPipelineStatus(r.status),
+      ...(assigneeName ? { assigneeName } : {}),
+    });
+  }
+  return out;
+}
+
+/**
  * 解析任务流水线：优先读 outputs 中 Hermes 拆解 JSON（contentJson.pipeline，
  * 兼容 contentJson/metadata 直接为数组或含 pipeline 字段）；无合法 JSON 时
  * 按任务状态推导单步。
@@ -141,6 +169,40 @@ export function pipelineActions(
   }
   if (/终审|审核|初审/.test(step.step)) {
     return { label: "通过/打回", kind: "approve" };
+  }
+  return null;
+}
+
+/** 任务级快速操作：团队待办任务 → 开始执行；失败任务 → 重试（任务中心可直接推进状态） */
+export interface TaskQuickAction {
+  kind: "start" | "retry";
+  label: string;
+  /** 目标团队任务状态：start → in_progress；retry → pending */
+  status: "in_progress" | "pending";
+  successText: string;
+  description: string;
+}
+
+/** 仅团队来源任务可快速推进；非团队来源或非待办/失败状态返回 null */
+export function taskQuickAction(task: UnifiedTask): TaskQuickAction | null {
+  if (task.source !== "team") return null;
+  if (task.status === "todo") {
+    return {
+      kind: "start",
+      label: "开始任务",
+      status: "in_progress",
+      successText: "任务已开始执行",
+      description: "[老板] 开始执行任务",
+    };
+  }
+  if (task.status === "failed") {
+    return {
+      kind: "retry",
+      label: "重试",
+      status: "pending",
+      successText: "任务已重新排队",
+      description: "[老板] 重试任务",
+    };
   }
   return null;
 }

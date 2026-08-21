@@ -28,7 +28,7 @@ import type { DemandAnswers, DemandMode } from './demand-schema'
 import type { MediaJob } from '@/api/media-generation-api'
 import * as chatApi from '@/api/chat-api'
 import { createBriefWithOfflineFallback } from '@/api/brief-offline'
-import { confirmBrief } from '@/api/brief-api'
+import { confirmBrief, getBrief } from '@/api/brief-api'
 import type { BriefItem } from '@/api/brief-api'
 import { useAuthStore } from '@/store'
 import type { OpenClawChatMessage } from '@shared/types'
@@ -60,6 +60,28 @@ import styles from './styles.module.css'
 
 /** 当前会话本地记忆 Key：切页/切窗口后回到对话页自动恢复上次会话 */
 const CHAT_ACTIVE_SESSION_KEY = 'chat:active-session'
+
+/** 确认简报后轮询 AI 拆解状态：3s 一次，最多 6 次（与需求单详情页一致） */
+const DISPATCH_POLL_INTERVAL_MS = 3000
+const DISPATCH_POLL_MAX_ATTEMPTS = 6
+
+/** 确认后轮询拆解状态直至非 pending；查询失败不抛出，全部失败返回 null（由调用方降级提示） */
+async function waitDispatchResult(
+  briefId: number,
+  maxAttempts = DISPATCH_POLL_MAX_ATTEMPTS,
+): Promise<BriefItem | null> {
+  let latest: BriefItem | null = null
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      latest = await getBrief(briefId)
+      if (latest.dispatchStatus !== 'pending') return latest
+    } catch {
+      // 单次查询失败继续下一轮
+    }
+    await new Promise((r) => setTimeout(r, DISPATCH_POLL_INTERVAL_MS))
+  }
+  return latest
+}
 
 export default function Chat() {
   const navigate = useNavigate()
@@ -586,13 +608,23 @@ export default function Chat() {
           console.error('[Chat] confirm brief failed:', err)
         }
         if (confirmed) {
-          Modal.confirm({
-            title: '✅ 简报已发布',
-            content: '「' + payload.title + '」已创建并确认，AI 拆解任务已进入流水线。',
-            okText: '去任务中心',
-            cancelText: '继续对话',
-            onOk: () => navigate('/task-center'),
-          })
+          // 拆解为后台异步派发：轮询直到 done/failed，避免跳转任务中心后无任务可开始
+          const latest = await waitDispatchResult(created.brief.id)
+          if (!latest) {
+            message.info('简报已发布，AI 拆解结果暂时无法获取，可稍后到任务中心查看', 4)
+          } else if (latest.dispatchStatus === 'done') {
+            Modal.confirm({
+              title: '✅ 简报已发布',
+              content: '「' + payload.title + '」已创建并确认，AI 已拆解任务，可在任务中心开始执行。',
+              okText: '去任务中心',
+              cancelText: '继续对话',
+              onOk: () => navigate('/task-center'),
+            })
+          } else if (latest.dispatchStatus === 'failed') {
+            message.warning('简报已发布，但 AI 拆解失败，请到「需求单详情」查看并手动派活', 6)
+          } else {
+            message.info('简报已发布，AI 拆解仍在进行中，可稍后到任务中心查看', 4)
+          }
         } else {
           message.warning('简报已创建，但确认失败，请稍后在任务中心重试')
         }
