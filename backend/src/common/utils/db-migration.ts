@@ -1392,7 +1392,7 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       `SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'hermes_call_logs' AND COLUMN_NAME = 'instance_id'`
     );
-    if (hclInstanceCol && hclInstanceCol[0]?.IS_NULLABLE === 'NO') {
+    if (hclInstanceCol && hclInstanceCol.IS_NULLABLE === 'NO') {
       await queryRunner.query(`ALTER TABLE hermes_call_logs MODIFY COLUMN instance_id BIGINT NULL`);
       logger.log('Modified column: hermes_call_logs.instance_id nullable');
     }
@@ -1402,8 +1402,8 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
     );
     if (
       hclCallTypeCol &&
-      hclCallTypeCol[0]?.COLUMN_TYPE &&
-      !String(hclCallTypeCol[0].COLUMN_TYPE).includes('orchestrate')
+      hclCallTypeCol.COLUMN_TYPE &&
+      !String(hclCallTypeCol.COLUMN_TYPE).includes('orchestrate')
     ) {
       await queryRunner.query(
         `ALTER TABLE hermes_call_logs MODIFY COLUMN call_type ENUM('skill_execute','tool_call','agent_invoke','workflow_run','orchestrate') NOT NULL`
