@@ -9,6 +9,7 @@ import { ErrorCode } from '../../../common/constants/error.constant';
 export const MCP_COMMAND_ALLOWLIST = ['npx', 'uvx', 'docker', 'python', 'python3', 'node'];
 
 /** 控制字符：\x00-\x1f + DEL */
+// eslint-disable-next-line no-control-regex -- 有意匹配控制字符（防 RCE 注入）
 const CONTROL_CHAR_RE = /[\x00-\x1f\x7f]/;
 
 interface DangerousFlagSet {

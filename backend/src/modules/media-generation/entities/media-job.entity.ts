@@ -8,6 +8,7 @@ const idColumnOptions = {
 };
 
 /** 任务类型：旧值 image/video，保留字面量自动补全，同时允许扩展为任意调用模式字符串 */
+// eslint-disable-next-line @typescript-eslint/ban-types -- 有意用 string & {} 保留字面量补全并接受任意扩展值
 export type MediaJobType = 'image' | 'video' | (string & {});
 export type MediaJobStatus = 'pending' | 'processing' | 'done' | 'failed';
 
