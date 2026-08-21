@@ -1,4 +1,4 @@
-﻿// 路由配置
+// 路由配置
 // 默认路由：onboarding_completed=false 重定向到 /onboarding，否则到 /dashboard
 // Task 34: 用户端已认证路由使用 MainLayout 包裹（顶栏+侧边栏+内容区+底栏）
 import { createHashRouter, Navigate } from "react-router-dom";
@@ -33,6 +33,7 @@ import SkillMarket from "@/pages/SkillMarket";
 import LocalDetail from "@/pages/SkillMarket/LocalDetail";
 import HermesList from "@/pages/Hermes";
 import HermesDetail from "@/pages/Hermes/Detail";
+import HermesEvolution from "@/pages/Hermes/Evolution";
 import TeamList from "@/pages/Team";
 import TeamDetail from "@/pages/Team/Detail";
 import Office from "@/pages/Office";
@@ -118,6 +119,7 @@ const router = createHashRouter([
       { path: "/creator/revenue", element: <AgentCreatorRevenue /> },
       // ===== Task 13: Hermes =====
       { path: "/hermes", element: <HermesList /> },
+      { path: "/hermes/evolution", element: <HermesEvolution /> },
       { path: "/hermes/:id", element: <HermesDetail /> },
       { path: "/office", element: <Office /> },
       { path: "/channels", element: <ChannelList /> },

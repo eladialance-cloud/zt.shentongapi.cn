@@ -1,4 +1,4 @@
-﻿// 预加载脚本 - 通过 contextBridge 暴露安全 API 给渲染进程
+// 预加载脚本 - 通过 contextBridge 暴露安全 API 给渲染进程
 // 启用 contextIsolation: true，nodeIntegration: false
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
@@ -91,6 +91,18 @@ const electronAPI: ElectronAPI = {
         ipcRenderer.removeListener('update:status', handler)
       }
     }
+  },
+  modelDefaultsSync: (dto) => ipcRenderer.send('model-defaults:sync', dto),
+  hermesSkills: {
+    list: () => ipcRenderer.invoke('hermes-skills:list'),
+    search: (query) => ipcRenderer.invoke('hermes-skills:search', query),
+    install: (identifier) => ipcRenderer.invoke('hermes-skills:install', identifier),
+    update: (name) => ipcRenderer.invoke('hermes-skills:update', name),
+    uninstall: (name) => ipcRenderer.invoke('hermes-skills:uninstall', name),
+    check: () => ipcRenderer.invoke('hermes-skills:check'),
+  },
+  hermesEvolution: {
+    get: () => ipcRenderer.invoke('hermes-evolution:get'),
   },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),

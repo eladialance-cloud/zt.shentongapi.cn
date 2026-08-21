@@ -32,6 +32,7 @@ import {
   pickPlatformModels,
 } from './video-claw-config'
 import { syncHermesConfig } from './hermes-config'
+import { resolveModelDefaults } from './model-defaults'
 import treeKill from 'tree-kill'
 import { getRuntimeRoot } from './runtime-config'
 
@@ -687,6 +688,57 @@ export class ServiceManager extends EventEmitter {
     openclawPreferredModel = normalized
     ensureOpenClawConfig()
     console.log('[service-manager] OpenClaw 首选模型已同步: ' + normalized)
+  }
+
+  /**
+   * 设置页模型默认同步（方案 B）：default-models → Hermes config + ST-Claw config，
+   * 内容有变化才重启对应服务（幂等；未登录/无变化跳过）。
+   */
+  async syncModelDefaults(dto: import('./model-defaults').UserModelDefaultsInput | null): Promise<void> {
+    if (!openclawProxyKey) return
+    try {
+      const platformModels = await fetchPlatformModels(OPENCLAW_LLM_PROXY_BASE, openclawProxyKey)
+      const picked = pickPlatformModels(platformModels, DEFAULT_VIDEO_CLAW_MODELS)
+      const resolved = resolveModelDefaults(dto, picked)
+      if (!resolved) return
+      const hermesCfg = path.join(getHermesHome(), 'config.yaml')
+      const beforeHermes = fs.existsSync(hermesCfg) ? fs.readFileSync(hermesCfg, 'utf-8') : null
+      syncHermesConfig(getHermesHome(), {
+        llmProxyBaseUrl: OPENCLAW_LLM_PROXY_BASE,
+        apiKey: openclawProxyKey,
+        llmModel: resolved.hermes.llmModel,
+      })
+      const afterHermes = fs.existsSync(hermesCfg) ? fs.readFileSync(hermesCfg, 'utf-8') : null
+      let videoClawChanged = false
+      const vcResolved = resolve('video-claw')
+      if (vcResolved) {
+        const backendDir = resolveVideoClawBackendDir(path.dirname(vcResolved.cmd))
+        const vcCfg = path.join(backendDir, 'config.yaml')
+        const beforeVc = fs.existsSync(vcCfg) ? fs.readFileSync(vcCfg, 'utf-8') : null
+        syncVideoClawConfig(backendDir, {
+          llmProxyBaseUrl: OPENCLAW_LLM_PROXY_BASE,
+          apiKey: openclawProxyKey,
+          ...resolved.videoClaw,
+          platformModels: platformModels ?? undefined,
+        })
+        const afterVc = fs.existsSync(vcCfg) ? fs.readFileSync(vcCfg, 'utf-8') : null
+        videoClawChanged = beforeVc !== afterVc
+      }
+      if (beforeHermes !== afterHermes) {
+        console.log('[service-manager] Hermes 模型配置已更新，重启 hermes 生效...')
+        void this.restart('hermes').catch((err) =>
+          console.warn('[service-manager] hermes 重启失败（忽略）: ' + (err instanceof Error ? err.message : String(err))),
+        )
+      }
+      if (videoClawChanged) {
+        console.log('[service-manager] ST-Claw 模型配置已更新，重启 video-claw 生效...')
+        void this.restart('video-claw').catch((err) =>
+          console.warn('[service-manager] video-claw 重启失败（忽略）: ' + (err instanceof Error ? err.message : String(err))),
+        )
+      }
+    } catch (err) {
+      console.warn('[service-manager] syncModelDefaults 失败（忽略）: ' + (err instanceof Error ? err.message : String(err)))
+    }
   }
 
   /** 追加子进程输出（滚动保留尾部，供失败时展示真实原因） */
@@ -1434,10 +1486,16 @@ export class ServiceManager extends EventEmitter {
     await this.start('n8n')
     await this.start('mcp')
     await this.start('hermes')
+    // ST-Claw 纳入统一生命周期；启动失败不阻断其他服务
+    try {
+      await this.start('video-claw')
+    } catch (err) {
+      console.warn('[service-manager] ST-Claw 启动失败（不阻断其他服务）:', err)
+    }
   }
 
   async stopAll(): Promise<void> {
-    await Promise.all([this.stop('openclaw'), this.stop('n8n'), this.stop('mcp'), this.stop('hermes')])
+    await Promise.all([this.stop('openclaw'), this.stop('n8n'), this.stop('mcp'), this.stop('hermes'), this.stop('video-claw')])
   }
 
   /** 统一发送 status-changed 事件 */

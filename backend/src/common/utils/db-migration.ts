@@ -1387,6 +1387,30 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       logger.log('Added column: publish_plans.asset_ids');
     }
 
+    // hermes_call_logs：instance_id 允许为空（本地编排上报无实例）+ call_type 增加 orchestrate
+    const [hclInstanceCol] = await queryRunner.query(
+      `SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'hermes_call_logs' AND COLUMN_NAME = 'instance_id'`
+    );
+    if (hclInstanceCol && hclInstanceCol[0]?.IS_NULLABLE === 'NO') {
+      await queryRunner.query(`ALTER TABLE hermes_call_logs MODIFY COLUMN instance_id BIGINT NULL`);
+      logger.log('Modified column: hermes_call_logs.instance_id nullable');
+    }
+    const [hclCallTypeCol] = await queryRunner.query(
+      `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'hermes_call_logs' AND COLUMN_NAME = 'call_type'`
+    );
+    if (
+      hclCallTypeCol &&
+      hclCallTypeCol[0]?.COLUMN_TYPE &&
+      !String(hclCallTypeCol[0].COLUMN_TYPE).includes('orchestrate')
+    ) {
+      await queryRunner.query(
+        `ALTER TABLE hermes_call_logs MODIFY COLUMN call_type ENUM('skill_execute','tool_call','agent_invoke','workflow_run','orchestrate') NOT NULL`
+      );
+      logger.log('Modified column: hermes_call_logs.call_type + orchestrate');
+    }
+
     logger.log('Startup migrations completed');
   } catch (err) {
     logger.error(`Startup migration failed: ${(err as Error).message}`);

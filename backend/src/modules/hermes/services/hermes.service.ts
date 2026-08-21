@@ -1,4 +1,4 @@
-﻿import {
+import {
   Injectable,
   Logger,
   NotFoundException,
@@ -20,6 +20,7 @@ import { InstanceWorkerService } from './instance-worker.service';
 import { SyncGateway } from '../../sync/sync.gateway';
 import { parsePaging, paginate } from '../../../common/utils/query.util';
 import { CreateInstanceDto, PaginationDto, ExecuteTaskDto, RateSkillDto, CreateSkillDto } from '../dto/hermes.dto';
+import { HermesReportDto } from '../dto/hermes-report.dto';
 
 export interface HermesTask {
   userId: number;
@@ -66,6 +67,30 @@ export class HermesService {
     private syncGateway: SyncGateway,
     private teamService: TeamService,
   ) {}
+
+  /**
+   * 本地 Hermes 编排结果上报（桌面端主进程回写）
+   * 归属校验：团队必须存在且为当前用户创建；写 hermes_call_logs（call_type=orchestrate，无实例）
+   */
+  async reportLocalExecution(userId: number, dto: HermesReportDto) {
+    const { team } = await this.teamService.getTeamDetail(userId, dto.teamId);
+    if (!team || Number(team.creatorId) !== userId) {
+      throw new NotFoundException('团队不存在');
+    }
+    const log = this.callLogRepo.create({
+      userId,
+      instanceId: null,
+      teamId: dto.teamId,
+      callType: 'orchestrate',
+      status: dto.status === 'completed' ? 'success' : 'failed',
+      target: dto.executionRef,
+      durationMs: dto.durationMs,
+      creditsCost: 0,
+      errorMessage: dto.error ?? undefined,
+    });
+    const saved = await this.callLogRepo.save(log);
+    return { ok: true, logId: saved.id };
+  }
 
   // ============ 实例管理 ============
 

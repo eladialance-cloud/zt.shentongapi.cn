@@ -17,8 +17,8 @@ export class HermesCallLogEntity {
   id: number;
 
   @Index('idx_hermes_call_logs_instance_id')
-  @Column({ name: 'instance_id', type: 'bigint', transformer: bigintTransformer })
-  instanceId: number;
+  @Column({ name: 'instance_id', type: 'bigint', transformer: bigintTransformer, nullable: true })
+  instanceId?: number | null;
 
   @Index('idx_hermes_call_logs_user_id')
   @Column({ name: 'user_id', type: 'bigint', transformer: bigintTransformer })
@@ -31,9 +31,9 @@ export class HermesCallLogEntity {
   @Column({
     name: 'call_type',
     type: 'enum',
-    enum: ['skill_execute', 'tool_call', 'agent_invoke', 'workflow_run'],
+    enum: ['skill_execute', 'tool_call', 'agent_invoke', 'workflow_run', 'orchestrate'],
   })
-  callType: 'skill_execute' | 'tool_call' | 'agent_invoke' | 'workflow_run';
+  callType: 'skill_execute' | 'tool_call' | 'agent_invoke' | 'workflow_run' | 'orchestrate';
 
   @Column({
     type: 'enum',

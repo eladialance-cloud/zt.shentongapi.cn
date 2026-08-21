@@ -1,0 +1,3 @@
+#!/bin/bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
+"$DIR/node/bin/node" "$DIR/node_modules/hermes-agent/bin/hermes.js" "$@"

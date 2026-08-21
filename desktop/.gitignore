@@ -20,3 +20,9 @@ runtime/*/
 
 # Cache
 cache/
+
+# Hermes portable runtime: track only small launcher scripts; binaries downloaded at build time
+!runtime/hermes/hermes
+!runtime/hermes/package.json
+runtime/hermes/node/
+runtime/hermes/python/

@@ -16,8 +16,18 @@ function arg(name, def = '') {
   return hit ? hit.slice(name.length + 3) : def;
 }
 
+/** 输出契约：要求 Hermes 以「项目总监」身份拆解指派，最终只输出单行 JSON（团队驱动执行） */
+const OUTPUT_RULE =
+  ' 你是项目总监：任务描述前会附上可用团队成员清单（角色+人设摘要）。' +
+  '有合适成员时：把任务拆成步骤并指派给最合适的成员，每个 step 必须带 assigneeName（成员角色名）与 assigneeMemberId。' +
+  '没有合适成员或团队为空时：用你自己的子代理团队执行，step 不写 assigneeName。' +
+  '最终回复必须是单行JSON，不要输出任何其他文字。' +
+  '格式: {"summary":"结论","steps":[{"name":"步骤","status":"done","assigneeName":"成员名","assigneeMemberId":1}],"outputs":[{"type":"text|image|video","content":"文本"或"url":"URL"}],"status":"completed"}。' +
+  '失败时输出 {"status":"failed","summary":"原因","error":"详情"}。';
+
 async function main() {
-  const task = arg('task');
+  const requireJson = process.argv.includes('--require-json');
+  const task = (arg('task') + (requireJson ? OUTPUT_RULE : '')).trim();
   if (!task.trim()) {
     console.error('缺少 --task 参数');
     process.exit(2);

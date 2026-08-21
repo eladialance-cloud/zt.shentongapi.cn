@@ -1,4 +1,4 @@
-﻿// 主进程 / 渲染进程共享类型定义
+// 主进程 / 渲染进程共享类型定义
 // 该文件同时被 tsconfig.node.json 与 tsconfig.web.json 包含
 
 export type ServiceName = "openclaw" | "n8n" | "mcp" | "hermes" | "video-claw";
@@ -352,6 +352,41 @@ export interface LlmIntegrationStoreResult {
 }
 
 
+export interface HermesSkillItem {
+  name: string;
+  source?: string;
+  version?: string;
+  builtin?: boolean;
+}
+
+export interface HermesSkillsListResult {
+  ok: boolean;
+  error?: string;
+  items?: HermesSkillItem[];
+  stdout?: string;
+}
+
+export interface HermesMemoryCard {
+  source: "memory" | "profile";
+  text: string;
+}
+
+export interface HermesEvolutionResult {
+  ok: boolean;
+  error?: string;
+  memory?: HermesMemoryCard[];
+  journey?: Record<string, unknown> | null;
+  journeyRaw?: string;
+  curator?: string;
+  memoryStatus?: string;
+}
+
+export interface HermesSkillsOpResult {
+  ok: boolean;
+  error?: string;
+  stdout?: string;
+}
+
 export interface ElectronAPI {
   service: {
     getStatus(): Promise<Record<ServiceName, ServiceStatus>>;
@@ -384,6 +419,23 @@ export interface ElectronAPI {
     /** 使用系统默认浏览器打开外部链接（真实支付跳转用） */
     openExternal(url: string): Promise<void>;
   };
+  /** 设置页每类默认模型同步（chat/vision/image/video/tts → Hermes/ST-Claw 配置） */
+  modelDefaultsSync(dto: { chat?: string | null; vision?: string | null; image?: string | null; video?: string | null; tts?: string | null } | null): void;
+
+  /** 本地 Hermes 技能中心（封装 hermes skills CLI） */
+  hermesSkills: {
+    list(): Promise<HermesSkillsListResult>;
+    search(query: string): Promise<HermesSkillsListResult>;
+    install(identifier: string): Promise<HermesSkillsOpResult>;
+    update(name?: string): Promise<HermesSkillsOpResult>;
+    uninstall(name: string): Promise<HermesSkillsOpResult>;
+    check(): Promise<HermesSkillsOpResult>;
+  };
+  /** Hermes 进化可视化（记忆 + journey + curator） */
+  hermesEvolution: {
+    get(): Promise<HermesEvolutionResult>;
+  };
+
   /** 自动更新（electron-updater 封装） */
   updater: {
     /** 手动检查更新 */

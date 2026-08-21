@@ -131,6 +131,12 @@ export default function SettingsModels() {
         tts: values.tts || null
       }
       await setDefaultModels(dto)
+      // 方案 B：通知主进程同步 Hermes / ST-Claw 配置（失败不阻断保存）
+      try {
+        window.electronAPI?.modelDefaultsSync?.(dto)
+      } catch (err) {
+        console.warn('[SettingsModels] modelDefaultsSync failed:', err)
+      }
       message.success('默认模型已保存')
     } catch (err) {
       if (err && typeof err === 'object' && 'errorFields' in err) return

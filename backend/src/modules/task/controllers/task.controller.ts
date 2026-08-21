@@ -12,6 +12,7 @@ import { TaskService } from '../services/task.service';
 import {
   CreateTaskDto,
   TaskQueryDto,
+  CreateOutputItemDto,
 } from '../dto/task.dto';
 import {
   CurrentUser,
@@ -101,5 +102,17 @@ export class TaskController {
     // 先校验任务归属
     await this.taskService.getTask(user.userId, id);
     return this.taskService.getOutputItems(id);
+  }
+
+  @Post(':id/outputs')
+  @ApiOperation({ summary: '写入任务产物（Hermes 编排回填）' })
+  async addOutput(
+    @CurrentUser() user: ICurrentUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateOutputItemDto,
+  ) {
+    // 先校验任务归属
+    await this.taskService.getTask(user.userId, id);
+    return this.taskService.addOutputItem(id, dto);
   }
 }

@@ -50,3 +50,4 @@ node <skill_dir>/scripts/st-claw-controller.mjs --action video --prompt "让画�
 - 生成结果会打印完整可访问 URL（http://127.0.0.1:8000/code/...），可直接展示给用户。
 - 参考图支持 jpg/jpeg/png/webp/bmp/mp4/mov/avi/mkv/webm。
 - 视频生成耗时较长（通常 1-5 分钟），耐心等待结果，不要重复提交相同任务。
+- **模型来源**：`--model` 缺省取 ST-Claw 配置的默认模型；桌面端「设置 → 模型设置」的每类默认模型（image/video 等）会自动同步到 ST-Claw 配置。Hermes 编排时按任务类型显式传 `--model`（图片生成 → image 默认，视频生成 → video 默认），确保使用用户在设置页选择的模型。

@@ -14,10 +14,11 @@ import InstalledList from "./InstalledList";
 import McpMarket from "@/pages/McpMarket";
 import InstalledMcp from "@/pages/McpMarket/Installed";
 import OpenSourceSkills from "./OpenSourceSkills";
+import HermesSkills from "./HermesSkills";
 import styles from "./styles.module.css";
 
 type Scope = "official" | "mine";
-type Category = "plugin" | "workflow" | "agent" | "skill" | "mcp" | "open-source";
+type Category = "plugin" | "workflow" | "agent" | "skill" | "mcp" | "open-source" | "hermes-local";
 
 const SCOPE_TABS: Array<{ key: Scope; label: string }> = [
   { key: "official", label: "官方" },
@@ -31,6 +32,7 @@ const CATEGORY_TABS: Array<{ key: Category; label: string }> = [
   { key: "skill", label: "技能包" },
   { key: "mcp", label: "MCP" },
   { key: "open-source", label: "开源技能库" },
+  { key: "hermes-local", label: "本地 Hermes 技能" },
 ];
 
 export default function SkillMarket() {
@@ -53,6 +55,8 @@ export default function SkillMarket() {
           return <McpMarket embedded />;
         case "open-source":
           return <OpenSourceSkills embedded />;
+        case "hermes-local":
+          return <HermesSkills embedded />;
       }
     }
     switch (category) {
@@ -68,6 +72,8 @@ export default function SkillMarket() {
         return <InstalledMcp />;
       case "open-source":
         return <OpenSourceSkills embedded />;
+      case "hermes-local":
+        return <HermesSkills embedded />;
     }
   };
 

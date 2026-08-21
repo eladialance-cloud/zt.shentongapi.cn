@@ -26,7 +26,8 @@ import {
   PlusOutlined,
   PoweroffOutlined,
   EyeOutlined,
-  ThunderboltOutlined
+  ThunderboltOutlined,
+  RiseOutlined
 } from '@ant-design/icons'
 import * as hermesApi from '@/api/hermes-api'
 import { listTeams } from '@/api/team-api'
@@ -260,6 +261,12 @@ export default function HermesList() {
             onClick={() => navigate('/dashboard')}
           >
             返回
+          </Button>
+          <Button
+            icon={<RiseOutlined />}
+            onClick={() => navigate("/hermes/evolution")}
+          >
+            进化
           </Button>
           <Button
             type="primary"

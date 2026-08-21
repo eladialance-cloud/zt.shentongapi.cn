@@ -1,4 +1,4 @@
-﻿import {
+import {
   Body,
   Controller,
   Delete,
@@ -19,6 +19,7 @@ import { Roles } from '../../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { HermesService } from '../services/hermes.service';
 import { CreateInstanceDto, PaginationDto, ExecuteTaskDto, RateSkillDto, CreateSkillDto } from '../dto/hermes.dto';
+import { HermesReportDto } from '../dto/hermes-report.dto';
 
 @ApiTags('Hermes')
 @ApiBearerAuth()
@@ -31,6 +32,17 @@ export class HermesController {
   @ApiOperation({ summary: '健康检查' })
   health() {
     return this.service.health();
+  }
+
+  // ============ 本地编排结果上报（桌面端） ============
+
+  @Post('executions/report')
+  @ApiOperation({ summary: '本地 Hermes 编排结果上报（桌面端）' })
+  reportExecution(
+    @CurrentUser('userId') userId: number,
+    @Body() dto: HermesReportDto,
+  ) {
+    return this.service.reportLocalExecution(userId, dto);
   }
 
   // ============ 实例管理 ============
