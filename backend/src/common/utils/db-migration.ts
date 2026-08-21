@@ -1427,7 +1427,7 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
       PRIMARY KEY (id),
       INDEX idx_sedimentation_user (user_id, created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话沉淀记录');`);
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话沉淀记录'`);
     logger.log('Ensured table: sedimentation_feed');
 
         logger.log('Startup migrations completed');
