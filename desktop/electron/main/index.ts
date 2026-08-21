@@ -56,6 +56,7 @@ import { orchestrate, type OrchestrateDeps, type OrchestrateInput, type TeamMemb
 import { buildMemberProfiles, type MemberRow } from './hermes-member-profile'
 import { listSkills, searchSkills, installSkill, updateSkills, uninstallSkill, checkSkills } from './hermes-skills'
 import { getEvolution } from './hermes-evolution'
+import { handleMemoryOp } from './hermes-memory'
 
 // ===== Hermes 编排依赖（团队驱动执行） =====
 
@@ -375,6 +376,11 @@ function registerIpcHandlers(): void {
   ipcMain.handle('hermes-skills:uninstall', (_e, name: string) => uninstallSkill(typeof name === 'string' ? name : ''))
   ipcMain.handle('hermes-skills:check', () => checkSkills())
   ipcMain.handle('hermes-evolution:get', () => getEvolution())
+  // ===== Hermes 记忆本地读写桥（MEMORY.md/USER.md；add/replace/remove/list） =====
+  ipcMain.handle('hermes-memory:list', (_e, target) => handleMemoryOp('list', target))
+  ipcMain.handle('hermes-memory:add', (_e, target, text) => handleMemoryOp('add', target, text))
+  ipcMain.handle('hermes-memory:replace', (_e, target, match, text) => handleMemoryOp('replace', target, match, text))
+  ipcMain.handle('hermes-memory:remove', (_e, target, text) => handleMemoryOp('remove', target, text))
 
   // ===== Hermes 编排（团队驱动执行）：提交任务 → 状态机 + 团队指派 + CLI + 回写 =====
   ipcMain.handle(

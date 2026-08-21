@@ -15,6 +15,22 @@ import { officeBridge, isRetrieveTool } from '@/pages/Office/services/officeBrid
 import type { ChatMessage, ToolCallInfo } from '@/types/chat'
 import type { OpenClawChatMessage, OpenClawToolCall } from '@shared/types'
 import { isVideoClawTool } from '@/utils/video-claw-tool'
+import * as sedimentApi from '@/api/sedimentation-api'
+
+export interface SedimentNotice {
+  id: string
+  sessionId: number
+  /** knowledge_base=云端知识库；hermes_memory=本机 USER.md */
+  target: 'knowledge_base' | 'hermes_memory'
+  title: string
+  feedId?: number
+  undoToken?: string
+  /** 记忆撤回用：写入 USER.md 的原始条目文本 */
+  memoryText?: string
+  /** 幂等命中（未重复写入） */
+  alreadyExisted?: boolean
+  createdAt: number
+}
 
 export interface ChatStreamSnapshot {
   /** 是否正在流式回复 */
@@ -31,6 +47,8 @@ export interface ChatStreamSnapshot {
   error: string | null
   /** 完成消息序号（每次 done/error 固化后 +1，页面据此回填消息区） */
   completionTick: number
+  /** 最近一次对话自动沉淀提示（无则 null） */
+  sedimentNotice: SedimentNotice | null
 }
 
 interface ChatStreamDraft {
@@ -52,11 +70,19 @@ let snapshot: ChatStreamSnapshot = {
   phase: 'idle',
   error: null,
   completionTick: 0,
+  sedimentNotice: null,
 }
 const listeners = new Set<() => void>()
 let draftTimer: ReturnType<typeof setInterval> | null = null
 let abortRequested = false
 let replyGenerated = false
+
+// ===== 最近一轮对话快照（消息完成后触发沉淀识别用） =====
+let lastUserMessage = ''
+let lastHistory: OpenClawChatMessage[] = []
+let lastSessionId: number | null = null
+let lastKnowledgeBaseId: number | undefined = undefined
+let lastModelId: string | undefined = undefined
 
 const VIDEO_CLAW_FRONTEND = 'http://127.0.0.1:3000'
 const VIDEO_CLAW_API = 'http://127.0.0.1:8000'
@@ -351,6 +377,9 @@ function ensureHandle(): OpenClawChatHandle {
     void marketApi.syncChat().catch(() => undefined)
     officeBridge.onReview()
     setTimeout(() => officeBridge.onTaskComplete(), 1500)
+    if (!abortRequested) {
+      void runSedimentation()
+    }
     resetStreaming()
   })
 
@@ -397,10 +426,108 @@ function resetStreaming(): void {
     phase: 'idle',
     error: null,
     completionTick,
+    sedimentNotice: null,
   }
   abortRequested = false
   replyGenerated = false
   emit()
+}
+
+// ==================== 对话知识沉淀（M1：识别 -> 分流写知识库/本机记忆 -> 提示可撤回） ====================
+
+function uniqueId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+}
+
+async function runSedimentation(): Promise<void> {
+  const content = (lastUserMessage || "").trim()
+  const sessionId = lastSessionId
+  // 在首个 await 前捕获，避免异步期间被下一轮对话覆盖
+  const kbId = lastKnowledgeBaseId
+  const modelId = lastModelId
+  if (!content || sessionId == null) return
+  try {
+    const result = await sedimentApi.analyzeSediment({
+      content,
+      history: lastHistory.slice(-6).map((m) => m.content),
+      model: modelId || undefined,
+      sessionId,
+    })
+    // 闲聊/需求对话（requirement 走既有需求链路）不自动沉淀
+    if (!result || result.type === "none" || result.type === "requirement") return
+
+    // 分流 1：客户画像/偏好 -> 本机 Hermes 记忆（USER.md，幂等去重）
+    if (result.target === "hermes_memory" || result.type === "customer_profile") {
+      const mem = window.electronAPI?.hermesMemory
+      if (!mem) return
+      const entryText = [result.title, result.content].filter(Boolean).join("：")
+      const write = await mem.add("profile", entryText)
+      if (!write?.ok) return
+      patch({
+        sedimentNotice: {
+          id: uniqueId(),
+          sessionId,
+          target: "hermes_memory",
+          title: result.title || "客户画像",
+          memoryText: entryText,
+          createdAt: Date.now(),
+        },
+      })
+      return
+    }
+
+    // 分流 2：企业资料/数据更新(add) -> 云端知识库（会话关联库，无则默认「对话沉淀」库）
+    if (result.type === "data_update" && result.operation === "remove") return // 删除/覆盖确认在 M3
+    const type = result.type === "data_update" ? "data_update" : "enterprise_doc"
+    const applied = await sedimentApi.applySediment({
+      type,
+      target: "knowledge_base",
+      title: result.title || "对话沉淀",
+      content: result.content,
+      kbId: kbId,
+      sessionId,
+    })
+    if (!applied?.feedId) return
+    patch({
+      sedimentNotice: {
+        id: uniqueId(),
+        sessionId,
+        target: "knowledge_base",
+        title: result.title || "对话沉淀",
+        feedId: applied.feedId,
+        undoToken: applied.undoToken,
+        alreadyExisted: applied.alreadyExisted,
+        createdAt: Date.now(),
+      },
+    })
+  } catch (err) {
+    // 沉淀失败不打断对话（静默降级）
+    console.warn("[chat-stream] sedimentation failed:", err)
+  }
+}
+
+/** 撤回最近一次沉淀（knowledge=删除知识库文档；memory=移除 USER.md 条目） */
+export async function undoSedimentNotice(): Promise<boolean> {
+  const notice = snapshot.sedimentNotice
+  if (!notice) return false
+  try {
+    if (notice.target === "knowledge_base" && notice.undoToken) {
+      await sedimentApi.undoSediment(notice.undoToken)
+    } else if (notice.target === "hermes_memory" && notice.memoryText) {
+      const mem = window.electronAPI?.hermesMemory
+      if (mem) await mem.remove("profile", notice.memoryText)
+    }
+    patch({ sedimentNotice: null })
+    return true
+  } catch (err) {
+    console.warn("[chat-stream] undo sedimentation failed:", err)
+    return false
+  }
+}
+
+/** 关闭沉淀提示（不撤回） */
+export function dismissSedimentNotice(): void {
+  if (snapshot.sedimentNotice) patch({ sedimentNotice: null })
 }
 
 // ==================== 对外 API ====================
@@ -424,10 +551,17 @@ export async function startChatSend(params: StartChatSendParams): Promise<void> 
     phase: 'start',
     error: null,
     completionTick,
+    sedimentNotice: null,
   }
   abortRequested = false
   replyGenerated = false
   clearChatDraft()
+
+  lastUserMessage = params.content || ''
+  lastHistory = params.history || []
+  lastSessionId = params.sessionId
+  lastKnowledgeBaseId = params.knowledgeBaseId
+  lastModelId = params.modelId
   emit()
 
   if (draftTimer) clearInterval(draftTimer)
@@ -471,4 +605,6 @@ export default {
   consumePendingVideos,
   consumePendingCompletions,
   isChatStreamBusy,
+  undoSedimentNotice,
+  dismissSedimentNotice,
 }

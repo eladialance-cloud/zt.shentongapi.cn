@@ -16,6 +16,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UserModule } from './modules/user/user.module';
 import { AgentModule } from './modules/agent/agent.module';
 import { ChatModule } from './modules/chat/chat.module';
+import { SedimentationModule } from './modules/sedimentation/sedimentation.module';
 import { KnowledgeBaseModule } from './modules/knowledge/knowledge-base.module';
 import { KnowledgeEngineModule } from './modules/knowledge-engine/knowledge-engine.module';
 import { AdminKnowledgeModule } from './modules/admin-knowledge/admin-knowledge.module';
@@ -103,6 +104,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     UserModule,
     AgentModule,
     ChatModule,
+    SedimentationModule,
     KnowledgeBaseModule,
     KnowledgeEngineModule,
     AdminKnowledgeModule,

@@ -386,6 +386,20 @@ export interface HermesSkillsOpResult {
   error?: string;
   stdout?: string;
 }
+export type HermesMemoryTarget = "memory" | "profile";
+
+export interface HermesMemoryEntry {
+  target: HermesMemoryTarget;
+  text: string;
+}
+
+export interface HermesMemoryOpResult {
+  ok: boolean;
+  error?: string;
+  entries?: HermesMemoryEntry[];
+  /** 超出字符上限时被逐出的最旧条目 */
+  evicted?: string[];
+}
 
 export interface ElectronAPI {
   service: {
@@ -434,6 +448,14 @@ export interface ElectronAPI {
   /** Hermes 进化可视化（记忆 + journey + curator） */
   hermesEvolution: {
     get(): Promise<HermesEvolutionResult>;
+  };
+
+  /** Hermes 记忆本地读写桥（MEMORY.md/USER.md，§ 分隔，幂等去重） */
+  hermesMemory: {
+    list(target: HermesMemoryTarget): Promise<HermesMemoryOpResult>;
+    add(target: HermesMemoryTarget, text: string): Promise<HermesMemoryOpResult>;
+    replace(target: HermesMemoryTarget, match: string, text: string): Promise<HermesMemoryOpResult>;
+    remove(target: HermesMemoryTarget, text: string): Promise<HermesMemoryOpResult>;
   };
 
   /** 自动更新（electron-updater 封装） */

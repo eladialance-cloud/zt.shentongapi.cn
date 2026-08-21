@@ -295,6 +295,68 @@ export class KnowledgeBaseService {
     return this.toDocumentDto(doc);
   }
 
+  /**
+   * 文本直接入库（对话沉淀用）：与 uploadDocument 同链路，内容来自文本而非 multer 文件
+   */
+  async createTextDocument(
+    userId: number,
+    kbId: number,
+    input: { name: string; content: string },
+  ): Promise<KnowledgeDocumentDto> {
+    await this.getBase(userId, kbId);
+    if (!input.content || !input.content.trim()) {
+      throw new BadRequestException('内容不能为空');
+    }
+    const safeName = input.name?.trim() || `对话沉淀-${Date.now()}.txt`;
+    const filename = `sediment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`;
+    const absDir = path.resolve('uploads/knowledge');
+    fs.mkdirSync(absDir, { recursive: true });
+    fs.writeFileSync(path.join(absDir, filename), input.content, 'utf-8');
+    const fileUrl = '/uploads/knowledge/' + filename;
+    const size = Buffer.byteLength(input.content, 'utf-8');
+
+    await this.fileRepo.save(
+      this.fileRepo.create({
+        userId,
+        name: safeName,
+        path: fileUrl,
+        size,
+        mimeType: 'text/plain',
+        storageType: 'minio',
+      }),
+    );
+
+    const doc = await this.docRepo.save(
+      this.docRepo.create({
+        knowledgeBaseId: kbId,
+        name: safeName,
+        filePath: fileUrl,
+        fileSize: size,
+        mimeType: 'text/plain',
+        chunkCount: 0,
+        tokenCount: 0,
+        status: 'pending',
+      }),
+    );
+
+    await this.kbRepo.increment({ id: kbId }, 'documentCount', 1);
+
+    try {
+      await this.engineService.syncDocumentToEngine(kbId, doc.id, {
+        originalname: safeName,
+        buffer: Buffer.from(input.content, 'utf-8'),
+        mimetype: 'text/plain',
+      });
+    } catch (err) {
+      this.logger.warn(`知识库 ${kbId} 文本文档引擎同步失败: ${(err as Error).message}`);
+    }
+
+    this.logger.log(
+      `用户 ${userId} 对话沉淀文本 -> ${safeName} (${size} bytes)`,
+    );
+    return this.toDocumentDto(doc);
+  }
+
   /** 删除文档 */
   async deleteDocument(
     userId: number,

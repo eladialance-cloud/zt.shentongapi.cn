@@ -23,7 +23,9 @@ import type {
   OpenClawToolCall,
   OpenClawChatDonePayload,
   OpenClawChatLifecyclePayload,
-  OpenClawChatErrorPayload
+  OpenClawChatErrorPayload,
+  HermesMemoryTarget,
+  HermesMemoryOpResult
 } from '../shared/types'
 
 const electronAPI: ElectronAPI = {
@@ -103,6 +105,16 @@ const electronAPI: ElectronAPI = {
   },
   hermesEvolution: {
     get: () => ipcRenderer.invoke('hermes-evolution:get'),
+  },
+  hermesMemory: {
+    list: (target: HermesMemoryTarget) =>
+      ipcRenderer.invoke('hermes-memory:list', target) as Promise<HermesMemoryOpResult>,
+    add: (target: HermesMemoryTarget, text: string) =>
+      ipcRenderer.invoke('hermes-memory:add', target, text) as Promise<HermesMemoryOpResult>,
+    replace: (target: HermesMemoryTarget, match: string, text: string) =>
+      ipcRenderer.invoke('hermes-memory:replace', target, match, text) as Promise<HermesMemoryOpResult>,
+    remove: (target: HermesMemoryTarget, text: string) =>
+      ipcRenderer.invoke('hermes-memory:remove', target, text) as Promise<HermesMemoryOpResult>,
   },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),

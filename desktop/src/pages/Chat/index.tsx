@@ -41,7 +41,10 @@ import {
   clearChatDraft,
   consumePendingVideos,
   consumePendingCompletions,
+  undoSedimentNotice,
+  dismissSedimentNotice,
 } from '@/store/chat-stream'
+import SedimentNotice from '@/components/SedimentNotice'
 import { listMarketAgents } from '@/api/agent-api'
 import { listLlmIntegrations } from '@/api/llm-integrations-api'
 import type { LlmIntegration } from '@shared/types'
@@ -706,6 +709,12 @@ export default function Chat() {
                 </div>
               </div>
             )}
+
+            <SedimentNotice
+              notice={chatStream.sedimentNotice && chatStream.sedimentNotice.sessionId === activeSession?.id ? chatStream.sedimentNotice : null}
+              onUndo={undoSedimentNotice}
+              onDismiss={dismissSedimentNotice}
+            />
 
             <MessageInput
               onSend={handleSend}

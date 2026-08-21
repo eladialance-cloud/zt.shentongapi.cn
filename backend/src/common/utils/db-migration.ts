@@ -1411,7 +1411,26 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       logger.log('Modified column: hermes_call_logs.call_type + orchestrate');
     }
 
-    logger.log('Startup migrations completed');
+    // 对话沉淀记录表（M1：沉淀识别 -> 知识库/记忆 的审计与撤回）
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS sedimentation_feed (
+      id BIGINT NOT NULL AUTO_INCREMENT,
+      user_id BIGINT NOT NULL COMMENT '用户 ID',
+      session_id BIGINT NULL COMMENT '来源会话 ID',
+      type VARCHAR(32) NOT NULL COMMENT 'enterprise_doc|customer_profile|data_update',
+      target VARCHAR(32) NOT NULL COMMENT 'knowledge_base|hermes_memory',
+      title VARCHAR(255) NOT NULL COMMENT '条目标题',
+      content TEXT NOT NULL COMMENT '沉淀内容',
+      kb_id BIGINT NULL COMMENT '知识库 ID',
+      doc_id BIGINT NULL COMMENT '知识库文档 ID',
+      status VARCHAR(16) NOT NULL DEFAULT 'applied' COMMENT 'applied|undone',
+      undo_token VARCHAR(64) NULL COMMENT '撤回令牌',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+      PRIMARY KEY (id),
+      INDEX idx_sedimentation_user (user_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话沉淀记录');`);
+    logger.log('Ensured table: sedimentation_feed');
+
+        logger.log('Startup migrations completed');
   } catch (err) {
     logger.error(`Startup migration failed: ${(err as Error).message}`);
     // 不抛出错误，允许后端继续启动
