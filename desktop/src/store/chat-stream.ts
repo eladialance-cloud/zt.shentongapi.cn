@@ -14,6 +14,7 @@ import * as marketApi from '@/api/market-api'
 import { officeBridge, isRetrieveTool } from '@/pages/Office/services/officeBridge'
 import type { ChatMessage, ToolCallInfo } from '@/types/chat'
 import type { OpenClawChatMessage, OpenClawToolCall } from '@shared/types'
+import { isVideoClawTool } from '@/utils/video-claw-tool'
 
 export interface ChatStreamSnapshot {
   /** 是否正在流式回复 */
@@ -127,11 +128,6 @@ function upsertToolCall(tc: OpenClawToolCall): ToolCallInfo {
 }
 
 // ==================== 视频任务（对话内实时进度） ====================
-
-function isVideoClawTool(name: string): boolean {
-  const n = (name || '').toLowerCase()
-  return /video|claw|pipeline/.test(n) || n.includes('task')
-}
 
 function extractTaskId(tc: OpenClawToolCall): string | null {
   const scan = (v: unknown): string => {
