@@ -26,6 +26,7 @@ import {
   SyncOutlined,
 } from "@ant-design/icons";
 import type { HermesSkillItem } from "@shared/types";
+import HermesRuntimeInstallAlert from "@/components/HermesRuntimeInstallAlert";
 
 interface OpState {
   [key: string]: boolean;
@@ -133,7 +134,7 @@ export default function HermesSkills({ embedded = false }: { embedded?: boolean 
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {error && <Alert type="error" showIcon message={error} closable onClose={() => setError(null)} />}
+      <HermesRuntimeInstallAlert error={error} onReady={() => void loadList()} onClose={() => setError(null)} />
 
       <Card size="small" title="搜索 Hermes 技能市场（skills.sh / GitHub / ClawHub 等）">
         <Space.Compact style={{ width: "100%" }}>

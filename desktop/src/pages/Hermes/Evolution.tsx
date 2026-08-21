@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { Alert, Button, Card, Collapse, Empty, List, Space, Spin, Tag, Typography } from "antd";
 import { ArrowLeftOutlined, RiseOutlined } from "@ant-design/icons";
 import type { HermesEvolutionResult } from "@shared/types";
+import HermesRuntimeInstallAlert from "@/components/HermesRuntimeInstallAlert";
 import styles from "./styles.module.css";
 
 const { Paragraph, Text } = Typography;
@@ -66,7 +67,7 @@ export default function HermesEvolution() {
       </div>
 
       <Spin spinning={loading}>
-        {error && !loading && <Alert type="warning" showIcon message={error} style={{ marginBottom: 16 }} />}
+        {error && !loading && <HermesRuntimeInstallAlert error={error} onReady={() => void load()} />}
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
           <Card
             size="small"

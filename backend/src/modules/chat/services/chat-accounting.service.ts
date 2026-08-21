@@ -122,7 +122,10 @@ export class ChatAccountingService {
       field: keyof typeof patch,
       allowed: (t: string) => boolean,
     ) => {
-      if (value === undefined) return;
+      if (value === undefined || value === null) {
+        (patch[field] as string | null) = null;
+        return;
+      }
       const id = String(value).trim();
       if (!id) {
         (patch[field] as string | null) = null;

@@ -107,3 +107,32 @@ describe('ChatAccountingService.setPreferredModel', () => {
     await assert.rejects(() => svc.setPreferredModel(1, ''), /模型 ID 不能为空/);
   });
 });
+
+describe('ChatAccountingService.setDefaultModels', () => {
+  it('null → 清除该分类默认模型（不查询模型）', async () => {
+    const updates: any[] = [];
+    let modelLookups = 0;
+    const { svc } = makeService({
+      modelRepo: {
+        findOne: async () => { modelLookups++; return null; },
+      },
+      userRepo: {
+        findOne: async () => ({ id: 1, defaultChatModel: 'old-model' }),
+        update: async (_userId: number, data: any) => updates.push(data),
+      },
+    });
+    const r = await svc.setDefaultModels(1, { chat: null });
+    assert.equal(modelLookups, 0);
+    assert.equal(updates.length, 1);
+    assert.equal(updates[0].defaultChatModel, null);
+    assert.ok(r);
+  });
+
+  it('无效模型 id → 抛 BadRequest（null 修复后仍校验字符串）', async () => {
+    const { svc } = makeService({
+      modelRepo: { findOne: async () => null },
+      userRepo: { findOne: async () => ({ id: 1 }) },
+    });
+    await assert.rejects(() => svc.setDefaultModels(1, { chat: 'not-exist' }), /模型不存在或未启用/);
+  });
+});
