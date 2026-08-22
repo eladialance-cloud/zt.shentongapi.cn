@@ -52,7 +52,7 @@ import {
 import type { MarketItemType } from '../shared/types'
 import type { ServiceName, SyncQueueItem, SyncQueueRow } from '../shared/types'
 import type { LocalBrief } from '../shared/types'
-import { orchestrate, type OrchestrateDeps, type OrchestrateInput, type TeamMemberProfile } from './hermes-orchestrator'
+import { createStepRunner, type OrchestrateDeps, type OrchestrateInput, type StepRunnerDeps, type StepRunnerHandle, type TeamMemberProfile, type TeamTaskStatus } from './hermes-orchestrator'
 import { buildMemberProfiles, type MemberRow } from './hermes-member-profile'
 import { listSkills, searchSkills, installSkill, updateSkills, uninstallSkill, checkSkills } from './hermes-skills'
 import { getEvolution } from './hermes-evolution'
@@ -197,6 +197,64 @@ function collectStream(child: ReturnType<typeof spawn>, kind: 'out' | 'err'): Pr
     src?.on('error', () => resolve(buf))
     child.on('exit', done)
   })
+}
+
+// ===== Hermes 逐步编排（P2：子代理逐节点执行 + 人工/自评确认 + 打回原因重做） =====
+
+/** 运行中 runner 注册表：key = `team:${teamTaskId}`（submit 幂等、confirm/reject 定位用） */
+const stepRunners = new Map<string, StepRunnerHandle>()
+
+/** 每任务自动确认开关（可中途切换；缺省 = 人工确认） */
+const stepAutoConfirm = new Map<string, boolean>()
+
+/** 逐步编排依赖：复用 CLI spawn；PATCH 回写 steps（含 pending_review/rawStatus）；上报 call_log + 产物登记 */
+function buildStepRunnerDeps(token: string, taskKey: string): StepRunnerDeps {
+  const auth = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }
+  const base = buildHermesOrchestrateDeps(token)
+  return {
+    runPrompt: async (prompt, opts) => {
+      try {
+        const { child, stdout, stderr } = base.spawnCli(prompt, opts)
+        const timeout = setTimeout(() => {
+          try {
+            child.kill()
+          } catch {
+            /* ignore */
+          }
+        }, 10 * 60 * 1000)
+        const [out, err] = await Promise.all([stdout(), stderr()])
+        clearTimeout(timeout)
+        return { stdout: out, ...(err ? { error: err } : {}) }
+      } catch (err) {
+        return { stdout: '', error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+    patchTask: async (teamId, taskId, payload) => {
+      await base.patchTask(teamId, taskId, { status: payload.status as TeamTaskStatus, result: payload.result })
+    },
+    reportExecution: async (payload) => {
+      const res = await fetch(`${ST_API_BASE}/hermes/executions/report`, {
+        method: 'POST',
+        headers: auth,
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(15000),
+      })
+      if (!res.ok) throw new Error('上报 call_log 失败: HTTP ' + res.status)
+    },
+    persistOutputs: async (taskId, outputs) => {
+      await base.persistOutputs(taskId, {
+        status: 'completed',
+        summary: '',
+        steps: [],
+        outputs,
+        error: null,
+        durationMs: 0,
+      })
+    },
+    isAutoConfirm: () => stepAutoConfirm.get(taskKey) ?? false,
+    now: () => Date.now(),
+    maxRetries: 2,
+  }
 }
 
 // 日志落盘：主进程 console 输出同步写入 userData/logs/main.log，便于远程排查
@@ -382,18 +440,30 @@ function registerIpcHandlers(): void {
   ipcMain.handle('hermes-memory:replace', (_e, target, match, text) => handleMemoryOp('replace', target, match, text))
   ipcMain.handle('hermes-memory:remove', (_e, target, text) => handleMemoryOp('remove', target, text))
 
-  // ===== Hermes 编排（团队驱动执行）：提交任务 → 状态机 + 团队指派 + CLI + 回写 =====
+  // ===== Hermes 逐步编排（团队任务 → 子代理逐节点执行 + 人工/自评确认 + 打回原因重做） =====
   ipcMain.handle(
     'hermes-orchestrate:submit',
-    async (_event, payload: { token: string; input: OrchestrateInput }) => {
+    async (_event, payload: { token: string; input: OrchestrateInput; autoConfirm?: boolean }) => {
       if (!payload?.token || !payload?.input) return { ok: false, error: '参数缺失' }
       try {
         const input = { ...payload.input }
         if (!input.teamMembers && input.teamId) {
           input.teamMembers = await loadTeamMembers(payload.token, input.teamId)
         }
-        const result = await orchestrate(input, buildHermesOrchestrateDeps(payload.token))
-        return { ok: true, result }
+        const taskKey = 'team:' + input.teamTaskId
+        if (stepRunners.has(taskKey)) return { ok: true, started: true } // 已在运行：幂等，不重复起
+        stepAutoConfirm.set(taskKey, !!payload.autoConfirm)
+        const handle = createStepRunner(input, buildStepRunnerDeps(payload.token, taskKey))
+        stepRunners.set(taskKey, handle)
+        void handle
+          .wait()
+          .then(() => undefined)
+          .catch(() => undefined)
+          .finally(() => {
+            stepRunners.delete(taskKey)
+            stepAutoConfirm.delete(taskKey)
+          })
+        return { ok: true, started: true }
       } catch (err) {
         console.error('[hermes-orchestrate] submit failed:', err)
         return { ok: false, error: err instanceof Error ? err.message : String(err) }
@@ -402,6 +472,41 @@ function registerIpcHandlers(): void {
   )
 
   ipcMain.handle(
+    'hermes-orchestrate:confirm-step',
+    async (_event, payload: { token: string; teamTaskId: number; stepIndex: number }) => {
+      if (!payload?.teamTaskId || typeof payload.stepIndex !== 'number') return { ok: false, error: '参数缺失' }
+      const handle = stepRunners.get('team:' + payload.teamTaskId)
+      if (!handle) return { ok: false, error: '任务未在运行（可能未开始或已结束）' }
+      handle.confirmStep(payload.stepIndex)
+      return { ok: true }
+    },
+  )
+
+  ipcMain.handle(
+    'hermes-orchestrate:reject-step',
+    async (_event, payload: { token: string; teamTaskId: number; stepIndex: number; reason?: string }) => {
+      if (!payload?.teamTaskId || typeof payload.stepIndex !== 'number') return { ok: false, error: '参数缺失' }
+      const reason = typeof payload.reason === 'string' ? payload.reason.trim() : ''
+      if (!reason) return { ok: false, error: '打回必须填写原因' }
+      const handle = stepRunners.get('team:' + payload.teamTaskId)
+      if (!handle) return { ok: false, error: '任务未在运行（可能未开始或已结束）' }
+      handle.rejectStep(payload.stepIndex, reason)
+      return { ok: true }
+    },
+  )
+
+  ipcMain.handle(
+    'hermes-orchestrate:set-auto-confirm',
+    async (_event, payload: { token: string; teamTaskId: number; autoConfirm: boolean }) => {
+      if (!payload?.teamTaskId) return { ok: false, error: '参数缺失' }
+      const taskKey = 'team:' + payload.teamTaskId
+      if (!stepRunners.has(taskKey)) return { ok: false, error: '任务未在运行（可能未开始或已结束）' }
+      stepAutoConfirm.set(taskKey, !!payload.autoConfirm)
+      return { ok: true }
+    },
+  )
+
+ipcMain.handle(
     'hermes-orchestrate:load-members',
     async (_event, payload: { token: string; teamId: number }) => {
       if (!payload?.token || !payload?.teamId) return { ok: false, error: '参数缺失' }

@@ -393,6 +393,88 @@ export interface HermesMemoryEntry {
   text: string;
 }
 
+
+/** 逐步编排：单步执行结果（子代理完成一个节点后输出） */
+export interface OrchestrateStepOutput {
+  type: string;
+  url?: string;
+  content?: string;
+}
+
+/** 确认记录：verdict pass=通过 rework=打回；by=hermes 自评 / user 人工 */
+export interface OrchestrateStepReview {
+  verdict: "pass" | "rework";
+  reason?: string;
+  by: "hermes" | "user";
+  at?: string;
+}
+
+/** 逐步编排：单步（子代理节点）状态 */
+export type OrchestrateStepStatus = "pending" | "running" | "pending_review" | "done" | "rejected";
+
+/** 逐步编排：单个子代理节点 */
+export interface OrchestrateStep {
+  name: string;
+  agentRole?: string;
+  status: OrchestrateStepStatus;
+  assigneeName?: string;
+  outputs?: OrchestrateStepOutput[];
+  review?: OrchestrateStepReview;
+  /** 重做次数（打回自动重做，上限 2） */
+  retryCount?: number;
+  /** 最近一次打回原因/反馈（重做时注入 prompt） */
+  lastFeedback?: string;
+  /** 原始状态（含 pending_review/rejected），与顶层 status 的收敛值互补 */
+  rawStatus?: OrchestrateStepStatus;
+}
+
+/** 逐步编排：提交入参 */
+export interface OrchestrateInput {
+  executionRef: string;
+  teamTaskId: number;
+  teamId: number;
+  briefId?: number;
+  task: string;
+  teamMembers?: TeamMemberProfileItem[];
+  context?: Record<string, unknown>;
+  modelDefaults?: {
+    chat?: string;
+    vision?: string;
+    image?: string;
+    video?: string;
+    tts?: string;
+  };
+  timeoutMs?: number;
+}
+
+/** 团队成员人设（渲染层经 load-members 获取后透传） */
+export interface TeamMemberProfileItem {
+  memberId: number;
+  agentId: number;
+  roleTitle: string;
+  roleDescription?: string;
+  systemPrompt?: string;
+  modelId?: string;
+  knowledgeBaseIds?: number[];
+}
+
+/** 逐步编排：IPC 通道返回 */
+export interface OrchestrateSubmitResult {
+  ok: boolean;
+  started?: boolean;
+  error?: string;
+}
+
+/** 逐步编排：确认/打回 IPC 入参 */
+export interface OrchestrateStepActionPayload {
+  token: string;
+  /** 预留：IPC 实际按 teamTaskId 路由 */
+  teamId?: number;
+  teamTaskId: number;
+  stepIndex: number;
+  reason?: string;
+}
+
 export interface HermesMemoryOpResult {
   ok: boolean;
   error?: string;
@@ -456,6 +538,20 @@ export interface ElectronAPI {
     add(target: HermesMemoryTarget, text: string): Promise<HermesMemoryOpResult>;
     replace(target: HermesMemoryTarget, match: string, text: string): Promise<HermesMemoryOpResult>;
     remove(target: HermesMemoryTarget, text: string): Promise<HermesMemoryOpResult>;
+  };
+
+  /** Hermes 逐步编排（团队任务 → 子代理逐步执行 + 人工/自评确认） */
+  hermesOrchestrate: {
+    submit(payload: {
+      token: string;
+      input: OrchestrateInput;
+      autoConfirm?: boolean;
+    }): Promise<OrchestrateSubmitResult>;
+    confirmStep(payload: OrchestrateStepActionPayload): Promise<OrchestrateSubmitResult>;
+    rejectStep(payload: OrchestrateStepActionPayload): Promise<OrchestrateSubmitResult>;
+    loadMembers(payload: { token: string; teamId: number }): Promise<{ ok: boolean; members?: TeamMemberProfileItem[]; error?: string }>;
+    /** 运行中切换自动确认（自评）开关 */
+    setAutoConfirm(payload: { token: string; teamTaskId: number; autoConfirm: boolean }): Promise<OrchestrateSubmitResult>;
   };
 
   /** 自动更新（electron-updater 封装） */

@@ -238,9 +238,9 @@ describe("parseTeamSteps（Hermes 编排步骤，团队驱动执行）", () => {
       ],
     });
     expect(steps).toEqual([
-      { step: "需求理解", status: "done", assigneeName: "内容AI" },
-      { step: "文案撰写", status: "active", assigneeName: "内容AI" },
-      { step: "终审", status: "waiting" },
+      { step: "需求理解", status: "done", assigneeName: "内容AI", index: 0 },
+      { step: "文案撰写", status: "active", assigneeName: "内容AI", index: 1 },
+      { step: "终审", status: "waiting", index: 2 },
     ]);
   });
   it("无 steps 或非法 → []", () => {

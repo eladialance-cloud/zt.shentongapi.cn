@@ -25,7 +25,11 @@ import type {
   OpenClawChatLifecyclePayload,
   OpenClawChatErrorPayload,
   HermesMemoryTarget,
-  HermesMemoryOpResult
+  HermesMemoryOpResult,
+  OrchestrateSubmitResult,
+  OrchestrateInput,
+  TeamMemberProfileItem,
+  OrchestrateStepActionPayload
 } from '../shared/types'
 
 const electronAPI: ElectronAPI = {
@@ -115,6 +119,18 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('hermes-memory:replace', target, match, text) as Promise<HermesMemoryOpResult>,
     remove: (target: HermesMemoryTarget, text: string) =>
       ipcRenderer.invoke('hermes-memory:remove', target, text) as Promise<HermesMemoryOpResult>,
+  },
+  hermesOrchestrate: {
+    submit: (payload: { token: string; input: OrchestrateInput; autoConfirm?: boolean }) =>
+      ipcRenderer.invoke('hermes-orchestrate:submit', payload) as Promise<OrchestrateSubmitResult>,
+    confirmStep: (payload: OrchestrateStepActionPayload) =>
+      ipcRenderer.invoke('hermes-orchestrate:confirm-step', payload) as Promise<OrchestrateSubmitResult>,
+    rejectStep: (payload: OrchestrateStepActionPayload) =>
+      ipcRenderer.invoke('hermes-orchestrate:reject-step', payload) as Promise<OrchestrateSubmitResult>,
+    loadMembers: (payload: { token: string; teamId: number }) =>
+      ipcRenderer.invoke('hermes-orchestrate:load-members', payload) as Promise<{ ok: boolean; members?: TeamMemberProfileItem[]; error?: string }>,
+    setAutoConfirm: (payload: { token: string; teamTaskId: number; autoConfirm: boolean }) =>
+      ipcRenderer.invoke('hermes-orchestrate:set-auto-confirm', payload) as Promise<OrchestrateSubmitResult>,
   },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),

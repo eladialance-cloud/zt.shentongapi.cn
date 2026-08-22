@@ -13,6 +13,12 @@ export interface HermesStep {
   assigneeMemberId?: number;
   assigneeName?: string;
   outputs?: HermesOutput[];
+  agentRole?: string;
+  review?: { verdict: "pass" | "rework"; reason?: string; by?: "hermes" | "user"; at?: string };
+  retryCount?: number;
+  lastFeedback?: string;
+  /** 逐步执行原始状态（pending/running/pending_review/done/rejected），顶层 status 为其收敛值 */
+  rawStatus?: string;
 }
 
 export interface OrchestrateResult {
@@ -87,6 +93,43 @@ export function parseHermesResult(stdout: string, durationMs: number): Orchestra
       outputs: Array.isArray(d.outputs) ? d.outputs.map(normalizeOutput).filter((o): o is HermesOutput => o !== null) : [],
       error: typeof d.error === "string" ? d.error : null,
       durationMs,
+    };
+  } catch {
+    return fallback;
+  }
+}
+/** 单步执行结果（子代理完成一个节点） */
+export interface StepRunResult {
+  summary?: string;
+  outputs?: HermesOutput[];
+  review?: { verdict: "pass" | "rework"; reason?: string };
+  error?: string;
+}
+
+/**
+ * 解析单步执行 stdout：JSON 形如
+ * { "summary": "...", "outputs": [{type,url,content}], "review": { verdict: "pass"|"rework", reason } }
+ * 失败降级：仅 summary=原文，verdict 缺失时按有产出 pass / 无产出 rework 兜底。
+ */
+export function parseStepResult(stdout: string): StepRunResult {
+  const text = (stdout || "").trim();
+  const fallback: StepRunResult = { summary: text || "(Hermes 无输出)" };
+  const jsonText = extractJson(text);
+  if (!jsonText) return fallback;
+  try {
+    const data = JSON.parse(jsonText) as Record<string, unknown>;
+    if (!data || typeof data !== "object") return fallback;
+    const summary = typeof data.summary === "string" ? data.summary : fallback.summary;
+    const outputs = Array.isArray(data.outputs)
+      ? data.outputs.map(normalizeOutput).filter((o): o is HermesOutput => o !== null)
+      : [];
+    const rawReview = data.review as Record<string, unknown> | undefined;
+    const verdict = rawReview?.verdict === "rework" ? "rework" : "pass";
+    const reason = typeof rawReview?.reason === "string" ? rawReview.reason : undefined;
+    return {
+      summary,
+      ...(outputs.length > 0 ? { outputs } : {}),
+      review: { verdict, ...(reason ? { reason } : {}) },
     };
   } catch {
     return fallback;

@@ -5,16 +5,46 @@
 import type { UnifiedTask } from "./unified";
 
 /** 流水线步骤状态：done=完成 active=进行中 waiting=排队 */
-export type PipelineStepStatus = "done" | "active" | "waiting";
+/** 流水线步骤状态：done=完成 active=进行中 waiting=排队 review=待确认 rejected=打回超限 */
+export type PipelineStepStatus = "done" | "active" | "waiting" | "review" | "rejected";
+
+/** 步骤产出项（对齐 HermesOutput：type=text|image|video|audio|file） */
+export interface StepOutputItem {
+  type: string;
+  url?: string;
+  content?: string;
+}
+
+/** 确认记录：verdict pass=通过 rework=打回；by=hermes 自评 / user 人工 */
+export interface StepReviewInfo {
+  verdict: "pass" | "rework";
+  reason?: string;
+  by?: "hermes" | "user" | string;
+  at?: string;
+}
 
 /** 动态流水线步骤 */
 export interface PipelineStep {
   step: string;
+  /** 在 result.steps 中的下标（确认/打回 IPC 用；旧版/合成步骤无下标） */
+  index?: number;
   agentId?: number | string;
   agentName?: string;
   /** 执行成员（团队驱动执行）：team_task.result.steps[].assigneeName；缺省表示 Hermes 原生子代理 */
   assigneeName?: string;
+  /** 执行角色（团队编排规划产出） */
+  agentRole?: string;
   status: PipelineStepStatus;
+  /** 原始状态（含 pending_review/rejected），与收敛 status 互补 */
+  rawStatus?: string;
+  /** 子代理产出（待确认/已完成时展示） */
+  outputs?: StepOutputItem[];
+  /** 确认/自评记录 */
+  review?: StepReviewInfo;
+  /** 打回自动重做次数（上限 2） */
+  retryCount?: number;
+  /** 最近一次打回原因/反馈 */
+  lastFeedback?: string;
 }
 
 /** 老板动作：select-topic=去选择 approve=通过 reject=打回 */
@@ -39,10 +69,12 @@ export interface TaskOutputItem {
 
 export type PipelineOutputs = TaskOutputItem[] | null | undefined;
 
-/** 步骤状态映射：pending→waiting running→active done→done；缺失/未知→waiting */
+/** 步骤状态映射：done→done running→active pending_review→review rejected→rejected；其余→waiting */
 function mapPipelineStatus(s: unknown): PipelineStepStatus {
   if (s === "done") return "done";
   if (s === "running") return "active";
+  if (s === "pending_review") return "review";
+  if (s === "rejected") return "rejected";
   return "waiting";
 }
 
@@ -107,10 +139,37 @@ function deriveSingleStep(task: UnifiedTask): PipelineStep {
   }
 }
 
+/** 规整子代理产出（HermesOutput 数组）；非法/空 → [] */
+function parseStepOutputs(raw: unknown): StepOutputItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: StepOutputItem[] = [];
+  for (const o of raw) {
+    if (!o || typeof o !== "object") continue;
+    const t = o as Record<string, unknown>;
+    const type = typeof t.type === "string" ? t.type : "text";
+    const url = typeof t.url === "string" ? t.url : undefined;
+    const content = typeof t.content === "string" ? t.content : undefined;
+    if (!url && !content) continue;
+    out.push({ type, ...(url ? { url } : {}), ...(content ? { content } : {}) });
+  }
+  return out;
+}
+
+/** 规整确认/自评记录；非法 → undefined */
+function parseStepReview(raw: unknown): StepReviewInfo | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  if (r.verdict !== "pass" && r.verdict !== "rework") return undefined;
+  const reason = typeof r.reason === "string" ? r.reason : undefined;
+  const by = typeof r.by === "string" ? r.by : undefined;
+  const at = typeof r.at === "string" ? r.at : undefined;
+  return { verdict: r.verdict, ...(reason ? { reason } : {}), ...(by ? { by } : {}), ...(at ? { at } : {}) };
+}
+
 /**
  * Hermes 编排步骤（team_task.result.steps，团队驱动执行）→ 流水线步骤。
  * 契约对齐 desktop/electron/main/hermes-result.ts 的 HermesStep：
- *   { name, status: done|running|pending, assigneeName?, assigneeMemberId? }
+ *   { name, status: done|running|pending, rawStatus?: pending_review|rejected, assigneeName?, outputs?, review?, retryCount?, lastFeedback? }
  * 无 steps / 非法 → []（调用方回退按状态推导单步）。
  */
 export function parseTeamSteps(result: unknown): PipelineStep[] {
@@ -118,18 +177,31 @@ export function parseTeamSteps(result: unknown): PipelineStep[] {
   const steps = (result as Record<string, unknown>).steps;
   if (!Array.isArray(steps)) return [];
   const out: PipelineStep[] = [];
-  for (const raw of steps) {
-    if (!raw || typeof raw !== "object") continue;
+  steps.forEach((raw, index) => {
+    if (!raw || typeof raw !== "object") return;
     const r = raw as Record<string, unknown>;
     const name = typeof r.name === "string" ? r.name.trim() : "";
-    if (!name) continue;
+    if (!name) return;
+    const rawStatus = typeof r.rawStatus === "string" && r.rawStatus ? r.rawStatus : undefined;
     const assigneeName = typeof r.assigneeName === "string" ? r.assigneeName : undefined;
-    out.push({
+    const agentRole = typeof r.agentRole === "string" ? r.agentRole : undefined;
+    const step: PipelineStep = {
       step: name,
-      status: mapPipelineStatus(r.status),
+      index,
+      status: mapPipelineStatus(rawStatus ?? r.status),
       ...(assigneeName ? { assigneeName } : {}),
-    });
-  }
+      ...(agentRole ? { agentRole } : {}),
+    };
+    if (rawStatus) step.rawStatus = rawStatus;
+    const outputs = parseStepOutputs(r.outputs);
+    if (outputs.length > 0) step.outputs = outputs;
+    const review = parseStepReview(r.review);
+    if (review) step.review = review;
+    if (typeof r.retryCount === "number" && r.retryCount > 0) step.retryCount = r.retryCount;
+    const lastFeedback = typeof r.lastFeedback === "string" ? r.lastFeedback : undefined;
+    if (lastFeedback) step.lastFeedback = lastFeedback;
+    out.push(step);
+  });
   return out;
 }
 
