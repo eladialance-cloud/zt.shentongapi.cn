@@ -50,7 +50,7 @@ export type ArchiveProbeResult =
 
 type ProbeFetcher = (
   url: string,
-  init?: { method?: string; redirect?: 'follow' },
+  init?: { method?: string; redirect?: 'follow'; signal?: AbortSignal },
 ) => Promise<{ ok: boolean; status: number }>;
 
 /** 直连 GitHub archive 检测仓库/分支可用性（不走 API、不受限流影响）：
@@ -63,7 +63,7 @@ export async function probeGithubArchive(
   const base = `https://github.com/${owner}/${repo}/archive`;
   const probe = async (u: string): Promise<'ok' | 'missing' | 'blocked' | 'error'> => {
     try {
-      const res = await fetcher(u, { method: 'HEAD', redirect: 'follow' });
+      const res = await fetcher(u, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(15000) });
       if (res.ok) return 'ok';
       return res.status === 404 ? 'missing' : 'blocked';
     } catch {
