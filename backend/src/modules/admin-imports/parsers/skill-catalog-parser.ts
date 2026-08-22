@@ -12,6 +12,8 @@ import type { ImportFile } from './import-parser.interface';
 export interface SkillRepoCandidate {
   owner: string;
   repo: string;
+  /** 导入校验时探测到的仓库默认分支（桌面端可直接使用，省一次 API 探测） */
+  defaultBranch?: string;
 }
 
 export interface SkillCatalogEntry {

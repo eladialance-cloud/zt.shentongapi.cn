@@ -5,14 +5,14 @@ import { AssetImportJobEntity, ImportStep, ImportJobCatalogStats, ImportJobResul
 import { CreateImportDto } from './dto/create-import.dto';
 import { ImportQueryDto } from './dto/import-query.dto';
 import { IMPORT_STEPS, ImportStepKey, AssetImportType } from './admin-imports.constants';
-import { GitHubClientService } from './github-client.service';
+import { GitHubClientService, extractGithubRepoFromHtml } from './github-client.service';
 import { ImportParser, ImportedAssetDraft, ImportFile } from './parsers/import-parser.interface';
 import { AgentParser } from './parsers/agent-parser';
 import { WorkflowParser } from './parsers/workflow-parser';
 import { McpParser } from './parsers/mcp-parser';
 import { N8nMcpParser } from './parsers/n8n-mcp-parser';
 import { SkillParser } from './parsers/skill-parser';
-import { SkillCatalogParser, SkillCatalogEntry } from './parsers/skill-catalog-parser';
+import { SkillCatalogParser, SkillCatalogEntry, SkillRepoCandidate } from './parsers/skill-catalog-parser';
 import { resolveCatalogCategory } from './parsers/skill-catalog-categories';
 import { SkillPackParser } from './parsers/skill-pack-parser';
 import { AgentEntity } from '../agent/entities/agent.entity';
@@ -207,6 +207,8 @@ export class AdminImportsService implements OnModuleInit {
           catFiles.push({ path: p, content: await this.githubClient.getFileContent(owner, repo, p, job.branch) });
         }
         catalogEntries = this.catalogParser.parseCatalogFiles(catFiles);
+        // 校验候选仓库：剔除 404 猜测，失败时从来源页解析真实仓库（clawskills.sh 等）
+        catalogEntries = await this.verifyCatalogCandidates(catalogEntries);
         catalogStats = { totalEntries: catalogEntries.length, attempted: catalogEntries.length, fetched: 0, failed: 0 };
       } else {
         const files: ImportFile[] = [];
@@ -314,7 +316,76 @@ export class AdminImportsService implements OnModuleInit {
     }
   }
 
-  /** 技能目录清单落库为「技能源」（skill_sources）：每条独立一行，status=analyzed，无需再解析。
+  /** 目录条目候选仓库校验：只保留 GitHub 上真实存在的仓库（默认分支可探测到）；
+   *  仅对非 github.com 直链来源做校验（直链无需探测）；猜测全部失效时，尝试从来源页解析真实仓库。
+   *  遇到 API 限流(403)时停止校验并保留原候选，避免导入整体失败。 */
+  private async verifyCatalogCandidates(entries: SkillCatalogEntry[]): Promise<SkillCatalogEntry[]> {
+    const out: SkillCatalogEntry[] = [];
+    for (const e of entries) {
+      if (!/clawskills\.sh|clawhub\.ai/i.test(e.sourceUrl || '')) {
+        out.push(e);
+        continue;
+      }
+      const good: SkillRepoCandidate[] = [];
+      for (const c of e.candidates) {
+        try {
+          const branch = await this.githubClient.getRepoDefaultBranch(c.owner, c.repo);
+          if (branch) good.push({ owner: c.owner, repo: c.repo, defaultBranch: branch });
+        } catch (err) {
+          const msg = String((err as Error).message || err);
+          if (/403|rate limit|API rate/i.test(msg)) {
+            this.logger.warn('GitHub 候选校验触发限流，停止校验并保留原候选: ' + e.sourceUrl);
+            out.push(e);
+            return out;
+          }
+        }
+        if (good.length >= 2) break;
+      }
+      if (good.length === 0) {
+        const resolved = await this.resolveSourceRepo(e.sourceUrl);
+        if (resolved) good.push(resolved);
+      }
+      out.push({ ...e, candidates: good });
+    }
+    return out;
+  }
+
+  /** 从来源页解析真实 GitHub 仓库：github.com 直链直接解析；clawskills.sh 详情页提取 github 链接后校验 */
+  private async resolveSourceRepo(url: string): Promise<SkillRepoCandidate | null> {
+    const u = (url || '').trim();
+    if (!/^https?:\/\//i.test(u)) return null;
+    let m = u.match(/^https?:\/\/(?:www\.)?github\.com\/([^/\s?#]+)\/([^/\s?#]+)/i);
+    if (m) return { owner: m[1], repo: m[2].replace(/\.git$/, '') };
+    m = u.match(/^https?:\/\/(?:www\.)?clawskills\.sh\/skills\/([^/\s?#]+)/i);
+    if (m) {
+      try {
+        const html = await this.fetchPageHtml(u);
+        const repo = html ? extractGithubRepoFromHtml(html) : null;
+        if (repo) {
+          const branch = await this.githubClient.getRepoDefaultBranch(repo.owner, repo.repo);
+          if (branch) return { owner: repo.owner, repo: repo.repo, defaultBranch: branch };
+        }
+      } catch { /* 解析失败返回 null */ }
+    }
+    return null;
+  }
+
+  /** 抓取页面 HTML（带 UA 与超时；失败返回 null，不影响导入） */
+  private async fetchPageHtml(url: string): Promise<string | null> {
+    try {
+      const resp = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (shentong-ai-admin)' },
+        redirect: 'follow',
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!resp.ok) return null;
+      return await resp.text();
+    } catch {
+      return null;
+    }
+  }
+
+    /** 技能目录清单落库为「技能源」（skill_sources）：每条独立一行，status=analyzed，无需再解析。
    *  条目下载地址候选写入 analyze_result.repoCandidates，桌面端直连 GitHub 下载 */
   private async saveCatalogSources(entries: SkillCatalogEntry[]): Promise<ImportJobResult> {
     const result: ImportJobResult = { created: [], skipped: 0 };
@@ -323,6 +394,27 @@ export class AdminImportsService implements OnModuleInit {
         const repoUrl = e.candidates.length
           ? 'https://github.com/' + e.candidates[0].owner + '/' + e.candidates[0].repo
           : e.sourceUrl;
+        // 幂等刷新：同一 sourceUrl 已存在则更新候选/描述（修正历史猜错仓库的条目），而不是跳过
+        const existing = await this.skillSourceRepo.findOne({ where: { sourceUrl: e.sourceUrl } });
+        if (existing) {
+          Object.assign(existing, {
+            sourceType: 'github',
+            skillName: (e.name || e.candidates[0]?.repo || 'skill').slice(0, 64),
+            skillDesc: (e.description || '').slice(0, 500),
+            skillType: 'skill',
+            category: resolveCatalogCategory(e.category),
+            status: 'analyzed',
+            analyzeResult: {
+              repoCandidates: e.candidates,
+              repoUrl,
+              sourceUrl: e.sourceUrl,
+              category: resolveCatalogCategory(e.category),
+            },
+          });
+          await this.skillSourceRepo.save(existing);
+          result.created.push({ type: 'skill', id: existing.id, name: existing.skillName });
+          continue;
+        }
         const row = await this.skillSourceRepo.save(this.skillSourceRepo.create({
           sourceUrl: e.sourceUrl.slice(0, 512),
           sourceType: 'github',

@@ -659,7 +659,7 @@ async function downloadArchive(url: string, dest: string): Promise<void> {
   const timer = setTimeout(() => controller.abort(), 120_000);
   try {
     const res = await net.fetch(url, { method: 'GET', redirect: 'follow', signal: controller.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status} (${url})`);
     const buf = Buffer.from(await res.arrayBuffer());
     fs.writeFileSync(dest, buf);
   } finally {
@@ -694,8 +694,46 @@ function copyDirContents(src: string, dest: string): void {
   }
 }
 
+/** GitHub 仓库默认分支探测（API 可访问时返回 default_branch；404/限流/网络异常返回 null，不影响下载尝试） */
+async function resolveDefaultBranch(owner: string, repo: string): Promise<string | null> {
+  try {
+    const res = await net.fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      method: 'GET',
+      headers: { 'User-Agent': 'shentong-ai-desktop', Accept: 'application/vnd.github+json' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { default_branch?: string };
+    return typeof data?.default_branch === 'string' && data.default_branch ? data.default_branch : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 生成按优先级排序的 GitHub 归档下载 URL（纯函数，便于单测）：
+ *  探测到的默认分支 → main → master → HEAD（默认分支兜底，GitHub 自动解析） */
+export function buildGithubArchiveUrls(
+  candidates: Array<{ owner: string; repo: string }>,
+  defaultBranches?: Record<string, string>,
+): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  const push = (u: string) => { if (!seen.has(u)) { seen.add(u); urls.push(u); } };
+  for (const c of candidates) {
+    if (!c || !c.owner || !c.repo) continue;
+    const key = c.owner + '/' + c.repo;
+    const branch = defaultBranches?.[key];
+    if (branch) push(`https://github.com/${c.owner}/${c.repo}/archive/refs/heads/${branch}.tar.gz`);
+    push(`https://github.com/${c.owner}/${c.repo}/archive/refs/heads/main.tar.gz`);
+    push(`https://github.com/${c.owner}/${c.repo}/archive/refs/heads/master.tar.gz`);
+    push(`https://github.com/${c.owner}/${c.repo}/archive/HEAD.tar.gz`);
+  }
+  return urls;
+}
+
 /** GitHub 开源技能直连下载安装：
- *  按候选仓库 × main/master 分支依次尝试下载 tar.gz，
+ *  先探测候选仓库默认分支，再按 默认分支 → main → master → HEAD 依次尝试下载 tar.gz，
  *  解压后定位含 SKILL.md 的目录，安装到 openclaw-home/skills/<sourceId> 并登记 installed.json(source=github)
  */
 export async function installGithubSkill(
@@ -714,12 +752,14 @@ export async function installGithubSkill(
     const tmp = path.join(marketRoot(), '.tmp');
     fs.mkdirSync(tmp, { recursive: true });
 
-    const urls: string[] = [];
-    for (const c of candidates) {
-      if (!c || !c.owner || !c.repo) continue;
-      urls.push(`https://github.com/${c.owner}/${c.repo}/archive/refs/heads/main.tar.gz`);
-      urls.push(`https://github.com/${c.owner}/${c.repo}/archive/refs/heads/master.tar.gz`);
-    }
+    // 逐个候选探测真实默认分支：仓库不存在（404）时提前跳过，避免无意义下载；API 失败则走 main/master/HEAD 兜底
+    const defaultBranches: Record<string, string> = {};
+    await Promise.all(candidates.map(async (c) => {
+      if (!c || !c.owner || !c.repo) return;
+      const branch = await resolveDefaultBranch(c.owner, c.repo);
+      if (branch) defaultBranches[c.owner + '/' + c.repo] = branch;
+    }));
+    const urls = buildGithubArchiveUrls(candidates, defaultBranches);
     if (urls.length === 0) {
       return { ok: false, error: '该技能没有可用的仓库候选' };
     }
@@ -746,7 +786,7 @@ export async function installGithubSkill(
     }
     if (!installed) {
       safeRemove(staging);
-      throw new Error('所有下载源均失败: ' + lastErr);
+      throw new Error(`所有下载源均失败: ${lastErr}（已尝试: ${urls.join(', ')}）`);
     }
     if (!fs.existsSync(path.join(staging, 'SKILL.md'))) {
       safeRemove(staging);

@@ -10,6 +10,14 @@ export interface RepoFileEntry {
 /** 默认跳过目录（避免拉取依赖/构建产物） */
 const SKIP_DIR_PREFIXES = ['node_modules/', '.git/', 'dist/', 'build/', 'vendor/', 'test/', 'tests/', '__tests__/', 'examples/', 'assets/'];
 
+/** 从页面 HTML 提取首个 github.com/<owner>/<repo> 链接（目录站详情页解析用，纯函数便于单测） */
+export function extractGithubRepoFromHtml(html: string): { owner: string; repo: string } | null {
+  if (!html) return null;
+  const m = html.match(/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/);
+  if (!m) return null;
+  return { owner: m[1], repo: m[2].replace(/\.git$/, '') };
+}
+
 @Injectable()
 export class GitHubClientService {
   private readonly logger = new Logger(GitHubClientService.name);

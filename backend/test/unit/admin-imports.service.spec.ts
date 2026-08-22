@@ -17,11 +17,14 @@ const AGENT_MD = ['---', 'name: quick-reply', 'display_name: 快捷回复', 'des
 function makeGithub(overrides: {
   getRepoTree?: () => Promise<RepoFileEntry[]>;
   getFileContent?: (owner: string, repo: string, path?: string) => Promise<string | null>;
+  getRepoDefaultBranch?: (owner: string, repo: string) => Promise<string | null>;
 } = {}) {
   return {
     getRepoTopics: async (): Promise<string[]> => ['ai', 'agent'],
     getRepoTree: async (): Promise<RepoFileEntry[]> => [{ path: 'skills/reply/SKILL.md', type: 'blob' }],
     getFileContent: async (): Promise<string | null> => AGENT_MD,
+    /** 默认仓库均视为不存在（404）；用例可覆盖指定 owner/repo 返回分支 */
+    getRepoDefaultBranch: async (): Promise<string | null> => null,
     ...overrides,
   };
 }
@@ -47,9 +50,9 @@ function makeRepo<T extends object>(onSave?: (e: T) => void, seed: Array<T & { i
       rows.push(rec);
       return e;
     },
-    findOne: async (opts: { where?: { id?: number } } = {}) => {
-      const id = opts?.where?.id;
-      return rows.find(r => id === undefined || r.id === id) ?? null;
+    findOne: async (opts: { where?: { id?: number; sourceUrl?: string } } = {}) => {
+      const { id, sourceUrl } = opts?.where ?? {};
+      return rows.find(r => (id === undefined || r.id === id) && (sourceUrl === undefined || (r as any).sourceUrl === sourceUrl)) ?? null;
     },
     delete: async (criteria: number | { id: number }) => {
       const id = typeof criteria === 'number' ? criteria : criteria.id;
@@ -366,6 +369,8 @@ test('run: 技能目录仓库（categories/*.md）→ 条目写入技能源 skil
     },
   });
   const service = buildService(jobRepo, agentRepo, workflowRepo, mcpRepo, skillRepo, github, skillSourceRepo);
+  // 避免校验候选时真实抓取 clawskills.sh 页面（单元测试无网络）
+  (service as any).fetchPageHtml = async () => null;
 
   await service.run(1, 7);
   const job = jobRepo.job();
@@ -386,4 +391,49 @@ test('run: 技能目录仓库（categories/*.md）→ 条目写入技能源 skil
   const third = skillSourceRepo.saved[2] as SkillSourceEntity;
   assert.equal(third.category, '运维与云服务');
   assert.equal(third.sourceUrl, 'https://github.com/foo/bar');
+});
+
+test('run: 技能目录候选校验——猜中仓库保留并带 defaultBranch，全错条目候选清空但保留展示', async () => {
+  const jobRepo = makeJobRepo();
+  jobRepo.set(makePendingJob('skill'));
+  const skillSourceRepo = makeRepo<SkillSourceEntity>();
+  const github = makeGithub({
+    getRepoTree: async (): Promise<RepoFileEntry[]> => [{ path: 'categories/ai-and-llms.md', type: 'blob' }],
+    getFileContent: async (): Promise<string | null> => '- [good](https://clawskills.sh/skills/owner-skill) - 猜中\n- [bad](https://clawskills.sh/skills/ghost-repo) - 猜错',
+    getRepoDefaultBranch: async (owner: string, repo: string): Promise<string | null> =>
+      owner === 'owner' && repo === 'skill' ? 'main' : null,
+  });
+  const service = buildService(jobRepo, makeRepo<AgentEntity>(), makeRepo<WorkflowEntity>(), makeRepo<McpCatalogEntity>(), makeRepo<SkillPackageEntity>(), github, skillSourceRepo);
+  (service as any).fetchPageHtml = async () => null;
+
+  await service.run(1, 7);
+  const saved = skillSourceRepo.saved as SkillSourceEntity[];
+  assert.equal(saved.length, 2);
+  const goodAr = saved[0].analyzeResult as Record<string, unknown>;
+  assert.deepEqual(goodAr.repoCandidates, [{ owner: 'owner', repo: 'skill', defaultBranch: 'main' }]);
+  const badAr = saved[1].analyzeResult as Record<string, unknown>;
+  assert.deepEqual(badAr.repoCandidates, []);
+  assert.equal(saved[1].status, 'analyzed');
+});
+
+test('run: 技能目录重导幂等——同一 sourceUrl 更新候选而非跳过', async () => {
+  const jobRepo = makeJobRepo();
+  jobRepo.set(makePendingJob('skill'));
+  const skillSourceRepo = makeRepo<SkillSourceEntity>(undefined, [
+    { id: 1, sourceUrl: 'https://github.com/foo/bar', skillName: '旧名', status: 'analyzed' } as unknown as SkillSourceEntity,
+  ]);
+  const github = makeGithub({
+    getRepoTree: async (): Promise<RepoFileEntry[]> => [{ path: 'categories/devops.md', type: 'blob' }],
+    getFileContent: async (): Promise<string | null> => '- [gh-skill](https://github.com/foo/bar) - 云技能',
+  });
+  const service = buildService(jobRepo, makeRepo<AgentEntity>(), makeRepo<WorkflowEntity>(), makeRepo<McpCatalogEntity>(), makeRepo<SkillPackageEntity>(), github, skillSourceRepo);
+
+  await service.run(1, 7);
+  const job = jobRepo.job();
+  assert.equal(job!.status, 'succeeded');
+  assert.equal(job!.result!.created.length, 1);
+  assert.equal(job!.result!.skipped, 0);
+  const row = skillSourceRepo.rows[0] as SkillSourceEntity;
+  assert.equal(row.skillName, 'gh-skill');
+  assert.equal(skillSourceRepo.saved.length, 1); // 仅更新保存一次（seed 只进 rows 不进 saved）
 });

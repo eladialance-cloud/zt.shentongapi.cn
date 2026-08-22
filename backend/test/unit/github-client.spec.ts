@@ -1,6 +1,6 @@
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { GitHubClientService } from '../../src/modules/admin-imports/github-client.service';
+import { GitHubClientService, extractGithubRepoFromHtml } from '../../src/modules/admin-imports/github-client.service';
 
 type FetchImpl = (url: RequestInfo | URL, init?: RequestInit) => Promise<any>;
 
@@ -15,6 +15,16 @@ test('parseRepoUrl 支持 https/.git/git@ 三种格式', () => {
   assert.deepEqual(GitHubClientService.parseRepoUrl('https://github.com/x/y.git'), { owner: 'x', repo: 'y' });
   assert.deepEqual(GitHubClientService.parseRepoUrl('git@github.com:openai/codex.git'), { owner: 'openai', repo: 'codex' });
   assert.throws(() => GitHubClientService.parseRepoUrl('https://example.com/x/y'));
+});
+
+test('extractGithubRepoFromHtml 提取首个 github 仓库链接', () => {
+  assert.deepEqual(
+    extractGithubRepoFromHtml('<a href="https://github.com/openai/skills">openai skills</a><a href="https://github.com/foo/bar">x</a>'),
+    { owner: 'openai', repo: 'skills' }
+  );
+  assert.deepEqual(extractGithubRepoFromHtml('见 https://github.com/a/b.git 仓库'), { owner: 'a', repo: 'b' });
+  assert.equal(extractGithubRepoFromHtml(''), null);
+  assert.equal(extractGithubRepoFromHtml('no github link'), null);
 });
 
 test('getRepoTopics 返回 topics', async () => {

@@ -21,6 +21,7 @@ import {
   listInstalled,
   getOpenClawHome,
   getHermesHome,
+  buildGithubArchiveUrls,
 } from '../../electron/main/local-market/local-content-manager'
 
 const skillPkg = {
@@ -99,6 +100,31 @@ describe('local-content-manager', () => {
     expect(r.ok).toBe(true)
     expect(fs.existsSync(path.join(getOpenClawHome(), 'skills', '1'))).toBe(false)
     expect(listInstalled().length).toBe(0)
+  })
+
+  it('buildGithubArchiveUrls：无分支探测时按 main/master/HEAD 生成并去重', () => {
+    const urls = buildGithubArchiveUrls([
+      { owner: 'openai', repo: 'skills' },
+      { owner: 'openai', repo: 'skills' },
+    ]);
+    expect(urls).toEqual([
+      'https://github.com/openai/skills/archive/refs/heads/main.tar.gz',
+      'https://github.com/openai/skills/archive/refs/heads/master.tar.gz',
+      'https://github.com/openai/skills/archive/HEAD.tar.gz',
+    ]);
+  })
+
+  it('buildGithubArchiveUrls：探测到默认分支时优先使用该分支', () => {
+    const urls = buildGithubArchiveUrls(
+      [{ owner: 'browseract-cli', repo: 'browseract' }],
+      { 'browseract-cli/browseract': 'develop' },
+    );
+    expect(urls[0]).toBe('https://github.com/browseract-cli/browseract/archive/refs/heads/develop.tar.gz');
+    expect(urls[1]).toBe('https://github.com/browseract-cli/browseract/archive/refs/heads/main.tar.gz');
+  })
+
+  it('buildGithubArchiveUrls：跳过非法候选', () => {
+    expect(buildGithubArchiveUrls([null as any, { owner: '', repo: 'x' }])).toEqual([]);
   })
 
   it('损坏的 installed.json 回退空清单', async () => {
