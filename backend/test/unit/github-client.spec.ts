@@ -1,7 +1,7 @@
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { gzipSync } from 'node:zlib';
-import { GitHubClientService, extractGithubRepoFromHtml, listTarGzEntries, probeGithubArchive } from '../../src/modules/admin-imports/github-client.service';
+import { GitHubClientService, extractGithubRepoFromHtml, listTarGzEntries, probeGithubArchive, raceTimeout } from '../../src/modules/admin-imports/github-client.service';
 
 type FetchImpl = (url: RequestInfo | URL, init?: RequestInit) => Promise<any>;
 
@@ -206,4 +206,15 @@ test('网络抖动时 fetch 自动重试（前两次超时，第三次成功）'
 test('多次重试仍失败时抛出业务异常', async () => {
   mockFetch(async () => { throw new Error('The operation was aborted due to timeout'); });
   await assert.rejects(() => svc.getRepoTopics('x', 'y'), /GitHub 请求失败/);
+});
+test('raceTimeout 正常完成时返回结果并清理定时器', async () => {
+  const v = await raceTimeout(Promise.resolve(42), 1000, 't');
+  assert.equal(v, 42);
+});
+
+test('raceTimeout 超时兜底（DNS 挂起场景）', async () => {
+  await assert.rejects(
+    raceTimeout(new Promise(() => { /* never settles */ }), 30, 'hang'),
+    /hang 超时（30ms）/
+  );
 });

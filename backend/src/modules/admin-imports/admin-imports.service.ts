@@ -1,11 +1,11 @@
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { AssetImportJobEntity, ImportStep, ImportJobCatalogStats, ImportJobResult } from './entities/asset-import-job.entity';
 import { CreateImportDto } from './dto/create-import.dto';
 import { ImportQueryDto } from './dto/import-query.dto';
 import { IMPORT_STEPS, ImportStepKey, AssetImportType } from './admin-imports.constants';
-import { GitHubClientService, extractGithubRepoFromHtml } from './github-client.service';
+import { GitHubClientService, extractGithubRepoFromHtml, raceTimeout } from './github-client.service';
 import { ImportParser, ImportedAssetDraft, ImportFile } from './parsers/import-parser.interface';
 import { AgentParser } from './parsers/agent-parser';
 import { WorkflowParser } from './parsers/workflow-parser';
@@ -23,6 +23,21 @@ import { SkillSourceEntity } from '../skill-store/entities/skill-source.entity';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/constants/error.constant';
 import { AiClassifyService } from '../admin-classify/ai-classify.service';
+
+/** 有界并发 map：保持结果顺序，limit 为最大并发数（不引入第三方依赖） */
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+  const n = Math.max(1, Math.min(limit, items.length));
+  const worker = async () => {
+    while (cursor < items.length) {
+      const i = cursor++;
+      results[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: n }, () => worker()));
+  return results;
+}
 
 @Injectable()
 export class AdminImportsService implements OnModuleInit {
@@ -54,8 +69,11 @@ export class AdminImportsService implements OnModuleInit {
   /** 启动时将遗留 processing 任务重置为 failed（避免进程中断后永久卡死无法重试） */
   async onModuleInit() {
     try {
+      // 仅重置已过期的 processing 任务（>5 分钟未更新）：双实例并存或热重启时，
+      // 新实例不应立刻中断另一个实例刚开始的导入任务
+      const staleBefore = new Date(Date.now() - 5 * 60 * 1000);
       const res = await this.jobRepo.update(
-        { status: 'processing' },
+        { status: 'processing', updatedAt: LessThan(staleBefore) },
         { status: 'failed', errorMessage: '服务重启导致任务中断，请重试' },
       );
       if (res.affected) this.logger.warn('重置 ' + res.affected + ' 个中断的导入任务为 failed');
@@ -165,8 +183,8 @@ export class AdminImportsService implements OnModuleInit {
     return 'skipped';
   }
 
-  private setStep(job: AssetImportJobEntity, key: ImportStepKey, status: ImportStep['status']) {
-    job.steps = (job.steps ?? []).map(s => (s.key === key ? { ...s, status } : s));
+  private setStep(job: AssetImportJobEntity, key: ImportStepKey, status: ImportStep['status'], progress?: { done: number; total: number }) {
+    job.steps = (job.steps ?? []).map(s => (s.key === key ? { ...s, status, progress } : s));
   }
 
   /** 异步执行 4 步状态机 */
@@ -212,13 +230,15 @@ export class AdminImportsService implements OnModuleInit {
       if (isSkillCatalog) {
         // 技能目录（索引）仓库：整库条目写入「技能源」skill_sources，由桌面端用户按条目直连 GitHub 下载
         const catPaths = allPaths.filter(p => /^categories\/[^/]+\.md$/i.test(p)).slice(0, 50);
-        const catFiles: ImportFile[] = [];
-        for (const p of catPaths) {
-          catFiles.push({ path: p, content: await this.githubClient.getFileContent(owner, repo, p, job.branch) });
-        }
+        this.logger.log('读取技能目录分类文件 ' + catPaths.length + ' 个（并发 6）');
+        const catContents = await mapLimit(catPaths, 6, (p) => this.githubClient.getFileContent(owner, repo, p, job.branch));
+        const catFiles: ImportFile[] = catContents.map((content, i) => ({ path: catPaths[i], content }));
         catalogEntries = this.catalogParser.parseCatalogFiles(catFiles);
         // 校验候选仓库：剔除 404 猜测，失败时从来源页解析真实仓库（clawskills.sh 等）
-        catalogEntries = await this.verifyCatalogCandidates(catalogEntries);
+        catalogEntries = await this.verifyCatalogCandidates(catalogEntries, async (done, total) => {
+          this.setStep(job, 'parse', 'running', { done, total });
+          await this.jobRepo.save(job);
+        });
         catalogStats = { totalEntries: catalogEntries.length, attempted: catalogEntries.length, fetched: 0, failed: 0 };
       } else {
         const files: ImportFile[] = [];
@@ -329,37 +349,51 @@ export class AdminImportsService implements OnModuleInit {
   /** 目录条目候选仓库校验：只保留 GitHub 上真实存在的仓库（默认分支可探测到）；
    *  仅对非 github.com 直链来源做校验（直链无需探测）；猜测全部失效时，尝试从来源页解析真实仓库。
    *  遇到 API 限流(403)时停止校验并保留原候选，避免导入整体失败。 */
-  private async verifyCatalogCandidates(entries: SkillCatalogEntry[]): Promise<SkillCatalogEntry[]> {
-    const out: SkillCatalogEntry[] = [];
-    for (const e of entries) {
+  private async verifyCatalogCandidates(entries: SkillCatalogEntry[], onProgress?: (done: number, total: number) => Promise<void>): Promise<SkillCatalogEntry[]> {
+    if (entries.length === 0) return entries;
+    const started = Date.now();
+    let processed = 0;
+    this.logger.log('开始校验技能目录候选仓库，共 ' + entries.length + ' 条（并发 6，直连 GitHub archive 探测）');
+    const results: SkillCatalogEntry[] = new Array(entries.length);
+    await mapLimit(entries, 6, async (e, i) => {
       if (!/clawskills\.sh|clawhub\.ai/i.test(e.sourceUrl || '')) {
-        out.push(e);
-        continue;
-      }
-      const good: SkillRepoCandidate[] = [];
-      let probeError = false;
-      for (const c of e.candidates) {
-        const probed = await this.githubClient.probeArchiveBranch(c.owner, c.repo);
-        if (probed.status === 'ok') {
-          good.push({ owner: c.owner, repo: c.repo, defaultBranch: probed.branch ?? undefined });
-        } else if (probed.status === 'error') {
-          probeError = true;
+        results[i] = e;
+      } else {
+        const good: SkillRepoCandidate[] = [];
+        let probeError = false;
+        for (const cand of e.candidates) {
+          const probed = await this.githubClient.probeArchiveBranch(cand.owner, cand.repo);
+          if (probed.status === 'ok') {
+            good.push({ owner: cand.owner, repo: cand.repo, defaultBranch: probed.branch ?? undefined });
+          } else if (probed.status === 'error') {
+            probeError = true;
+          }
+          if (good.length >= 2) break;
         }
-        if (good.length >= 2) break;
-      }
-      if (good.length === 0) {
-        if (probeError) {
-          // 网络异常无法判定：仅保留本条原候选并继续，避免一条抖动中断整批校验
-          this.logger.warn('GitHub 候选校验网络异常，保留本条原候选: ' + e.sourceUrl);
-          out.push({ ...e });
-          continue;
+        if (good.length === 0) {
+          if (probeError) {
+            // 网络异常无法判定：仅保留本条原候选并继续，避免一条抖动中断整批校验
+            this.logger.warn('GitHub 候选校验网络异常，保留本条原候选: ' + e.sourceUrl);
+            results[i] = { ...e };
+          } else {
+            const resolved = await this.resolveSourceRepo(e.sourceUrl);
+            if (resolved) good.push(resolved);
+            results[i] = { ...e, candidates: good };
+          }
+        } else {
+          results[i] = { ...e, candidates: good };
         }
-        const resolved = await this.resolveSourceRepo(e.sourceUrl);
-        if (resolved) good.push(resolved);
       }
-      out.push({ ...e, candidates: good });
-    }
-    return out;
+      processed++;
+      if (processed % 10 === 0 || processed === entries.length) {
+        this.logger.log('候选校验进度 ' + processed + '/' + entries.length + '，用时 ' + Math.round((Date.now() - started) / 1000) + 's');
+      }
+      if (onProgress && (processed % 25 === 0 || processed === entries.length)) {
+        await onProgress(processed, entries.length);
+      }
+    });
+    this.logger.log('候选校验完成，共 ' + entries.length + ' 条，总用时 ' + Math.round((Date.now() - started) / 1000) + 's');
+    return results;
   }
 
   /** 从来源页解析真实 GitHub 仓库：github.com 直链直接解析；clawskills.sh 详情页提取 github 链接后校验 */
@@ -387,11 +421,11 @@ export class AdminImportsService implements OnModuleInit {
   /** 抓取页面 HTML（带 UA 与超时；失败返回 null，不影响导入） */
   private async fetchPageHtml(url: string): Promise<string | null> {
     try {
-      const resp = await fetch(url, {
+      const resp = await raceTimeout(fetch(url, {
         headers: { 'User-Agent': 'Mozilla/5.0 (shentong-ai-admin)' },
         redirect: 'follow',
         signal: AbortSignal.timeout(15000),
-      });
+      }), 15000, '技能来源页抓取');
       if (!resp.ok) return null;
       return await resp.text();
     } catch {

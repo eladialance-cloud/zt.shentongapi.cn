@@ -12,6 +12,15 @@ const SKIP_DIR_PREFIXES = ['node_modules/', '.git/', 'dist/', 'build/', 'vendor/
 
 import { gunzipSync } from 'node:zlib';
 
+/** Promise 硬超时：AbortSignal 无法中断 DNS 解析，race 兜底保证调用方不会无限等待 */
+export function raceTimeout<T>(promise: Promise<T>, ms: number, label = 'request'): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(label + ' 超时（' + ms + 'ms）')), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 /** 从页面 HTML 提取首个 github.com/<owner>/<repo> 链接（目录站详情页解析用，纯函数便于单测） */
 export function extractGithubRepoFromHtml(html: string): { owner: string; repo: string } | null {
   if (!html) return null;
@@ -63,7 +72,7 @@ export async function probeGithubArchive(
   const base = `https://github.com/${owner}/${repo}/archive`;
   const probe = async (u: string): Promise<'ok' | 'missing' | 'blocked' | 'error'> => {
     try {
-      const res = await fetcher(u, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(15000) });
+      const res = await raceTimeout(fetcher(u, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(15000) }), 15000, 'GitHub archive 探测');
       if (res.ok) return 'ok';
       return res.status === 404 ? 'missing' : 'blocked';
     } catch {
@@ -109,7 +118,7 @@ export class GitHubClientService {
     let lastErr: Error | null = null;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        return await fetch(url, { headers: this.headers(url), signal: AbortSignal.timeout(20000) });
+        return await raceTimeout(fetch(url, { headers: this.headers(url), signal: AbortSignal.timeout(20000) }), 25000, 'GitHub 请求');
       } catch (e) {
         lastErr = e as Error;
         if (attempt < maxAttempts) {

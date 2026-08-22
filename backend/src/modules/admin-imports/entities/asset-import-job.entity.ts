@@ -8,6 +8,8 @@ export interface ImportStep {
   key: ImportStepKey;
   label: string;
   status: 'pending' | 'running' | 'done' | 'error';
+  /** 校验类步骤的实时进度（done/total），用于长时间导入的进度展示 */
+  progress?: { done: number; total: number };
 }
 
 export interface ImportJobCatalogStats {

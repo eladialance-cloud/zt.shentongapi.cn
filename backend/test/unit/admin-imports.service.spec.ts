@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Repository } from 'typeorm';
-import { AdminImportsService } from '../../src/modules/admin-imports/admin-imports.service';
+import { AdminImportsService, mapLimit } from '../../src/modules/admin-imports/admin-imports.service';
 import { GitHubClientService, RepoFileEntry } from '../../src/modules/admin-imports/github-client.service';
 import { AssetImportJobEntity, ImportStep } from '../../src/modules/admin-imports/entities/asset-import-job.entity';
 import { IMPORT_STEPS, AssetImportType } from '../../src/modules/admin-imports/admin-imports.constants';
@@ -439,4 +439,80 @@ test('run: 技能目录重导幂等——同一 sourceUrl 更新候选而非跳�
   const row = skillSourceRepo.rows[0] as SkillSourceEntity;
   assert.equal(row.skillName, 'gh-skill');
   assert.equal(skillSourceRepo.saved.length, 1); // 仅更新保存一次（seed 只进 rows 不进 saved）
+});
+test('mapLimit: 保持输入顺序且并发不超过 limit', async () => {
+  const order: number[] = [];
+  let active = 0;
+  let maxActive = 0;
+  const result = await mapLimit([1, 2, 3, 4, 5, 6, 7, 8], 3, async (item, i) => {
+    active++;
+    maxActive = Math.max(maxActive, active);
+    await new Promise((r) => setTimeout(r, item % 2 === 0 ? 20 : 5));
+    active--;
+    order.push(i);
+    return item * 10;
+  });
+  assert.deepEqual(result, [10, 20, 30, 40, 50, 60, 70, 80]);
+  assert.ok(maxActive <= 3, '并发超过 limit: ' + maxActive);
+  assert.equal(order.length, 8);
+});
+
+test('verifyCatalogCandidates: 并发校验保持顺序并回调进度', async () => {
+  const jobRepo = makeJobRepo();
+  jobRepo.set(makePendingJob('skill'));
+  const skillSourceRepo = makeRepo<SkillSourceEntity>();
+  const probes: string[] = [];
+  const github = makeGithub({
+    getRepoTree: async (): Promise<RepoFileEntry[]> => [{ path: 'categories/ai-and-llms.md', type: 'blob' }],
+    getFileContent: async (): Promise<string | null> => [
+      '- [a1](https://clawskills.sh/skills/o1-r1) - x',
+      '- [a2](https://clawskills.sh/skills/o2-r2) - x',
+      '- [a3](https://github.com/foo/bar) - 直链无需校验',
+      '- [a4](https://clawskills.sh/skills/o4-r4) - x',
+      '- [a5](https://clawskills.sh/skills/o5-r5) - x',
+      '- [a6](https://clawskills.sh/skills/o6-r6) - x',
+      '- [a7](https://clawskills.sh/skills/o7-r7) - x',
+      '- [a8](https://clawskills.sh/skills/o8-r8) - x',
+      '- [a9](https://clawskills.sh/skills/o9-r9) - x',
+      '- [a10](https://clawskills.sh/skills/o10-r10) - x',
+      '- [a11](https://clawskills.sh/skills/o11-r11) - x',
+      '- [a12](https://clawskills.sh/skills/o12-r12) - x',
+      '- [a13](https://clawskills.sh/skills/o13-r13) - x',
+    ].join('\n'),
+    probeArchiveBranch: async (owner: string, repo: string): Promise<{ status: 'ok' | 'missing'; branch?: string | null }> => {
+      probes.push(owner + '/' + repo);
+      return { status: 'ok', branch: 'main' };
+    },
+  });
+  const service = buildService(jobRepo, makeRepo<AgentEntity>(), makeRepo<WorkflowEntity>(), makeRepo<McpCatalogEntity>(), makeRepo<SkillPackageEntity>(), github, skillSourceRepo);
+  const progress: Array<{ done: number; total: number }> = [];
+  const entries = await (service as any).verifyCatalogCandidates(
+    [
+      { name: 'a1', sourceUrl: 'https://clawskills.sh/skills/o1-r1', candidates: [{ owner: 'o1', repo: 'r1' }] },
+      { name: 'a2', sourceUrl: 'https://clawskills.sh/skills/o2-r2', candidates: [{ owner: 'o2', repo: 'r2' }] },
+      { name: 'a3', sourceUrl: 'https://github.com/foo/bar', candidates: [{ owner: 'foo', repo: 'bar' }] },
+      { name: 'a4', sourceUrl: 'https://clawskills.sh/skills/o4-r4', candidates: [{ owner: 'o4', repo: 'r4' }] },
+      { name: 'a5', sourceUrl: 'https://clawskills.sh/skills/o5-r5', candidates: [{ owner: 'o5', repo: 'r5' }] },
+      { name: 'a6', sourceUrl: 'https://clawskills.sh/skills/o6-r6', candidates: [{ owner: 'o6', repo: 'r6' }] },
+      { name: 'a7', sourceUrl: 'https://clawskills.sh/skills/o7-r7', candidates: [{ owner: 'o7', repo: 'r7' }] },
+      { name: 'a8', sourceUrl: 'https://clawskills.sh/skills/o8-r8', candidates: [{ owner: 'o8', repo: 'r8' }] },
+      { name: 'a9', sourceUrl: 'https://clawskills.sh/skills/o9-r9', candidates: [{ owner: 'o9', repo: 'r9' }] },
+      { name: 'a10', sourceUrl: 'https://clawskills.sh/skills/o10-r10', candidates: [{ owner: 'o10', repo: 'r10' }] },
+      { name: 'a11', sourceUrl: 'https://clawskills.sh/skills/o11-r11', candidates: [{ owner: 'o11', repo: 'r11' }] },
+      { name: 'a12', sourceUrl: 'https://clawskills.sh/skills/o12-r12', candidates: [{ owner: 'o12', repo: 'r12' }] },
+      { name: 'a13', sourceUrl: 'https://clawskills.sh/skills/o13-r13', candidates: [{ owner: 'o13', repo: 'r13' }] },
+    ] as any,
+    async (done: number, total: number) => progress.push({ done, total }),
+  );
+  assert.equal(entries.length, 13);
+  // 顺序保持：直链条目（第 3 个）未被探测、位置不变
+  assert.equal(entries[2].sourceUrl, 'https://github.com/foo/bar');
+  assert.equal(entries[2].candidates.length, 1); // 直链保留原候选
+  assert.equal(entries[0].candidates[0].owner, 'o1');
+  assert.equal(entries[4].candidates[0].owner, 'o5');
+  // 12 条非直链全部被探测
+  assert.equal(probes.length, 12);
+  // 进度回调：25 倍数 + 结尾
+  const last = progress[progress.length - 1];
+  assert.deepEqual(last, { done: 13, total: 13 });
 });
