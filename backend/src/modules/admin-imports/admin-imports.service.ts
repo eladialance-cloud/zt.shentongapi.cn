@@ -181,10 +181,20 @@ export class AdminImportsService implements OnModuleInit {
       this.setStep(job, 'fetch_repo', 'running'); await this.jobRepo.save(job);
       const { owner, repo } = GitHubClientService.parseRepoUrl(job.repoUrl);
       if (!job.branch) {
-        job.branch = (await this.githubClient.getRepoDefaultBranch(owner, repo)) || 'HEAD';
+        try {
+          job.branch = (await this.githubClient.getRepoDefaultBranch(owner, repo)) || 'HEAD';
+        } catch {
+          // GitHub API/网络不可用时退回 HEAD（archive/HEAD.tar.gz 可由 GitHub 自动解析）
+          job.branch = 'HEAD';
+        }
         await this.jobRepo.save(job);
       }
-      const topics = await this.githubClient.getRepoTopics(owner, repo);
+      let topics: string[] = [];
+      try {
+        topics = await this.githubClient.getRepoTopics(owner, repo);
+      } catch (err) {
+        this.logger.warn('GitHub topics 获取失败（不影响导入）: ' + (err as Error).message);
+      }
       const tree = await this.githubClient.getRepoTree(owner, repo, job.branch);
       const allPaths = tree.map(t => t.path);
       this.setStep(job, 'fetch_repo', 'done'); await this.jobRepo.save(job);
@@ -328,16 +338,14 @@ export class AdminImportsService implements OnModuleInit {
       }
       const good: SkillRepoCandidate[] = [];
       for (const c of e.candidates) {
-        try {
-          const branch = await this.githubClient.getRepoDefaultBranch(c.owner, c.repo);
-          if (branch) good.push({ owner: c.owner, repo: c.repo, defaultBranch: branch });
-        } catch (err) {
-          const msg = String((err as Error).message || err);
-          if (/403|rate limit|API rate/i.test(msg)) {
-            this.logger.warn('GitHub 候选校验触发限流，停止校验并保留原候选: ' + e.sourceUrl);
-            out.push(e);
-            return out;
-          }
+        const probed = await this.githubClient.probeArchiveBranch(c.owner, c.repo);
+        if (probed.status === 'ok') {
+          good.push({ owner: c.owner, repo: c.repo, defaultBranch: probed.branch ?? undefined });
+        } else if (probed.status === 'error') {
+          // 网络异常/限流无法判定：保留原候选，避免误清空（与原限流保护一致）
+          this.logger.warn('GitHub 候选校验网络异常，停止校验并保留原候选: ' + e.sourceUrl);
+          out.push(e);
+          return out;
         }
         if (good.length >= 2) break;
       }
@@ -362,8 +370,10 @@ export class AdminImportsService implements OnModuleInit {
         const html = await this.fetchPageHtml(u);
         const repo = html ? extractGithubRepoFromHtml(html) : null;
         if (repo) {
-          const branch = await this.githubClient.getRepoDefaultBranch(repo.owner, repo.repo);
-          if (branch) return { owner: repo.owner, repo: repo.repo, defaultBranch: branch };
+          const probed = await this.githubClient.probeArchiveBranch(repo.owner, repo.repo);
+          if (probed.status === 'ok') {
+            return { owner: repo.owner, repo: repo.repo, defaultBranch: probed.branch ?? undefined };
+          }
         }
       } catch { /* 解析失败返回 null */ }
     }

@@ -739,7 +739,7 @@ export function buildGithubArchiveUrls(
 export async function installGithubSkill(
   sourceId: number,
   name: string,
-  candidates: Array<{ owner: string; repo: string }>,
+  candidates: Array<{ owner: string; repo: string; defaultBranch?: string }>,
 ): Promise<{ ok: boolean; dir?: string; error?: string }> {
   try {
     if (!Array.isArray(candidates) || candidates.length === 0) {
@@ -752,10 +752,16 @@ export async function installGithubSkill(
     const tmp = path.join(marketRoot(), '.tmp');
     fs.mkdirSync(tmp, { recursive: true });
 
-    // 逐个候选探测真实默认分支：仓库不存在（404）时提前跳过，避免无意义下载；API 失败则走 main/master/HEAD 兜底
+    // 优先用后端校验时已写入的 defaultBranch（免一次 api.github.com 探测，国内网络更稳）；
+    // 缺失的再逐个探测：仓库不存在（404）提前跳过；API 失败走 main/master/HEAD 兜底
     const defaultBranches: Record<string, string> = {};
-    await Promise.all(candidates.map(async (c) => {
-      if (!c || !c.owner || !c.repo) return;
+    const unprobed: Array<{ owner: string; repo: string }> = [];
+    for (const c of candidates) {
+      if (!c || !c.owner || !c.repo) continue;
+      if (c.defaultBranch) defaultBranches[c.owner + '/' + c.repo] = c.defaultBranch;
+      else unprobed.push(c);
+    }
+    await Promise.all(unprobed.map(async (c) => {
       const branch = await resolveDefaultBranch(c.owner, c.repo);
       if (branch) defaultBranches[c.owner + '/' + c.repo] = branch;
     }));

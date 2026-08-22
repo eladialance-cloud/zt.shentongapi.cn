@@ -169,7 +169,7 @@ const electronAPI: ElectronAPI = {
   market: {
     install: (type: MarketItemType, id: number, name: string, version: string, pkg: Record<string, unknown>) =>
       ipcRenderer.invoke('market:install', type, id, name, version, pkg) as Promise<{ ok: boolean; dir?: string; error?: string }>,
-    installGithubSkill: (sourceId: number, name: string, candidates: Array<{ owner: string; repo: string }>) =>
+    installGithubSkill: (sourceId: number, name: string, candidates: Array<{ owner: string; repo: string; defaultBranch?: string }>) =>
       ipcRenderer.invoke('market:installGithubSkill', sourceId, name, candidates) as Promise<{ ok: boolean; dir?: string; error?: string }>,
     uninstall: (type: MarketItemType, id: number | string) =>
       ipcRenderer.invoke('market:uninstall', type, id) as Promise<{ ok: boolean; error?: string }>,

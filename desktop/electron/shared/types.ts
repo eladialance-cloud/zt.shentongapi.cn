@@ -628,7 +628,7 @@ export interface ElectronAPI {
     installGithubSkill(
       sourceId: number,
       name: string,
-      candidates: Array<{ owner: string; repo: string }>,
+      candidates: Array<{ owner: string; repo: string; defaultBranch?: string }>,
     ): Promise<{ ok: boolean; dir?: string; error?: string }>;
     /** 卸载：删除本地目录并更新清单 */
     uninstall(type: MarketItemType, id: number | string): Promise<{ ok: boolean; error?: string }>;

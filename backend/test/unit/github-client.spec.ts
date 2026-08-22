@@ -1,6 +1,7 @@
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { GitHubClientService, extractGithubRepoFromHtml } from '../../src/modules/admin-imports/github-client.service';
+import { gzipSync } from 'node:zlib';
+import { GitHubClientService, extractGithubRepoFromHtml, listTarGzEntries, probeGithubArchive } from '../../src/modules/admin-imports/github-client.service';
 
 type FetchImpl = (url: RequestInfo | URL, init?: RequestInit) => Promise<any>;
 
@@ -25,6 +26,94 @@ test('extractGithubRepoFromHtml 提取首个 github 仓库链接', () => {
   assert.deepEqual(extractGithubRepoFromHtml('见 https://github.com/a/b.git 仓库'), { owner: 'a', repo: 'b' });
   assert.equal(extractGithubRepoFromHtml(''), null);
   assert.equal(extractGithubRepoFromHtml('no github link'), null);
+});
+
+/** 构造最小 tar.gz（仅用于 listTarGzEntries 单测） */
+function makeTarGz(files: Array<{ name: string; content?: string; dir?: boolean }>): Buffer {
+  const blocks: Buffer[] = [];
+  for (const f of files) {
+    const h = Buffer.alloc(512);
+    h.write(f.name.slice(0, 100), 0, 'utf8');
+    const size = f.dir ? 0 : Buffer.byteLength(f.content ?? '', 'utf8');
+    h.write(size.toString(8).padStart(11, '0') + '\0', 124, 'ascii');
+    h.write(f.dir ? '5' : '0', 156, 'ascii');
+    let sum = 0;
+    for (let i = 0; i < 512; i++) sum += h[i];
+    h.write(sum.toString(8).padStart(6, '0') + '\0 ', 148, 'ascii');
+    blocks.push(h);
+    if (!f.dir) {
+      const data = Buffer.from(f.content ?? '', 'utf8');
+      blocks.push(data);
+      const pad = (512 - (data.length % 512)) % 512;
+      if (pad) blocks.push(Buffer.alloc(pad));
+    }
+  }
+  blocks.push(Buffer.alloc(1024));
+  return gzipSync(Buffer.concat(blocks));
+}
+
+test('probeGithubArchive 探测 main 命中', async () => {
+  const hits: string[] = [];
+  mockFetch(async (url, init) => {
+    hits.push(String(url) + '|' + (init?.method ?? ''));
+    return { ok: String(url).includes('main.tar.gz'), status: 200 };
+  });
+  assert.deepEqual(await probeGithubArchive('x', 'y'), { status: 'ok', branch: 'main' });
+  assert.equal(hits[0], 'https://github.com/x/y/archive/refs/heads/main.tar.gz|HEAD');
+});
+
+test('probeGithubArchive main 缺失回退 master', async () => {
+  mockFetch(async (url) => {
+    const u = String(url);
+    const ok = u.includes('master.tar.gz');
+    return { ok, status: ok ? 200 : 404 };
+  });
+  assert.deepEqual(await probeGithubArchive('x', 'y'), { status: 'ok', branch: 'master' });
+});
+
+test('probeGithubArchive 仅 HEAD 可用返回 ok 无分支', async () => {
+  mockFetch(async (url) => ({ ok: String(url).includes('HEAD.tar.gz'), status: 404 }));
+  assert.deepEqual(await probeGithubArchive('x', 'y'), { status: 'ok', branch: null });
+});
+
+test('probeGithubArchive 仓库不存在返回 missing', async () => {
+  mockFetch(async () => ({ ok: false, status: 404 }));
+  assert.deepEqual(await probeGithubArchive('x', 'y'), { status: 'missing' });
+});
+
+test('probeGithubArchive 网络异常返回 error', async () => {
+  mockFetch(async () => { throw new Error('network down'); });
+  assert.deepEqual(await probeGithubArchive('x', 'y'), { status: 'error' });
+});
+
+test('probeGithubArchive 403 视为 error 不误判为缺失', async () => {
+  mockFetch(async () => ({ ok: false, status: 403 }));
+  assert.deepEqual(await probeGithubArchive('x', 'y'), { status: 'error' });
+});
+
+test('listTarGzEntries 解压并剥离根目录前缀', () => {
+  const gz = makeTarGz([
+    { name: 'myrepo-main/README.md', content: '# hi' },
+    { name: 'myrepo-main/categories/ai.md', content: '- [x](https://clawskills.sh/skills/a-b)' },
+    { name: 'myrepo-main/categories/', dir: true },
+  ]);
+  assert.deepEqual(listTarGzEntries(gz), ['README.md', 'categories/ai.md']);
+});
+
+test('getRepoTree API 失败时 tar.gz 兜底列目录', async () => {
+  const gz = makeTarGz([
+    { name: 'cat-main/README.md', content: 'r' },
+    { name: 'cat-main/categories/dev.md', content: '- [s](https://github.com/a/b)' },
+    { name: 'cat-main/node_modules/x.js', content: 'x' },
+  ]);
+  mockFetch(async (url) => {
+    const u = String(url);
+    if (u.includes('api.github.com')) return { ok: false, status: 403 };
+    if (u.includes('archive/')) return { ok: true, status: 200, arrayBuffer: async () => gz.buffer.slice(gz.byteOffset, gz.byteOffset + gz.byteLength) };
+    return { ok: false, status: 404 };
+  });
+  const files = await svc.getRepoTree('cat', 'catalog', 'main');
+  assert.deepEqual(files.map(f => f.path), ['README.md', 'categories/dev.md']);
 });
 
 test('getRepoTopics 返回 topics', async () => {

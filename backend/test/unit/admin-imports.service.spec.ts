@@ -18,6 +18,7 @@ function makeGithub(overrides: {
   getRepoTree?: () => Promise<RepoFileEntry[]>;
   getFileContent?: (owner: string, repo: string, path?: string) => Promise<string | null>;
   getRepoDefaultBranch?: (owner: string, repo: string) => Promise<string | null>;
+  probeArchiveBranch?: (owner: string, repo: string) => Promise<{ status: 'ok' | 'missing' | 'error'; branch?: string | null }>;
 } = {}) {
   return {
     getRepoTopics: async (): Promise<string[]> => ['ai', 'agent'],
@@ -25,6 +26,8 @@ function makeGithub(overrides: {
     getFileContent: async (): Promise<string | null> => AGENT_MD,
     /** 默认仓库均视为不存在（404）；用例可覆盖指定 owner/repo 返回分支 */
     getRepoDefaultBranch: async (): Promise<string | null> => null,
+    /** 直连探测默认视为仓库不存在 */
+    probeArchiveBranch: async (): Promise<{ status: 'missing' }> => ({ status: 'missing' }),
     ...overrides,
   };
 }
@@ -400,8 +403,8 @@ test('run: 技能目录候选校验——猜中仓库保留并带 defaultBranch�
   const github = makeGithub({
     getRepoTree: async (): Promise<RepoFileEntry[]> => [{ path: 'categories/ai-and-llms.md', type: 'blob' }],
     getFileContent: async (): Promise<string | null> => '- [good](https://clawskills.sh/skills/owner-skill) - 猜中\n- [bad](https://clawskills.sh/skills/ghost-repo) - 猜错',
-    getRepoDefaultBranch: async (owner: string, repo: string): Promise<string | null> =>
-      owner === 'owner' && repo === 'skill' ? 'main' : null,
+    probeArchiveBranch: async (owner: string, repo: string): Promise<{ status: 'ok' | 'missing'; branch?: string | null }> =>
+      owner === 'owner' && repo === 'skill' ? { status: 'ok', branch: 'main' } : { status: 'missing' },
   });
   const service = buildService(jobRepo, makeRepo<AgentEntity>(), makeRepo<WorkflowEntity>(), makeRepo<McpCatalogEntity>(), makeRepo<SkillPackageEntity>(), github, skillSourceRepo);
   (service as any).fetchPageHtml = async () => null;

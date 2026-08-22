@@ -10,12 +10,75 @@ export interface RepoFileEntry {
 /** 默认跳过目录（避免拉取依赖/构建产物） */
 const SKIP_DIR_PREFIXES = ['node_modules/', '.git/', 'dist/', 'build/', 'vendor/', 'test/', 'tests/', '__tests__/', 'examples/', 'assets/'];
 
+import { gunzipSync } from 'node:zlib';
+
 /** 从页面 HTML 提取首个 github.com/<owner>/<repo> 链接（目录站详情页解析用，纯函数便于单测） */
 export function extractGithubRepoFromHtml(html: string): { owner: string; repo: string } | null {
   if (!html) return null;
   const m = html.match(/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/);
   if (!m) return null;
   return { owner: m[1], repo: m[2].replace(/\.git$/, '') };
+}
+
+/** 非 API 兜底：解压 tar.gz 列出文件（GitHub archive 首层是 <owner>-<repo>-<branch> 根目录，已剥离） */
+export function listTarGzEntries(buffer: Buffer): string[] {
+  const plain = gunzipSync(buffer);
+  const files: string[] = [];
+  let off = 0;
+  while (off + 512 <= plain.length) {
+    const header = plain.subarray(off, off + 512);
+    if (header.every(b => b === 0)) break;
+    const name = header.subarray(0, 100).toString('utf8').replace(/\0[\s\S]*$/, '');
+    if (!name) break;
+    const size = parseInt(header.subarray(124, 136).toString('utf8').replace(/\0[\s\S]*$/, '').trim() || '0', 8) || 0;
+    const typeflag = String.fromCharCode(header[156] ?? 0);
+    if (!name.endsWith('/') && typeflag !== '5' && typeflag !== '2') {
+      const slash = name.indexOf('/');
+      files.push(slash >= 0 ? name.slice(slash + 1) : name);
+    }
+    const pad = (512 - (size % 512)) % 512;
+    off += 512 + size + pad;
+  }
+  return files;
+}
+
+/** 直连 archive 探测结果 */
+export type ArchiveProbeResult =
+  | { status: 'ok'; branch: string | null }
+  | { status: 'missing' }
+  | { status: 'error' };
+
+type ProbeFetcher = (
+  url: string,
+  init?: { method?: string; redirect?: 'follow' },
+) => Promise<{ ok: boolean; status: number }>;
+
+/** 直连 GitHub archive 检测仓库/分支可用性（不走 API、不受限流影响）：
+ *  依次 HEAD main → master → HEAD.tar.gz；404 判定仓库/分支不存在，403/网络异常返回 error 由调用方决定 */
+export async function probeGithubArchive(
+  owner: string,
+  repo: string,
+  fetcher: ProbeFetcher = fetch as unknown as ProbeFetcher,
+): Promise<ArchiveProbeResult> {
+  const base = `https://github.com/${owner}/${repo}/archive`;
+  const probe = async (u: string): Promise<'ok' | 'missing' | 'blocked' | 'error'> => {
+    try {
+      const res = await fetcher(u, { method: 'HEAD', redirect: 'follow' });
+      if (res.ok) return 'ok';
+      return res.status === 404 ? 'missing' : 'blocked';
+    } catch {
+      return 'error';
+    }
+  };
+  for (const branch of ['main', 'master']) {
+    const r = await probe(`${base}/refs/heads/${branch}.tar.gz`);
+    if (r === 'ok') return { status: 'ok', branch };
+    if (r === 'blocked' || r === 'error') return { status: 'error' };
+  }
+  const head = await probe(`${base}/HEAD.tar.gz`);
+  if (head === 'ok') return { status: 'ok', branch: null };
+  if (head === 'missing') return { status: 'missing' };
+  return { status: 'error' };
 }
 
 @Injectable()
@@ -34,9 +97,10 @@ export class GitHubClientService {
     BusinessException.throw(ErrorCode.VALIDATION_FAILED, '无效的 GitHub 仓库地址');
   }
 
-  private headers(): Record<string, string> {
+  /** token 仅用于 api.github.com（REST）；raw/archive 直连不带 Authorization，避免无效 token 导致 401 */
+  private headers(url?: string): Record<string, string> {
     const h: Record<string, string> = { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
-    if (this.token) h.Authorization = 'Bearer ' + this.token;
+    if (this.token && url && url.startsWith(this.apiBase)) h.Authorization = 'Bearer ' + this.token;
     return h;
   }
 
@@ -45,7 +109,7 @@ export class GitHubClientService {
     let lastErr: Error | null = null;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        return await fetch(url, { headers: this.headers(), signal: AbortSignal.timeout(20000) });
+        return await fetch(url, { headers: this.headers(url), signal: AbortSignal.timeout(20000) });
       } catch (e) {
         lastErr = e as Error;
         if (attempt < maxAttempts) {
@@ -75,28 +139,67 @@ export class GitHubClientService {
     return ((data as { names?: string[] }).names ?? []).slice(0, 20);
   }
 
-  /** 仓库默认分支（REST /repos/{owner}/{repo} 的 default_branch 字段） */
+  /** 仓库默认分支：优先直连探测（main/master/HEAD，不经 API、不受限流影响），API 仅作兜底 */
   async getRepoDefaultBranch(owner: string, repo: string): Promise<string | null> {
-    const data = await this.getJson(this.apiBase + '/repos/' + owner + '/' + repo);
-    if (!data) return null;
-    return ((data as { default_branch?: string }).default_branch) || null;
+    const probed = await probeGithubArchive(owner, repo);
+    if (probed.status === 'ok') return probed.branch;
+    try {
+      const data = await this.getJson(this.apiBase + '/repos/' + owner + '/' + repo);
+      if (!data) return null;
+      return ((data as { default_branch?: string }).default_branch) || null;
+    } catch (err) {
+      this.logger.warn('GitHub 默认分支 API 不可用，按 HEAD 处理: ' + (err as Error).message);
+      return null;
+    }
+  }
+
+  /** 直连 archive 探测仓库是否存在及默认分支（HEAD 请求，不经 GitHub API，不受限流影响） */
+  async probeArchiveBranch(owner: string, repo: string): Promise<ArchiveProbeResult> {
+    return probeGithubArchive(owner, repo);
   }
 
   /** 递归文件树（过滤依赖/构建目录；根目录关键文件优先，避免大仓库截断吞掉 package.json/README 等） */
   async getRepoTree(owner: string, repo: string, branch = 'HEAD'): Promise<RepoFileEntry[]> {
-    const data = await this.getJson(this.apiBase + '/repos/' + owner + '/' + repo + '/git/trees/' + encodeURIComponent(branch) + '?recursive=1');
-    if (!data) return [];
-    const tree = (data as { tree?: Array<{ path: string; type: string }> }).tree ?? [];
-    const blobs: RepoFileEntry[] = [];
-    for (const t of tree) {
-      if (t.type !== 'blob') continue;
-      if (SKIP_DIR_PREFIXES.some(p => t.path.startsWith(p))) continue;
-      blobs.push({ path: t.path, type: 'blob' });
+    try {
+      const data = await this.getJson(this.apiBase + '/repos/' + owner + '/' + repo + '/git/trees/' + encodeURIComponent(branch) + '?recursive=1');
+      if (!data) return [];
+      const tree = (data as { tree?: Array<{ path: string; type: string }> }).tree ?? [];
+      const blobs: RepoFileEntry[] = [];
+      for (const t of tree) {
+        if (t.type !== 'blob') continue;
+        if (SKIP_DIR_PREFIXES.some(p => t.path.startsWith(p))) continue;
+        blobs.push({ path: t.path, type: 'blob' });
+      }
+      return this.sortTree(blobs);
+    } catch (err) {
+      // API 不可用（未配 token/限流/被墙）：下载 tar.gz 兜底列文件，导入不依赖 GitHub API
+      this.logger.warn('GitHub tree API 不可用，改用 tar.gz 兜底: ' + (err as Error).message);
+      return this.getRepoTreeFromArchive(owner, repo, branch);
     }
-    // 根目录文件优先（package.json / README / pyproject.toml 等关键配置不被大仓库截断）
+  }
+
+  /** 根目录文件优先（package.json / README / pyproject.toml 等关键配置不被大仓库截断） */
+  private sortTree(blobs: RepoFileEntry[]): RepoFileEntry[] {
     const roots = blobs.filter(b => !b.path.includes('/'));
     const nested = blobs.filter(b => b.path.includes('/'));
     return [...roots, ...nested].slice(0, 500);
+  }
+
+  /** 非 API 兜底：下载仓库 tar.gz → 解压列文件（避开 GitHub API 限流/未配 token） */
+  private async getRepoTreeFromArchive(owner: string, repo: string, branch: string): Promise<RepoFileEntry[]> {
+    const url = `https://github.com/${owner}/${repo}/archive/${encodeURIComponent(branch)}.tar.gz`;
+    const resp = await this.fetchWithRetry(url);
+    if (!resp.ok) {
+      BusinessException.throw(ErrorCode.THIRD_PARTY_ERROR, 'GitHub archive HTTP ' + resp.status + ' for ' + url);
+    }
+    const buf = Buffer.from(await resp.arrayBuffer());
+    const names = listTarGzEntries(buf);
+    const blobs: RepoFileEntry[] = [];
+    for (const p of names) {
+      if (SKIP_DIR_PREFIXES.some(pre => p.startsWith(pre))) continue;
+      blobs.push({ path: p, type: 'blob' });
+    }
+    return this.sortTree(blobs);
   }
 
   /** 读取仓库内单个文件（raw），404 返回 null */

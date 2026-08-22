@@ -158,7 +158,7 @@ export async function listSkillSourceCategories(): Promise<Array<{ category: str
 export async function installGithubSkill(
   sourceId: number,
   name: string,
-  candidates: Array<{ owner: string; repo: string }>,
+  candidates: Array<{ owner: string; repo: string; defaultBranch?: string }>,
 ): Promise<{ ok: boolean; dir?: string; error?: string }> {
   return (await getMarket().installGithubSkill(sourceId, name, candidates)) as { ok: boolean; dir?: string; error?: string }
 }

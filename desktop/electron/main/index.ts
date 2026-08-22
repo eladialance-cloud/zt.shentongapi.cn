@@ -1005,7 +1005,7 @@ ipcMain.handle(
   ipcMain.handle('market:install', async (_event, type: MarketItemType, id: number, name: string, version: string, pkg: Record<string, unknown>) =>
     installMarketItem(type, id, name, version, pkg))
 
-  ipcMain.handle('market:installGithubSkill', async (_event, sourceId: number, name: string, candidates: Array<{ owner: string; repo: string }>) =>
+  ipcMain.handle('market:installGithubSkill', async (_event, sourceId: number, name: string, candidates: Array<{ owner: string; repo: string; defaultBranch?: string }>) =>
     installGithubSkill(sourceId, name, candidates))
 
   ipcMain.handle('market:uninstall', async (_event, type: MarketItemType, id: number | string) =>
