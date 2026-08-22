@@ -269,6 +269,7 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
     /** 失败统一出口：先 PATCH failed（含 steps 明细），再返回失败结果 */
     const failTask = async (summary: string, error: string): Promise<OrchestrateResult> => {
       const failed = fail(summary, error);
+      console.error("[hermes-orchestrator] failTask:", summary, "|", error);
       await deps.patchTask(input.teamId, input.teamTaskId, {
         status: "failed",
         result: { executionRef: input.executionRef, ...failed },
@@ -388,6 +389,7 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
       return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      console.error("[hermes-orchestrator] orchestrate exception:", err);
       const failed = fail("任务执行异常", message);
       await deps.patchTask(input.teamId, input.teamTaskId, { status: "failed", result: { executionRef: input.executionRef, ...failed } });
       return failed;

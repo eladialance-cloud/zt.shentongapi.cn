@@ -3,7 +3,7 @@
 // 产出内容（文字/图片/视频）内联预览；通过/打回走逐步编排 IPC；自动确认（自评）开关可中途切换
 // 我的任务源：保留旧版 outputs 拆解 JSON 流水线与老板动作（选题/终审），不回归
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Empty, Input, message, Modal, Select, Spin, Switch, Tooltip } from "antd";
+import { Alert, Button, Empty, Input, message, Modal, Select, Spin, Switch, Tooltip } from "antd";
 import {
   CheckCircleFilled,
   CloseCircleFilled,
@@ -149,6 +149,8 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
     return parsePipeline(task, outputs);
   }, [isTeam, task, outputs]);
   const candidates = useMemo(() => topicCandidates(outputs), [outputs]);
+  /** 僵尸运行态：任务标 running 但无任何团队节点（App 中断/规划失败残留），允许重新开始 */
+  const brokenRunning = isTeam && task.status === "running" && parseTeamSteps(task.result).length === 0;
 
   /** 切换自动确认（自评）：运行中任务实时通知主进程 */
   const handleToggleAuto = (v: boolean) => {
@@ -297,16 +299,16 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
                 <Switch size="small" checked={autoConfirm} onChange={handleToggleAuto} />
               </div>
             )}
-            {canRunner && (task.status === "todo" || task.status === "failed") && (
+            {canRunner && (task.status === "todo" || task.status === "failed" || brokenRunning) && (
               <Tooltip title={!token ? "未登录" : undefined}>
                 <Button
                   type="primary"
-                  icon={task.status === "failed" ? <RedoOutlined /> : <PlayCircleFilled />}
+                  icon={task.status === "failed" || brokenRunning ? <RedoOutlined /> : <PlayCircleFilled />}
                   loading={submitting}
                   disabled={!token}
                   onClick={() => void handleStart()}
                 >
-                  {task.status === "failed" ? "重试" : "开始任务"}
+                  {task.status === "failed" || brokenRunning ? "重新开始" : "开始任务"}
                 </Button>
               </Tooltip>
             )}
@@ -315,7 +317,17 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
 
         {/* ===== 步骤轨道 ===== */}
         {steps.length === 0 ? (
-          <Empty className={styles.flowEmpty} description="暂无任务步骤" />
+          brokenRunning ? (
+            <Alert
+              type="warning"
+              showIcon
+              message="执行已中断"
+              description="任务标记为“运行中”但未产出任何节点（可能是应用中断或规划失败残留），请点击右上角「重新开始」。"
+              style={{ margin: "12px 0" }}
+            />
+          ) : (
+            <Empty className={styles.flowEmpty} description="暂无任务步骤" />
+          )
         ) : (
           <div className={styles.stepTrack}>
             {steps.map((step, i) => {

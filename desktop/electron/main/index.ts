@@ -224,7 +224,10 @@ function buildStepRunnerDeps(token: string, taskKey: string): StepRunnerDeps {
         }, 10 * 60 * 1000)
         const [out, err] = await Promise.all([stdout(), stderr()])
         clearTimeout(timeout)
-        return { stdout: out, ...(err ? { error: err } : {}) }
+        // Hermes CLI 每次调用都会在 stderr 打印 session_id 横幅（答案在 stdout）；
+        // 仅当 stdout 为空时才把 stderr 视为失败，避免横幅误判（阶段2回归修复）
+        const stdoutText = (out || '').trim()
+        return stdoutText ? { stdout: out } : { stdout: out, ...(err ? { error: err } : {}) }
       } catch (err) {
         return { stdout: '', error: err instanceof Error ? err.message : String(err) }
       }
@@ -458,7 +461,7 @@ function registerIpcHandlers(): void {
         void handle
           .wait()
           .then(() => undefined)
-          .catch(() => undefined)
+          .catch((e) => { console.error("[step-runner] 任务执行失败:", e); })
           .finally(() => {
             stepRunners.delete(taskKey)
             stepAutoConfirm.delete(taskKey)
