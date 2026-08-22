@@ -337,19 +337,23 @@ export class AdminImportsService implements OnModuleInit {
         continue;
       }
       const good: SkillRepoCandidate[] = [];
+      let probeError = false;
       for (const c of e.candidates) {
         const probed = await this.githubClient.probeArchiveBranch(c.owner, c.repo);
         if (probed.status === 'ok') {
           good.push({ owner: c.owner, repo: c.repo, defaultBranch: probed.branch ?? undefined });
         } else if (probed.status === 'error') {
-          // 网络异常/限流无法判定：保留原候选，避免误清空（与原限流保护一致）
-          this.logger.warn('GitHub 候选校验网络异常，停止校验并保留原候选: ' + e.sourceUrl);
-          out.push(e);
-          return out;
+          probeError = true;
         }
         if (good.length >= 2) break;
       }
       if (good.length === 0) {
+        if (probeError) {
+          // 网络异常无法判定：仅保留本条原候选并继续，避免一条抖动中断整批校验
+          this.logger.warn('GitHub 候选校验网络异常，保留本条原候选: ' + e.sourceUrl);
+          out.push({ ...e });
+          continue;
+        }
         const resolved = await this.resolveSourceRepo(e.sourceUrl);
         if (resolved) good.push(resolved);
       }
