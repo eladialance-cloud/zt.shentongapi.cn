@@ -53,6 +53,7 @@ export class BriefDispatchService {
   async dispatch(
     brief: BriefEntity,
     memberRoleTitles: MemberRoleTitle[] = [],
+    teamIdOverride?: number,
   ): Promise<DispatchResult> {
     try {
       const model = await this.modelRepo.findOne({
@@ -86,7 +87,7 @@ export class BriefDispatchService {
       if (!parsed) return { ok: false, error: 'PARSE_JSON_FAILED' };
       const cleaned = this.cleanTasks(parsed, memberRoleTitles);
       if (cleaned.length === 0) return { ok: false, error: 'NO_VALID_TASKS' };
-      const persisted = await this.persistTasks(brief, cleaned, memberRoleTitles);
+      const persisted = await this.persistTasks(brief, cleaned, memberRoleTitles, teamIdOverride);
       if (!persisted) return { ok: false, error: 'NO_TEAM_FOR_DISPATCH' };
       brief.dispatchStatus = 'done';
       brief.dispatchResult = cleaned;
@@ -170,9 +171,10 @@ export class BriefDispatchService {
     brief: BriefEntity,
     items: DispatchTaskItem[],
     memberRoleTitles: MemberRoleTitle[],
+    teamIdOverride?: number,
   ): Promise<boolean> {
     const roleMap = new Map(memberRoleTitles.map((r) => [r.roleTitle, r]));
-    let teamId: number | undefined;
+    let teamId: number | undefined = teamIdOverride;
     for (const item of items) {
       const entry = roleMap.get(item.roleTitle);
       if (!entry?.memberId) continue;

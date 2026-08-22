@@ -310,6 +310,7 @@ export class TeamService {
       assigneeMemberId?: number;
       priority?: TeamTaskPriority;
       dueDate?: Date;
+      executionRef?: string;
     },
   ): Promise<TeamTaskEntity> {
     const task = this.taskRepo.create({
@@ -321,6 +322,7 @@ export class TeamService {
       creatorId: userId,
       priority: data.priority ?? "medium",
       dueDate: data.dueDate,
+      executionRef: data.executionRef,
     });
     return this.taskRepo.save(task);
   }
@@ -337,6 +339,7 @@ export class TeamService {
       dueDate: Date;
       status: TeamTaskStatus;
       result: unknown;
+      teamId?: number;
     }>,
   ): Promise<TeamTaskEntity> {
     // 归属校验：仅团队创建者可修改团队任务（防跨团队越权读写）
@@ -363,6 +366,16 @@ export class TeamService {
         task.completedAt = new Date();
       }
     }
+    if (data.teamId !== undefined && Number(data.teamId) !== Number(task.teamId)) {
+      const target = await this.teamRepo.findOne({ where: { id: data.teamId } });
+      if (!target) {
+        BusinessException.throw(ErrorCode.NOT_FOUND, "目标团队不存在");
+      }
+      if (Number(target.creatorId) !== userId) {
+        BusinessException.throw(ErrorCode.FORBIDDEN, "仅团队创建者可迁移任务");
+      }
+      task.teamId = Number(data.teamId);
+    }
     if (data.result !== undefined) task.result = data.result;
 
     return this.taskRepo.save(task);
@@ -384,6 +397,14 @@ export class TeamService {
     teamId: number,
     taskId: number,
   ): Promise<void> {
+    // 归属校验：仅团队创建者可删除任务（防跨团队越权删除）
+    const team = await this.teamRepo.findOne({ where: { id: teamId } });
+    if (!team) {
+      BusinessException.throw(ErrorCode.NOT_FOUND, "团队不存在");
+    }
+    if (Number(team.creatorId) !== userId) {
+      BusinessException.throw(ErrorCode.FORBIDDEN, "仅团队创建者可删除任务");
+    }
     const task = await this.taskRepo.findOne({ where: { id: taskId, teamId } });
     if (!task) {
       BusinessException.throw(ErrorCode.NOT_FOUND, "任务不存在");

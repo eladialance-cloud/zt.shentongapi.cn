@@ -1,4 +1,4 @@
-// 主进程 / 渲染进程共享类型定义
+﻿// 主进程 / 渲染进程共享类型定义
 // 该文件同时被 tsconfig.node.json 与 tsconfig.web.json 包含
 
 export type ServiceName = "openclaw" | "n8n" | "mcp" | "hermes" | "video-claw";
@@ -526,6 +526,8 @@ export interface ElectronAPI {
     update(name?: string): Promise<HermesSkillsOpResult>;
     uninstall(name: string): Promise<HermesSkillsOpResult>;
     check(): Promise<HermesSkillsOpResult>;
+    /** 弹窗选择本地文件夹安装技能（需含 SKILL.md） */
+    installLocal(): Promise<HermesSkillsOpResult>;
   };
   /** Hermes 进化可视化（记忆 + journey + curator） */
   hermesEvolution: {
@@ -552,6 +554,14 @@ export interface ElectronAPI {
     loadMembers(payload: { token: string; teamId: number }): Promise<{ ok: boolean; members?: TeamMemberProfileItem[]; error?: string }>;
     /** 运行中切换自动确认（自评）开关 */
     setAutoConfirm(payload: { token: string; teamTaskId: number; autoConfirm: boolean }): Promise<OrchestrateSubmitResult>;
+    /** 暂停（当前节点跑完后挂起） */
+    pause(payload: { teamTaskId: number }): Promise<OrchestrateSubmitResult>;
+    /** 继续执行 */
+    resume(payload: { teamTaskId: number }): Promise<OrchestrateSubmitResult>;
+    /** 立即中断（杀掉当前 Hermes CLI，任务标记失败） */
+    stop(payload: { teamTaskId: number }): Promise<OrchestrateSubmitResult>;
+    /** 删除团队任务（先停止运行再调后端 DELETE） */
+    deleteTask(payload: { token: string; teamId: number; teamTaskId: number }): Promise<OrchestrateSubmitResult>;
   };
 
   /** 自动更新（electron-updater 封装） */

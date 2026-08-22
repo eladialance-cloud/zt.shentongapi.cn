@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+﻿import { Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 /**
@@ -1429,6 +1429,31 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       INDEX idx_sedimentation_user (user_id, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对话沉淀记录'`);
     logger.log('Ensured table: sedimentation_feed');
+
+    // 定时任务表（对话创建 -> 桌面端软件开着时调度 -> Hermes 编排执行）
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS scheduled_tasks (
+      id BIGINT NOT NULL AUTO_INCREMENT,
+      user_id BIGINT NOT NULL COMMENT '用户 ID',
+      title VARCHAR(255) NOT NULL COMMENT '任务标题',
+      description TEXT NULL COMMENT '任务内容（触发时交给 Hermes 执行）',
+      team_id BIGINT NULL COMMENT '执行团队 ID（NULL=自动选第一个团队）',
+      repeat_type VARCHAR(16) NOT NULL DEFAULT 'once' COMMENT 'once|daily|weekly',
+      run_time VARCHAR(8) NULL COMMENT '触发时间 HH:mm',
+      weekday TINYINT NULL COMMENT '每周星期 1-7（1=周一）',
+      due_at DATETIME NULL COMMENT '一次性执行时间',
+      next_run_at DATETIME NULL COMMENT '下次触发时间',
+      status VARCHAR(16) NOT NULL DEFAULT 'active' COMMENT 'active|paused|done|failed',
+      firing_token VARCHAR(64) NULL COMMENT '触发占位令牌',
+      firing_expire_at DATETIME NULL COMMENT '触发占位过期时间',
+      last_run_at DATETIME NULL COMMENT '上次触发时间',
+      last_error TEXT NULL COMMENT '上次执行错误',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+      PRIMARY KEY (id),
+      INDEX idx_scheduled_tasks_user (user_id),
+      INDEX idx_scheduled_tasks_next (next_run_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='定时任务'`);
+    logger.log('Ensured table: scheduled_tasks');
 
         logger.log('Startup migrations completed');
   } catch (err) {

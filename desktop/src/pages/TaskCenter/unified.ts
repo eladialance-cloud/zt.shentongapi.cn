@@ -16,6 +16,8 @@ export interface UnifiedTask {
   createdAt: string
   finishedAt?: string | null
   briefId?: number
+  /** 发布批次标识（同一次需求拆解共享，用于分组） */
+  executionRef?: string
   /** 团队任务原始 result（Hermes 编排结果，含 steps，供流水线展示） */
   result?: unknown
 }
@@ -80,4 +82,49 @@ export function sortByCreatedAtDesc(list: UnifiedTask[]): UnifiedTask[] {
     if (Number.isNaN(tb)) return -1
     return tb - ta
   })
+}
+/** 任务分组（按发布批次）：executionRef → briefId → 单任务一组 */
+export interface TaskGroup {
+  key: string
+  /** 组标题：需求/批次名 */
+  title: string
+  /** 组内最新任务时间（排序用） */
+  createdAt: string
+  tasks: UnifiedTask[]
+}
+
+/** 按发布批次分组；titleOf 可选：briefId → 需求标题（前端用简报 API 缓存提供） */
+export function groupTasksByBatch(
+  tasks: UnifiedTask[],
+  titleOf?: (briefId: number) => string | undefined,
+): TaskGroup[] {
+  const groups = new Map<string, TaskGroup>()
+  const order: string[] = []
+  const push = (t: UnifiedTask, key: string, title: string) => {
+    let g = groups.get(key)
+    if (!g) {
+      g = { key, title, createdAt: t.createdAt, tasks: [] }
+      groups.set(key, g)
+      order.push(key)
+    }
+    g.tasks.push(t)
+    if (new Date(t.createdAt).getTime() > new Date(g.createdAt).getTime()) g.createdAt = t.createdAt
+  }
+  for (const t of sortByCreatedAtDesc([...tasks])) {
+    if (t.source === "team" && t.executionRef) push(t, "exec:" + t.executionRef, "")
+    else if (t.source === "team" && t.briefId) push(t, "brief:" + t.briefId, "")
+    else push(t, "one:" + t.key, t.title)
+  }
+  const out = order.map((k) => groups.get(k)!).map((g) => {
+    g.tasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    if (!g.title) {
+      const brief = g.tasks.find((t) => t.briefId && titleOf?.(t.briefId))
+      const bid = g.tasks.find((t) => t.briefId)?.briefId
+      if (brief && titleOf) g.title = titleOf(brief.briefId as number) || ("需求单 #" + bid)
+      else if (bid) g.title = "需求单 #" + bid
+      else g.title = g.tasks[0]?.title || "未命名任务"
+    }
+    return g
+  })
+  return out.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 }

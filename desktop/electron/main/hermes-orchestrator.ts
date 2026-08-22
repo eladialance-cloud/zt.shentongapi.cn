@@ -157,6 +157,8 @@ export interface StepRunnerDeps {
   persistOutputs: (taskId: number, outputs: HermesOutput[]) => Promise<void>;
   /** 自动确认开关（调用时实时读取，便于中途切换） */
   isAutoConfirm: () => boolean;
+  /** 立即中断当前 Hermes CLI（stop 时杀掉正在跑的进程） */
+  abortCurrent?: () => void;
   now: () => number;
   /** 单节点打回重做上限，默认 2 */
   maxRetries?: number;
@@ -240,6 +242,12 @@ export interface StepRunnerHandle {
   /** 人工打回某节点（必填原因）→ Hermes 消化原因自动重做 */
   rejectStep(stepIndex: number, reason: string): void;
   cancel(): void;
+  /** 暂停：当前节点跑完后挂起 */
+  pause(): void;
+  /** 继续执行 */
+  resume(): void;
+  /** 立即中断：取消 + 杀掉当前 CLI，任务标记失败 */
+  stop(): void;
   wait(): Promise<OrchestrateResult>;
 }
 
@@ -255,11 +263,23 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
   const maxRetries = Math.max(0, deps.maxRetries ?? 2);
   const taskKey = `team:${input.teamTaskId}`;
   let cancelled = false;
+  let paused = false;
+  let pauseWaiters: Array<() => void> = [];
   let finished = false;
   const steps: RunnerStep[] = [];
   const finalOutputs: HermesOutput[] = [];
   const decisionWaiters = new Map<number, (d: { verdict: "pass" } | { verdict: "rework"; reason: string }) => void>();
   const resultPromise = run();
+
+  function setPaused(v: boolean) {
+    paused = v;
+    if (!v) { const ws = pauseWaiters; pauseWaiters = []; for (const w of ws) w(); }
+  }
+  async function pausePoint() {
+    while (paused) {
+      await new Promise<void>((resolve) => pauseWaiters.push(resolve));
+    }
+  }
 
   async function run(): Promise<OrchestrateResult> {
     const start = deps.now();
@@ -277,6 +297,7 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
       return failed;
     };
     try {
+      await pausePoint();
       // 1) 规划
       await deps.patchTask(input.teamId, input.teamTaskId, { status: "in_progress" });
       const planResp = await deps.runPrompt(
@@ -299,6 +320,7 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
         let decided = false;
         while (!decided) {
           if (cancelled) return await failTask("任务已取消", "用户取消");
+          await pausePoint();
           step.status = "running";
           await sync();
           const execResp = await deps.runPrompt(
@@ -440,6 +462,9 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
       if (resolve) { decisionWaiters.delete(stepIndex); resolve({ verdict: "rework", reason }); }
     },
     cancel() { cancelled = true; },
+    pause() { setPaused(true); },
+    resume() { setPaused(false); },
+    stop() { setPaused(false); cancelled = true; deps.abortCurrent?.(); },
     wait: () => resultPromise,
   };
 }

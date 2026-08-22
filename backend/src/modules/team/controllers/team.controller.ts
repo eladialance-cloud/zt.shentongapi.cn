@@ -178,6 +178,7 @@ export class TeamController {
       assigneeMemberId?: number;
       priority?: string;
       dueDate?: Date;
+      executionRef?: string;
     },
   ) {
     return this.service.createTask(userId, Number(teamId), {
@@ -186,6 +187,7 @@ export class TeamController {
       assigneeMemberId: body.assigneeMemberId,
       priority: body.priority as any,
       dueDate: body.dueDate,
+      executionRef: body.executionRef,
     });
   }
 

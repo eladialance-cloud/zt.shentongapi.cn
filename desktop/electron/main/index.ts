@@ -1,4 +1,4 @@
-// Electron 主进程入口
+﻿// Electron 主进程入口
 
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import log from 'electron-log'
@@ -54,7 +54,7 @@ import type { ServiceName, SyncQueueItem, SyncQueueRow } from '../shared/types'
 import type { LocalBrief } from '../shared/types'
 import { createStepRunner, type OrchestrateDeps, type OrchestrateInput, type StepRunnerDeps, type StepRunnerHandle, type TeamMemberProfile, type TeamTaskStatus } from './hermes-orchestrator'
 import { buildMemberProfiles, type MemberRow } from './hermes-member-profile'
-import { listSkills, searchSkills, installSkill, updateSkills, uninstallSkill, checkSkills } from './hermes-skills'
+import { listSkills, searchSkills, installSkill, updateSkills, uninstallSkill, checkSkills, installSkillLocal } from './hermes-skills'
 import { getEvolution } from './hermes-evolution'
 import { handleMemoryOp } from './hermes-memory'
 
@@ -204,6 +204,9 @@ function collectStream(child: ReturnType<typeof spawn>, kind: 'out' | 'err'): Pr
 /** 运行中 runner 注册表：key = `team:${teamTaskId}`（submit 幂等、confirm/reject 定位用） */
 const stepRunners = new Map<string, StepRunnerHandle>()
 
+/** 每个任务当前正在跑的 Hermes CLI 终止函数（stop 立即中断用） */
+const stepAborts = new Map<string, () => void>()
+
 /** 每任务自动确认开关（可中途切换；缺省 = 人工确认） */
 const stepAutoConfirm = new Map<string, boolean>()
 
@@ -215,6 +218,13 @@ function buildStepRunnerDeps(token: string, taskKey: string): StepRunnerDeps {
     runPrompt: async (prompt, opts) => {
       try {
         const { child, stdout, stderr } = base.spawnCli(prompt, opts)
+        stepAborts.set(taskKey, () => {
+          try {
+            child.kill()
+          } catch {
+            /* ignore */
+          }
+        })
         const timeout = setTimeout(() => {
           try {
             child.kill()
@@ -224,6 +234,7 @@ function buildStepRunnerDeps(token: string, taskKey: string): StepRunnerDeps {
         }, 10 * 60 * 1000)
         const [out, err] = await Promise.all([stdout(), stderr()])
         clearTimeout(timeout)
+        stepAborts.delete(taskKey)
         // Hermes CLI 每次调用都会在 stderr 打印 session_id 横幅（答案在 stdout）；
         // 仅当 stdout 为空时才把 stderr 视为失败，避免横幅误判（阶段2回归修复）
         const stdoutText = (out || '').trim()
@@ -436,6 +447,15 @@ function registerIpcHandlers(): void {
   ipcMain.handle('hermes-skills:update', (_e, name?: string) => updateSkills(typeof name === 'string' && name ? name : undefined))
   ipcMain.handle('hermes-skills:uninstall', (_e, name: string) => uninstallSkill(typeof name === 'string' ? name : ''))
   ipcMain.handle('hermes-skills:check', () => checkSkills())
+  ipcMain.handle('hermes-skills:install-local', async () => {
+    const win = getMainWindow() ?? BrowserWindow.getFocusedWindow()
+    const res = await dialog.showOpenDialog(win ?? undefined as any, {
+      title: '选择包含 SKILL.md 的本地技能文件夹',
+      properties: ['openDirectory', 'createDirectory'],
+    })
+    if (res.canceled || !res.filePaths[0]) return { ok: false, error: '已取消选择' }
+    return installSkillLocal(res.filePaths[0])
+  })
   ipcMain.handle('hermes-evolution:get', () => getEvolution())
   // ===== Hermes 记忆本地读写桥（MEMORY.md/USER.md；add/replace/remove/list） =====
   ipcMain.handle('hermes-memory:list', (_e, target) => handleMemoryOp('list', target))
@@ -474,6 +494,55 @@ function registerIpcHandlers(): void {
     },
   )
 
+  ipcMain.handle(
+    'hermes-orchestrate:pause',
+    async (_event, payload: { teamTaskId: number }) => {
+      if (!payload?.teamTaskId) return { ok: false, error: '参数缺失' }
+      const handle = stepRunners.get('team:' + payload.teamTaskId)
+      if (!handle) return { ok: false, error: '任务未在运行' }
+      handle.pause()
+      return { ok: true }
+    },
+  )
+
+  ipcMain.handle(
+    'hermes-orchestrate:resume',
+    async (_event, payload: { teamTaskId: number }) => {
+      if (!payload?.teamTaskId) return { ok: false, error: '参数缺失' }
+      const handle = stepRunners.get('team:' + payload.teamTaskId)
+      if (!handle) return { ok: false, error: '任务未在运行' }
+      handle.resume()
+      return { ok: true }
+    },
+  )
+
+  ipcMain.handle(
+    'hermes-orchestrate:stop',
+    async (_event, payload: { teamTaskId: number }) => {
+      if (!payload?.teamTaskId) return { ok: false, error: '参数缺失' }
+      const handle = stepRunners.get('team:' + payload.teamTaskId)
+      if (!handle) return { ok: false, error: '任务未在运行' }
+      handle.stop()
+      return { ok: true }
+    },
+  )
+
+  ipcMain.handle(
+    'hermes-orchestrate:delete',
+    async (_event, payload: { token: string; teamId: number; teamTaskId: number }) => {
+      if (!payload?.token || !payload.teamId || !payload.teamTaskId) return { ok: false, error: '参数缺失' }
+      const taskKey = 'team:' + payload.teamTaskId
+      const handle = stepRunners.get(taskKey)
+      if (handle) handle.stop() // 删除前先停止运行
+      const res = await fetch(`${ST_API_BASE}/teams/${payload.teamId}/tasks/${payload.teamTaskId}`, {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer ' + payload.token },
+        signal: AbortSignal.timeout(15000),
+      })
+      if (!res.ok) return { ok: false, error: '删除失败: HTTP ' + res.status }
+      return { ok: true }
+    },
+  )
   ipcMain.handle(
     'hermes-orchestrate:confirm-step',
     async (_event, payload: { token: string; teamTaskId: number; stepIndex: number }) => {

@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button, Modal, Tooltip, message } from 'antd'
+import { Button, Modal, Select, Tooltip, message } from 'antd'
 import {
   HistoryOutlined,
   RobotOutlined,
@@ -29,7 +29,11 @@ import type { MediaJob } from '@/api/media-generation-api'
 import * as chatApi from '@/api/chat-api'
 import { createBriefWithOfflineFallback } from '@/api/brief-offline'
 import { confirmBrief, getBrief } from '@/api/brief-api'
+import * as teamApi from '@/api/team-api'
+import type { Team } from '@/types/team'
 import type { BriefItem } from '@/api/brief-api'
+import ScheduleModal from './ScheduleModal'
+import { detectScheduleIntent, type ScheduleIntent } from './schedule-intent'
 import { useAuthStore } from '@/store'
 import type { OpenClawChatMessage } from '@shared/types'
 import {
@@ -96,6 +100,12 @@ export default function Chat() {
   const [historyPrefillTitle, setHistoryPrefillTitle] = useState<string | null>(null)
   const [wizardSeq, setWizardSeq] = useState(0)
   const [briefPublishing, setBriefPublishing] = useState(false)
+  /** 发布简报前选择执行团队 */
+  const [teamPick, setTeamPick] = useState<{ briefId: number; title: string } | null>(null)
+  const [teamPickValue, setTeamPickValue] = useState<number | undefined>(undefined)
+  const [teamOptions, setTeamOptions] = useState<Team[]>([])
+  /** 对话中识别到的定时任务意图 */
+  const [schedulePick, setSchedulePick] = useState<ScheduleIntent | null>(null)
 
   // ===== 对话设置抽屉 / 历史简报 Modal =====
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -450,6 +460,10 @@ export default function Chat() {
         knowledgeBaseId: knowledgeBaseIdRef.current,
         modelId: modelId || undefined,
       })
+
+      // 自由对话：识别定时任务意图 → 弹窗确认创建（不阻断回复流）
+      const intent = detectScheduleIntent(content)
+      if (intent) setSchedulePick(intent)
     },
     [activeSession, messages, modelId],
   )
@@ -583,6 +597,54 @@ export default function Chat() {
     setWizardSeq((n) => n + 1)
   }
 
+  /** 确认简报 + 轮询拆解结果 + 成功弹窗（直接确认与选团队两条路径共用） */
+  const confirmAndFinish = useCallback(
+    async (briefId: number, title: string, teamId?: number) => {
+      let confirmed = false
+      try {
+        await confirmBrief(briefId, teamId != null ? { teamId } : {})
+        confirmed = true
+      } catch (err) {
+        console.error('[Chat] confirm brief failed:', err)
+      }
+      if (confirmed) {
+        // 拆解为后台异步派发：轮询直到 done/failed，避免跳转任务中心后无任务可开始
+        const latest = await waitDispatchResult(briefId)
+        if (!latest) {
+          message.info('简报已发布，AI 拆解结果暂时无法获取，可稍后到任务中心查看', 4)
+        } else if (latest.dispatchStatus === 'done') {
+          Modal.confirm({
+            title: '✅ 简报已发布',
+            content: '「' + title + '」已创建并确认，AI 已拆解任务，可在任务中心开始执行。',
+            okText: '去任务中心',
+            cancelText: '继续对话',
+            onOk: () => navigate('/task-center'),
+          })
+        } else if (latest.dispatchStatus === 'failed') {
+          message.warning('简报已发布，但 AI 拆解失败，请到「需求单详情」查看并手动派活', 6)
+        } else {
+          message.info('简报已发布，AI 拆解仍在进行中，可稍后到任务中心查看', 4)
+        }
+      } else {
+        message.warning('简报已创建，但确认失败，请稍后在任务中心重试')
+      }
+    },
+    [navigate],
+  )
+
+  /** 团队选择确认：携带所选 teamId 确认派发 */
+  const handleTeamPickOk = async () => {
+    if (!teamPick) return
+    const { briefId, title } = teamPick
+    setTeamPick(null)
+    setBriefPublishing(true)
+    try {
+      await confirmAndFinish(briefId, title, teamPickValue)
+    } finally {
+      setBriefPublishing(false)
+    }
+  }
+
   /** 发布简报：云端创建 + 确认；失败走三期本地兜底（本地保存 + 离线队列）；停留对话页 */
   const handlePublishBrief = useCallback(
     async (answers: DemandAnswers) => {
@@ -602,35 +664,20 @@ export default function Chat() {
           message.success('网络不可用，已保存到本地，联网后自动同步', 4)
           return
         }
-        // 云端创建成功 → 确认简报；确认失败不弹成功文案（提示稍后在任务中心重试）
-        let confirmed = false
+        // 有团队 → 先选执行团队再确认派发；无团队 → 直接确认
+        let teams: Team[] = []
         try {
-          await confirmBrief(created.brief.id)
-          confirmed = true
-        } catch (err) {
-          console.error('[Chat] confirm brief failed:', err)
+          teams = await teamApi.listTeams()
+        } catch {
+          teams = []
         }
-        if (confirmed) {
-          // 拆解为后台异步派发：轮询直到 done/failed，避免跳转任务中心后无任务可开始
-          const latest = await waitDispatchResult(created.brief.id)
-          if (!latest) {
-            message.info('简报已发布，AI 拆解结果暂时无法获取，可稍后到任务中心查看', 4)
-          } else if (latest.dispatchStatus === 'done') {
-            Modal.confirm({
-              title: '✅ 简报已发布',
-              content: '「' + payload.title + '」已创建并确认，AI 已拆解任务，可在任务中心开始执行。',
-              okText: '去任务中心',
-              cancelText: '继续对话',
-              onOk: () => navigate('/task-center'),
-            })
-          } else if (latest.dispatchStatus === 'failed') {
-            message.warning('简报已发布，但 AI 拆解失败，请到「需求单详情」查看并手动派活', 6)
-          } else {
-            message.info('简报已发布，AI 拆解仍在进行中，可稍后到任务中心查看', 4)
-          }
-        } else {
-          message.warning('简报已创建，但确认失败，请稍后在任务中心重试')
+        if (teams.length > 0) {
+          setTeamOptions(teams)
+          setTeamPickValue(teams[0].id)
+          setTeamPick({ briefId: created.brief.id, title: payload.title })
+          return
         }
+        await confirmAndFinish(created.brief.id, payload.title)
       } catch (err) {
         console.error('[Chat] publish brief failed:', err)
         message.error('发布简报失败：' + (err as Error).message)
@@ -638,7 +685,7 @@ export default function Chat() {
         setBriefPublishing(false)
       }
     },
-    [userId, demandMode, activeSession, navigate],
+    [userId, demandMode, activeSession, navigate, confirmAndFinish],
   )
 
   return (
@@ -746,6 +793,37 @@ export default function Chat() {
           defaultType={generationType}
           onComplete={handleGenerationComplete}
         />
+
+        {/* 定时任务创建（对话识别意图后弹出） */}
+        <ScheduleModal
+          open={!!schedulePick}
+          prefilled={schedulePick ?? { repeatType: 'once' }}
+          onClose={() => setSchedulePick(null)}
+          onCreated={(title) => console.log('[Chat] 定时任务已创建:', title)}
+        />
+
+        {/* 发布简报前选择执行团队 */}
+        <Modal
+          title="选择执行团队"
+          open={!!teamPick}
+          okText="确认并派发"
+          cancelText="取消"
+          confirmLoading={briefPublishing}
+          onOk={() => void handleTeamPickOk()}
+          onCancel={() => setTeamPick(null)}
+          width={420}
+        >
+          <div style={{ marginBottom: 12, color: 'var(--color-text-secondary)', fontSize: 13 }}>
+            「{teamPick?.title}」将由所选团队执行；Hermes 会按团队成员分工拆解任务。
+          </div>
+          <Select
+            style={{ width: '100%' }}
+            value={teamPickValue}
+            placeholder="选择执行团队"
+            options={teamOptions.map((t) => ({ value: t.id, label: t.name }))}
+            onChange={(v) => setTeamPickValue(v)}
+          />
+        </Modal>
 
         {/* ④ 对话设置抽屉（收纳模型选择 / Agent / 知识库 / 素材生成；不含积分余额） */}
         <ConversationSettings

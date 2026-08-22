@@ -168,11 +168,21 @@ export class BriefService {
   async confirm(
     userId: number,
     id: number,
-    _dto?: ConfirmBriefDto,
+    dto?: ConfirmBriefDto,
   ): Promise<BriefEntity> {
     const brief = await this.briefRepo.findOne({ where: { id, userId } });
     if (!brief) {
       throw new NotFoundException(`需求单 ${id} 不存在`);
+    }
+    // 指定执行团队校验：必须是当前用户创建的团队
+    if (dto?.teamId != null) {
+      const targetTeam = await this.teamRepo.findOne({ where: { id: dto.teamId } });
+      if (!targetTeam) {
+        throw new BadRequestException(`团队 ${dto.teamId} 不存在`);
+      }
+      if (Number(targetTeam.creatorId) !== userId) {
+        throw new BadRequestException('只能选择自己创建的团队执行');
+      }
     }
     if (brief.dispatchStatus !== 'none') {
       return brief;
@@ -186,7 +196,7 @@ export class BriefService {
     // 后台派发：不再 await LLM 结果（避免最长 30s 阻塞与 axios 超时竞态）
     const memberRoles = await this.loadMemberRoles(userId);
     void this.dispatchService
-      .dispatch(brief, memberRoles)
+      .dispatch(brief, memberRoles, dto?.teamId)
       .then((result) => {
         if (result.ok) {
           brief.dispatchStatus = 'done';

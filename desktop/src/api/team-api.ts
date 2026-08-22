@@ -95,6 +95,14 @@ export async function listTasks(
   );
 }
 
+/** 创建任务 POST /teams/:teamId/tasks */
+export async function createTask(
+  teamId: number,
+  dto: { title: string; description?: string; executionRef?: string },
+): Promise<TeamTask> {
+  return httpClient.post<TeamTask>(`/teams/${teamId}/tasks`, dto);
+}
+
 /** 更新任务 PATCH /teams/:teamId/tasks/:taskId */
 export async function updateTask(
   teamId: number,

@@ -97,6 +97,7 @@ export interface UnifiedTaskItem {
   createdAt: string
   finishedAt?: string | null
   briefId?: number | null
+  executionRef?: string | null
 }
 
 /** 统一任务列表 GET /tasks/unified?status=&source=&page=&pageSize= */

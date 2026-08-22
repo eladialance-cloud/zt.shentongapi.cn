@@ -626,3 +626,137 @@
   .workspace { grid-template-columns: 1fr; }
   .taskListPanel { max-height: 320px; }
 }
+
+/* ===== 发布批次分组（B 方案） ===== */
+.taskGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.taskGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--color-border-secondary);
+  border-radius: 10px;
+  background: var(--color-bg-container);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--duration-base) var(--ease-out);
+}
+.taskGroupHeader:hover { background: var(--color-bg-hover); }
+.taskGroupArrow {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  display: inline-flex;
+  align-items: center;
+}
+.taskGroupTitle {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.taskGroupMeta {
+  font-size: 12px;
+  color: var(--color-brand);
+  background: var(--color-brand-bg);
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.taskGroupTime {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+.taskGroupTasks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 14px;
+  border-left: 2px solid var(--color-border-secondary);
+  margin-left: 8px;
+}
+
+.pausedBadge {
+  font-size: 12px;
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+  border: 1px solid rgba(250, 173, 20, 0.3);
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+/* ===== 定时任务面板 ===== */
+.scheduledPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 12px;
+  background: var(--color-bg-container);
+}
+.scheduledPanelHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.scheduledItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 10px;
+  background: var(--color-bg-elevated);
+}
+.scheduledItemMain {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.scheduledItemTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scheduledItemMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.scheduledItemTime {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+.scheduledLastRun {
+  margin-left: 10px;
+  color: var(--color-text-tertiary);
+}
+.scheduledItemOps {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}

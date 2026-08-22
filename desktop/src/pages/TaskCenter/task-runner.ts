@@ -107,3 +107,31 @@ export async function setAutoConfirm(
 export function countRunning(tasks: UnifiedTask[]): number {
   return tasks.filter((t) => isTeamTask(t) && t.status === "running").length;
 }
+
+/** 暂停：当前节点跑完后挂起 */
+export async function pauseTask(teamTaskId: number): Promise<{ ok: boolean; error?: string }> {
+  const api = window.electronAPI?.hermesOrchestrate;
+  if (!api) return { ok: false, error: "当前版本不支持逐步编排（请升级客户端）" };
+  return api.pause({ teamTaskId });
+}
+
+/** 继续执行 */
+export async function resumeTask(teamTaskId: number): Promise<{ ok: boolean; error?: string }> {
+  const api = window.electronAPI?.hermesOrchestrate;
+  if (!api) return { ok: false, error: "当前版本不支持逐步编排（请升级客户端）" };
+  return api.resume({ teamTaskId });
+}
+
+/** 立即中断：杀掉当前 Hermes CLI，任务标记失败 */
+export async function stopTask(teamTaskId: number): Promise<{ ok: boolean; error?: string }> {
+  const api = window.electronAPI?.hermesOrchestrate;
+  if (!api) return { ok: false, error: "当前版本不支持逐步编排（请升级客户端）" };
+  return api.stop({ teamTaskId });
+}
+
+/** 删除团队任务（先停止再调后端 DELETE） */
+export async function deleteTeamTask(payload: { token: string; teamId: number; teamTaskId: number }): Promise<{ ok: boolean; error?: string }> {
+  const api = window.electronAPI?.hermesOrchestrate;
+  if (!api) return { ok: false, error: "当前版本不支持逐步编排（请升级客户端）" };
+  return api.deleteTask(payload);
+}

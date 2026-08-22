@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 统一任务中心 —— 三源合并纯函数映射（与前端 desktop/src/pages/TaskCenter/unified.ts 保持一致）
  */
 
@@ -20,6 +20,8 @@ export interface UnifiedTaskItem {
   createdAt: string;
   finishedAt?: string | null;
   briefId?: number | null;
+  /** 发布批次标识（同一次需求拆解/定时任务触发共享，用于分组） */
+  executionRef?: string | null;
 }
 
 /** 团队任务状态 -> 统一状态 */

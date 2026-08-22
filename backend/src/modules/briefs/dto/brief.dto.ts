@@ -74,6 +74,11 @@ export class ConfirmBriefDto {
   @IsOptional()
   @IsBoolean()
   manualDispatch?: boolean;
+
+  @ApiPropertyOptional({ description: '指定执行团队 ID（可选；缺省用首个命中角色的成员归属团队）', example: 1 })
+  @IsOptional()
+  @IsInt()
+  teamId?: number;
 }
 
 /**

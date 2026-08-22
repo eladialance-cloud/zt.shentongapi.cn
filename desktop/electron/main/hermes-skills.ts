@@ -1,7 +1,7 @@
-/** 本地 Hermes 技能管理桥：封装 hermes skills CLI（list/search/install/update/uninstall/check） */
+﻿/** 本地 Hermes 技能管理桥：封装 hermes skills CLI（list/search/install/update/uninstall/check） */
 import { spawn } from "node:child_process";
-import { readdirSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, existsSync, mkdirSync, cpSync } from "node:fs";
+import { join, basename } from "node:path";
 import { app } from "electron";
 import { getRuntimeRoot } from "./runtime-config";
 
@@ -195,4 +195,35 @@ export async function checkSkills(): Promise<HermesSkillsOpResult> {
     return { ok: false, error: run.stderr.trim() || "hermes skills check 失败", stdout: run.stdout };
   }
   return { ok: true, stdout: run.stdout };
+}
+
+
+
+/** 本地技能目录（$HERMES_HOME/skills，与 runHermes 的 HERMES_HOME 保持一致） */
+export function getLocalSkillsDir(): string {
+  return join(app.getPath("userData"), "hermes-home", "skills");
+}
+
+/** 从本地文件夹安装技能：文件夹内需含 SKILL.md，复制到 $HERMES_HOME/skills/<name> */
+export async function installSkillLocal(dirPath: string): Promise<HermesSkillsOpResult> {
+  const dir = (dirPath || "").trim();
+  if (!dir) return { ok: false, error: "技能文件夹路径为空" };
+  if (!existsSync(dir)) return { ok: false, error: "所选文件夹不存在" };
+  const hasSkillMd = readdirSync(dir).some((f) => f.toLowerCase() === "skill.md");
+  if (!hasSkillMd) {
+    return { ok: false, error: "所选文件夹内未找到 SKILL.md，不是有效的技能目录" };
+  }
+  const name = basename(dir).replace(/[^\w\-. ]/g, "_").trim();
+  if (!name) return { ok: false, error: "无法从文件夹名解析技能名" };
+  const targetDir = join(getLocalSkillsDir(), name);
+  if (existsSync(targetDir)) {
+    return { ok: false, error: "本地已存在同名技能「" + name + "」，请先卸载或换文件夹名" };
+  }
+  try {
+    mkdirSync(getLocalSkillsDir(), { recursive: true });
+    cpSync(dir, targetDir, { recursive: true });
+  } catch (err) {
+    return { ok: false, error: "复制技能失败: " + (err instanceof Error ? err.message : String(err)) };
+  }
+  return { ok: true, stdout: "已安装本地技能: " + name };
 }

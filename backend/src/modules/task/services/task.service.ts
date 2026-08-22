@@ -188,6 +188,7 @@ export class TaskService {
           createdAt: t.createdAt.toISOString(),
           finishedAt: t.completedAt ? t.completedAt.toISOString() : null,
           briefId: t.briefId ?? null,
+          executionRef: t.executionRef ?? null,
         });
       }
     }

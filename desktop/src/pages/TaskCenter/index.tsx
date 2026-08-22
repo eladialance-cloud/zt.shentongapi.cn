@@ -6,7 +6,9 @@ import { Button, Empty, Input, Select, Spin, Switch } from "antd";
 import {
   ApartmentOutlined,
   ClockCircleOutlined,
+  DownOutlined,
   ReloadOutlined,
+  RightOutlined,
   RobotOutlined,
   SearchOutlined,
   ThunderboltFilled,
@@ -21,13 +23,15 @@ import {
   mapHermesStatus,
   mapTaskStatus,
   mapTeamStatus,
+  groupTasksByBatch,
   sortByCreatedAtDesc,
   SOURCE_TAG_META,
   STATUS_TAG_META,
 } from "./unified";
-import type { UnifiedTask, UnifiedTaskSource, UnifiedTaskStatus } from "./unified";
+import type { TaskGroup, UnifiedTask, UnifiedTaskSource, UnifiedTaskStatus } from "./unified";
 import { countRunning, nativeTaskId, shouldAutoStart, submitStepRunner } from "./task-runner";
 import PipelineView from "./PipelineView";
+import ScheduledPanel from "./ScheduledPanel";
 import styles from "./styles.module.css";
 
 /** 时间格式化（与 Channels 页一致） */
@@ -175,6 +179,7 @@ async function loadAll(): Promise<{
       createdAt: t.createdAt,
       finishedAt: t.completedAt ?? null,
       briefId: t.briefId ?? undefined,
+      executionRef: t.executionRef ?? undefined,
       result: t.result,
     });
   });
@@ -204,6 +209,7 @@ async function loadUnifiedSource(
       createdAt: t.createdAt,
       finishedAt: t.finishedAt ?? null,
       briefId: t.briefId ?? teamTask?.briefId ?? undefined,
+      executionRef: teamTask?.executionRef ?? t.executionRef ?? undefined,
       result: teamTask?.result,
     };
   });
@@ -225,6 +231,25 @@ export default function TaskCenter() {
   });
   /** 已派发自动开始的 key（防轮询重复提交；任务离开待执行状态后自动清出） */
   const dispatchedRef = useRef<Set<string>>(new Set());
+  /** 需求标题缓存（按批次分组组头展示） */
+  const [briefTitles, setBriefTitles] = useState<Record<number, string>>({});
+  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set());
+  const toggleGroup = (key: string) => {
+    setCollapsedKeys((prev) => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next; });
+  };
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const res = await (await import("@/api/brief-api")).listBriefs({ pageSize: 100 });
+        if (!alive) return;
+        const m: Record<number, string> = {};
+        for (const b of res.list) m[b.id] = b.title;
+        setBriefTitles(m);
+      } catch { /* 忽略，分组回退“需求单 #id” */ }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const loadData = useCallback(
     async (quiet = false) => {
@@ -314,6 +339,12 @@ export default function TaskCenter() {
     );
   }, [tasks, statusFilter, sourceFilter, keyword]);
 
+  /** 按发布批次分组（B 方案：同一次需求拆解的任务收进一组） */
+  const groups = useMemo(
+    () => groupTasksByBatch(filtered, (id) => briefTitles[id]),
+    [filtered, briefTitles]
+  );
+
   const pendingReviewCount = useMemo(
     () =>
       tasks.filter((t) => {
@@ -395,6 +426,9 @@ export default function TaskCenter() {
         <span className={styles.filterCount}>共 {filtered.length} 条</span>
       </div>
 
+
+      <ScheduledPanel />
+
       {/* ===== 双栏主体 ===== */}
       <div className={styles.workspace}>
         {/* 左：任务卡片列表 */}
@@ -404,49 +438,70 @@ export default function TaskCenter() {
               <Empty description="暂无任务" />
             ) : (
               <div className={styles.taskList}>
-                {filtered.map((t) => {
-                  const meta = STATUS_TAG_META[t.status];
-                  const srcMeta = SOURCE_TAG_META[t.source];
-                  const isSelected = selected?.key === t.key;
-                  const isRunning = t.status === "running";
-                  const hasReview =
-                    t.source === "team" &&
-                    (t.result as { steps?: Array<Record<string, unknown>> } | undefined)?.steps?.some(
-                      (s) => s.rawStatus === "pending_review"
-                    );
-                  const srcColor =
-                    srcMeta.color === "blue" ? "var(--color-brand)" : srcMeta.color === "purple" ? "var(--color-purple)" : "var(--color-accent)";
+                {groups.map((g) => {
+                  const gCollapsed = collapsedKeys.has(g.key);
                   return (
-                    <div
-                      key={t.key}
-                      className={[
-                        styles.taskCard,
-                        isSelected ? styles.taskCardSelected : "",
-                        isRunning ? styles.taskCardRunning : "",
-                        hasReview ? styles.taskCardReview : "",
-                      ].filter(Boolean).join(" ")}
-                      onClick={() => setSelected(t)}
-                    >
-                      <div className={styles.taskCardTop}>
-                        <span className={styles.taskCardTitle}>{t.title}</span>
-                        {hasReview && (
-                          <span className={styles.reviewDot} title="有待确认节点">
-                            <RobotOutlined />
+                    <div key={g.key} className={styles.taskGroup}>
+                      <div className={styles.taskGroupHeader} onClick={() => toggleGroup(g.key)}>
+                        <span className={styles.taskGroupArrow}>{gCollapsed ? <RightOutlined /> : <DownOutlined />}</span>
+                        <span className={styles.taskGroupTitle}>{g.title}</span>
+                        {g.tasks.length > 1 && (
+                          <span className={styles.taskGroupMeta}>
+                            {g.tasks.filter((x) => x.status === "done").length}/{g.tasks.length} 完成
                           </span>
                         )}
+                        <span className={styles.taskGroupTime}>{formatRelative(g.createdAt)}</span>
                       </div>
-                      <div className={styles.taskCardMeta}>
-                        <span className={styles[PILL_CLS[t.status]]}>{meta.label}</span>
-                        <span className={styles.srcTag} style={{ color: srcColor }}>{srcMeta.label}</span>
-                        {t.assignee && (
-                          <span className={styles.cardAssignee}>
-                            <UserOutlined /> {t.assignee}
-                          </span>
-                        )}
-                      </div>
-                      <div className={styles.taskCardTime}>
-                        <ClockCircleOutlined /> {formatRelative(t.createdAt)}
-                      </div>
+                      {!gCollapsed && (
+                        <div className={styles.taskGroupTasks}>
+                          {filtered.map((t) => {
+                            const meta = STATUS_TAG_META[t.status];
+                            const srcMeta = SOURCE_TAG_META[t.source];
+                            const isSelected = selected?.key === t.key;
+                            const isRunning = t.status === "running";
+                            const hasReview =
+                              t.source === "team" &&
+                              (t.result as { steps?: Array<Record<string, unknown>> } | undefined)?.steps?.some(
+                                (s) => s.rawStatus === "pending_review"
+                              );
+                            const srcColor =
+                              srcMeta.color === "blue" ? "var(--color-brand)" : srcMeta.color === "purple" ? "var(--color-purple)" : "var(--color-accent)";
+                            return (
+                              <div
+                                key={t.key}
+                                className={[
+                                  styles.taskCard,
+                                  isSelected ? styles.taskCardSelected : "",
+                                  isRunning ? styles.taskCardRunning : "",
+                                  hasReview ? styles.taskCardReview : "",
+                                ].filter(Boolean).join(" ")}
+                                onClick={() => setSelected(t)}
+                              >
+                                <div className={styles.taskCardTop}>
+                                  <span className={styles.taskCardTitle}>{t.title}</span>
+                                  {hasReview && (
+                                    <span className={styles.reviewDot} title="有待确认节点">
+                                      <RobotOutlined />
+                                    </span>
+                                  )}
+                                </div>
+                                <div className={styles.taskCardMeta}>
+                                  <span className={styles[PILL_CLS[t.status]]}>{meta.label}</span>
+                                  <span className={styles.srcTag} style={{ color: srcColor }}>{srcMeta.label}</span>
+                                  {t.assignee && (
+                                    <span className={styles.cardAssignee}>
+                                      <UserOutlined /> {t.assignee}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className={styles.taskCardTime}>
+                                  <ClockCircleOutlined /> {formatRelative(t.createdAt)}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

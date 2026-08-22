@@ -1,4 +1,4 @@
-// 本地 Hermes 技能中心（方案 B / P2.5）
+﻿// 本地 Hermes 技能中心（方案 B / P2.5）
 // 封装主进程 hermes-skills IPC（hermes skills list/search/install/update/uninstall/check）
 // 与云端「技能包」区分：本 Tab 管理 $HERMES_HOME/skills 的本地技能
 
@@ -125,6 +125,14 @@ export default function HermesSkills({ embedded = false }: { embedded?: boolean 
     );
   };
 
+  const handleInstallLocal = () => {
+    void runOp(
+      "install-local",
+      () => window.electronAPI?.hermesSkills.installLocal(),
+      loadList,
+    );
+  };
+
   const handleUninstall = (name: string) => {
     void runOp("uninstall:" + name,
       () => window.electronAPI?.hermesSkills.uninstall(name),
@@ -187,7 +195,15 @@ export default function HermesSkills({ embedded = false }: { embedded?: boolean 
           </Space>
         }
         extra={
-          <Space>
+          <Space wrap>
+            <Button
+              size="small"
+              icon={<DownloadOutlined />}
+              loading={!!opState["install-local"]}
+              onClick={() => void handleInstallLocal()}
+            >
+              从本地文件夹安装
+            </Button>
             <Button size="small" icon={<SyncOutlined />} onClick={() => void handleUpdate()}>
               更新全部
             </Button>

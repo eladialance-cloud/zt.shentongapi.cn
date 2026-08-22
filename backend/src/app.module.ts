@@ -1,4 +1,4 @@
-import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+﻿import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -17,6 +17,7 @@ import { UserModule } from './modules/user/user.module';
 import { AgentModule } from './modules/agent/agent.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { SedimentationModule } from './modules/sedimentation/sedimentation.module';
+import { ScheduledTasksModule } from './modules/scheduled-tasks/scheduled-tasks.module';
 import { KnowledgeBaseModule } from './modules/knowledge/knowledge-base.module';
 import { KnowledgeEngineModule } from './modules/knowledge-engine/knowledge-engine.module';
 import { AdminKnowledgeModule } from './modules/admin-knowledge/admin-knowledge.module';
@@ -125,6 +126,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     HermesModule,
     RuntimeModule,
     TaskModule,
+    ScheduledTasksModule,
     BriefsModule,
     CodexModule,
     CommunityModule,

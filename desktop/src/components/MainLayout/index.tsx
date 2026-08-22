@@ -5,6 +5,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { httpClient } from "@/api/http-client";
 import { useSystemStore } from "@/store/system";
+import { useAuthStore } from "@/store";
+import { startScheduledRunner, stopScheduledRunner } from "@/scheduler/scheduled-runner";
 import { Outlet } from "react-router-dom";
 import TopBar from "./TopBar";
 import Sidebar from "@/components/Sidebar";
@@ -56,6 +58,12 @@ export default function MainLayout() {
     };
   }, [setBackendOnline, setChecking]);
 
+
+  // 定时任务调度器：软件开着才执行（登录后启动，30s 轮询到期任务 → Hermes 编排）
+  useEffect(() => {
+    startScheduledRunner(() => useAuthStore.getState().accessToken);
+    return () => stopScheduledRunner();
+  }, []);
   return (
     <div className={styles.layout}>
       <TopBar />

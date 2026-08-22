@@ -1,4 +1,4 @@
-// 预加载脚本 - 通过 contextBridge 暴露安全 API 给渲染进程
+﻿// 预加载脚本 - 通过 contextBridge 暴露安全 API 给渲染进程
 // 启用 contextIsolation: true，nodeIntegration: false
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
@@ -106,6 +106,7 @@ const electronAPI: ElectronAPI = {
     update: (name) => ipcRenderer.invoke('hermes-skills:update', name),
     uninstall: (name) => ipcRenderer.invoke('hermes-skills:uninstall', name),
     check: () => ipcRenderer.invoke('hermes-skills:check'),
+    installLocal: () => ipcRenderer.invoke('hermes-skills:install-local'),
   },
   hermesEvolution: {
     get: () => ipcRenderer.invoke('hermes-evolution:get'),
@@ -131,6 +132,14 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('hermes-orchestrate:load-members', payload) as Promise<{ ok: boolean; members?: TeamMemberProfileItem[]; error?: string }>,
     setAutoConfirm: (payload: { token: string; teamTaskId: number; autoConfirm: boolean }) =>
       ipcRenderer.invoke('hermes-orchestrate:set-auto-confirm', payload) as Promise<OrchestrateSubmitResult>,
+    pause: (payload: { teamTaskId: number }) =>
+      ipcRenderer.invoke('hermes-orchestrate:pause', payload) as Promise<OrchestrateSubmitResult>,
+    resume: (payload: { teamTaskId: number }) =>
+      ipcRenderer.invoke('hermes-orchestrate:resume', payload) as Promise<OrchestrateSubmitResult>,
+    stop: (payload: { teamTaskId: number }) =>
+      ipcRenderer.invoke('hermes-orchestrate:stop', payload) as Promise<OrchestrateSubmitResult>,
+    deleteTask: (payload: { token: string; teamId: number; teamTaskId: number }) =>
+      ipcRenderer.invoke('hermes-orchestrate:delete', payload) as Promise<OrchestrateSubmitResult>,
   },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),

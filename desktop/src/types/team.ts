@@ -123,6 +123,8 @@ export interface UpdateTeamTaskDto {
   assigneeMemberId?: number
   priority?: TeamTaskPriority
   dueDate?: string
+  /** 迁移到目标团队（执行前换团队） */
+  teamId?: number
 }
 
 /** 可选 Agent（用于创建团队时选择成员） */

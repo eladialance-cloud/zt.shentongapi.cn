@@ -3,16 +3,21 @@
 // 产出内容（文字/图片/视频）内联预览；通过/打回走逐步编排 IPC；自动确认（自评）开关可中途切换
 // 我的任务源：保留旧版 outputs 拆解 JSON 流水线与老板动作（选题/终审），不回归
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Button, Empty, Input, message, Modal, Select, Spin, Switch, Tooltip } from "antd";
+import { Alert, Button, Empty, Input, message, Modal, Select, Space, Spin, Switch, Tooltip } from "antd";
 import {
   CheckCircleFilled,
+  DeleteOutlined,
   CloseCircleFilled,
   LoadingOutlined,
+  PauseCircleOutlined,
   PlayCircleFilled,
   RedoOutlined,
   RobotOutlined,
+  StopOutlined,
   ThunderboltFilled,
 } from "@ant-design/icons";
+import * as teamApi from "@/api/team-api";
+import type { Team } from "@/types/team";
 import { useAuthStore } from "@/store/auth";
 import { httpClient } from "@/api/http-client";
 import { resolveMediaUrl } from "@/utils/media";
@@ -29,9 +34,13 @@ import {
 } from "./pipeline";
 import {
   confirmStep,
+  deleteTeamTask,
   nativeTaskId,
+  pauseTask,
   rejectStep,
+  resumeTask,
   setAutoConfirm,
+  stopTask,
   submitStepRunner,
 } from "./task-runner";
 import styles from "./styles.module.css";
@@ -99,6 +108,11 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
   const [outputs, setOutputs] = useState<TaskOutputItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  /** 暂停态（本地记忆；runner 在 main 进程，暂停仅运行期有效） */
+  const [paused, setPaused] = useState(false);
+  const [taskBusy, setTaskBusy] = useState(false);
+  /** 可选执行团队（换团队用） */
+  const [teams, setTeams] = useState<Team[]>([]);
   const [actingIndex, setActingIndex] = useState<number | null>(null);
   const [rejectIndex, setRejectIndex] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -140,6 +154,16 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
     void loadOutputs();
   }, [loadOutputs]);
 
+  /** 拉取可选团队（未开始任务可换执行团队） */
+  useEffect(() => {
+    let alive = true;
+    void teamApi
+      .listTeams()
+      .then((list) => { if (alive) setTeams(list); })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, []);
+
   /** 步骤：团队任务优先 result.steps（runner 逐步执行）；否则旧版推导/拆解 */
   const steps = useMemo(() => {
     if (isTeam) {
@@ -159,6 +183,75 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
     if (canRunner && task.status === "running") {
       void setAutoConfirm(token ?? "", taskId as number, v);
     }
+  };
+
+  /** 暂停：当前节点跑完后挂起（runner 在 main 进程） */
+  const handlePause = async () => {
+    if (!token || taskId == null) return;
+    setTaskBusy(true);
+    try {
+      const res = await pauseTask(taskId);
+      if (res.ok) { setPaused(true); message.success("已暂停，当前节点跑完后挂起"); }
+      else message.error(res.error || "暂停失败");
+    } finally { setTaskBusy(false); }
+  };
+
+  /** 继续执行 */
+  const handleResume = async () => {
+    if (!token || taskId == null) return;
+    setTaskBusy(true);
+    try {
+      const res = await resumeTask(taskId);
+      if (res.ok) { setPaused(false); message.success("已继续执行"); }
+      else message.error(res.error || "继续失败");
+    } finally { setTaskBusy(false); }
+  };
+
+  /** 立即中断：杀掉当前 Hermes CLI，任务标记失败 */
+  const handleStop = () => {
+    if (!token || taskId == null) return;
+    Modal.confirm({
+      title: "立即中断任务？",
+      content: "正在执行的子代理会被强制终止，任务将标记为失败，可稍后重新开始。",
+      okText: "中断",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: async () => {
+        const res = await stopTask(taskId as number);
+        if (res.ok) { message.success("已发送中断指令"); setPaused(false); onUpdated?.(); }
+        else message.error(res.error || "中断失败");
+      },
+    });
+  };
+
+  /** 删除任务（先停止运行再调后端 DELETE） */
+  const handleDelete = () => {
+    if (!token || !teamId || taskId == null) return;
+    Modal.confirm({
+      title: "删除任务？",
+      content: "删除后不可恢复（含执行记录与产出）。",
+      okText: "删除",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: async () => {
+        const res = await deleteTeamTask({ token, teamId, teamTaskId: taskId as number });
+        if (res.ok) { message.success("任务已删除"); setPaused(false); onUpdated?.(); }
+        else message.error(res.error || "删除失败");
+      },
+    });
+  };
+
+  /** 切换执行团队（仅未开始/失败任务；迁移后任务归入新团队） */
+  const handleChangeTeam = async (newTeamId: number) => {
+    if (!token || !teamId || taskId == null || newTeamId === teamId) return;
+    setTaskBusy(true);
+    try {
+      await teamApi.updateTask(teamId, taskId, { teamId: newTeamId });
+      message.success("已切换执行团队");
+      onUpdated?.();
+    } catch (err) {
+      message.error("切换团队失败：" + (err as Error).message);
+    } finally { setTaskBusy(false); }
   };
 
   /** 开始/重试：真正提交 Hermes 逐步编排（后台执行），不再只是改状态 */
@@ -300,6 +393,16 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
               </div>
             )}
             {canRunner && (task.status === "todo" || task.status === "failed" || brokenRunning) && (
+              <>
+              <Select
+                size="small"
+                style={{ width: 150 }}
+                placeholder="执行团队"
+                value={teamId}
+                options={teams.map((t) => ({ value: t.id, label: t.name }))}
+                disabled={!token || taskBusy}
+                onChange={handleChangeTeam}
+              />
               <Tooltip title={!token ? "未登录" : undefined}>
                 <Button
                   type="primary"
@@ -311,7 +414,22 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
                   {task.status === "failed" || brokenRunning ? "重新开始" : "开始任务"}
                 </Button>
               </Tooltip>
+              </>
             )}
+            {canRunner && task.status === "running" && (
+              <Space>
+                {paused ? (
+                  <Button icon={<PlayCircleFilled />} loading={taskBusy} disabled={!token} onClick={() => void handleResume()}>继续</Button>
+                ) : (
+                  <Button icon={<PauseCircleOutlined />} loading={taskBusy} disabled={!token} onClick={() => void handlePause()}>暂停</Button>
+                )}
+                <Button danger icon={<StopOutlined />} loading={taskBusy} disabled={!token} onClick={handleStop}>中断</Button>
+              </Space>
+            )}
+            {canRunner && task.status !== "running" && (
+              <Button danger ghost icon={<DeleteOutlined />} disabled={!token} onClick={handleDelete}>删除</Button>
+            )}
+            {paused && <span className={styles.pausedBadge}>已暂停</span>}
           </div>
         </div>
 
@@ -363,7 +481,7 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
                     {isActive && (
                       <div className={styles.runningHint}>
                         <span className={styles.runningDot} />
-                        Hermes 正在派子代理执行该节点，完成后会自动展示产出
+                        {paused ? "已暂停：当前节点完成后挂起，点击「继续」恢复执行" : "Hermes 正在派子代理执行该节点，完成后会自动展示产出"}
                       </div>
                     )}
 
