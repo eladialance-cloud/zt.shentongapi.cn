@@ -713,6 +713,9 @@ async function resolveDefaultBranch(owner: string, repo: string): Promise<string
 
 /** 生成按优先级排序的 GitHub 归档下载 URL（纯函数，便于单测）：
  *  探测到的默认分支 → main → master → HEAD（默认分支兜底，GitHub 自动解析） */
+/** 生成按优先级排序的 GitHub 下载 URL（纯函数，便于单测）：
+ *  codeload 直连优先（国内网络稳定，github.com 域名常被墙），按 探测到的默认分支 → main → master；
+ *  github.com archive 兜底：默认分支 → main → master → HEAD（GitHub 自动解析）*/
 export function buildGithubArchiveUrls(
   candidates: Array<{ owner: string; repo: string }>,
   defaultBranches?: Record<string, string>,
@@ -724,6 +727,9 @@ export function buildGithubArchiveUrls(
     if (!c || !c.owner || !c.repo) continue;
     const key = c.owner + '/' + c.repo;
     const branch = defaultBranches?.[key];
+    if (branch) push(`https://codeload.github.com/${c.owner}/${c.repo}/tar.gz/${branch}`);
+    push(`https://codeload.github.com/${c.owner}/${c.repo}/tar.gz/main`);
+    push(`https://codeload.github.com/${c.owner}/${c.repo}/tar.gz/master`);
     if (branch) push(`https://github.com/${c.owner}/${c.repo}/archive/refs/heads/${branch}.tar.gz`);
     push(`https://github.com/${c.owner}/${c.repo}/archive/refs/heads/main.tar.gz`);
     push(`https://github.com/${c.owner}/${c.repo}/archive/refs/heads/master.tar.gz`);

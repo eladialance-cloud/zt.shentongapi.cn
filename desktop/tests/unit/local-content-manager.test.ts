@@ -108,6 +108,8 @@ describe('local-content-manager', () => {
       { owner: 'openai', repo: 'skills' },
     ]);
     expect(urls).toEqual([
+      'https://codeload.github.com/openai/skills/tar.gz/main',
+      'https://codeload.github.com/openai/skills/tar.gz/master',
       'https://github.com/openai/skills/archive/refs/heads/main.tar.gz',
       'https://github.com/openai/skills/archive/refs/heads/master.tar.gz',
       'https://github.com/openai/skills/archive/HEAD.tar.gz',
@@ -119,8 +121,8 @@ describe('local-content-manager', () => {
       [{ owner: 'browseract-cli', repo: 'browseract' }],
       { 'browseract-cli/browseract': 'develop' },
     );
-    expect(urls[0]).toBe('https://github.com/browseract-cli/browseract/archive/refs/heads/develop.tar.gz');
-    expect(urls[1]).toBe('https://github.com/browseract-cli/browseract/archive/refs/heads/main.tar.gz');
+    expect(urls[0]).toBe('https://codeload.github.com/browseract-cli/browseract/tar.gz/develop');
+    expect(urls[1]).toBe('https://codeload.github.com/browseract-cli/browseract/tar.gz/main');
   })
 
   it('buildGithubArchiveUrls：跳过非法候选', () => {
