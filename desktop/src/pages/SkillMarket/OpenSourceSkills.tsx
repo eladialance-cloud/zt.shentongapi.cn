@@ -9,16 +9,19 @@ import {
   Empty,
   Input,
   Pagination,
+  Popconfirm,
   Select,
   Spin,
   Tag,
   message,
 } from "antd";
 import {
+  DeleteOutlined,
   DownloadOutlined,
   GithubOutlined,
   CheckCircleOutlined,
 } from "@ant-design/icons";
+import { useNavigate } from "react-router-dom";
 import * as marketApi from "@/api/market-api";
 import type { UserSkillSource } from "@/types/skill-source";
 import type { InstalledRecord } from "@/types/market";
@@ -26,7 +29,14 @@ import styles from "./styles.module.css";
 
 const PAGE_SIZE = 24;
 
-export default function OpenSourceSkills({ embedded = false }: { embedded?: boolean }) {
+export default function OpenSourceSkills({
+  embedded = false,
+  mine = false,
+}: {
+  embedded?: boolean;
+  mine?: boolean;
+}) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [sources, setSources] = useState<UserSkillSource[]>([]);
   const [total, setTotal] = useState(0);
@@ -36,6 +46,7 @@ export default function OpenSourceSkills({ embedded = false }: { embedded?: bool
   const [keyword, setKeyword] = useState("");
   const [installedIds, setInstalledIds] = useState<Set<number | string>>(new Set());
   const [installing, setInstalling] = useState<Record<number, boolean>>({});
+  const [records, setRecords] = useState<InstalledRecord[]>([]);
 
   const loadCategories = useCallback(async () => {
     try {
@@ -75,9 +86,27 @@ export default function OpenSourceSkills({ embedded = false }: { embedded?: bool
     }
   }, [page, category, keyword]);
 
+  /** 「我的」模式：只加载本地已安装的开源技能（source=github） */
+  const loadInstalledGithub = useCallback(async () => {
+    setLoading(true);
+    try {
+      const list = await marketApi.listInstalled().catch(() => [] as InstalledRecord[]);
+      setRecords(list.filter((r) => r.type === "skill" && r.source === "github"));
+    } catch (err) {
+      console.warn("[OpenSourceSkills] load installed github failed:", err);
+      setRecords([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadSources();
   }, [loadSources]);
+
+  useEffect(() => {
+    if (mine) void loadInstalledGithub();
+  }, [mine, loadInstalledGithub]);
 
   useEffect(() => {
     void loadCategories();
@@ -103,6 +132,95 @@ export default function OpenSourceSkills({ embedded = false }: { embedded?: bool
       setInstalling((prev) => ({ ...prev, [source.id]: false }));
     }
   };
+
+  /** 卸载已安装的开源技能 */
+  const handleUninstall = async (r: InstalledRecord) => {
+    try {
+      const res = await marketApi.uninstall("skill", r.id);
+      if (!res.ok) throw new Error(res.error || "卸载失败");
+      message.success(`已卸载「${r.name}」`);
+      setRecords((prev) =>
+        prev.filter((x) => !(x.type === r.type && String(x.id) === String(r.id))),
+      );
+    } catch (err) {
+      message.error("卸载失败: " + (err as Error).message);
+    }
+  };
+
+  /** 「我的」：仅展示本地已安装的开源技能 */
+  if (mine) {
+    return (
+      <Spin spinning={loading}>
+        {records.length === 0 && !loading ? (
+          <Empty
+            description="还没有安装开源技能，去「官方 → 开源技能库」下载安装"
+            style={{ marginTop: 48 }}
+          />
+        ) : (
+          <div className={styles.skillGrid}>
+            {records.map((r) => (
+              <Card
+                key={String(r.id)}
+                className={styles.skillCard}
+                bordered={false}
+                hoverable
+                onClick={() =>
+                  navigate(`/skill-market/detail/skill/${encodeURIComponent(String(r.id))}`)
+                }
+              >
+                <div className={styles.skillCardBody}>
+                  <div className={styles.skillHeader}>
+                    <div className={styles.skillName}>
+                      <div className={styles.skillIcon}>
+                        <GithubOutlined />
+                      </div>
+                      <span>{r.name}</span>
+                    </div>
+                    <Tag className={styles.installedTag} color="geekblue">
+                      GitHub 开源
+                    </Tag>
+                  </div>
+                  <div
+                    className={styles.skillDesc}
+                    style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                    title={r.dir}
+                  >
+                    版本 {r.version} · {r.dir}
+                  </div>
+                  <div className={styles.skillMeta}>
+                    <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
+                      安装于 {new Date(r.installedAt).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className={styles.skillActions} onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      size="small"
+                      onClick={() =>
+                        navigate(`/skill-market/detail/skill/${encodeURIComponent(String(r.id))}`)
+                      }
+                    >
+                      详情
+                    </Button>
+                    <Popconfirm
+                      title={`确定卸载「${r.name}」吗？`}
+                      onConfirm={() => void handleUninstall(r)}
+                      okText="卸载"
+                      cancelText="取消"
+                      okButtonProps={{ danger: true }}
+                    >
+                      <Button size="small" danger icon={<DeleteOutlined />}>
+                        卸载
+                      </Button>
+                    </Popconfirm>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </Spin>
+    );
+  }
 
   return (
     <div className={styles.pageContainer}>

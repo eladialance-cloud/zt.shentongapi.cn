@@ -71,7 +71,7 @@ export default function SkillMarket() {
       case "mcp":
         return <InstalledMcp />;
       case "open-source":
-        return <OpenSourceSkills embedded />;
+        return <OpenSourceSkills embedded mine />;
       case "hermes-local":
         return <HermesSkills embedded />;
     }
