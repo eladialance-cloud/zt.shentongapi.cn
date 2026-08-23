@@ -230,8 +230,8 @@ export class AdminImportsService implements OnModuleInit {
       if (isSkillCatalog) {
         // 技能目录（索引）仓库：整库条目写入「技能源」skill_sources，由桌面端用户按条目直连 GitHub 下载
         const catPaths = allPaths.filter(p => /^categories\/[^/]+\.md$/i.test(p)).slice(0, 50);
-        this.logger.log('读取技能目录分类文件 ' + catPaths.length + ' 个（并发 6）');
-        const catContents = await mapLimit(catPaths, 6, (p) => this.githubClient.getFileContent(owner, repo, p, job.branch));
+        this.logger.log('读取技能目录分类文件 ' + catPaths.length + ' 个（并发 12）');
+        const catContents = await mapLimit(catPaths, 12, (p) => this.githubClient.getFileContent(owner, repo, p, job.branch));
         const catFiles: ImportFile[] = catContents.map((content, i) => ({ path: catPaths[i], content }));
         catalogEntries = this.catalogParser.parseCatalogFiles(catFiles);
         // 校验候选仓库：剔除 404 猜测，失败时从来源页解析真实仓库（clawskills.sh 等）
@@ -353,31 +353,45 @@ export class AdminImportsService implements OnModuleInit {
     if (entries.length === 0) return entries;
     const started = Date.now();
     let processed = 0;
-    this.logger.log('开始校验技能目录候选仓库，共 ' + entries.length + ' 条（并发 6，直连 GitHub archive 探测）');
+    let consecutiveProbeErrors = 0;
+    let probeSkipped = false;
+    this.logger.log('开始校验技能目录候选仓库，共 ' + entries.length + ' 条（并发 12，直连 GitHub archive 探测）');
     const results: SkillCatalogEntry[] = new Array(entries.length);
-    await mapLimit(entries, 6, async (e, i) => {
+    await mapLimit(entries, 12, async (e, i) => {
       if (!/clawskills\.sh|clawhub\.ai/i.test(e.sourceUrl || '')) {
         results[i] = e;
       } else {
         const good: SkillRepoCandidate[] = [];
         let probeError = false;
-        for (const cand of e.candidates) {
-          const probed = await this.githubClient.probeArchiveBranch(cand.owner, cand.repo);
-          if (probed.status === 'ok') {
-            good.push({ owner: cand.owner, repo: cand.repo, defaultBranch: probed.branch ?? undefined });
-          } else if (probed.status === 'error') {
-            probeError = true;
+        if (!probeSkipped) {
+          for (const cand of e.candidates) {
+            const probed = await this.githubClient.probeArchiveBranch(cand.owner, cand.repo);
+            if (probed.status === 'ok') {
+              good.push({ owner: cand.owner, repo: cand.repo, defaultBranch: probed.branch ?? undefined });
+              consecutiveProbeErrors = 0;
+            } else if (probed.status === 'error') {
+              probeError = true;
+              consecutiveProbeErrors++;
+              if (consecutiveProbeErrors >= 10 && !probeSkipped) {
+                probeSkipped = true;
+                this.logger.warn('GitHub 探测连续异常 ' + consecutiveProbeErrors + ' 次，后续跳过探测，直接按来源页解析真实仓库');
+              }
+            }
+            if (good.length >= 2) break;
           }
-          if (good.length >= 2) break;
         }
         if (good.length === 0) {
-          if (probeError) {
-            // 网络异常无法判定：仅保留本条原候选并继续，避免一条抖动中断整批校验
+          // 无论探测结果如何都先尝试来源页解析（clawskills.sh 官方页链接即真实仓库，探测仅作校验）
+          const resolved = await this.resolveSourceRepo(e.sourceUrl, exclude, true);
+          if (resolved) {
+            good.push(resolved);
+            results[i] = { ...e, candidates: good };
+          } else if (probeSkipped || probeError) {
+            // 网络异常无法判定：保留原候选供桌面端逐个尝试，避免一条抖动中断整批校验
             this.logger.warn('GitHub 候选校验网络异常，保留本条原候选: ' + e.sourceUrl);
             results[i] = { ...e };
           } else {
-            const resolved = await this.resolveSourceRepo(e.sourceUrl, exclude);
-            if (resolved) good.push(resolved);
+            // 候选全部 404 且页面无可解析仓库：清空候选
             results[i] = { ...e, candidates: good };
           }
         } else {
@@ -397,7 +411,7 @@ export class AdminImportsService implements OnModuleInit {
   }
 
   /** 从来源页解析真实 GitHub 仓库：github.com 直链直接解析；clawskills.sh 详情页提取 github 链接后校验 */
-  private async resolveSourceRepo(url: string, exclude?: { owner: string; repo: string }): Promise<SkillRepoCandidate | null> {
+  private async resolveSourceRepo(url: string, exclude?: { owner: string; repo: string }, acceptWithoutProbe = false): Promise<SkillRepoCandidate | null> {
     const u = (url || '').trim();
     if (!/^https?:\/\//i.test(u)) return null;
     let m = u.match(/^https?:\/\/(?:www\.)?github\.com\/([^/\s?#]+)\/([^/\s?#]+)/i);
@@ -416,6 +430,10 @@ export class AdminImportsService implements OnModuleInit {
           const probed = await this.githubClient.probeArchiveBranch(r.owner, r.repo);
           if (probed.status === 'ok') {
             return { owner: r.owner, repo: r.repo, defaultBranch: probed.branch ?? undefined };
+          }
+          // 探测网络异常时，来源页官方链接仍可信（网络抖动不代表仓库不存在），直接采用
+          if (probed.status === 'error' && acceptWithoutProbe) {
+            return { owner: r.owner, repo: r.repo };
           }
         }
       } catch { /* 解析失败返回 null */ }
