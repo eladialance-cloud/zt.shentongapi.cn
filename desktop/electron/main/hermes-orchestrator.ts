@@ -1,6 +1,6 @@
 /** Hermes 编排桥：team_task 状态机 + 团队指派（成员人设注入，无团队降级子代理）+ CLI 调用 + 结果回写（主进程） */
 import { spawn } from "node:child_process";
-import { parseHermesResult, parseStepResult, type HermesOutput, type HermesStep, type OrchestrateResult, type StepRunResult } from "./hermes-result";
+import { extractReasoning, parseHermesResult, parseStepResult, type HermesOutput, type HermesStep, type OrchestrateResult, type StepRunResult } from "./hermes-result";
 
 export type TeamTaskStatus = "pending" | "in_progress" | "completed" | "failed";
 
@@ -32,7 +32,12 @@ export interface WorkflowNode {
 export interface OrchestrateInput {
   executionRef: string;
   teamTaskId: number;
-  teamId: number;
+  /** 执行团队 ID（auto/agent 模式可空） */
+  teamId?: number;
+  /** 执行方式：team=指定团队 auto=Hermes自动匹配 agent=指定单个Agent */
+  executeMode?: "team" | "auto" | "agent";
+  /** 指定单个 Agent（executeMode=agent 时指向 agents.id） */
+  agentId?: number;
   briefId?: number;
   task: string;
   teamMembers?: TeamMemberProfile[];
@@ -52,7 +57,7 @@ export interface OrchestrateInput {
 
 export interface OrchestrateDeps {
   patchTask: (
-    teamId: number,
+    teamId: number | null | undefined,
     taskId: number,
     payload: { status: TeamTaskStatus; result?: unknown },
   ) => Promise<void>;
@@ -152,7 +157,9 @@ export interface RunnerStep {
   name: string;
   agentRole?: string;
   status: RunnerStepStatus;
+  assigneeMemberId?: number;
   assigneeName?: string;
+  reasoning?: string;
   outputs?: HermesOutput[];
   review?: { verdict: "pass" | "rework"; reason?: string; by: "hermes" | "user"; at?: string };
   retryCount: number;
@@ -163,7 +170,7 @@ export interface StepRunnerDeps {
   /** 执行规划/单步：给定 prompt 返回 Hermes CLI stdout（已含超时与错误归一） */
   runPrompt: (prompt: string, opts?: { model?: string }) => Promise<{ stdout: string; error?: string }>;
   /** 回写任务状态与 steps（result 覆盖写） */
-  patchTask: (teamId: number, taskId: number, payload: { status: string; result?: unknown }) => Promise<void>;
+  patchTask: (teamId: number | null | undefined, taskId: number, payload: { status: string; result?: unknown }) => Promise<void>;
   reportExecution: (payload: Record<string, unknown>) => Promise<void>;
   persistOutputs: (taskId: number, outputs: HermesOutput[]) => Promise<void>;
   /** 自动确认开关（调用时实时读取，便于中途切换） */
@@ -202,8 +209,8 @@ export function buildPlanPrompt(
   }
   const countHint = wf ? "有序执行节点" : "2~5 个有序执行节点";
   parts.push(
-    "请把上述任务按" + (wf ? "该协作流程" : "业务依赖") + "拆解为 " + countHint + "（每个节点由一个子代理完成，节点之间按依赖排序）。",
-    "严格输出单行 JSON，不要输出任何其他文字：{\"steps\":[{\"name\":\"节点名\",\"agentRole\":\"可选角色\"}]}",
+    "请把上述任务按" + (wf ? "该协作流程" : "业务依赖") + "拆解为 " + countHint + "（每个节点由一个执行者完成，节点之间按依赖排序）。",
+    "先简要说明你的拆解思路（这部分会展示给用户看），最后一行严格输出 JSON：{\"steps\":[{\"name\":\"节点名\",\"assigneeRole\":\"认领的成员职能（团队模式必填，无团队可不填）\"}]}",
   );
   return parts.join("\n\n");
 }
@@ -217,9 +224,14 @@ export function buildStepPrompt(input: {
   feedback?: string;
   /** 知识库检索结果（SOP/标准），注入为参考约束 */
   knowledge?: string;
+  /** 该节点认领的执行成员（真实执行：人设 + 模型） */
+  assignee?: TeamMemberProfile | null;
 }): string {
   const base = buildTaskPrompt(input.task, input.teamMembers ?? null, input.modelDefaults ?? null);
   const parts = [base];
+  if (input.assignee?.systemPrompt) {
+    parts.push("你现在的身份是「" + input.assignee.roleTitle + "」：" + input.assignee.systemPrompt);
+  }
   if (input.previousSummary) {
     parts.push("已完成的前序节点与产出：" + input.previousSummary);
   }
@@ -239,25 +251,38 @@ export function buildStepPrompt(input: {
 }
 
 /** 解析规划 stdout → 节点清单；非法/空 → []（调用方按失败处理） */
-export function parsePlan(stdout: string): Array<{ name: string; agentRole?: string }> {
+export function parsePlan(stdout: string): Array<{ name: string; agentRole?: string; assigneeRole?: string }> {
   const text = (stdout || "").trim();
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const jsonText = fence ? fence[1].trim() : text.match(/\{[\s\S]*\}/)?.[0] ?? "";
   try {
     const data = JSON.parse(jsonText) as { steps?: unknown };
     if (!data || !Array.isArray(data.steps)) return [];
-    const out: Array<{ name: string; agentRole?: string }> = [];
+    const out: Array<{ name: string; agentRole?: string; assigneeRole?: string }> = [];
     for (const raw of data.steps) {
       if (!raw || typeof raw !== "object") continue;
       const r = raw as Record<string, unknown>;
       const name = typeof r.name === "string" ? r.name.trim() : "";
       if (!name) continue;
-      out.push({ name, ...(typeof r.agentRole === "string" && r.agentRole.trim() ? { agentRole: r.agentRole.trim() } : {}) });
+      out.push({
+        name,
+        ...(typeof r.agentRole === "string" && r.agentRole.trim() ? { agentRole: r.agentRole.trim() } : {}),
+        ...(typeof r.assigneeRole === "string" && r.assigneeRole.trim() ? { assigneeRole: r.assigneeRole.trim() } : {}),
+      });
     }
     return out;
   } catch {
     return [];
   }
+}
+
+/** 按节点认领的角色匹配执行成员；无匹配或未提供成员 → null（降级 Hermes 原生子代理） */
+export function resolveAssignee(
+  assigneeRole: string | undefined,
+  teamMembers: TeamMemberProfile[] | null | undefined,
+): TeamMemberProfile | null {
+  if (!assigneeRole || !Array.isArray(teamMembers) || teamMembers.length === 0) return null;
+  return teamMembers.find((m) => m.roleTitle === assigneeRole) ?? null;
 }
 
 export interface StepResult extends HermesStep {
@@ -341,16 +366,29 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
       if (planResp.error) return await failTask("任务规划失败", planResp.error);
       const plan = parsePlan(planResp.stdout);
       if (plan.length === 0) return await failTask("任务规划失败", "Hermes 未输出有效节点清单");
+      const planReasoning = extractReasoning(planResp.stdout, 3000);
       for (const p of plan) steps.push({ name: p.name, agentRole: p.agentRole, status: "pending", retryCount: 0 });
       await deps.patchTask(input.teamId, input.teamTaskId, {
         status: "in_progress",
-        result: { executionRef: input.executionRef, status: "running", steps: steps.map(toResultStep), outputs: [] },
+        result: {
+          executionRef: input.executionRef,
+          status: "running",
+          steps: steps.map(toResultStep),
+          outputs: [],
+          ...(planReasoning ? { planReasoning } : {}),
+        },
       });
 
       // 2) 逐节点执行
       const previousSummary: string[] = [];
       for (let i = 0; i < steps.length; i++) {
         const step = steps[i];
+        // 节点认领成员：Hermes 规划输出 assigneeRole → 匹配成员（真实执行：该成员的模型+人设）
+        const assignee = resolveAssignee(plan[i]?.assigneeRole, input.teamMembers ?? null);
+        if (assignee) {
+          step.assigneeMemberId = assignee.memberId;
+          step.assigneeName = assignee.roleTitle;
+        }
         let decided = false;
         while (!decided) {
           if (cancelled) return await failTask("任务已取消", "用户取消");
@@ -369,8 +407,13 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
               previousSummary: previousSummary.join("\n"),
               feedback: step.lastFeedback,
               knowledge,
+              assignee,
             }),
-            input.modelDefaults?.chat ? { model: input.modelDefaults.chat } : undefined,
+            assignee?.modelId
+              ? { model: assignee.modelId }
+              : input.modelDefaults?.chat
+                ? { model: input.modelDefaults.chat }
+                : undefined,
           );
           if (execResp.error) {
             step.status = "rejected";
@@ -379,6 +422,7 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
           }
           const res: StepRunResult = parseStepResult(execResp.stdout);
           step.outputs = res.outputs ?? [];
+          if (res.reasoning) step.reasoning = res.reasoning;
           const autoVerdict: "pass" | "rework" = res.review?.verdict ?? (step.outputs.length > 0 ? "pass" : "rework");
           const autoReason = res.review?.reason;
           step.review = { verdict: autoVerdict, ...(autoReason ? { reason: autoReason } : {}), by: "hermes" as const, at: iso() };
@@ -463,7 +507,9 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
       name: s.name,
       status: s.status === "done" ? "done" : s.status === "running" ? "running" : "pending",
       ...(s.agentRole ? { agentRole: s.agentRole } : {}),
+      ...(s.assigneeMemberId ? { assigneeMemberId: s.assigneeMemberId } : {}),
       ...(s.assigneeName ? { assigneeName: s.assigneeName } : {}),
+      ...(s.reasoning ? { reasoning: s.reasoning } : {}),
       ...(s.outputs && s.outputs.length > 0 ? { outputs: s.outputs } : {}),
       ...(s.review ? { review: s.review } : {}),
       ...(s.retryCount > 0 ? { retryCount: s.retryCount } : {}),

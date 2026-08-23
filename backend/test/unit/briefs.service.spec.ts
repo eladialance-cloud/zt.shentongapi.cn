@@ -68,11 +68,13 @@ function makeService(
   const repo = makeRepo(seed);
   const teamRepo = { find: async () => teams };
   const memberRepo = { find: async () => members };
+  const agentRepo = { findOne: async () => null };
   const svc = new BriefService(
     repo as any,
     dispatchService,
     teamRepo as any,
     memberRepo as any,
+    agentRepo as any,
   );
   return { svc, repo, dispatchService };
 }

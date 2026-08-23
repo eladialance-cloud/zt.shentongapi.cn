@@ -1,4 +1,4 @@
-﻿import {
+import {
   Entity, Column, PrimaryGeneratedColumn,
   CreateDateColumn, Index,
 } from "typeorm";
@@ -10,8 +10,8 @@ export class TeamTaskEntity {
   id: number;
 
   @Index("idx_team_task_team")
-  @Column({ name: "team_id", type: "bigint" })
-  teamId: number;
+  @Column({ name: "team_id", type: "bigint", nullable: true })
+  teamId?: number | null;
 
   @Column({ length: 128 })
   title: string;
@@ -29,6 +29,14 @@ export class TeamTaskEntity {
   /** 分配给哪个成员（team_member.id） */
   @Column({ name: "assignee_member_id", type: "bigint", nullable: true })
   assigneeMemberId?: number;
+
+  /** 执行方式：team=指定团队 auto=Hermes自动匹配 agent=指定单个Agent */
+  @Column({ name: "execute_mode", type: "enum", enum: ["team", "auto", "agent"], default: "team" })
+  executeMode: "team" | "auto" | "agent";
+
+  /** 指定单个 Agent 执行（execute_mode=agent 时指向 agents.id） */
+  @Column({ name: "agent_id", type: "bigint", nullable: true })
+  agentId?: number;
 
   @Column({ name: "creator_id", type: "bigint" })
   creatorId: number;

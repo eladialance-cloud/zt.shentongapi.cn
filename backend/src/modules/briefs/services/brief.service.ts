@@ -4,6 +4,7 @@ import { Repository, FindOptionsWhere, In } from 'typeorm';
 import { BriefEntity } from '../entities/brief.entity';
 import { TeamEntity } from '../../team/entities/team.entity';
 import { TeamMemberEntity } from '../../team/entities/team-member.entity';
+import { AgentEntity } from '../../agent/entities/agent.entity';
 import { BriefDispatchService, MemberRoleTitle } from './brief-dispatch.service';
 import {
   CreateBriefDto,
@@ -29,6 +30,8 @@ export class BriefService {
     private readonly teamRepo: Repository<TeamEntity>,
     @InjectRepository(TeamMemberEntity)
     private readonly memberRepo: Repository<TeamMemberEntity>,
+    @InjectRepository(AgentEntity)
+    private readonly agentRepo: Repository<AgentEntity>,
   ) {}
 
   /**
@@ -184,6 +187,17 @@ export class BriefService {
         throw new BadRequestException('只能选择自己创建的团队执行');
       }
     }
+    // 指定单个 Agent 校验：executeMode=agent 时 agentId 必填且存在
+    const executeMode = dto?.executeMode ?? 'team';
+    if (executeMode === 'agent') {
+      if (dto?.agentId == null) {
+        throw new BadRequestException('指定单个 Agent 执行时必须提供 agentId');
+      }
+      const agent = await this.agentRepo.findOne({ where: { id: dto.agentId } });
+      if (!agent) {
+        throw new BadRequestException(`Agent ${dto.agentId} 不存在`);
+      }
+    }
     if (brief.dispatchStatus !== 'none') {
       return brief;
     }
@@ -196,7 +210,7 @@ export class BriefService {
     // 后台派发：不再 await LLM 结果（避免最长 30s 阻塞与 axios 超时竞态）
     const memberRoles = await this.loadMemberRoles(userId);
     void this.dispatchService
-      .dispatch(brief, memberRoles, dto?.teamId)
+      .dispatch(brief, memberRoles, dto?.teamId, executeMode, dto?.agentId)
       .then((result) => {
         if (result.ok) {
           brief.dispatchStatus = 'done';

@@ -1,4 +1,4 @@
-﻿// 团队模块类型定义 — 替换 OPC 模块
+// 团队模块类型定义 — 替换 OPC 模块
 // 设计文档: team_module_design_20260730.md
 // 核心变化: 成员绑定 Agent + 自定义职能，不再绑定真实用户
 
@@ -48,10 +48,18 @@ export interface TeamMember {
   joinedAt: string
 }
 
+/** 执行方式：team=指定团队 auto=Hermes自动匹配 agent=指定单个Agent */
+export type TeamTaskExecuteMode = "team" | "auto" | "agent"
+
 /** 团队任务 */
 export interface TeamTask {
   id: number
-  teamId: number
+  /** 执行团队 ID（auto/agent 模式为空） */
+  teamId?: number | null
+  /** 执行方式 */
+  executeMode?: TeamTaskExecuteMode
+  /** 指定单个 Agent（executeMode=agent 时指向 agents.id） */
+  agentId?: number
   title: string
   description?: string
   status: TeamTaskStatus
@@ -123,8 +131,13 @@ export interface UpdateTeamTaskDto {
   assigneeMemberId?: number
   priority?: TeamTaskPriority
   dueDate?: string
-  /** 迁移到目标团队（执行前换团队） */
-  teamId?: number
+  result?: unknown
+  /** 迁移到目标团队（执行前换团队；null=改为无团队执行） */
+  teamId?: number | null
+  /** 切换执行方式 */
+  executeMode?: TeamTaskExecuteMode
+  /** 指定单个 Agent（executeMode=agent 时） */
+  agentId?: number
 }
 
 /** 可选 Agent（用于创建团队时选择成员） */

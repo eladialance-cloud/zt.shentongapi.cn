@@ -1,4 +1,4 @@
-import { parseHermesResult } from "../../electron/main/hermes-result";
+import { parseHermesResult, parseStepResult, extractReasoning } from "../../electron/main/hermes-result";
 
 describe("parseHermesResult", () => {
   it("解析单行 JSON（含 summary/steps/outputs）", () => {
@@ -41,5 +41,38 @@ describe("parseHermesResult", () => {
   it("空 stdout → summary 占位", () => {
     const r = parseHermesResult("   ", 10);
     expect(r.summary).toContain("无输出");
+  });
+});
+
+describe("extractReasoning", () => {
+  it("提取 JSON 前的思考文本并去空行", () => {
+    const text = "我先分析需求：\n\n需要拆成两步。\n\n{\"steps\":[]}";
+    expect(extractReasoning(text, 500)).toBe("我先分析需求：\n需要拆成两步。");
+  });
+  it("无 JSON → 返回空字符串", () => {
+    expect(extractReasoning("纯文本，没有 JSON", 500)).toBe("");
+  });
+  it("超过 maxLen 截断", () => {
+    const text = "A".repeat(100) + "\n{\"steps\":[]}";
+    const r = extractReasoning(text, 20);
+    expect(r.length).toBeLessThanOrEqual(20);
+  });
+});
+
+describe("parseStepResult reasoning", () => {
+  it("JSON 前思考文本 → reasoning", () => {
+    const r = parseStepResult("思路：先整理资料。\n{\"summary\":\"完成\",\"outputs\":[{\"type\":\"text\",\"content\":\"x\"}]}");
+    expect(r.reasoning).toContain("先整理资料");
+  });
+  it("纯 JSON → 无 reasoning", () => {
+    const r = parseStepResult('{"summary":"完成"}');
+    expect(r.reasoning).toBeUndefined();
+  });
+});
+
+describe("parseHermesResult planReasoning", () => {
+  it("JSON 前思考文本 → planReasoning", () => {
+    const r = parseHermesResult("分析：该任务分 3 步。\n{\"summary\":\"ok\",\"steps\":[]}", 10);
+    expect(r.planReasoning).toContain("分 3 步");
   });
 });

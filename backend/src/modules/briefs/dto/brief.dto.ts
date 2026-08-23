@@ -79,6 +79,16 @@ export class ConfirmBriefDto {
   @IsOptional()
   @IsInt()
   teamId?: number;
+
+  @ApiPropertyOptional({ description: '执行方式：team=指定团队 auto=Hermes自动匹配 agent=指定单个Agent', example: 'team' })
+  @IsOptional()
+  @IsIn(['team', 'auto', 'agent'])
+  executeMode?: 'team' | 'auto' | 'agent';
+
+  @ApiPropertyOptional({ description: '指定单个 Agent ID（executeMode=agent 时使用）', example: 1 })
+  @IsOptional()
+  @IsInt()
+  agentId?: number;
 }
 
 /**

@@ -54,8 +54,11 @@ export class BriefDispatchService {
     brief: BriefEntity,
     memberRoleTitles: MemberRoleTitle[] = [],
     teamIdOverride?: number,
+    executeMode: 'team' | 'auto' | 'agent' = 'team',
+    agentId?: number,
   ): Promise<DispatchResult> {
     try {
+      const isTeamMode = executeMode === 'team';
       const model = await this.modelRepo.findOne({
         where: { isActive: true, modelType: 'chat' },
         order: { id: 'ASC' },
@@ -72,7 +75,7 @@ export class BriefDispatchService {
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
         body: JSON.stringify({
           model: model.upstreamModelId || model.modelId,
-          messages: [{ role: 'user', content: this.buildPrompt(brief, memberRoleTitles) }],
+          messages: [{ role: 'user', content: this.buildPrompt(brief, isTeamMode ? memberRoleTitles : []) }],
           max_tokens: 1200,
           temperature: 0,
         }),
@@ -85,9 +88,9 @@ export class BriefDispatchService {
       const text = String(data?.choices?.[0]?.message?.content ?? '').trim();
       const parsed = this.parseJsonArray(text);
       if (!parsed) return { ok: false, error: 'PARSE_JSON_FAILED' };
-      const cleaned = this.cleanTasks(parsed, memberRoleTitles);
+      const cleaned = this.cleanTasks(parsed, isTeamMode ? memberRoleTitles : [], !isTeamMode);
       if (cleaned.length === 0) return { ok: false, error: 'NO_VALID_TASKS' };
-      const persisted = await this.persistTasks(brief, cleaned, memberRoleTitles, teamIdOverride);
+      const persisted = await this.persistTasks(brief, cleaned, isTeamMode ? memberRoleTitles : [], teamIdOverride, executeMode, agentId);
       if (!persisted) return { ok: false, error: 'NO_TEAM_FOR_DISPATCH' };
       brief.dispatchStatus = 'done';
       brief.dispatchResult = cleaned;
@@ -133,6 +136,7 @@ export class BriefDispatchService {
   private cleanTasks(
     items: Array<Record<string, unknown>>,
     memberRoleTitles: MemberRoleTitle[],
+    skipRoleFilter = false,
   ): DispatchTaskItem[] {
     const roleMap = new Map(memberRoleTitles.map((r) => [r.roleTitle, r]));
     const cleaned: DispatchTaskItem[] = [];
@@ -140,7 +144,7 @@ export class BriefDispatchService {
       if (cleaned.length >= 20) break;
       const roleTitle = String(item.roleTitle ?? '').trim();
       const taskTitle = String(item.taskTitle ?? '').trim();
-      if (!roleMap.has(roleTitle)) {
+      if (!skipRoleFilter && !roleMap.has(roleTitle)) {
         this.logger.warn('拆解任务角色不在可用列表，跳过: ' + (roleTitle || '(空)'));
         continue;
       }
@@ -166,40 +170,47 @@ export class BriefDispatchService {
     return cleaned;
   }
 
-  /** 逐条创建 TeamTaskEntity（team_id 取首个命中角色的成员归属团队；写回由调用方负责） */
+  /** 逐条创建 TeamTaskEntity；team 模式取首个命中角色成员的归属团队，auto/agent 模式 team_id 为空 */
   private async persistTasks(
     brief: BriefEntity,
     items: DispatchTaskItem[],
     memberRoleTitles: MemberRoleTitle[],
     teamIdOverride?: number,
+    executeMode: 'team' | 'auto' | 'agent' = 'team',
+    agentId?: number,
   ): Promise<boolean> {
+    const isTeamMode = executeMode === 'team';
     const roleMap = new Map(memberRoleTitles.map((r) => [r.roleTitle, r]));
     let teamId: number | undefined = teamIdOverride;
-    for (const item of items) {
-      const entry = roleMap.get(item.roleTitle);
-      if (!entry?.memberId) continue;
-      const member = await this.memberRepo.findOne({ where: { id: entry.memberId } });
-      if (member?.teamId) {
-        teamId = member.teamId;
-        break;
+    if (isTeamMode) {
+      for (const item of items) {
+        const entry = roleMap.get(item.roleTitle);
+        if (!entry?.memberId) continue;
+        const member = await this.memberRepo.findOne({ where: { id: entry.memberId } });
+        if (member?.teamId) {
+          teamId = member.teamId;
+          break;
+        }
       }
+      if (!teamId) return false;
     }
-    if (!teamId) return false;
     // 批次执行引用：每次 dispatch 生成一个批次标识，回填到该批次全部任务
     const executionRef = 'brief-' + brief.id + '-' + Date.now().toString(36);
     const entities = items.map((item) => {
       const entry = roleMap.get(item.roleTitle);
       return this.teamTaskRepo.create({
-        teamId,
+        teamId: isTeamMode ? teamId : undefined,
         title: item.taskTitle,
         description: item.description ?? undefined,
         status: 'pending',
-        assigneeMemberId: entry?.memberId ?? undefined,
+        assigneeMemberId: isTeamMode ? (entry?.memberId ?? undefined) : undefined,
         creatorId: brief.userId,
         priority: item.priority,
         dueDate: item.dueDate ? this.parseDueDate(item.dueDate) : undefined,
         briefId: brief.id,
         executionRef,
+        executeMode,
+        ...(executeMode === 'agent' ? { agentId } : {}),
       });
     });
     await this.teamTaskRepo.save(entities);

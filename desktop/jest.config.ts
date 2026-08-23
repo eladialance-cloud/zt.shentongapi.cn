@@ -7,11 +7,15 @@ import type { Config } from "jest";
 
 const config: Config = {
   preset: "ts-jest",
+  transform: {
+    "^.+\\.tsx?$": ["ts-jest", { tsconfig: { jsx: "react-jsx", esModuleInterop: true, allowSyntheticDefaultImports: true } }],
+  },
   testEnvironment: "jsdom",
   testMatch: ["<rootDir>/tests/**/*.test.ts"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
     "^@shared/(.*)$": "<rootDir>/electron/shared/$1",
+    "\\.module\\.css$": "<rootDir>/tests/unit/css-stub.ts",
   },
   setupFilesAfterEnv: ["<rootDir>/tests/setup.ts"],
   modulePathIgnorePatterns: [

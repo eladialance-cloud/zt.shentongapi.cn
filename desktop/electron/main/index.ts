@@ -1,4 +1,4 @@
-﻿// Electron 主进程入口
+// Electron 主进程入口
 
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import log from 'electron-log'
@@ -107,6 +107,31 @@ async function loadTeamMembers(token: string, teamId: number): Promise<TeamMembe
   }
 }
 
+/** 拉取单个 Agent 详情（agent 模式执行：人设 + 模型 + 知识库）→ 单元素 TeamMemberProfile */
+async function loadAgentProfile(token: string, agentId: number): Promise<TeamMemberProfile | null> {
+  try {
+    const res = await fetch(ST_API_BASE + '/agents/' + agentId, {
+      headers: { Authorization: 'Bearer ' + token },
+      signal: AbortSignal.timeout(10000),
+    })
+    if (!res.ok) return null
+    const d = (await res.json()) as Record<string, unknown>
+    const name = typeof d.name === 'string' && d.name ? d.name : typeof d.displayName === 'string' && d.displayName ? d.displayName : 'Agent #' + agentId
+    return {
+      memberId: 0,
+      agentId,
+      roleTitle: name,
+      systemPrompt: typeof d.systemPrompt === 'string' ? d.systemPrompt : undefined,
+      modelId: typeof d.modelId === 'string' ? d.modelId : undefined,
+      knowledgeBaseIds: Array.isArray(d.allowedKnowledgeBaseIds)
+        ? (d.allowedKnowledgeBaseIds as number[])
+        : [],
+    }
+  } catch (err) {
+    console.warn('[hermes-orchestrate] loadAgentProfile failed:', err)
+    return null
+  }
+}
 /** 主进程编排依赖（真实实现）：PATCH 回写 + 上报 call_log + 产物登记 + Hermes CLI spawn */
 function buildHermesOrchestrateDeps(token: string): OrchestrateDeps {
   const auth = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }
@@ -211,9 +236,11 @@ const stepAborts = new Map<string, () => void>()
 const stepAutoConfirm = new Map<string, boolean>()
 
 /** 逐步编排依赖：复用 CLI spawn；PATCH 回写 steps（含 pending_review/rawStatus）；上报 call_log + 产物登记 */
-function buildStepRunnerDeps(token: string, taskKey: string): StepRunnerDeps {
+function buildStepRunnerDeps(token: string, taskKey: string, input: OrchestrateInput): StepRunnerDeps {
   const auth = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }
   const base = buildHermesOrchestrateDeps(token)
+  /** 回写路由：team 模式走团队任务接口；auto/agent 模式走「我的任务」接口（无团队归属） */
+  const isTeamRoute = input.executeMode === 'team' || (!input.executeMode && input.teamId != null)
   return {
     runPrompt: async (prompt, opts) => {
       try {
@@ -244,7 +271,17 @@ function buildStepRunnerDeps(token: string, taskKey: string): StepRunnerDeps {
       }
     },
     patchTask: async (teamId, taskId, payload) => {
-      await base.patchTask(teamId, taskId, { status: payload.status as TeamTaskStatus, result: payload.result })
+      if (isTeamRoute && teamId != null) {
+        await base.patchTask(teamId, taskId, { status: payload.status as TeamTaskStatus, result: payload.result })
+      } else {
+        const res = await fetch(`${ST_API_BASE}/team-tasks/${taskId}`, {
+          method: 'PATCH',
+          headers: auth,
+          body: JSON.stringify({ status: payload.status, result: payload.result }),
+          signal: AbortSignal.timeout(15000),
+        })
+        if (!res.ok) throw new Error('PATCH team_task 失败: HTTP ' + res.status)
+      }
     },
     reportExecution: async (payload) => {
       const res = await fetch(`${ST_API_BASE}/hermes/executions/report`, {
@@ -491,11 +528,17 @@ function registerIpcHandlers(): void {
       if (!payload?.token || !payload?.input) return { ok: false, error: '参数缺失' }
       try {
         const input = { ...payload.input }
-        if (!input.teamMembers && input.teamId) {
+        const executeMode = input.executeMode ?? (input.teamId != null ? 'team' : 'auto')
+        input.executeMode = executeMode
+        // 成员来源按执行方式：team=团队成员；agent=单个 Agent；auto=不注入（Hermes 原生子代理）
+        if (executeMode === 'team' && !input.teamMembers && input.teamId != null) {
           input.teamMembers = await loadTeamMembers(payload.token, input.teamId)
+        } else if (executeMode === 'agent' && input.agentId != null && !input.teamMembers) {
+          const agentProfile = await loadAgentProfile(payload.token, input.agentId)
+          if (agentProfile) input.teamMembers = [agentProfile]
         }
-        // 协作流程注入：未显式传 workflow 时拉取团队已配置流程（Hermes 按流程当主干，不跳步）
-        if (!input.workflow && input.teamId) {
+        // 协作流程注入：仅团队模式；未显式传 workflow 时拉取团队已配置流程（Hermes 按流程当主干，不跳步）
+        if (executeMode === 'team' && !input.workflow && input.teamId != null) {
           try {
             const wfRes = await fetch(ST_API_BASE + '/teams/' + input.teamId + '/workflow', {
               headers: { Authorization: 'Bearer ' + payload.token },
@@ -531,7 +574,7 @@ function registerIpcHandlers(): void {
         const taskKey = 'team:' + input.teamTaskId
         if (stepRunners.has(taskKey)) return { ok: true, started: true } // 已在运行：幂等，不重复起
         stepAutoConfirm.set(taskKey, !!payload.autoConfirm)
-        const handle = createStepRunner(input, buildStepRunnerDeps(payload.token, taskKey))
+        const handle = createStepRunner(input, buildStepRunnerDeps(payload.token, taskKey, input))
         stepRunners.set(taskKey, handle)
         void handle
           .wait()
@@ -584,12 +627,16 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(
     'hermes-orchestrate:delete',
-    async (_event, payload: { token: string; teamId: number; teamTaskId: number }) => {
-      if (!payload?.token || !payload.teamId || !payload.teamTaskId) return { ok: false, error: '参数缺失' }
+    async (_event, payload: { token: string; teamId?: number; teamTaskId: number }) => {
+      if (!payload?.token || !payload.teamTaskId) return { ok: false, error: '参数缺失' }
       const taskKey = 'team:' + payload.teamTaskId
       const handle = stepRunners.get(taskKey)
       if (handle) handle.stop() // 删除前先停止运行
-      const res = await fetch(`${ST_API_BASE}/teams/${payload.teamId}/tasks/${payload.teamTaskId}`, {
+      // 删除路由：team 模式走团队任务接口；auto/agent 模式（无团队归属）走「我的任务」接口
+      const url = payload.teamId != null
+        ? `${ST_API_BASE}/teams/${payload.teamId}/tasks/${payload.teamTaskId}`
+        : `${ST_API_BASE}/team-tasks/${payload.teamTaskId}`
+      const res = await fetch(url, {
         method: 'DELETE',
         headers: { Authorization: 'Bearer ' + payload.token },
         signal: AbortSignal.timeout(15000),

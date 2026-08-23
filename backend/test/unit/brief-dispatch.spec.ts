@@ -235,4 +235,55 @@ test('dispatch: 角色列表为空 → 白名单为空全部跳过 → failed', 
   assert.equal(result.error, 'NO_VALID_TASKS');
   assert.equal(ctx.taskCreates.length, 0);
 });
+test('dispatch: auto 模式 → 不过滤白名单，execute_mode=auto 且 team_id 为空', async (t) => {
+  const ctx = makeContext();
+  mockFetchContent(
+    JSON.stringify([
+      { roleTitle: '外星人', taskTitle: '自动拆解任务', priority: 'medium' },
+    ]),
+  );
+  t.after(() => mock.restoreAll());
+  const brief = makeBrief({ dispatchStatus: 'pending' });
+  const result = await ctx.svc.dispatch(brief, [], undefined, 'auto');
+  assert.equal(result.ok, true);
+  assert.equal(result.tasks?.length, 1);
+  assert.equal(ctx.taskCreates.length, 1);
+  const created = ctx.taskCreates[0];
+  assert.equal(created.executeMode, 'auto');
+  assert.equal(created.teamId, undefined);
+  assert.equal(created.assigneeMemberId, undefined);
+  assert.equal(brief.dispatchStatus, 'done');
+});
 
+test('dispatch: agent 模式 → 绑定 agent_id，execute_mode=agent 且 team_id 为空', async (t) => {
+  const ctx = makeContext();
+  mockFetchContent(
+    JSON.stringify([
+      { roleTitle: '设计师', taskTitle: '单独Agent任务', priority: 'high' },
+    ]),
+  );
+  t.after(() => mock.restoreAll());
+  const brief = makeBrief({ dispatchStatus: 'pending' });
+  const result = await ctx.svc.dispatch(brief, [], undefined, 'agent', 42);
+  assert.equal(result.ok, true);
+  assert.equal(result.tasks?.length, 1);
+  const created = ctx.taskCreates[0];
+  assert.equal(created.executeMode, 'agent');
+  assert.equal(created.agentId, 42);
+  assert.equal(created.teamId, undefined);
+  assert.equal(brief.dispatchStatus, 'done');
+});
+
+test('dispatch: team 模式默认 → execute_mode 默认 team', async (t) => {
+  const ctx = makeContext();
+  mockFetchContent(
+    JSON.stringify([
+      { roleTitle: 'CEO', taskTitle: '团队任务', priority: 'medium' },
+    ]),
+  );
+  t.after(() => mock.restoreAll());
+  const brief = makeBrief({ dispatchStatus: 'pending' });
+  const result = await ctx.svc.dispatch(brief, ROLES);
+  assert.equal(result.ok, true);
+  assert.equal(ctx.taskCreates[0].executeMode, 'team');
+});

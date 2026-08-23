@@ -94,7 +94,7 @@ export function updateBrief(id: number, payload: UpdateBriefPayload): Promise<Br
 /** 确认简报 POST /briefs/:id/confirm */
 export function confirmBrief(
   id: number,
-  body: { manualDispatch?: boolean; teamId?: number } = {},
+  body: { manualDispatch?: boolean; teamId?: number; executeMode?: 'team' | 'auto' | 'agent'; agentId?: number } = {},
 ): Promise<BriefItem> {
   return httpClient.post<BriefItem>('/briefs/' + id + '/confirm', body)
 }

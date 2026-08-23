@@ -1,9 +1,13 @@
 import {
   assertSubmittable,
+  buildPlanPrompt,
   buildTaskPrompt,
   orchestrate,
+  parsePlan,
+  resolveAssignee,
   type OrchestrateInput,
   type OrchestrateDeps,
+  type TeamMemberProfile,
 } from "../../electron/main/hermes-orchestrator";
 import { buildMemberProfiles } from "../../electron/main/hermes-member-profile";
 
@@ -149,5 +153,42 @@ describe("orchestrate（状态机 + CLI + 回写）", () => {
     const prompt = (deps.spawnCli as jest.Mock).mock.calls[0][0] as string;
     expect(prompt).toContain("可用团队成员清单");
     expect(prompt).toContain("内容AI");
+  });
+});
+
+describe("parsePlan", () => {
+  it("解析 assigneeRole（节点认领成员）", () => {
+    const plan = parsePlan('{"steps":[{"name":"写文案","assigneeRole":"内容AI"},{"name":"终审","assigneeRole":"总监"}]}');
+    expect(plan).toEqual([
+      { name: "写文案", assigneeRole: "内容AI" },
+      { name: "终审", assigneeRole: "总监" },
+    ]);
+  });
+  it("无 assigneeRole → 不含该字段", () => {
+    const plan = parsePlan('{"steps":[{"name":"写文案"}]}');
+    expect(plan[0].assigneeRole).toBeUndefined();
+  });
+});
+
+describe("resolveAssignee", () => {
+  const members: TeamMemberProfile[] = [
+    { memberId: 11, agentId: 21, roleTitle: "内容AI", modelId: "gpt-4o" },
+    { memberId: 12, agentId: 22, roleTitle: "总监", modelId: "gpt-4.5" },
+  ];
+  it("按角色命中成员", () => {
+    expect(resolveAssignee("内容AI", members)).toEqual(members[0]);
+  });
+  it("无匹配或空列表 → null（降级子代理）", () => {
+    expect(resolveAssignee("外星人", members)).toBeNull();
+    expect(resolveAssignee(undefined, members)).toBeNull();
+    expect(resolveAssignee("内容AI", [])).toBeNull();
+    expect(resolveAssignee("内容AI", null)).toBeNull();
+  });
+});
+
+describe("buildPlanPrompt", () => {
+  it("JSON 模板要求输出 assigneeRole（认领成员）", () => {
+    const prompt = buildPlanPrompt("写文案", []);
+    expect(prompt).toContain('"assigneeRole"');
   });
 });

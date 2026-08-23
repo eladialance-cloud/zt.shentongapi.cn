@@ -8,8 +8,9 @@ export class HermesReportDto {
   @IsInt()
   teamTaskId: number;
 
+  @IsOptional()
   @IsInt()
-  teamId: number;
+  teamId?: number;
 
   @IsIn(['completed', 'failed'])
   status: 'completed' | 'failed';

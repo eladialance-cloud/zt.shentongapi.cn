@@ -149,6 +149,29 @@ export async function updateTask(
   );
 }
 
+/** 我的全部团队任务 GET /team-tasks/mine（含 auto/agent 模式，无团队归属任务） */
+export async function listMyTeamTasks(
+  query: TeamTaskQuery = {},
+): Promise<PaginatedResult<TeamTask & { assigneeName?: string }>> {
+  return httpClient.get<PaginatedResult<TeamTask & { assigneeName?: string }>>(
+    `/team-tasks/mine`,
+    { params: query },
+  );
+}
+
+/** 更新我的任务 PATCH /team-tasks/:taskId（auto/agent 模式无团队归属也可回写） */
+export async function updateMyTask(
+  taskId: number,
+  dto: UpdateTeamTaskDto,
+): Promise<TeamTask> {
+  return httpClient.patch<TeamTask>(`/team-tasks/${taskId}`, dto);
+}
+
+/** 删除我的任务 DELETE /team-tasks/:taskId */
+export async function deleteMyTask(taskId: number): Promise<void> {
+  await httpClient.delete<void>(`/team-tasks/${taskId}`);
+}
+
 /** 可选 Agent(本地):只返回「我的」里已下载的 Agent(创建团队/添加成员用) */
 export async function listLocalSelectableAgents(): Promise<SelectableAgent[]> {
   try {
@@ -188,6 +211,9 @@ export default {
   removeMember,
   listTasks,
   updateTask,
+  listMyTeamTasks,
+  updateMyTask,
+  deleteMyTask,
   listSelectableAgents,
   listLocalSelectableAgents,
 };

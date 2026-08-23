@@ -93,6 +93,23 @@ describe("UnifiedTask 类型导出", () => {
     expect(task.briefId).toBeUndefined();
   });
 
+  it("executeMode / agentId 可显式填写（auto/agent 模式无团队归属）", () => {
+    const task: UnifiedTask = {
+      key: "team:3",
+      source: "team",
+      title: "自动匹配任务",
+      status: "todo",
+      rawStatus: "pending",
+      createdAt: "2026-08-19T10:00:00.000Z",
+      executeMode: "auto",
+    };
+    expect(task.executeMode).toBe("auto");
+    expect(task.agentId).toBeUndefined();
+    task.executeMode = "agent";
+    task.agentId = 42;
+    expect(task.agentId).toBe(42);
+  });
+
   it("finishedAt / briefId 可显式填写", () => {
     const task: UnifiedTask = {
       key: "task:2",

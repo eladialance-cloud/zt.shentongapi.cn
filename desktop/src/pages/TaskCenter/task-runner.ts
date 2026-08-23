@@ -15,8 +15,8 @@ export function isTeamTask(task: UnifiedTask): boolean {
   return task.source === "team";
 }
 
-/** 从团队任务 result 中取执行引用（重试沿用同一引用，便于 call_log 串联） */
-export function executionRefOf(task: UnifiedTask, teamId: number): string {
+/** 从团队任务 result 中取执行引用（重试沿用同一引用，便于 call_log 串联）；teamId 可空（auto/agent 模式） */
+export function executionRefOf(task: UnifiedTask, teamId?: number): string {
   const result = task.result as Record<string, unknown> | null | undefined;
   if (result && typeof result.executionRef === "string" && result.executionRef) {
     return result.executionRef;
@@ -46,7 +46,8 @@ export function shouldAutoStart(
 /** 提交逐步编排（后台执行，立即返回）；未装 Hermes 或参数缺失时返回错误文案 */
 export async function submitStepRunner(payload: {
   token: string;
-  teamId: number;
+  /** 执行团队 ID；auto/agent 模式可空 */
+  teamId?: number;
   taskId: number;
   task: UnifiedTask;
   autoConfirm?: boolean;
@@ -58,7 +59,9 @@ export async function submitStepRunner(payload: {
     const input = {
       executionRef: executionRefOf(payload.task, payload.teamId),
       teamTaskId: payload.taskId,
-      teamId: payload.teamId,
+      ...(payload.teamId != null ? { teamId: payload.teamId } : {}),
+      ...(payload.task.executeMode ? { executeMode: payload.task.executeMode } : {}),
+      ...(payload.task.agentId != null ? { agentId: payload.task.agentId } : {}),
       ...(payload.task.briefId ? { briefId: payload.task.briefId } : {}),
       task: taskPromptOf(payload.task),
     };
@@ -130,7 +133,7 @@ export async function stopTask(teamTaskId: number): Promise<{ ok: boolean; error
 }
 
 /** 删除团队任务（先停止再调后端 DELETE） */
-export async function deleteTeamTask(payload: { token: string; teamId: number; teamTaskId: number }): Promise<{ ok: boolean; error?: string }> {
+export async function deleteTeamTask(payload: { token: string; teamId?: number; teamTaskId: number }): Promise<{ ok: boolean; error?: string }> {
   const api = window.electronAPI?.hermesOrchestrate;
   if (!api) return { ok: false, error: "当前版本不支持逐步编排（请升级客户端）" };
   return api.deleteTask(payload);

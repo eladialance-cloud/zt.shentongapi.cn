@@ -73,9 +73,12 @@ export class HermesService {
    * 归属校验：团队必须存在且为当前用户创建；写 hermes_call_logs（call_type=orchestrate，无实例）
    */
   async reportLocalExecution(userId: number, dto: HermesReportDto) {
-    const { team } = await this.teamService.getTeamDetail(userId, dto.teamId);
-    if (!team || Number(team.creatorId) !== userId) {
-      throw new NotFoundException('团队不存在');
+    // auto/agent 模式任务无团队归属：跳过团队校验
+    if (dto.teamId != null) {
+      const { team } = await this.teamService.getTeamDetail(userId, dto.teamId);
+      if (!team || Number(team.creatorId) !== userId) {
+        throw new NotFoundException('团队不存在');
+      }
     }
     const log = this.callLogRepo.create({
       userId,

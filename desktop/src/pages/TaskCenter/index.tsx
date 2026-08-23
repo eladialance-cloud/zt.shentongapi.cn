@@ -94,6 +94,14 @@ interface TeamContext {
 async function loadTeamContext(): Promise<TeamContext> {
   const teamIdByKey = new Map<string, number>();
   const teamTaskByKey = new Map<string, TeamTask>();
+  // 「我的」任务：auto/agent 模式无团队归属，只有这里能读到；team 模式任务以此兜底
+  let myTasks: Array<TeamTask & { assigneeName?: string }> = [];
+  try {
+    const myRes = await teamApi.listMyTeamTasks({ pageSize: 200 });
+    myTasks = Array.isArray(myRes?.list) ? (myRes.list as any) : [];
+  } catch (err) {
+    console.warn("[TaskCenter] 加载我的团队任务失败:", err);
+  }
   try {
     const teams = await teamApi.listTeams();
     await Promise.all(
@@ -112,6 +120,14 @@ async function loadTeamContext(): Promise<TeamContext> {
     );
   } catch (err) {
     console.warn("[TaskCenter] 加载团队列表失败:", err);
+  }
+  // 合并「我的」任务：团队接口未覆盖的（auto/agent 无团队归属）补进来；
+  // 团队模式任务以团队接口（含完整 steps）为准，不覆盖。
+  for (const t of myTasks) {
+    const key = "team:" + t.id;
+    if (teamTaskByKey.has(key)) continue;
+    teamTaskByKey.set(key, t as TeamTask);
+    if (t.teamId != null) teamIdByKey.set(key, Number(t.teamId));
   }
   return { teamIdByKey, teamTaskByKey };
 }
@@ -181,6 +197,8 @@ async function loadAll(): Promise<{
       briefId: t.briefId ?? undefined,
       executionRef: t.executionRef ?? undefined,
       result: t.result,
+      executeMode: t.executeMode ?? undefined,
+      agentId: t.agentId ?? undefined,
     });
   });
   return {
@@ -211,6 +229,8 @@ async function loadUnifiedSource(
       briefId: t.briefId ?? teamTask?.briefId ?? undefined,
       executionRef: teamTask?.executionRef ?? t.executionRef ?? undefined,
       result: teamTask?.result,
+      executeMode: teamTask?.executeMode ?? undefined,
+      agentId: teamTask?.agentId ?? undefined,
     };
   });
 }
@@ -303,13 +323,14 @@ export default function TaskCenter() {
     const candidate = tasks.find(
       (t) =>
         shouldAutoStart(t, { autoStartOn: true, runningCount }) &&
-        !dispatchedRef.current.has(t.key) &&
-        teamIdByKey.get(t.key) != null,
+        !dispatchedRef.current.has(t.key),
     );
     if (!candidate) return;
     const teamId = teamIdByKey.get(candidate.key);
     const taskId = nativeTaskId(candidate.key);
-    if (teamId == null || taskId == null) return;
+    if (taskId == null) return;
+    // 指定团队模式才要求 teamId；auto/agent 模式无团队归属也可提交
+    if (candidate.executeMode === "team" && teamId == null) return;
     dispatchedRef.current.add(candidate.key);
     void submitStepRunner({ token, teamId, taskId, task: candidate, autoConfirm: true }).then((res) => {
       if (!res.ok) {

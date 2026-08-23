@@ -20,6 +20,10 @@ export interface UnifiedTask {
   executionRef?: string
   /** 团队任务原始 result（Hermes 编排结果，含 steps，供流水线展示） */
   result?: unknown
+  /** 执行方式：team=指定团队 auto=Hermes自动匹配 agent=指定单个Agent */
+  executeMode?: "team" | "auto" | "agent"
+  /** 指定单个 Agent（executeMode=agent 时指向 agents.id） */
+  agentId?: number
 }
 
 /** 团队任务状态 → 统一状态 */

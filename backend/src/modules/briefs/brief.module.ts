@@ -7,6 +7,7 @@ import { BriefDispatchService } from './services/brief-dispatch.service';
 import { TeamTaskEntity } from '../team/entities/team-task.entity';
 import { TeamMemberEntity } from '../team/entities/team-member.entity';
 import { TeamEntity } from '../team/entities/team.entity';
+import { AgentEntity } from '../agent/entities/agent.entity';
 import { ModelEntity } from '../model/entities/model.entity';
 import { ModelProviderEntity } from '../admin-model/entities/model-provider.entity';
 import { CommonModule } from '../../common/common.module';
@@ -23,6 +24,7 @@ import { CommonModule } from '../../common/common.module';
       TeamTaskEntity,
       TeamMemberEntity,
       TeamEntity,
+      AgentEntity,
       ModelEntity,
       ModelProviderEntity,
     ]),

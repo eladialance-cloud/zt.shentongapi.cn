@@ -135,6 +135,15 @@ describe('demand-schema: 向导状态推进', () => {
     expect(nextStep('free', {}, 0)).toBe(0)
   })
 
+  test('nextStep：已作答步骤自动跳过（自然语言预填后不重复问）', () => {
+    // platform 已被自然语言预填 → 从 audience（第 2 步）推进时直接到 style（第 4 步）
+    const answers: DemandAnswers = { task: 'x', target: 'y', platform: '小红书' }
+    expect(nextStep('boss', answers, 2)).toBe(4)
+    // style 已作答 → 继续跳过到 material（第 5 步）
+    const full: DemandAnswers = { task: 'x', target: 'y', platform: '小红书', style: '干货', deadline: '明天' }
+    expect(nextStep('boss', full, 2)).toBe(5)
+  })
+
   test('prevStep 不会低于 0', () => {
     expect(prevStep(3)).toBe(2)
     expect(prevStep(0)).toBe(0)

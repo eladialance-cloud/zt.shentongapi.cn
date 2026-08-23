@@ -1,4 +1,4 @@
-﻿import { Injectable } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { InjectDataSource, InjectRepository } from "@nestjs/typeorm";
 import { DataSource, Repository, In } from "typeorm";
 import { TeamEntity } from "../entities/team.entity";
@@ -492,6 +492,129 @@ export class TeamService {
     }
     const task = await this.taskRepo.findOne({ where: { id: taskId, teamId } });
     if (!task) {
+      BusinessException.throw(ErrorCode.NOT_FOUND, "任务不存在");
+    }
+    await this.taskRepo.delete({ id: taskId });
+  }
+
+  // ============ 我的团队任务（含 auto/agent 模式，无团队归属） ============
+
+  /** 分页查询"我的"全部团队任务（三种执行方式），回填 assigneeName（成员角色名 / Agent 名） */
+  async listMyTasks(
+    userId: number,
+    page = 1,
+    pageSize = 20,
+    status?: TeamTaskStatus,
+  ): Promise<Paginated<TeamTaskEntity & { assigneeName?: string }>> {
+    const p = Math.max(1, Number(page) || 1);
+    const ps = Math.min(200, Math.max(1, Number(pageSize) || 20));
+    const where: any = { creatorId: userId };
+    if (status) where.status = status;
+    const [list, total] = await this.taskRepo.findAndCount({
+      where,
+      skip: (p - 1) * ps,
+      take: ps,
+      order: { createdAt: "DESC" },
+    });
+    const rows = await this.fillAssigneeNames(list);
+    return { list: rows, total, page: p, pageSize: ps, totalPages: Math.ceil(total / ps) };
+  }
+
+  /** 为任务列表回填 assigneeName（计算字段，不落库）：team 模式取成员角色名，agent 模式取 Agent 名 */
+  private async fillAssigneeNames(
+    list: TeamTaskEntity[],
+  ): Promise<Array<TeamTaskEntity & { assigneeName?: string }>> {
+    if (list.length === 0) return list as any;
+    const memberIds = list
+      .map((t) => t.assigneeMemberId)
+      .filter((x): x is number => typeof x === "number" && x > 0);
+    const agentIds = list
+      .filter((t) => t.executeMode === "agent")
+      .map((t) => t.agentId)
+      .filter((x): x is number => typeof x === "number" && x > 0);
+    const memberNames = new Map<number, string>();
+    const agentNames = new Map<number, string>();
+    if (memberIds.length > 0) {
+      try {
+        const members = await this.memberRepo.find({ where: { id: In(memberIds) } });
+        for (const m of members) memberNames.set(Number(m.id), m.roleTitle);
+      } catch {
+        /* 回填失败忽略 */
+      }
+    }
+    if (agentIds.length > 0) {
+      try {
+        const agents = await this.dataSource.query(
+          `SELECT id, name FROM agents WHERE id IN (?)`,
+          [agentIds],
+        );
+        for (const a of agents as Array<{ id: number | string; name: string }>) {
+          agentNames.set(Number(a.id), a.name);
+        }
+      } catch {
+        /* 回填失败忽略 */
+      }
+    }
+    return list.map((t) => {
+      const assigneeName =
+        t.executeMode === "agent"
+          ? t.agentId != null
+            ? agentNames.get(Number(t.agentId))
+            : undefined
+          : t.assigneeMemberId != null
+            ? memberNames.get(Number(t.assigneeMemberId))
+            : undefined;
+      return { ...t, ...(assigneeName ? { assigneeName } : {}) };
+    });
+  }
+
+  /** 更新"我的"任务（auto/agent 模式无团队归属也可回写）；切执行方式时联动置空 */
+  async updateMyTask(
+    userId: number,
+    taskId: number,
+    data: Partial<{
+      status: TeamTaskStatus;
+      result: unknown;
+      executeMode: "team" | "auto" | "agent";
+      teamId?: number | null;
+      agentId?: number;
+    }>,
+  ): Promise<TeamTaskEntity> {
+    const task = await this.taskRepo.findOne({ where: { id: taskId } });
+    if (!task || Number(task.creatorId) !== userId) {
+      BusinessException.throw(ErrorCode.NOT_FOUND, "任务不存在");
+    }
+    if (data.status !== undefined) {
+      task.status = data.status;
+      if (data.status === "completed") task.completedAt = new Date();
+    }
+    if (data.result !== undefined) task.result = data.result;
+    if (data.executeMode !== undefined) task.executeMode = data.executeMode;
+    if (data.teamId !== undefined) {
+      if (data.teamId == null) {
+        task.teamId = null;
+      } else {
+        const target = await this.teamRepo.findOne({ where: { id: data.teamId } });
+        if (!target) {
+          BusinessException.throw(ErrorCode.NOT_FOUND, "目标团队不存在");
+        }
+        if (Number(target.creatorId) !== userId) {
+          BusinessException.throw(ErrorCode.FORBIDDEN, "仅团队创建者可迁移任务");
+        }
+        task.teamId = Number(data.teamId);
+      }
+    }
+    if (data.agentId !== undefined) task.agentId = data.agentId;
+    // 模式联动：team 模式 agent_id 无意义；auto/agent 模式 team_id 置空
+    if (task.executeMode !== "team") task.teamId = null;
+    if (task.executeMode === "team") task.agentId = undefined;
+    return this.taskRepo.save(task);
+  }
+
+  /** 删除"我的"任务（归属校验：仅创建者可删） */
+  async deleteMyTask(userId: number, taskId: number): Promise<void> {
+    const task = await this.taskRepo.findOne({ where: { id: taskId } });
+    if (!task || Number(task.creatorId) !== userId) {
       BusinessException.throw(ErrorCode.NOT_FOUND, "任务不存在");
     }
     await this.taskRepo.delete({ id: taskId });

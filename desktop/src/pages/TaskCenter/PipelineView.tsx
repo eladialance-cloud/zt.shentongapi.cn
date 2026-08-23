@@ -3,8 +3,9 @@
 // 产出内容（文字/图片/视频）内联预览；通过/打回走逐步编排 IPC；自动确认（自评）开关可中途切换
 // 我的任务源：保留旧版 outputs 拆解 JSON 流水线与老板动作（选题/终审），不回归
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Button, Empty, Input, message, Modal, Select, Space, Spin, Switch, Tooltip } from "antd";
+import { Alert, Button, Collapse, Empty, Input, message, Modal, Radio, Select, Space, Spin, Switch, Tooltip } from "antd";
 import {
+  ApartmentOutlined,
   CheckCircleFilled,
   DeleteOutlined,
   CloseCircleFilled,
@@ -17,7 +18,7 @@ import {
   ThunderboltFilled,
 } from "@ant-design/icons";
 import * as teamApi from "@/api/team-api";
-import type { Team } from "@/types/team";
+import type { SelectableAgent, Team, TeamTaskExecuteMode } from "@/types/team";
 import { useAuthStore } from "@/store/auth";
 import { httpClient } from "@/api/http-client";
 import { resolveMediaUrl } from "@/utils/media";
@@ -95,6 +96,18 @@ const STEP_META: Record<PipelineStep["status"], { label: string; cls: string }> 
   rejected: { label: "打回超限", cls: "stepRejected" },
 };
 
+/** 执行方式徽标文案与样式类 */
+const MODE_LABEL: Record<string, string> = {
+  team: "指定团队",
+  auto: "自动匹配",
+  agent: "指定Agent",
+};
+const MODE_CLS: Record<string, string> = {
+  team: "modeBadge",
+  auto: "modeBadge modeBadgeAuto",
+  agent: "modeBadge modeBadgeAgent",
+};
+
 /** 时间格式化 */
 function formatTime(v: unknown): string {
   if (!v) return "-";
@@ -126,10 +139,17 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
   const [manualTopic, setManualTopic] = useState("");
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectComment, setRejectComment] = useState("");
+  // 执行方式切换（指定团队/自动匹配/指定Agent）
+  const [agents, setAgents] = useState<SelectableAgent[]>([]);
+  const [modeOpen, setModeOpen] = useState(false);
+  const [modeDraft, setModeDraft] = useState<TeamTaskExecuteMode>("auto");
+  const [modeTeamId, setModeTeamId] = useState<number | undefined>(undefined);
+  const [modeAgentId, setModeAgentId] = useState<number | undefined>(undefined);
 
   const taskId = useMemo(() => nativeTaskId(task.key), [task.key]);
   const isTeam = task.source === "team";
-  const canRunner = isTeam && teamId != null && taskId != null;
+  /** auto/agent 模式无团队归属也可执行（回写走 /team-tasks） */
+  const canRunner = isTeam && taskId != null;
   const quickAction = useMemo(() => taskQuickAction(task), [task]);
 
   /** 读取 Hermes 拆解输出：仅「我的任务」源有 GET /tasks/:id/outputs */
@@ -154,12 +174,16 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
     void loadOutputs();
   }, [loadOutputs]);
 
-  /** 拉取可选团队（未开始任务可换执行团队） */
+  /** 拉取可选团队与 Agent（执行方式切换面板用） */
   useEffect(() => {
     let alive = true;
     void teamApi
       .listTeams()
       .then((list) => { if (alive) setTeams(list); })
+      .catch(() => undefined);
+    void teamApi
+      .listSelectableAgents()
+      .then((list) => { if (alive) setAgents(Array.isArray(list) ? list : []); })
       .catch(() => undefined);
     return () => { alive = false; };
   }, []);
@@ -173,6 +197,15 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
     return parsePipeline(task, outputs);
   }, [isTeam, task, outputs]);
   const candidates = useMemo(() => topicCandidates(outputs), [outputs]);
+  /** 当前执行方式：auto/agent 任务无 teamId，按 executeMode 展示 */
+  const executeMode = task.executeMode ?? (teamId != null ? "team" : "auto");
+  /** 规划阶段思考过程（Hermes 拆解任务时 JSON 前的文本） */
+  const planReasoning = useMemo(() => {
+    if (!isTeam) return undefined;
+    const result = task.result as Record<string, unknown> | null | undefined;
+    const v = result?.planReasoning;
+    return typeof v === "string" && v.trim() ? v : undefined;
+  }, [isTeam, task.result]);
   /** 僵尸运行态：任务标 running 但无任何团队节点（App 中断/规划失败残留），允许重新开始 */
   const brokenRunning = isTeam && task.status === "running" && parseTeamSteps(task.result).length === 0;
 
@@ -224,9 +257,9 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
     });
   };
 
-  /** 删除任务（先停止运行再调后端 DELETE） */
+  /** 删除任务（先停止运行再调后端 DELETE；auto/agent 模式无团队归属走 /team-tasks） */
   const handleDelete = () => {
-    if (!token || !teamId || taskId == null) return;
+    if (!token || taskId == null) return;
     Modal.confirm({
       title: "删除任务？",
       content: "删除后不可恢复（含执行记录与产出）。",
@@ -241,16 +274,39 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
     });
   };
 
-  /** 切换执行团队（仅未开始/失败任务；迁移后任务归入新团队） */
-  const handleChangeTeam = async (newTeamId: number) => {
-    if (!token || !teamId || taskId == null || newTeamId === teamId) return;
+  /** 打开执行方式切换面板（未开始/失败任务可用） */
+  const openModePanel = () => {
+    setModeDraft(executeMode);
+    setModeTeamId(teamId ?? teams[0]?.id);
+    setModeAgentId(task.agentId ?? (agents[0] ? Number(agents[0].id) : undefined));
+    setModeOpen(true);
+  };
+
+  /** 保存执行方式：team=指定团队（联动选团队）；agent=指定Agent；auto=自动匹配（清空团队） */
+  const handleModeSave = async () => {
+    if (!token || taskId == null) return;
+    if (modeDraft === "team" && modeTeamId == null) {
+      message.warning("请选择执行团队");
+      return;
+    }
+    if (modeDraft === "agent" && modeAgentId == null) {
+      message.warning("请选择执行的 Agent");
+      return;
+    }
     setTaskBusy(true);
     try {
-      await teamApi.updateTask(teamId, taskId, { teamId: newTeamId });
-      message.success("已切换执行团队");
+      if (modeDraft === "team") {
+        await teamApi.updateMyTask(taskId, { executeMode: "team", teamId: modeTeamId as number });
+      } else if (modeDraft === "agent") {
+        await teamApi.updateMyTask(taskId, { executeMode: "agent", agentId: modeAgentId as number });
+      } else {
+        await teamApi.updateMyTask(taskId, { executeMode: "auto", teamId: null });
+      }
+      message.success("执行方式已更新");
+      setModeOpen(false);
       onUpdated?.();
     } catch (err) {
-      message.error("切换团队失败：" + (err as Error).message);
+      message.error("更新执行方式失败：" + ((err as Error).message || "未知错误"));
     } finally { setTaskBusy(false); }
   };
 
@@ -379,6 +435,11 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
             </div>
             <div className={styles.taskMetaRow}>
               <span>{task.source === "team" ? "团队任务" : task.source === "task" ? "我的任务" : "Hermes 调用"}</span>
+              {isTeam && (
+                <span className={styles[MODE_CLS[executeMode] || "modeBadge"]}>
+                  {MODE_LABEL[executeMode] ?? "自动匹配"}
+                </span>
+              )}
               {task.assignee && <span>负责人：{task.assignee}</span>}
               <span>创建于 {formatTime(task.createdAt)}</span>
               {task.finishedAt && <span>完成于 {formatTime(task.finishedAt)}</span>}
@@ -394,15 +455,16 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
             )}
             {canRunner && (task.status === "todo" || task.status === "failed" || brokenRunning) && (
               <>
-              <Select
-                size="small"
-                style={{ width: 150 }}
-                placeholder="执行团队"
-                value={teamId}
-                options={teams.map((t) => ({ value: t.id, label: t.name }))}
-                disabled={!token || taskBusy}
-                onChange={handleChangeTeam}
-              />
+              <Tooltip title="指定团队 / 自动匹配 / 指定Agent，执行前可随时切换">
+                <Button
+                  size="small"
+                  icon={<ApartmentOutlined />}
+                  disabled={!token || taskBusy}
+                  onClick={openModePanel}
+                >
+                  执行方式：{MODE_LABEL[executeMode] ?? "自动匹配"}
+                </Button>
+              </Tooltip>
               <Tooltip title={!token ? "未登录" : undefined}>
                 <Button
                   type="primary"
@@ -432,6 +494,22 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
             {paused && <span className={styles.pausedBadge}>已暂停</span>}
           </div>
         </div>
+
+        {/* ===== 规划思考过程（Hermes 拆解任务时的思路） ===== */}
+        {planReasoning && (
+          <Collapse
+            ghost
+            size="small"
+            style={{ margin: "4px 0" }}
+            items={[
+              {
+                key: "plan",
+                label: "Hermes 规划思路（思考过程）",
+                children: <pre className={styles.reasonBlockPre}>{planReasoning}</pre>,
+              },
+            ]}
+          />
+        )}
 
         {/* ===== 步骤轨道 ===== */}
         {steps.length === 0 ? (
@@ -487,6 +565,14 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
 
                     {/* 产出预览 */}
                     <StepOutputs outputs={step.outputs} />
+
+                    {/* 节点思考过程（Hermes 执行该节点时的思路） */}
+                    {step.reasoning && (
+                      <details className={styles.reasonBlock}>
+                        <summary>节点思考过程（Hermes 执行该节点时的思路）</summary>
+                        <pre>{step.reasoning}</pre>
+                      </details>
+                    )}
 
                     {/* 自评/确认记录 */}
                     {step.review && (step.status === "done" || step.status === "rejected") && (
@@ -561,6 +647,50 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
             })}
           </div>
         )}
+
+        {/* 执行方式切换（指定团队/自动匹配/指定Agent） */}
+        <Modal
+          title="执行方式"
+          open={modeOpen}
+          onOk={() => void handleModeSave()}
+          onCancel={() => setModeOpen(false)}
+          okText="保存"
+          cancelText="取消"
+          width={460}
+          confirmLoading={taskBusy}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 8 }}>
+            <Radio.Group value={modeDraft} onChange={(e) => setModeDraft(e.target.value)}>
+              <Space direction="vertical">
+                <Radio value="team">指定团队：由团队成员分工执行</Radio>
+                <Radio value="auto">自动匹配：Hermes 自行选择团队或子代理</Radio>
+                <Radio value="agent">指定单个 Agent：由该 Agent 独立执行</Radio>
+              </Space>
+            </Radio.Group>
+            {modeDraft === "team" && (
+              <Select
+                placeholder="选择执行团队"
+                style={{ width: "100%" }}
+                value={modeTeamId}
+                onChange={setModeTeamId}
+                options={teams.map((t) => ({ value: t.id, label: t.name }))}
+                showSearch
+                optionFilterProp="label"
+              />
+            )}
+            {modeDraft === "agent" && (
+              <Select
+                placeholder="选择执行的 Agent"
+                style={{ width: "100%" }}
+                value={modeAgentId}
+                onChange={setModeAgentId}
+                options={agents.map((a) => ({ value: Number(a.id), label: a.name }))}
+                showSearch
+                optionFilterProp="label"
+              />
+            )}
+          </div>
+        </Modal>
 
         {/* 旧版弹窗（我的任务源） */}
         <Modal

@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button, Modal, Select, Tooltip, message } from 'antd'
+import { Button, Modal, Radio, Select, Tooltip, message } from 'antd'
 import {
   HistoryOutlined,
   RobotOutlined,
@@ -100,10 +100,12 @@ export default function Chat() {
   const [historyPrefillTitle, setHistoryPrefillTitle] = useState<string | null>(null)
   const [wizardSeq, setWizardSeq] = useState(0)
   const [briefPublishing, setBriefPublishing] = useState(false)
-  /** 发布简报前选择执行团队 */
+  /** 发布简报前选择执行方式（team=指定团队 / auto=Hermes自动匹配 / agent=指定单个Agent） */
   const [teamPick, setTeamPick] = useState<{ briefId: number; title: string } | null>(null)
+  const [teamPickMode, setTeamPickMode] = useState<'team' | 'auto' | 'agent'>('team')
   const [teamPickValue, setTeamPickValue] = useState<number | undefined>(undefined)
   const [teamOptions, setTeamOptions] = useState<Team[]>([])
+  const [teamPickAgentId, setTeamPickAgentId] = useState<number | undefined>(undefined)
   /** 对话中识别到的定时任务意图 */
   const [schedulePick, setSchedulePick] = useState<ScheduleIntent | null>(null)
 
@@ -599,10 +601,18 @@ export default function Chat() {
 
   /** 确认简报 + 轮询拆解结果 + 成功弹窗（直接确认与选团队两条路径共用） */
   const confirmAndFinish = useCallback(
-    async (briefId: number, title: string, teamId?: number) => {
+    async (
+      briefId: number,
+      title: string,
+      opts?: { teamId?: number; executeMode?: 'team' | 'auto' | 'agent'; agentId?: number },
+    ) => {
       let confirmed = false
       try {
-        await confirmBrief(briefId, teamId != null ? { teamId } : {})
+        await confirmBrief(briefId, {
+          ...(opts?.teamId != null ? { teamId: opts.teamId } : {}),
+          executeMode: opts?.executeMode ?? 'team',
+          ...(opts?.agentId != null ? { agentId: opts.agentId } : {}),
+        })
         confirmed = true
       } catch (err) {
         console.error('[Chat] confirm brief failed:', err)
@@ -639,7 +649,11 @@ export default function Chat() {
     setTeamPick(null)
     setBriefPublishing(true)
     try {
-      await confirmAndFinish(briefId, title, teamPickValue)
+      await confirmAndFinish(briefId, title, {
+        executeMode: teamPickMode,
+        teamId: teamPickMode === 'team' ? teamPickValue : undefined,
+        agentId: teamPickMode === 'agent' ? teamPickAgentId : undefined,
+      })
     } finally {
       setBriefPublishing(false)
     }
@@ -671,13 +685,16 @@ export default function Chat() {
         } catch {
           teams = []
         }
+        setTeamOptions(teams)
         if (teams.length > 0) {
-          setTeamOptions(teams)
           setTeamPickValue(teams[0].id)
-          setTeamPick({ briefId: created.brief.id, title: payload.title })
-          return
+        } else {
+          setTeamPickValue(undefined)
         }
-        await confirmAndFinish(created.brief.id, payload.title)
+        // 无论有没有团队都弹窗：可选 指定团队 / Hermes 自动匹配 / 指定单个 Agent
+        setTeamPickMode(teams.length > 0 ? 'team' : 'auto')
+        setTeamPickAgentId(undefined)
+        setTeamPick({ briefId: created.brief.id, title: payload.title })
       } catch (err) {
         console.error('[Chat] publish brief failed:', err)
         message.error('发布简报失败：' + (err as Error).message)
@@ -802,27 +819,54 @@ export default function Chat() {
           onCreated={(title) => console.log('[Chat] 定时任务已创建:', title)}
         />
 
-        {/* 发布简报前选择执行团队 */}
+        {/* 发布简报前选择执行方式 */}
         <Modal
-          title="选择执行团队"
+          title="选择执行方式"
           open={!!teamPick}
           okText="确认并派发"
           cancelText="取消"
           confirmLoading={briefPublishing}
           onOk={() => void handleTeamPickOk()}
           onCancel={() => setTeamPick(null)}
-          width={420}
+          width={440}
         >
           <div style={{ marginBottom: 12, color: 'var(--color-text-secondary)', fontSize: 13 }}>
-            「{teamPick?.title}」将由所选团队执行；Hermes 会按团队成员分工拆解任务。
+            「{teamPick?.title}」发布后由 Hermes 执行，请选择执行方式。
           </div>
-          <Select
-            style={{ width: '100%' }}
-            value={teamPickValue}
-            placeholder="选择执行团队"
-            options={teamOptions.map((t) => ({ value: t.id, label: t.name }))}
-            onChange={(v) => setTeamPickValue(v)}
-          />
+          <Radio.Group
+            value={teamPickMode}
+            onChange={(e) => setTeamPickMode(e.target.value)}
+            style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}
+          >
+            <Radio value="team">指定团队：Hermes 按团队成员分工执行</Radio>
+            <Radio value="auto">Hermes 自动匹配：自行拆解并派子代理执行</Radio>
+            <Radio value="agent">指定单个 Agent：由所选 Agent 独立完成</Radio>
+          </Radio.Group>
+          {teamPickMode === 'team' && (
+            <Select
+              style={{ width: '100%' }}
+              value={teamPickValue}
+              placeholder="选择执行团队"
+              options={teamOptions.map((t) => ({ value: t.id, label: t.name }))}
+              onChange={(v) => setTeamPickValue(v)}
+            />
+          )}
+          {teamPickMode === 'agent' && (
+            <Select
+              style={{ width: '100%' }}
+              value={teamPickAgentId}
+              placeholder="选择要执行的 Agent"
+              options={agentOptions.map((a) => ({ value: a.id, label: a.name }))}
+              onChange={(v) => setTeamPickAgentId(v)}
+              showSearch
+              optionFilterProp="label"
+            />
+          )}
+          {teamPickMode === 'auto' && (
+            <div style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }}>
+              无需选择团队或 Agent，Hermes 会根据任务自行拆解并调度子代理执行。
+            </div>
+          )}
         </Modal>
 
         {/* ④ 对话设置抽屉（收纳模型选择 / Agent / 知识库 / 素材生成；不含积分余额） */}

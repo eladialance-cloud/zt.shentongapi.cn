@@ -1,4 +1,4 @@
-﻿import { Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 /**
@@ -1481,6 +1481,35 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='定时任务'`);
     logger.log('Ensured table: scheduled_tasks');
 
+    // team_tasks：支持无团队执行（execute_mode=auto/agent 时 team_id 为空）
+    const [ttTeamIdCol] = await queryRunner.query(
+      `SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'team_tasks' AND COLUMN_NAME = 'team_id'`
+    );
+    if (ttTeamIdCol && String(ttTeamIdCol.IS_NULLABLE).toUpperCase() === 'NO') {
+      await queryRunner.query(`ALTER TABLE team_tasks MODIFY COLUMN team_id BIGINT NULL`);
+      logger.log('Modified column: team_tasks.team_id nullable');
+    }
+    const [ttModeCol] = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'team_tasks' AND COLUMN_NAME = 'execute_mode'`
+    );
+    if (!ttModeCol) {
+      await queryRunner.query(
+        `ALTER TABLE team_tasks ADD COLUMN execute_mode ENUM('team','auto','agent') NOT NULL DEFAULT 'team' COMMENT '执行方式'`
+      );
+      logger.log('Added column: team_tasks.execute_mode');
+    }
+    const [ttAgentCol] = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'team_tasks' AND COLUMN_NAME = 'agent_id'`
+    );
+    if (!ttAgentCol) {
+      await queryRunner.query(
+        `ALTER TABLE team_tasks ADD COLUMN agent_id BIGINT NULL COMMENT '指定Agent执行'`
+      );
+      logger.log('Added column: team_tasks.agent_id');
+    }
         logger.log('Startup migrations completed');
   } catch (err) {
     logger.error(`Startup migration failed: ${(err as Error).message}`);

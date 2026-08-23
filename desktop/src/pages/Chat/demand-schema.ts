@@ -103,7 +103,13 @@ export function nextStep(mode: DemandMode, answers: DemandAnswers, currentIndex:
   const idx = Math.min(Math.max(0, currentIndex), steps.length)
   if (idx >= steps.length) return steps.length
   if (!validateStep(steps[idx], answers[steps[idx].key])) return idx
-  return Math.min(idx + 1, steps.length)
+  // 当前步已通过（必填已填 / 可跳过）：向后找下一个需要提问的步骤，已作答的步骤不再重复问（自然语言预填后不重复问）
+  for (let i = idx + 1; i < steps.length; i++) {
+    const s = steps[i]
+    const answered = typeof answers[s.key] === 'string' && answers[s.key]!.trim().length > 0
+    if (!answered) return i
+  }
+  return steps.length
 }
 
 /** 上一步（不会低于 0） */

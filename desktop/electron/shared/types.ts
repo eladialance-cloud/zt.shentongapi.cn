@@ -432,7 +432,12 @@ export interface OrchestrateStep {
 export interface OrchestrateInput {
   executionRef: string;
   teamTaskId: number;
-  teamId: number;
+  /** 执行团队 ID（auto/agent 模式可空） */
+  teamId?: number;
+  /** 执行方式：team=指定团队 auto=Hermes自动匹配 agent=指定单个Agent */
+  executeMode?: "team" | "auto" | "agent";
+  /** 指定单个 Agent（executeMode=agent 时指向 agents.id） */
+  agentId?: number;
   briefId?: number;
   task: string;
   teamMembers?: TeamMemberProfileItem[];
@@ -561,7 +566,7 @@ export interface ElectronAPI {
     /** 立即中断（杀掉当前 Hermes CLI，任务标记失败） */
     stop(payload: { teamTaskId: number }): Promise<OrchestrateSubmitResult>;
     /** 删除团队任务（先停止运行再调后端 DELETE） */
-    deleteTask(payload: { token: string; teamId: number; teamTaskId: number }): Promise<OrchestrateSubmitResult>;
+    deleteTask(payload: { token: string; teamId?: number; teamTaskId: number }): Promise<OrchestrateSubmitResult>;
   };
 
   /** 自动更新（electron-updater 封装） */
