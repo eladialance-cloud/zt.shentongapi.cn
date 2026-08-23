@@ -524,10 +524,13 @@ function registerIpcHandlers(): void {
   // ===== Hermes 逐步编排（团队任务 → 子代理逐节点执行 + 人工/自评确认 + 打回原因重做） =====
   ipcMain.handle(
     'hermes-orchestrate:submit',
-    async (_event, payload: { token: string; input: OrchestrateInput; autoConfirm?: boolean }) => {
+    async (_event, payload: { token: string; input: OrchestrateInput; autoConfirm?: boolean; reviewEnabled?: boolean; reviewModel?: string }) => {
       if (!payload?.token || !payload?.input) return { ok: false, error: '参数缺失' }
       try {
         const input = { ...payload.input }
+        // Hermes 独立评审：默认开启（产品默认）；reviewModel 可选（缺省用默认 chat 模型）
+        input.reviewEnabled = payload.reviewEnabled !== false
+        if (typeof payload.reviewModel === 'string' && payload.reviewModel) input.reviewModel = payload.reviewModel
         const executeMode = input.executeMode ?? (input.teamId != null ? 'team' : 'auto')
         input.executeMode = executeMode
         // 成员来源按执行方式：team=团队成员；agent=单个 Agent；auto=不注入（Hermes 原生子代理）

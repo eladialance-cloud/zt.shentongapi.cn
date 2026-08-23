@@ -1347,6 +1347,9 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='需求单（云端；一期 local_briefs 为离线 MVP）'`);
       logger.log('Created table: briefs');
     }
+    // briefs 补充列：拆解失败原因码 + 派发参数（重拆解用），幂等
+    await ensureColumn('briefs', 'dispatch_error', "VARCHAR(512) DEFAULT NULL COMMENT 'AI拆解失败原因码'");
+    await ensureColumn('briefs', 'dispatch_params', "JSON DEFAULT NULL COMMENT '派发参数(executeMode/teamId/agentId)'");
 
     // media_assets 表：素材资产库（种子：task_output_item / media_jobs）
     const [mediaAssetsTable] = await queryRunner.query(

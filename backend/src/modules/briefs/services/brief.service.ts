@@ -206,6 +206,13 @@ export class BriefService {
     }
     brief.status = 'confirmed';
     brief.dispatchStatus = 'pending';
+    brief.dispatchError = null;
+    // 保存派发参数（供拆解失败后「重新拆解」复用）
+    brief.dispatchParams = {
+      executeMode,
+      teamId: dto?.teamId ?? null,
+      agentId: dto?.agentId ?? null,
+    };
     await this.briefRepo.save(brief);
     // 后台派发：不再 await LLM 结果（避免最长 30s 阻塞与 axios 超时竞态）
     const memberRoles = await this.loadMemberRoles(userId);
@@ -218,6 +225,7 @@ export class BriefService {
         } else {
           brief.dispatchStatus = 'failed';
           brief.dispatchResult = null;
+          brief.dispatchError = result.error ?? 'DISPATCH_FAILED';
         }
         return this.briefRepo.save(brief);
       })
@@ -226,6 +234,78 @@ export class BriefService {
         this.logger.warn('需求单后台派发异常: ' + (err as Error).message);
         brief.dispatchStatus = 'failed';
         brief.dispatchResult = null;
+        brief.dispatchError = 'DISPATCH_EXCEPTION';
+        return this.briefRepo.save(brief);
+      });
+    return brief;
+  }
+
+  /**
+   * 重新拆解（AI 拆解失败后手动重试）
+   * 仅 confirmed + failed 可重试；默认复用原派发参数（executeMode/teamId/agentId），可被 dto 覆盖
+   * 与 confirm 同款后台 fire-and-forget：pending → 异步回写 done/failed
+   */
+  async redispatch(
+    userId: number,
+    id: number,
+    dto?: ConfirmBriefDto,
+  ): Promise<BriefEntity> {
+    const brief = await this.briefRepo.findOne({ where: { id, userId } });
+    if (!brief) {
+      throw new NotFoundException(`需求单 ${id} 不存在`);
+    }
+    if (brief.dispatchStatus !== 'failed') {
+      throw new BadRequestException('仅拆解失败的需求单可重新拆解');
+    }
+    if (brief.status !== 'confirmed') {
+      throw new BadRequestException(`当前状态 ${brief.status} 不可重新拆解，仅 confirmed 可重试`);
+    }
+    const params = (brief.dispatchParams ?? {}) as NonNullable<BriefEntity['dispatchParams']>;
+    const executeMode = dto?.executeMode ?? params.executeMode ?? 'team';
+    const teamId = dto?.teamId ?? params.teamId ?? undefined;
+    const agentId = dto?.agentId ?? params.agentId ?? undefined;
+    // 指定团队校验：必须是当前用户创建的团队
+    if (teamId != null) {
+      const targetTeam = await this.teamRepo.findOne({ where: { id: teamId } });
+      if (!targetTeam) {
+        throw new BadRequestException(`团队 ${teamId} 不存在`);
+      }
+      if (Number(targetTeam.creatorId) !== userId) {
+        throw new BadRequestException('只能选择自己创建的团队执行');
+      }
+    }
+    // 指定单个 Agent 校验
+    if (executeMode === 'agent' && agentId == null) {
+      throw new BadRequestException('指定单个 Agent 执行时必须提供 agentId');
+    }
+    brief.dispatchStatus = 'pending';
+    brief.dispatchError = null;
+    brief.dispatchParams = {
+      executeMode,
+      teamId: teamId ?? null,
+      agentId: agentId ?? null,
+    };
+    await this.briefRepo.save(brief);
+    // 后台派发（与 confirm 同款异步回写）
+    const memberRoles = await this.loadMemberRoles(userId);
+    void this.dispatchService
+      .dispatch(brief, memberRoles, teamId, executeMode, agentId)
+      .then((result) => {
+        if (result.ok) {
+          brief.dispatchStatus = 'done';
+          brief.dispatchResult = result.tasks ?? null;
+        } else {
+          brief.dispatchStatus = 'failed';
+          brief.dispatchResult = null;
+          brief.dispatchError = result.error ?? 'DISPATCH_FAILED';
+        }
+        return this.briefRepo.save(brief);
+      })
+      .catch((err) => {
+        this.logger.warn('需求单后台派发异常: ' + (err as Error).message);
+        brief.dispatchStatus = 'failed';
+        brief.dispatchResult = null;
+        brief.dispatchError = 'DISPATCH_EXCEPTION';
         return this.briefRepo.save(brief);
       });
     return brief;

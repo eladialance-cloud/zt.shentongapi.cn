@@ -7,6 +7,7 @@
 //   GET    /briefs/:id                简报详情
 //   PATCH  /briefs/:id                更新简报
 //   POST   /briefs/:id/confirm        确认简报 body: { manualDispatch? }
+//   POST   /briefs/:id/redispatch    重新拆解（仅 failed 可重试，复用原派发参数）
 //   POST   /briefs/:id/cancel         取消简报
 import { httpClient } from './http-client'
 
@@ -35,6 +36,8 @@ export interface BriefItem {
   status: BriefStatus
   dispatchStatus: DispatchStatus
   dispatchResult?: DispatchTaskItem[] | null
+  dispatchError?: string | null
+  dispatchParams?: { executeMode: 'team' | 'auto' | 'agent'; teamId?: number | null; agentId?: number | null } | null
   sourceChatSessionId?: number | null
   sourceChatSummary?: string | null
   createdAt: string
@@ -99,6 +102,14 @@ export function confirmBrief(
   return httpClient.post<BriefItem>('/briefs/' + id + '/confirm', body)
 }
 
+/** 重新拆解 POST /briefs/:id/redispatch（仅 AI 拆解失败后可重试） */
+export function redispatchBrief(
+  id: number,
+  body: { executeMode?: 'team' | 'auto' | 'agent'; teamId?: number; agentId?: number } = {},
+): Promise<BriefItem> {
+  return httpClient.post<BriefItem>('/briefs/' + id + '/redispatch', body)
+}
+
 /** 取消简报 POST /briefs/:id/cancel */
 export function cancelBrief(id: number): Promise<BriefItem> {
   return httpClient.post<BriefItem>('/briefs/' + id + '/cancel')
@@ -109,4 +120,4 @@ export function getBriefHistory(query: { limit?: number } = {}): Promise<BriefIt
   return httpClient.get<BriefItem[]>('/briefs/history', { params: query })
 }
 
-export default { listBriefs, createBrief, getBrief, updateBrief, confirmBrief, cancelBrief, getBriefHistory }
+export default { listBriefs, createBrief, getBrief, updateBrief, confirmBrief, redispatchBrief, cancelBrief, getBriefHistory }

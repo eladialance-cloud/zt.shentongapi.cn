@@ -75,6 +75,16 @@ export class BriefController {
     return this.briefService.confirm(userId, id, dto);
   }
 
+  @Post(':id/redispatch')
+  @ApiOperation({ summary: '重新拆解（AI 拆解失败后重试）' })
+  redispatch(
+    @CurrentUser('userId') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ConfirmBriefDto,
+  ) {
+    return this.briefService.redispatch(userId, id, dto);
+  }
+
   @Post(':id/cancel')
   @ApiOperation({ summary: '取消需求单（draft/confirmed → cancelled）' })
   cancel(

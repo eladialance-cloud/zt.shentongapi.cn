@@ -450,6 +450,10 @@ export interface OrchestrateInput {
     tts?: string;
   };
   timeoutMs?: number;
+  /** Hermes 独立评审开关（缺省 false；渲染层提交时默认 true） */
+  reviewEnabled?: boolean;
+  /** 评审模型（缺省用默认 chat 模型） */
+  reviewModel?: string;
 }
 
 /** 团队成员人设（渲染层经 load-members 获取后透传） */
@@ -553,6 +557,8 @@ export interface ElectronAPI {
       token: string;
       input: OrchestrateInput;
       autoConfirm?: boolean;
+      reviewEnabled?: boolean;
+      reviewModel?: string;
     }): Promise<OrchestrateSubmitResult>;
     confirmStep(payload: OrchestrateStepActionPayload): Promise<OrchestrateSubmitResult>;
     rejectStep(payload: OrchestrateStepActionPayload): Promise<OrchestrateSubmitResult>;

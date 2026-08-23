@@ -129,7 +129,7 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
   const [actingIndex, setActingIndex] = useState<number | null>(null);
   const [rejectIndex, setRejectIndex] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
-  // 自动确认（自评）：按任务记忆，默认开启
+  // 自动确认（Hermes 评审）：按任务记忆，默认开启
   const [autoConfirm, setAutoConfirmState] = useState<boolean>(() => {
     try { return localStorage.getItem("tc-auto:" + task.key) !== "0"; } catch { return true; }
   });
@@ -209,7 +209,7 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
   /** 僵尸运行态：任务标 running 但无任何团队节点（App 中断/规划失败残留），允许重新开始 */
   const brokenRunning = isTeam && task.status === "running" && parseTeamSteps(task.result).length === 0;
 
-  /** 切换自动确认（自评）：运行中任务实时通知主进程 */
+  /** 切换自动确认（Hermes 评审）：运行中任务实时通知主进程 */
   const handleToggleAuto = (v: boolean) => {
     setAutoConfirmState(v);
     try { localStorage.setItem("tc-auto:" + task.key, v ? "1" : "0"); } catch { /* ignore */ }
@@ -449,7 +449,7 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
             {canRunner && task.status === "running" && (
               <div className={styles.autoSwitch}>
                 <ThunderboltFilled className={styles.autoSwitchIcon} />
-                <span>自动确认（Hermes 自评）</span>
+                <span>自动确认（Hermes 评审）</span>
                 <Switch size="small" checked={autoConfirm} onChange={handleToggleAuto} />
               </div>
             )}
@@ -574,11 +574,28 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
                       </details>
                     )}
 
-                    {/* 自评/确认记录 */}
+                    {/* 执行者自评（原始，仅展示） */}
+                    {step.selfReview && (step.status === "done" || step.status === "rejected") && (
+                      <div className={styles.reviewNote}>
+                        执行者自评：{step.selfReview.verdict === "pass" ? "通过" : "未达标"}
+                        {step.selfReview.reason ? "： " + step.selfReview.reason : ""}
+                      </div>
+                    )}
+                    {/* Hermes 评审/人工确认记录 */}
                     {step.review && (step.status === "done" || step.status === "rejected") && (
                       <div className={styles.reviewNote}>
-                        {step.review.verdict === "pass" ? "自评通过" : "自评未达标"}
-                        {step.review.by === "user" ? "（人工确认）" : step.review.by === "hermes" ? "（Hermes 自评）" : ""}
+                        {step.review.by === "user"
+                          ? step.review.verdict === "pass"
+                            ? "人工确认通过"
+                            : "人工打回"
+                          : step.selfReview
+                            ? step.review.verdict === "pass"
+                              ? "Hermes 评审通过"
+                              : "Hermes 评审打回"
+                            : step.review.verdict === "pass"
+                              ? "自评通过"
+                              : "自评未达标"}
+                        {step.review.by === "user" ? "" : "（Hermes）"}
                         {step.review.reason ? "： " + step.review.reason : ""}
                       </div>
                     )}

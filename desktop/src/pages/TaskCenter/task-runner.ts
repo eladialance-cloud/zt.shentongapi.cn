@@ -51,6 +51,8 @@ export async function submitStepRunner(payload: {
   taskId: number;
   task: UnifiedTask;
   autoConfirm?: boolean;
+  /** Hermes 独立评审开关（缺省开启） */
+  reviewEnabled?: boolean;
 }): Promise<{ ok: boolean; started?: boolean; error?: string }> {
   const api = window.electronAPI?.hermesOrchestrate;
   if (!api) return { ok: false, error: "当前版本不支持逐步编排（请升级客户端）" };
@@ -65,7 +67,12 @@ export async function submitStepRunner(payload: {
       ...(payload.task.briefId ? { briefId: payload.task.briefId } : {}),
       task: taskPromptOf(payload.task),
     };
-    return await api.submit({ token: payload.token, input, autoConfirm: !!payload.autoConfirm });
+    return await api.submit({
+      token: payload.token,
+      input,
+      autoConfirm: !!payload.autoConfirm,
+      reviewEnabled: payload.reviewEnabled !== false,
+    });
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -95,7 +102,7 @@ export async function rejectStep(
   return api.rejectStep({ token, teamTaskId, stepIndex, reason: reason.trim() });
 }
 
-/** 运行中切换自动确认（自评）开关 */
+/** 运行中切换自动确认（Hermes 评审）开关 */
 export async function setAutoConfirm(
   token: string,
   teamTaskId: number,

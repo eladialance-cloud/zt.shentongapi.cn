@@ -1,8 +1,10 @@
 import {
   buildPlanPrompt,
+  buildReviewPrompt,
   buildStepPrompt,
   createStepRunner,
   parsePlan,
+  parseReview,
   type OrchestrateInput,
   type StepRunnerDeps,
 } from "../../electron/main/hermes-orchestrator";
@@ -34,6 +36,9 @@ interface StepDepsHarness {
   setAuto: (v: boolean) => void;
   setPlan: (stdout: string) => void;
   nextStepResult: (json: string) => void;
+  setReviewEnabled: (v: boolean) => void;
+  nextReviewResult: (json: string) => void;
+  reviewModelCalls: Array<string | undefined>;
 }
 
 function makeDeps(): StepDepsHarness {
@@ -41,6 +46,9 @@ function makeDeps(): StepDepsHarness {
   const reports: StepDepsHarness["reports"] = [];
   const outputs: StepDepsHarness["outputs"] = [];
   let auto = false;
+  let reviewEnabled = false;
+  const reviewQueue: string[] = [];
+  const reviewModelCalls: Array<string | undefined> = [];
   let planStdout = JSON.stringify({
     steps: [
       { name: "调研", agentRole: "研究员" },
@@ -49,9 +57,16 @@ function makeDeps(): StepDepsHarness {
   });
   const stepQueue: string[] = [];
   const deps: StepRunnerDeps = {
-    runPrompt: jest.fn(async (prompt: string) => {
+    runPrompt: jest.fn(async (prompt: string, opts?: { model?: string }) => {
       const isPlan = prompt.includes("拆解为");
       if (isPlan) return { stdout: planStdout };
+      const isReview = prompt.includes("独立评审");
+      if (isReview) {
+        reviewModelCalls.push(opts?.model);
+        const next = reviewQueue.shift();
+        if (next === undefined) throw new Error("未预置评审结果");
+        return { stdout: next };
+      }
       const next = stepQueue.shift();
       if (next === undefined) throw new Error("未预置单步结果");
       return { stdout: next };
@@ -68,6 +83,9 @@ function makeDeps(): StepDepsHarness {
     isAutoConfirm: jest.fn(() => auto),
     now: jest.fn(() => 1000),
     maxRetries: 2,
+    get reviewEnabled() {
+      return reviewEnabled;
+    },
   };
   return {
     deps,
@@ -77,6 +95,13 @@ function makeDeps(): StepDepsHarness {
     setAuto: (v) => {
       auto = v;
     },
+    setReviewEnabled: (v) => {
+      reviewEnabled = v;
+    },
+    nextReviewResult: (json) => {
+      reviewQueue.push(json);
+    },
+    reviewModelCalls,
     setPlan: (s) => {
       planStdout = s;
     },
@@ -277,5 +302,130 @@ describe("createStepRunner（子代理逐步执行 + 人工/自评确认 + 打�
     const result = await handle.wait();
     expect(result.status).toBe("failed");
     expect(result.error).toContain("Hermes 运行时未安装或未配置");
+  });
+});
+
+
+/** 评审结果 helper */
+const reviewPass = (reason = "符合要求") =>
+  JSON.stringify({ verdict: "pass", reason });
+const reviewRework = (reason = "产出与目标不符") =>
+  JSON.stringify({ verdict: "rework", reason });
+
+describe("buildReviewPrompt / parseReview", () => {
+  it("评审 prompt 包含任务、节点、产出与评审标准", () => {
+    const p = buildReviewPrompt({
+      task: "做一条宣传视频",
+      stepName: "成稿",
+      outputs: [{ type: "text", content: "正文B" }],
+      previousSummary: "调研：结论A",
+    });
+    expect(p).toContain("独立评审");
+    expect(p).toContain("做一条宣传视频");
+    expect(p).toContain("成稿");
+    expect(p).toContain("正文B");
+    expect(p).toContain("调研：结论A");
+    expect(p).toContain("verdict");
+  });
+  it("parseReview 解析标准 JSON", () => {
+    expect(parseReview('{"verdict":"pass","reason":"ok"}')).toEqual({ verdict: "pass", reason: "ok" });
+    expect(parseReview('{"verdict":"rework","reason":"跑题"}')).toEqual({ verdict: "rework", reason: "跑题" });
+  });
+  it("parseReview 解析 fenced 围栏 + 兜底 rework", () => {
+    const tick = String.fromCharCode(96);
+    const fenced = tick.repeat(3) + "json" + String.fromCharCode(10) + '{"verdict":"pass","reason":"ok"}' + String.fromCharCode(10) + tick.repeat(3);
+    expect(parseReview(fenced).verdict).toBe("pass");
+    expect(parseReview("我不知道怎么评").verdict).toBe("rework");
+    expect(parseReview("").verdict).toBe("rework");
+  });
+});
+
+describe("createStepRunner（Hermes 独立评审）", () => {
+  it("自动模式：自评 pass → Hermes 评审 pass → 节点 done（自评保留为 selfReview）", async () => {
+    const h = makeDeps();
+    h.setAuto(true);
+    h.setReviewEnabled(true);
+    h.nextStepResult(stepPass("调研完成", "结论A"));
+    h.nextReviewResult(reviewPass("产出符合要求"));
+    h.nextStepResult(stepPass("成稿完成", "正文B"));
+    h.nextReviewResult(reviewPass());
+    const handle = createStepRunner(makeInput(), h.deps);
+    const result = await handle.wait();
+    expect(result.status).toBe("completed");
+    expect(result.steps.every((s) => s.status === "done")).toBe(true);
+    expect(result.steps[0].review?.by).toBe("hermes");
+    expect(result.steps[0].selfReview?.verdict).toBe("pass");
+  });
+
+  it("自动模式：Hermes 评审 rework → 自动重做（注入评审原因）→ 二次 pass → 完成", async () => {
+    const h = makeDeps();
+    h.setAuto(true);
+    h.setReviewEnabled(true);
+    h.nextStepResult(stepPass("初稿", "初稿内容"));
+    h.nextReviewResult(reviewRework("缺少受众分析"));
+    h.nextStepResult(stepPass("修正稿", "含受众分析的内容"));
+    h.nextReviewResult(reviewPass());
+    h.nextStepResult(stepPass("成稿", "成稿内容"));
+    h.nextReviewResult(reviewPass());
+    const handle = createStepRunner(makeInput(), h.deps);
+    const result = await handle.wait();
+    expect(result.status).toBe("completed");
+    expect(result.steps[0].retryCount).toBe(1);
+    expect(result.steps[0].lastFeedback).toBe("缺少受众分析");
+    // 重做 prompt 注入评审原因
+    const prompts = (h.deps.runPrompt as jest.Mock).mock.calls.map((c) => c[0] as string);
+    expect(prompts.some((pt) => pt.includes("缺少受众分析") && !pt.includes("独立评审"))).toBe(true);
+  });
+
+  it("自动模式：评审 rework 超过上限 → rejected → failed", async () => {
+    const h = makeDeps();
+    h.setAuto(true);
+    h.setReviewEnabled(true);
+    h.nextStepResult(stepPass("初稿", "初稿内容"));
+    h.nextReviewResult(reviewRework("问题一"));
+    h.nextStepResult(stepPass("二次稿", "二次稿内容"));
+    h.nextReviewResult(reviewRework("问题二"));
+    h.nextStepResult(stepPass("三次稿", "三次稿内容"));
+    h.nextReviewResult(reviewRework("问题三"));
+    const handle = createStepRunner(makeInput(), h.deps);
+    const result = await handle.wait();
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("问题三");
+    expect(h.patches[h.patches.length - 1].payload.status).toBe("failed");
+  });
+
+  it("评审模型：reviewModel 优先，缺省用默认 chat 模型", async () => {
+    const h = makeDeps();
+    h.setAuto(true);
+    h.setReviewEnabled(true);
+    h.deps.reviewModel = "glm-5.2";
+    h.setPlan(JSON.stringify({ steps: [{ name: "调研" }] }));
+    h.nextStepResult(stepPass("调研完成", "结论A"));
+    h.nextReviewResult(reviewPass());
+    const input = makeInput({
+      modelDefaults: { chat: "deepseek-v4-pro", vision: "qwen3.8" },
+    });
+    const handle = createStepRunner(input, h.deps);
+    const result = await handle.wait();
+    expect(result.status).toBe("completed");
+    expect(h.reviewModelCalls).toContain("glm-5.2");
+  });
+
+  it("人工模式：Hermes 评审通过后仍进入 pending_review → 人工确认通过", async () => {
+    const h = makeDeps();
+    h.setReviewEnabled(true);
+    h.nextStepResult(stepPass("调研完成", "结论A"));
+    h.nextReviewResult(reviewPass());
+    h.nextStepResult(stepPass("成稿完成", "正文B"));
+    h.nextReviewResult(reviewPass());
+    const handle = createStepRunner(makeInput(), h.deps);
+    const waitP = handle.wait();
+    await until(() => pendingReviewCount(h, 0) === 1);
+    handle.confirmStep(0);
+    await until(() => pendingReviewCount(h, 1) === 1);
+    handle.confirmStep(1);
+    const result = await waitP;
+    expect(result.status).toBe("completed");
+    expect(result.steps[0].review?.by).toBe("user");
   });
 });

@@ -43,7 +43,7 @@ export async function runOneScheduledTask(
       description: claimed.description ?? claimed.title,
       executionRef: execRef,
     });
-    // 3) 提交 Hermes 逐步编排（定时任务无人值守，默认自评确认）
+    // 3) 提交 Hermes 逐步编排（定时任务无人值守，默认 Hermes 评审）
     const pseudo: UnifiedTask = {
       key: "team:" + created.id,
       source: "team",

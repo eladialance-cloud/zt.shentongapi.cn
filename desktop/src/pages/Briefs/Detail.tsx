@@ -8,7 +8,7 @@ import type { TableColumnsType } from "antd";
 import {
   ArrowLeftOutlined, CheckOutlined, CloseOutlined, FileTextOutlined, ReloadOutlined,
 } from "@ant-design/icons";
-import { cancelBrief, confirmBrief, getBrief } from "@/api/brief-api";
+import { cancelBrief, confirmBrief, getBrief, redispatchBrief } from "@/api/brief-api";
 import type {
   BriefItem, BriefStatus, DispatchPriority, DispatchStatus, DispatchTaskItem,
 } from "@/api/brief-api";
@@ -42,6 +42,17 @@ const DISPATCH_STATUS_MAP: Record<DispatchStatus, { label: string; color: string
   pending: { label: "拆解中", color: "processing" },
   done: { label: "已拆解", color: "success" },
   failed: { label: "待人工派活", color: "error" },
+};
+
+// 拆解失败原因码 → 用户可读文案
+const DISPATCH_ERROR_MAP: Record<string, string> = {
+  NO_MODEL_OR_RELAY: "没有可用的模型或中转配置，请在管理后台检查",
+  LLM_REQUEST_FAILED: "大模型服务调用失败（网络或超时），请重试",
+  PARSE_JSON_FAILED: "AI 返回的内容无法解析，请重试",
+  NO_VALID_TASKS: "AI 拆解出的任务不合法，请重试",
+  NO_TEAM_FOR_DISPATCH: "没有找到匹配的团队成员，请检查团队配置",
+  DISPATCH_EXCEPTION: "拆解过程出现异常，请重试",
+  DISPATCH_FAILED: "拆解失败，请重试",
 };
 
 // 优先级 → 文案 / Tag 颜色
@@ -105,7 +116,7 @@ export default function BriefsDetail() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [brief, setBrief] = useState<BriefItem | null>(null);
-  const [acting, setActing] = useState<"confirm" | "cancel" | null>(null);
+  const [acting, setActing] = useState<"confirm" | "cancel" | "redispatch" | null>(null);
   const [polling, setPolling] = useState(false);
   const pollTimerRef = useRef<number | null>(null);
 
@@ -171,6 +182,22 @@ export default function BriefsDetail() {
       }
     } catch (err) {
       message.error("确认失败: " + (err as Error).message);
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const handleRedispatch = async (b: BriefItem) => {
+    setActing("redispatch");
+    try {
+      const redone = await redispatchBrief(b.id);
+      setBrief(redone);
+      message.success("已重新拆解，请稍候查看结果");
+      if (redone.dispatchStatus === "pending") {
+        startPolling(b.id);
+      }
+    } catch (err) {
+      message.error("重新拆解失败: " + (err as Error).message);
     } finally {
       setActing(null);
     }
@@ -280,8 +307,24 @@ export default function BriefsDetail() {
             style={{ marginTop: 16 }}
             type="error"
             showIcon
-            message="待人工派活"
-            description="AI 拆解失败，请手动在团队任务中创建"
+            message="AI 拆解失败"
+            description={
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <span>
+                  {DISPATCH_ERROR_MAP[brief.dispatchError || ""] || "拆解失败，可点击下方按钮重新尝试"}
+                  {brief.dispatchError ? `（${brief.dispatchError}）` : ""}
+                </span>
+                <Button
+                  type="primary"
+                  danger
+                  icon={<ReloadOutlined />}
+                  loading={acting === "redispatch"}
+                  onClick={() => handleRedispatch(brief)}
+                >
+                  重新拆解
+                </Button>
+              </div>
+            }
           />
         )}
 

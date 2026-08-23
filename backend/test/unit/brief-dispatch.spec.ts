@@ -287,3 +287,68 @@ test('dispatch: team 模式默认 → execute_mode 默认 team', async (t) => {
   assert.equal(result.ok, true);
   assert.equal(ctx.taskCreates[0].executeMode, 'team');
 });
+
+test('dispatch: 首次非法 JSON → 自动重试一次成功（fetch 调用 2 次）', async (t) => {
+  const ctx = makeContext();
+  let calls = 0;
+  mock.method(globalThis, 'fetch', async () => {
+    calls++;
+    const content =
+      calls === 1
+        ? '抱歉，无法拆解'
+        : JSON.stringify([{ roleTitle: 'CEO', taskTitle: '重试成功任务', priority: 'high' }]);
+    return { ok: true, json: async () => ({ choices: [{ message: { content } }] }) } as never;
+  });
+  t.after(() => mock.restoreAll());
+  const brief = makeBrief({ dispatchStatus: 'pending' });
+  const result = await ctx.svc.dispatch(brief, ROLES);
+  assert.equal(result.ok, true);
+  assert.equal(calls, 2);
+  assert.equal(result.tasks?.length, 1);
+  assert.equal(result.tasks?.[0].taskTitle, '重试成功任务');
+  assert.equal(brief.dispatchStatus, 'done');
+});
+
+test('dispatch: 重试仍非法 → failed 且 dispatchError=PARSE_JSON_FAILED 落库字段', async (t) => {
+  const ctx = makeContext();
+  mockFetchContent('抱歉，无法拆解');
+  t.after(() => mock.restoreAll());
+  const brief = makeBrief({ dispatchStatus: 'pending' });
+  const result = await ctx.svc.dispatch(brief, ROLES);
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'PARSE_JSON_FAILED');
+  assert.equal(brief.dispatchError, 'PARSE_JSON_FAILED');
+  assert.equal(brief.dispatchStatus, 'failed');
+  assert.equal(ctx.taskCreates.length, 0);
+  // 显式失败不在此 save（由 confirm 异步回写），避免与成功写回竞争
+  assert.equal(ctx.briefSaves.length, 0);
+});
+
+test('dispatch: 尾随文字含括号 → 贪婪匹配会失败，平衡括号提取成功', async (t) => {
+  const ctx = makeContext();
+  mockFetchContent(
+    JSON.stringify([{ roleTitle: 'CEO', taskTitle: '平衡提取任务', priority: 'low' }]) +
+      '\n如需调整请告诉我[1]。'
+  );
+  t.after(() => mock.restoreAll());
+  const brief = makeBrief({ dispatchStatus: 'pending' });
+  const result = await ctx.svc.dispatch(brief, ROLES);
+  assert.equal(result.ok, true);
+  assert.equal(result.tasks?.length, 1);
+  assert.equal(result.tasks?.[0].taskTitle, '平衡提取任务');
+});
+
+test('dispatch: 带代码块标记 + 尾随解释 → 剥代码块后整体解析成功', async (t) => {
+  const ctx = makeContext();
+  mockFetchContent(
+    '好的，任务如下：\n```json\n' +
+      JSON.stringify([{ roleTitle: 'CEO', taskTitle: '围栏任务', priority: 'medium' }]) +
+      '\n```\n以上是全部任务。'
+  );
+  t.after(() => mock.restoreAll());
+  const brief = makeBrief({ dispatchStatus: 'pending' });
+  const result = await ctx.svc.dispatch(brief, ROLES);
+  assert.equal(result.ok, true);
+  assert.equal(result.tasks?.length, 1);
+  assert.equal(result.tasks?.[0].taskTitle, '围栏任务');
+});

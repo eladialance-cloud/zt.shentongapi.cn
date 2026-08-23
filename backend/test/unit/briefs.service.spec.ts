@@ -66,7 +66,10 @@ function makeService(
   members: any[] = [],
 ) {
   const repo = makeRepo(seed);
-  const teamRepo = { find: async () => teams };
+  const teamRepo = {
+    find: async () => teams,
+    findOne: async ({ where }: any) => teams.find((t: any) => t.id === where?.id) ?? null,
+  };
   const memberRepo = { find: async () => members };
   const agentRepo = { findOne: async () => null };
   const svc = new BriefService(
@@ -366,6 +369,122 @@ describe('BriefService', () => {
           (err: any) => isBadRequest(err) && /不可确认/.test(err.message),
         );
       }
+    });
+  });
+
+  describe('redispatch', () => {
+    it('confirm 保存派发参数到 dispatchParams（供重拆解复用）', async () => {
+      const calls: any[] = [];
+      const dispatch = {
+        dispatch: async (...args: any[]) => {
+          calls.push(args);
+          await new Promise((resolve) => setImmediate(resolve));
+          return {
+            ok: true,
+            tasks: [{ roleTitle: '设计师', taskTitle: '自动任务', priority: 'medium' }],
+          };
+        },
+      };
+      const seed = [
+        makeBrief({ id: 1, userId: 1, status: 'draft', dispatchStatus: 'none' }),
+      ];
+      const { svc } = makeService(seed, dispatch);
+      const result = await svc.confirm(1, 1, { executeMode: 'auto' });
+      assert.equal(result.dispatchParams?.executeMode, 'auto');
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(result.dispatchStatus, 'done');
+    });
+
+    it('failed → pending，复用原派发参数重新拆解并回写 done', async () => {
+      const calls: any[] = [];
+      const dispatch = {
+        dispatch: async (...args: any[]) => {
+          calls.push(args);
+          await new Promise((resolve) => setImmediate(resolve));
+          return {
+            ok: true,
+            tasks: [{ roleTitle: '设计师', taskTitle: '重拆任务', priority: 'high' }],
+          };
+        },
+      };
+      const seed = [
+        makeBrief({
+          id: 1,
+          userId: 1,
+          status: 'confirmed',
+          dispatchStatus: 'failed',
+          dispatchError: 'PARSE_JSON_FAILED',
+          dispatchParams: { executeMode: 'auto', teamId: null, agentId: null },
+        }),
+      ];
+      const { svc } = makeService(seed, dispatch);
+      const result = await svc.redispatch(1, 1);
+      assert.equal(result.dispatchStatus, 'pending');
+      assert.equal(result.dispatchError, null);
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0][3], 'auto'); // executeMode 参数
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(result.dispatchStatus, 'done');
+      assert.equal(result.dispatchResult?.length, 1);
+    });
+
+    it('非 failed 拒绝重新拆解', async () => {
+      for (const st of ['pending', 'done', 'none'] as const) {
+        const seed = [
+          makeBrief({ id: 1, userId: 1, status: 'confirmed', dispatchStatus: st }),
+        ];
+        const { svc } = makeService(seed);
+        await assert.rejects(
+          () => svc.redispatch(1, 1),
+          (err: any) => isBadRequest(err) && /仅拆解失败/.test(err.message),
+        );
+      }
+    });
+
+    it('状态非 confirmed 拒绝重新拆解', async () => {
+      const seed = [
+        makeBrief({ id: 1, userId: 1, status: 'cancelled', dispatchStatus: 'failed' }),
+      ];
+      const { svc } = makeService(seed);
+      await assert.rejects(
+        () => svc.redispatch(1, 1),
+        (err: any) => isBadRequest(err) && /仅 confirmed/.test(err.message),
+      );
+    });
+
+    it('指定团队必须是本人创建', async () => {
+      const seed = [
+        makeBrief({
+          id: 1,
+          userId: 1,
+          status: 'confirmed',
+          dispatchStatus: 'failed',
+          dispatchParams: { executeMode: 'team', teamId: 99, agentId: null },
+        }),
+      ];
+      const teams = [{ id: 99, creatorId: 2 }];
+      const { svc } = makeService(seed, undefined, teams);
+      await assert.rejects(
+        () => svc.redispatch(1, 1),
+        (err: any) => isBadRequest(err) && /自己创建/.test(err.message),
+      );
+    });
+
+    it('agent 模式缺 agentId 拒绝', async () => {
+      const seed = [
+        makeBrief({
+          id: 1,
+          userId: 1,
+          status: 'confirmed',
+          dispatchStatus: 'failed',
+          dispatchParams: { executeMode: 'agent', teamId: null, agentId: null },
+        }),
+      ];
+      const { svc } = makeService(seed);
+      await assert.rejects(
+        () => svc.redispatch(1, 1),
+        (err: any) => isBadRequest(err) && /agentId/.test(err.message),
+      );
     });
   });
 

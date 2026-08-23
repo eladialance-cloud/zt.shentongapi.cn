@@ -53,6 +53,10 @@ export interface OrchestrateInput {
     tts?: string;
   };
   timeoutMs?: number;
+  /** Hermes 独立评审开关（节点产出由 Hermes 把关；缺省 false） */
+  reviewEnabled?: boolean;
+  /** 评审模型（缺省用 modelDefaults.chat） */
+  reviewModel?: string;
 }
 
 export interface OrchestrateDeps {
@@ -162,6 +166,8 @@ export interface RunnerStep {
   reasoning?: string;
   outputs?: HermesOutput[];
   review?: { verdict: "pass" | "rework"; reason?: string; by: "hermes" | "user"; at?: string };
+  /** 执行者原始自评（仅展示；通过决定权归 Hermes 评审） */
+  selfReview?: { verdict: "pass" | "rework"; reason?: string };
   retryCount: number;
   lastFeedback?: string;
 }
@@ -182,6 +188,10 @@ export interface StepRunnerDeps {
   now: () => number;
   /** 单节点打回重做上限，默认 2 */
   maxRetries?: number;
+  /** Hermes 独立评审开关（input.reviewEnabled 优先；缺省 false） */
+  reviewEnabled?: boolean;
+  /** 评审模型（缺省用 modelDefaults.chat） */
+  reviewModel?: string;
 }
 
 /** 规划 prompt：Hermes 把任务拆成有序节点清单（输出单行 JSON） */
@@ -250,6 +260,50 @@ export function buildStepPrompt(input: {
   return parts.join("\n\n");
 }
 
+/** 评审 prompt：Hermes 独立把关节点产出（对照任务目标查跑题/缺失/不可用） */
+export function buildReviewPrompt(input: {
+  task: string;
+  stepName: string;
+  outputs: HermesOutput[];
+  previousSummary?: string;
+  knowledge?: string;
+}): string {
+  const parts: string[] = [];
+  parts.push("你是任务质量评审员。请独立评审以下执行结果，对照任务目标检查是否跑题、缺失、不可用。不要替执行者重做，只做评审。");
+  parts.push("原始任务：" + input.task);
+  if (input.previousSummary) {
+    parts.push("前序产出：" + input.previousSummary);
+  }
+  if (input.knowledge) {
+    parts.push("参考知识库内容（SOP/标准，必须对照）：\n" + input.knowledge);
+  }
+  parts.push("评审节点：" + input.stepName);
+  parts.push(
+    "执行产出：" + (input.outputs.map((o) => o.content ?? o.url ?? "").join("；") || "（无产出）"),
+  );
+  parts.push(
+    "严格输出单行 JSON，不要输出其他文字：",
+    '{"verdict":"pass|rework","reason":"评审意见"}',
+    "verdict：产出达标用 pass；未达标用 rework 并写明具体问题（该原因将作为打回理由）。",
+  );
+  return parts.join("\n\n");
+}
+
+/** 解析评审 stdout → verdict/reason；非法/空 → 保守打回 */
+export function parseReview(stdout: string): { verdict: "pass" | "rework"; reason?: string } {
+  const text = (stdout || "").trim();
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const jsonText = fence ? fence[1].trim() : text.match(/\{[\s\S]*\}/)?.[0] ?? "";
+  try {
+    const data = JSON.parse(jsonText) as Record<string, unknown>;
+    const verdict = data?.verdict === "rework" ? "rework" : "pass";
+    const reason = typeof data?.reason === "string" && data.reason.trim() ? data.reason.trim() : undefined;
+    return { verdict, ...(reason ? { reason } : {}) };
+  } catch {
+    return { verdict: "rework", reason: "评审输出无法解析" };
+  }
+}
+
 /** 解析规划 stdout → 节点清单；非法/空 → []（调用方按失败处理） */
 export function parsePlan(stdout: string): Array<{ name: string; agentRole?: string; assigneeRole?: string }> {
   const text = (stdout || "").trim();
@@ -288,6 +342,8 @@ export function resolveAssignee(
 export interface StepResult extends HermesStep {
   agentRole?: string;
   review?: RunnerStep["review"];
+  /** 执行者原始自评（仅展示） */
+  selfReview?: RunnerStep["selfReview"];
   retryCount?: number;
   lastFeedback?: string;
   /** 保留原始状态（含 pending_review/rejected），供前端精确渲染 */
@@ -423,17 +479,45 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
           const res: StepRunResult = parseStepResult(execResp.stdout);
           step.outputs = res.outputs ?? [];
           if (res.reasoning) step.reasoning = res.reasoning;
-          const autoVerdict: "pass" | "rework" = res.review?.verdict ?? (step.outputs.length > 0 ? "pass" : "rework");
-          const autoReason = res.review?.reason;
-          step.review = { verdict: autoVerdict, ...(autoReason ? { reason: autoReason } : {}), by: "hermes" as const, at: iso() };
+          if (res.review) step.selfReview = res.review; // 执行者原始自评（仅展示）
+          const execVerdict: "pass" | "rework" = res.review?.verdict ?? (step.outputs.length > 0 ? "pass" : "rework");
+          const execReason = res.review?.reason;
+          const reviewEnabled = input.reviewEnabled ?? deps.reviewEnabled ?? false;
+
+          // Hermes 独立评审：自评 pass 时把关；自评 rework 直接重做（执行者自查已不达标，不浪费评审调用）
+          let finalVerdict: "pass" | "rework" = execVerdict;
+          let finalReason = execReason;
+          if (execVerdict === "pass" && reviewEnabled) {
+            const reviewResp = await deps.runPrompt(
+              buildReviewPrompt({
+                task: input.task,
+                stepName: step.name,
+                outputs: step.outputs ?? [],
+                previousSummary: previousSummary.join("\n"),
+                knowledge,
+              }),
+              { model: deps.reviewModel || input.modelDefaults?.chat || undefined },
+            );
+            if (reviewResp.error) {
+              finalVerdict = "rework";
+              finalReason = "评审失败：" + reviewResp.error;
+            } else {
+              const review = parseReview(reviewResp.stdout);
+              finalVerdict = review.verdict;
+              finalReason = review.reason;
+            }
+            step.review = { verdict: finalVerdict, ...(finalReason ? { reason: finalReason } : {}), by: "hermes" as const, at: iso() };
+          } else {
+            step.review = { verdict: execVerdict, ...(execReason ? { reason: execReason } : {}), by: "hermes" as const, at: iso() };
+          }
 
           if (deps.isAutoConfirm()) {
-            if (autoVerdict === "pass") {
+            if (finalVerdict === "pass") {
               step.status = "done";
               decided = true;
             } else {
               step.retryCount += 1;
-              step.lastFeedback = autoReason || "产出未达标";
+              step.lastFeedback = finalReason || "产出未达标";
               if (step.retryCount > maxRetries) {
                 step.status = "rejected";
                 decided = true;
@@ -441,23 +525,33 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
               // 否则自动重做：循环回到 running
             }
           } else {
-            // 人工模式：进入待确认
-            step.status = "pending_review";
-            await sync();
-            const decision = await waitDecision(i);
-            if (decision.verdict === "pass") {
-              step.status = "done";
-              step.review = { verdict: "pass" as const, by: "user" as const, at: iso() };
-              decided = true;
+            if (finalVerdict === "pass") {
+              // 人工模式：Hermes 评审通过后仍进入待确认，由用户最终把关
+              step.status = "pending_review";
+              await sync();
+              const decision = await waitDecision(i);
+              if (decision.verdict === "pass") {
+                step.status = "done";
+                step.review = { verdict: "pass" as const, by: "user" as const, at: iso() };
+                decided = true;
+              } else {
+                step.retryCount += 1;
+                step.lastFeedback = decision.reason;
+                if (step.retryCount > maxRetries) {
+                  step.status = "rejected";
+                  step.review = { verdict: "rework" as const, reason: decision.reason, by: "user" as const, at: iso() };
+                  decided = true;
+                }
+                // 否则带原因自动重做
+              }
             } else {
+              // 评审不达标：自动重做（不打扰用户），带评审原因
               step.retryCount += 1;
-              step.lastFeedback = decision.reason;
+              step.lastFeedback = finalReason || "产出未达标";
               if (step.retryCount > maxRetries) {
                 step.status = "rejected";
-                step.review = { verdict: "rework" as const, reason: decision.reason, by: "user" as const, at: iso() };
                 decided = true;
               }
-              // 否则带原因自动重做
             }
           }
         }
@@ -512,6 +606,7 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
       ...(s.reasoning ? { reasoning: s.reasoning } : {}),
       ...(s.outputs && s.outputs.length > 0 ? { outputs: s.outputs } : {}),
       ...(s.review ? { review: s.review } : {}),
+      ...(s.selfReview ? { selfReview: s.selfReview } : {}),
       ...(s.retryCount > 0 ? { retryCount: s.retryCount } : {}),
       ...(s.lastFeedback ? { lastFeedback: s.lastFeedback } : {}),
       rawStatus: s.status, // 保留原始状态（含 pending_review/rejected），供前端精确渲染

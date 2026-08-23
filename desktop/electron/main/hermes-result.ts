@@ -15,6 +15,8 @@ export interface HermesStep {
   outputs?: HermesOutput[];
   agentRole?: string;
   review?: { verdict: "pass" | "rework"; reason?: string; by?: "hermes" | "user"; at?: string };
+  /** 执行者原始自评（仅展示；通过决定权归 Hermes 评审） */
+  selfReview?: { verdict: "pass" | "rework"; reason?: string };
   retryCount?: number;
   lastFeedback?: string;
   /** 节点执行时 Hermes 的思考过程（JSON 前文本） */

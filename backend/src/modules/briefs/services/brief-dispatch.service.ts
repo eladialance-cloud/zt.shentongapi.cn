@@ -24,6 +24,10 @@ export interface DispatchResult {
 
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const;
 
+/** 解析/清洗失败重试时附加的严格提示 */
+const RETRY_HINT =
+  '\n\n注意：上一次输出未能解析为合法 JSON 数组。请只输出 JSON 数组本身，不要任何解释、前缀、后缀或 Markdown 代码块标记。';
+
 /**
  * 需求单任务拆解派发服务（一人公司：AI 拆解 → 派发 team_tasks）
  * - LLM 调用复用管理后台全局中转 + 默认 chat 模型（思路同 AiClassifyService.classify）
@@ -57,8 +61,8 @@ export class BriefDispatchService {
     executeMode: 'team' | 'auto' | 'agent' = 'team',
     agentId?: number,
   ): Promise<DispatchResult> {
+    const isTeamMode = executeMode === 'team';
     try {
-      const isTeamMode = executeMode === 'team';
       const model = await this.modelRepo.findOne({
         where: { isActive: true, modelType: 'chat' },
         order: { id: 'ASC' },
@@ -66,45 +70,74 @@ export class BriefDispatchService {
       const relay = await resolveRelay(this.providerRepo);
       // 无默认模型或全局中转 → 直接返回失败（不抛异常）
       if (!model || !relay?.baseUrl || !relay.apiKey) {
-        return { ok: false, error: 'NO_MODEL_OR_RELAY' };
+        return this.fail(brief, 'NO_MODEL_OR_RELAY');
       }
       const apiKey = this.encryption.decryptAes(relay.apiKey);
       const url = this.normalizeBaseUrl(relay.baseUrl) + '/v1/chat/completions';
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
-        body: JSON.stringify({
-          model: model.upstreamModelId || model.modelId,
-          messages: [{ role: 'user', content: this.buildPrompt(brief, isTeamMode ? memberRoleTitles : []) }],
-          max_tokens: 1200,
-          temperature: 0,
-        }),
-        signal: AbortSignal.timeout(30000),
-      });
-      if (!resp.ok) return { ok: false, error: 'LLM_REQUEST_FAILED' };
-      const data = (await resp.json()) as {
-        choices?: { message?: { content?: unknown } }[];
-      };
-      const text = String(data?.choices?.[0]?.message?.content ?? '').trim();
-      const parsed = this.parseJsonArray(text);
-      if (!parsed) return { ok: false, error: 'PARSE_JSON_FAILED' };
-      const cleaned = this.cleanTasks(parsed, isTeamMode ? memberRoleTitles : [], !isTeamMode);
-      if (cleaned.length === 0) return { ok: false, error: 'NO_VALID_TASKS' };
-      const persisted = await this.persistTasks(brief, cleaned, isTeamMode ? memberRoleTitles : [], teamIdOverride, executeMode, agentId);
-      if (!persisted) return { ok: false, error: 'NO_TEAM_FOR_DISPATCH' };
-      brief.dispatchStatus = 'done';
-      brief.dispatchResult = cleaned;
-      await this.briefRepo.save(brief);
-      return { ok: true, tasks: cleaned };
+      const modelName = model.upstreamModelId || model.modelId;
+      const basePrompt = this.buildPrompt(brief, isTeamMode ? memberRoleTitles : []);
+      // 解析/清洗失败自动重试一次（AI 输出格式偶发不稳定，重试用更严格的提示词）
+      let lastError = '';
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const content = attempt === 0 ? basePrompt : basePrompt + RETRY_HINT;
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+          body: JSON.stringify({
+            model: modelName,
+            messages: [{ role: 'user', content }],
+            max_tokens: 4000,
+            temperature: 0,
+          }),
+          signal: AbortSignal.timeout(30000),
+        });
+        if (!resp.ok) {
+          lastError = 'LLM_REQUEST_FAILED';
+          continue;
+        }
+        const data = (await resp.json()) as {
+          choices?: { message?: { content?: unknown } }[];
+        };
+        const text = String(data?.choices?.[0]?.message?.content ?? '').trim();
+        const parsed = this.parseJsonArray(text);
+        if (!parsed) {
+          lastError = 'PARSE_JSON_FAILED';
+          continue;
+        }
+        const cleaned = this.cleanTasks(parsed, isTeamMode ? memberRoleTitles : [], !isTeamMode);
+        if (cleaned.length === 0) {
+          lastError = 'NO_VALID_TASKS';
+          continue;
+        }
+        const persisted = await this.persistTasks(brief, cleaned, isTeamMode ? memberRoleTitles : [], teamIdOverride, executeMode, agentId);
+        if (!persisted) return this.fail(brief, 'NO_TEAM_FOR_DISPATCH');
+        brief.dispatchStatus = 'done';
+        brief.dispatchResult = cleaned;
+        brief.dispatchError = null;
+        await this.briefRepo.save(brief);
+        return { ok: true, tasks: cleaned };
+      }
+      return this.fail(brief, lastError || 'PARSE_JSON_FAILED');
     } catch (e) {
       // fetch 抛错 / 超时 / 解析异常等：回写 failed，避免 brief 卡在 pending
-      this.logger.warn('需求单 AI 拆解失败: ' + (e as Error).message);
+      const message = (e as Error).message;
+      this.logger.warn('需求单 AI 拆解失败: ' + message);
       if (brief.dispatchStatus === 'pending') {
         brief.dispatchStatus = 'failed';
+        brief.dispatchError = message;
         await this.briefRepo.save(brief);
       }
-      return { ok: false, error: (e as Error).message };
+      return { ok: false, error: message };
     }
+  }
+
+  /** 记录失败原因并返回错误结果（由 confirm 异步回写，避免与成功写回竞争） */
+  private fail(brief: BriefEntity, code: string): DispatchResult {
+    brief.dispatchStatus = 'failed';
+    brief.dispatchError = code;
+    brief.dispatchResult = null;
+    this.logger.warn('需求单 AI 拆解失败: ' + code);
+    return { ok: false, error: code };
   }
 
   /** 规范化上游 baseUrl：兼容已带 /v1 与未带路径两种配置 */
@@ -112,17 +145,35 @@ export class BriefDispatchService {
     return baseUrl.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
   }
 
-  /** 解析 LLM 输出：先整体 JSON.parse，失败再提取首段 JSON 数组（思路同 AiClassifyService.parseJson） */
+  /** 解析 LLM 输出：剥代码块 → 整体解析 → 平衡括号提取首个数组 → 兜底贪婪匹配（思路同 AiClassifyService.parseJson） */
   private parseJsonArray(text: string): Array<Record<string, unknown>> | null {
-    if (text.startsWith('[')) {
+    let t = text.trim();
+    // 去掉 ```json ... ``` 代码块标记（保留内部内容）
+    t = t.replace(/```(?:json)?\s*([\s\S]*?)```/g, '$1').trim();
+    // 1) 整体解析
+    if (t.startsWith('[')) {
       try {
-        const parsed = JSON.parse(text) as unknown;
+        const parsed = JSON.parse(t) as unknown;
         if (Array.isArray(parsed)) return parsed as Array<Record<string, unknown>>;
       } catch {
         // 继续尝试提取
       }
     }
-    const m = text.match(/\[[\s\S]*\]/);
+    // 2) 平衡括号提取第一个数组块（跳过字符串字面量，兼容截断/尾随文字）
+    const start = t.indexOf('[');
+    if (start >= 0) {
+      const block = this.extractBalanced(t, start, '[', ']');
+      if (block != null) {
+        try {
+          const parsed = JSON.parse(block) as unknown;
+          if (Array.isArray(parsed)) return parsed as Array<Record<string, unknown>>;
+        } catch {
+          // 继续尝试兜底
+        }
+      }
+    }
+    // 3) 兜底：整段贪婪匹配首个 [ 到最后一个 ]
+    const m = t.match(/\[[\s\S]*\]/);
     if (!m) return null;
     try {
       const parsed = JSON.parse(m[0]) as unknown;
@@ -132,6 +183,37 @@ export class BriefDispatchService {
     }
   }
 
+  /** 从 start 处提取配对括号块（跳过字符串字面量；找不齐返回 null） */
+  private extractBalanced(text: string, start: number, open: string, close: string): string | null {
+    let depth = 0;
+    let inStr = false;
+    let escaped = false;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (inStr) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === '\\') {
+          escaped = true;
+          continue;
+        }
+        if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') {
+        inStr = true;
+        continue;
+      }
+      if (ch === open) depth++;
+      else if (ch === close) {
+        depth--;
+        if (depth === 0) return text.slice(start, i + 1);
+      }
+    }
+    return null;
+  }
   /** 清洗：priority 白名单 / roleTitle 白名单 / taskTitle 非空 / 最多 20 条 */
   private cleanTasks(
     items: Array<Record<string, unknown>>,

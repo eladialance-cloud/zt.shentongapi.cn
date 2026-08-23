@@ -39,8 +39,10 @@ export interface PipelineStep {
   rawStatus?: string;
   /** 子代理产出（待确认/已完成时展示） */
   outputs?: StepOutputItem[];
-  /** 确认/自评记录 */
+  /** Hermes 评审/人工确认记录 */
   review?: StepReviewInfo;
+  /** 执行者原始自评（仅展示） */
+  selfReview?: StepReviewInfo;
   /** 打回自动重做次数（上限 2） */
   retryCount?: number;
   /** 最近一次打回原因/反馈 */
@@ -171,7 +173,7 @@ function parseStepReview(raw: unknown): StepReviewInfo | undefined {
 /**
  * Hermes 编排步骤（team_task.result.steps，团队驱动执行）→ 流水线步骤。
  * 契约对齐 desktop/electron/main/hermes-result.ts 的 HermesStep：
- *   { name, status: done|running|pending, rawStatus?: pending_review|rejected, assigneeName?, outputs?, review?, retryCount?, lastFeedback? }
+ *   { name, status: done|running|pending, rawStatus?: pending_review|rejected, assigneeName?, outputs?, review?, selfReview?, retryCount?, lastFeedback? }
  * 无 steps / 非法 → []（调用方回退按状态推导单步）。
  */
 export function parseTeamSteps(result: unknown): PipelineStep[] {
@@ -199,6 +201,8 @@ export function parseTeamSteps(result: unknown): PipelineStep[] {
     if (outputs.length > 0) step.outputs = outputs;
     const review = parseStepReview(r.review);
     if (review) step.review = review;
+    const selfReview = parseStepReview(r.selfReview);
+    if (selfReview) step.selfReview = selfReview;
     if (typeof r.retryCount === "number" && r.retryCount > 0) step.retryCount = r.retryCount;
     const lastFeedback = typeof r.lastFeedback === "string" ? r.lastFeedback : undefined;
     if (lastFeedback) step.lastFeedback = lastFeedback;

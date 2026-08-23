@@ -62,6 +62,16 @@ export class BriefEntity extends BaseEntity {
   @Column({ name: 'dispatch_result', type: 'json', nullable: true })
   dispatchResult?: DispatchTaskItem[] | null;
 
+  @Column({ name: 'dispatch_error', length: 512, nullable: true })
+  dispatchError?: string | null;
+
+  @Column({ name: 'dispatch_params', type: 'json', nullable: true })
+  dispatchParams?: {
+    executeMode: 'team' | 'auto' | 'agent';
+    teamId?: number | null;
+    agentId?: number | null;
+  } | null;
+
   @Column({
     name: 'source_chat_session_id',
     type: 'bigint',

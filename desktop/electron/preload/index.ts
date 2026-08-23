@@ -122,7 +122,7 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('hermes-memory:remove', target, text) as Promise<HermesMemoryOpResult>,
   },
   hermesOrchestrate: {
-    submit: (payload: { token: string; input: OrchestrateInput; autoConfirm?: boolean }) =>
+    submit: (payload: { token: string; input: OrchestrateInput; autoConfirm?: boolean; reviewEnabled?: boolean; reviewModel?: string }) =>
       ipcRenderer.invoke('hermes-orchestrate:submit', payload) as Promise<OrchestrateSubmitResult>,
     confirmStep: (payload: OrchestrateStepActionPayload) =>
       ipcRenderer.invoke('hermes-orchestrate:confirm-step', payload) as Promise<OrchestrateSubmitResult>,
