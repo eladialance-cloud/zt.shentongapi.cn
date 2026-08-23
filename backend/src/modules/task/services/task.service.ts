@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, FindOptionsWhere, Like, In } from 'typeorm';
+import { Repository, FindOptionsWhere, Like, In, IsNull } from 'typeorm';
 import { AgentTaskEntity } from '../entities/agent-task.entity';
 import { TaskOutputItemEntity } from '../entities/task-output-item.entity';
 import { TeamEntity } from '../../team/entities/team.entity';
@@ -155,42 +155,49 @@ export class TaskService {
 
     const items: UnifiedTaskItem[] = [];
 
-    // 1) team 源：用户创建的团队（teams.creator_id = userId）下的任务
+    // 1) team 源：用户创建的团队下的任务 + 用户自己创建的 auto/agent 无团队归属任务
+    //    （auto/agent 模式 team_id 为空，unified 也必须返回，否则任务中心看不到）
     const teams = await this.teamRepo.find({
       where: { creatorId: userId },
     });
     const teamIds = teams.map((t) => t.id);
-    if (teamIds.length > 0) {
-      // assignee：team_members.id = assignee_member_id 取 roleTitle
-      const members = await this.memberRepo.find({
-        where: { teamId: In(teamIds) },
+    // assignee：team_members.id = assignee_member_id 取 roleTitle（仅团队模式任务有）
+    const members = teamIds.length > 0
+      ? await this.memberRepo.find({
+          where: { teamId: In(teamIds) },
+        })
+      : [];
+    const roleByMemberId = new Map<number, string>();
+    for (const m of members) {
+      roleByMemberId.set(m.id, m.roleTitle);
+    }
+    const teamTasks = await this.teamTaskRepo.find({
+      where:
+        teamIds.length > 0
+          ? [
+              { teamId: In(teamIds) },
+              { creatorId: userId, teamId: IsNull() },
+            ]
+          : { creatorId: userId, teamId: IsNull() },
+      order: { createdAt: 'DESC' },
+      take: 500,
+    });
+    for (const t of teamTasks) {
+      items.push({
+        source: 'team',
+        sourceId: t.id,
+        title: t.title,
+        status: mapTeamStatus(t.status),
+        rawStatus: t.status,
+        assignee:
+          t.assigneeMemberId != null
+            ? roleByMemberId.get(t.assigneeMemberId)
+            : undefined,
+        createdAt: t.createdAt.toISOString(),
+        finishedAt: t.completedAt ? t.completedAt.toISOString() : null,
+        briefId: t.briefId ?? null,
+        executionRef: t.executionRef ?? null,
       });
-      const roleByMemberId = new Map<number, string>();
-      for (const m of members) {
-        roleByMemberId.set(m.id, m.roleTitle);
-      }
-      const teamTasks = await this.teamTaskRepo.find({
-        where: { teamId: In(teamIds) },
-        order: { createdAt: 'DESC' },
-        take: 500,
-      });
-      for (const t of teamTasks) {
-        items.push({
-          source: 'team',
-          sourceId: t.id,
-          title: t.title,
-          status: mapTeamStatus(t.status),
-          rawStatus: t.status,
-          assignee:
-            t.assigneeMemberId != null
-              ? roleByMemberId.get(t.assigneeMemberId)
-              : undefined,
-          createdAt: t.createdAt.toISOString(),
-          finishedAt: t.completedAt ? t.completedAt.toISOString() : null,
-          briefId: t.briefId ?? null,
-          executionRef: t.executionRef ?? null,
-        });
-      }
     }
 
     // 2) task 源：agent_task.userId 归属

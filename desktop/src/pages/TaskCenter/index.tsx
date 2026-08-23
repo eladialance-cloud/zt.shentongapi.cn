@@ -23,6 +23,7 @@ import {
   mapHermesStatus,
   mapTaskStatus,
   mapTeamStatus,
+  mergeUnifiedWithFallback,
   groupTasksByBatch,
   sortByCreatedAtDesc,
   SOURCE_TAG_META,
@@ -208,13 +209,14 @@ async function loadAll(): Promise<{
   };
 }
 
-/** unified 源：优先走二期后端 GET /tasks/unified；团队任务用 loadTeamContext 补全 result/负责人 */
+/** unified 源：优先走二期后端 GET /tasks/unified；团队任务用 loadTeamContext 补全 result/负责人；
+ *  另外把「我的任务」里 unified 漏掉的 auto/agent 无团队任务补进来（unified 的 team 源可能不含 team_id 为空的任务） */
 async function loadUnifiedSource(
   ctx: TeamContext,
   query: { status?: UnifiedTaskStatus; source?: UnifiedTaskSource } = {},
 ): Promise<UnifiedTask[]> {
   const res = await taskApi.getUnifiedTasks({ ...query, pageSize: 100 });
-  return res.list.map((t: UnifiedTaskItem) => {
+  const mapped: UnifiedTask[] = res.list.map((t: UnifiedTaskItem) => {
     const key = t.source + ":" + t.sourceId;
     const teamTask = t.source === "team" ? ctx.teamTaskByKey.get(key) : undefined;
     return {
@@ -233,6 +235,8 @@ async function loadUnifiedSource(
       agentId: teamTask?.agentId ?? undefined,
     };
   });
+  // 补漏：unified 未返回但「我的任务」有的 auto/agent 无团队归属任务（team_id 为空），按查询条件过滤后并入
+  return mergeUnifiedWithFallback(mapped, ctx.teamTaskByKey, query);
 }
 
 export default function TaskCenter() {

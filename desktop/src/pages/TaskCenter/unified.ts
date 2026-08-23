@@ -87,6 +87,55 @@ export function sortByCreatedAtDesc(list: UnifiedTask[]): UnifiedTask[] {
     return tb - ta
   })
 }
+/** 补漏输入的最小结构（与 TeamTask 字段兼容，避免页面模块耦合） */
+export interface UnifiedFallbackTask {
+  teamId?: number | null
+  title: string
+  status: string
+  assigneeName?: string
+  createdAt: string
+  completedAt?: string
+  briefId?: number
+  executionRef?: string
+  result?: unknown
+  executeMode?: "team" | "auto" | "agent"
+  agentId?: number
+}
+
+/** 补漏合并：unified 列表 + 「我的任务」里 unified 漏掉的 auto/agent 无团队归属任务（team_id 为空）
+ *  只补无团队归属任务，避免普通团队任务与 unified 分页语义冲突；已出现的不重复并入；按查询条件过滤后统一排序 */
+export function mergeUnifiedWithFallback(
+  mapped: UnifiedTask[],
+  teamTaskByKey: ReadonlyMap<string, UnifiedFallbackTask>,
+  query: { status?: UnifiedTaskStatus; source?: UnifiedTaskSource } = {},
+): UnifiedTask[] {
+  if (query.source && query.source !== "team") return mapped
+  const seen = new Set(mapped.map((x) => x.key))
+  const extra: UnifiedTask[] = []
+  teamTaskByKey.forEach((t, key) => {
+    if (seen.has(key)) return
+    if (t.teamId != null) return // 只补 auto/agent 无团队归属任务（unified 的 team 源可能不含 team_id 为空的任务）
+    const status = mapTeamStatus(t.status)
+    if (query.status && query.status !== status) return
+    extra.push({
+      key,
+      source: "team",
+      title: t.title,
+      status,
+      rawStatus: t.status,
+      assignee: t.assigneeName,
+      createdAt: t.createdAt,
+      finishedAt: t.completedAt ?? null,
+      briefId: t.briefId ?? undefined,
+      executionRef: t.executionRef ?? undefined,
+      result: t.result,
+      executeMode: t.executeMode ?? undefined,
+      agentId: t.agentId ?? undefined,
+    })
+  })
+  return sortByCreatedAtDesc([...mapped, ...extra])
+}
+
 /** 任务分组（按发布批次）：executionRef → briefId → 单任务一组 */
 export interface TaskGroup {
   key: string

@@ -90,10 +90,17 @@ describe('unified-mapper', () => {
 function makeFind(rows: any[]) {
   const isIn = (v: unknown) =>
     !!v && typeof v === 'object' && (v as any)._type === 'in';
-  const match = (row: any, where: any) =>
-    Object.entries(where ?? {}).every(([k, v]) =>
-      isIn(v) ? (v as any).value.includes(row[k]) : row[k] === v,
-    );
+  const isNull = (v: unknown) =>
+    !!v && typeof v === 'object' && (v as any)._type === 'isNull';
+  const match = (row: any, where: any): boolean => {
+    // OR 条件数组：任一命中即匹配（auto/agent 无团队任务与团队任务并存查询）
+    if (Array.isArray(where)) return where.some((w) => match(row, w));
+    return Object.entries(where ?? {}).every(([k, v]) => {
+      if (isIn(v)) return (v as any).value.includes(row[k]);
+      if (isNull(v)) return row[k] == null;
+      return row[k] === v;
+    });
+  };
   return async ({ where, order, take }: any = {}) => {
     let list = rows.filter((r) => match(r, where));
     if (order?.createdAt === 'DESC') {
@@ -158,6 +165,18 @@ function seedData() {
         createdAt: new Date('2026-08-02T08:00:00Z'),
         completedAt: new Date('2026-08-02T09:00:00Z'),
       },
+      {
+        id: 3,
+        teamId: null,
+        title: '自动匹配任务A',
+        status: 'pending',
+        assigneeMemberId: null,
+        creatorId: 1,
+        briefId: 9002,
+        executionRef: 'brief-1-x',
+        createdAt: new Date('2026-08-07T08:00:00Z'),
+        completedAt: null,
+      },
     ],
     agentTasks: [
       {
@@ -204,8 +223,8 @@ describe('TaskService.getUnifiedTasks', () => {
   it('三源合并：归属 + 字段组装正确', async () => {
     const svc = makeService(seedData());
     const res = await svc.getUnifiedTasks(1, {});
-    assert.equal(res.total, 6);
-    assert.equal(res.list.length, 6);
+    assert.equal(res.total, 7);
+    assert.equal(res.list.length, 7);
 
     const teamA = res.list.find((i) => i.source === 'team' && i.sourceId === 1)!;
     assert.equal(teamA.status, 'todo');
@@ -235,6 +254,14 @@ describe('TaskService.getUnifiedTasks', () => {
     assert.equal(hermesB.status, 'failed');
     assert.equal(hermesB.title, 'workflow_run');
     assert.equal(hermesB.finishedAt, null);
+
+    // auto/agent 无团队归属任务：unified 也必须返回（任务中心主数据源）
+    const auto = res.list.find((i) => i.source === 'team' && i.sourceId === 3)!;
+    assert.ok(auto, 'auto 无团队任务应在 unified 返回');
+    assert.equal(auto.status, 'todo');
+    assert.equal(auto.rawStatus, 'pending');
+    assert.equal(auto.assignee, undefined);
+    assert.equal(auto.briefId, 9002);
   });
 
   it('非创建者看不到他人团队任务（且只看到自己的 task/hermes）', async () => {
@@ -249,6 +276,39 @@ describe('TaskService.getUnifiedTasks', () => {
     const res = await svc.getUnifiedTasks(2, {});
     assert.equal(res.list.filter((i) => i.source === 'team').length, 0);
     assert.equal(res.total, 2);
+  });
+
+  it('无团队用户：自己创建的 auto 无团队任务应返回（unified 非数组分支）', async () => {
+    const base = seedData();
+    const svc = makeService({
+      teams: [],
+      members: [],
+      teamTasks: [base.teamTasks[2]],
+      agentTasks: [],
+      hermesLogs: [],
+    });
+    const res = await svc.getUnifiedTasks(1, {});
+    assert.equal(res.total, 1);
+    assert.equal(res.list[0].source, 'team');
+    assert.equal(res.list[0].sourceId, 3);
+  });
+
+  it('有团队用户：他人创建的 auto 无团队任务不可见（隔离）', async () => {
+    const base = seedData();
+    const svc = makeService({
+      teams: base.teams,
+      members: base.members,
+      teamTasks: [
+        ...base.teamTasks,
+        { ...base.teamTasks[2], id: 4, creatorId: 2, title: '他人自动任务' },
+      ],
+      agentTasks: [],
+      hermesLogs: [],
+    });
+    const res = await svc.getUnifiedTasks(1, {});
+    const ids = res.list.map((i) => i.sourceId);
+    assert.ok(ids.includes(3), '自己的 auto 任务应返回');
+    assert.ok(!ids.includes(4), '他人的 auto 任务不得出现在 unified');
   });
 
   it('status 过滤：统一状态映射后过滤', async () => {
@@ -276,21 +336,22 @@ describe('TaskService.getUnifiedTasks', () => {
     for (let k = 1; k < times.length; k++) {
       assert.ok(times[k - 1] >= times[k]);
     }
-    assert.equal(res.list[0].sourceId, 22);
+    assert.equal(res.list[0].source, 'team');
+    assert.equal(res.list[0].sourceId, 3);
   });
 
   it('分页：page/pageSize 切片 + total/totalPages', async () => {
     const svc = makeService(seedData());
     const p1 = await svc.getUnifiedTasks(1, { page: 1, pageSize: 2 });
     assert.equal(p1.list.length, 2);
-    assert.equal(p1.total, 6);
+    assert.equal(p1.total, 7);
     assert.equal(p1.page, 1);
     assert.equal(p1.pageSize, 2);
-    assert.equal(p1.totalPages, 3);
+    assert.equal(p1.totalPages, 4);
     const p3 = await svc.getUnifiedTasks(1, { page: 3, pageSize: 2 });
     assert.equal(p3.list.length, 2);
     const p4 = await svc.getUnifiedTasks(1, { page: 4, pageSize: 2 });
-    assert.equal(p4.list.length, 0);
+    assert.equal(p4.list.length, 1);
   });
 
   it('pageSize 上限 100，非法/越界分页参数回退默认值', async () => {

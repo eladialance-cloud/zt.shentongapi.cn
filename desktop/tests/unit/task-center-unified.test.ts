@@ -4,6 +4,7 @@ import {
   mapTaskStatus,
   mapTeamStatus,
   sortByCreatedAtDesc,
+  mergeUnifiedWithFallback,
   SOURCE_TAG_META,
   STATUS_COLORS,
   STATUS_TAG_META,
@@ -160,5 +161,76 @@ describe("sortByCreatedAtDesc 合并排序", () => {
     const sorted = sortByCreatedAtDesc(list);
     expect(sorted.map((t) => t.key)).toEqual(["b", "c", "a"]);
     expect(list.map((t) => t.key)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("mergeUnifiedWithFallback 补漏合并", () => {
+  const ctxTask = (over: Record<string, unknown> = {}) => ({
+    teamId: null,
+    title: "自动匹配任务",
+    status: "pending",
+    createdAt: "2026-08-19T08:00:00.000Z",
+    ...over,
+  });
+  const fallbackMap = (entries: Record<string, ReturnType<typeof ctxTask>>) =>
+    new Map(Object.entries(entries));
+
+  it("只补 teamId 为空的 auto 任务，普通团队任务不并入", () => {
+    const mapped: UnifiedTask[] = [
+      { key: "team:1", source: "team", title: "团队任务A", status: "todo", rawStatus: "pending", createdAt: "2026-08-19T09:00:00.000Z" },
+    ];
+    const map = fallbackMap({
+      "team:1": ctxTask({ teamId: 7, title: "团队任务A" }),
+      "team:2": ctxTask({ teamId: 7, title: "团队任务B" }),
+      "team:3": ctxTask({ title: "自动匹配任务", status: "in_progress" }),
+    });
+    const res = mergeUnifiedWithFallback(mapped, map);
+    const keys = res.map((x) => x.key);
+    // team:3（auto 无团队）补入；team:2 虽是团队任务但 teamId=7，不补；按时间倒序 team:1(09:00) 在 team:3(08:00) 前
+    expect(keys).toEqual(["team:1", "team:3"]);
+    const extra = res.find((x) => x.key === "team:3")!;
+    expect(extra.source).toBe("team");
+    expect(extra.status).toBe("running");
+    expect(extra.rawStatus).toBe("in_progress");
+  });
+
+  it("已出现在 unified 的 key 不重复并入", () => {
+    const mapped: UnifiedTask[] = [
+      { key: "team:3", source: "team", title: "自动匹配任务", status: "todo", rawStatus: "pending", createdAt: "2026-08-19T08:00:00.000Z" },
+    ];
+    const map = fallbackMap({ "team:3": ctxTask() });
+    const res = mergeUnifiedWithFallback(mapped, map);
+    expect(res).toHaveLength(1);
+  });
+
+  it("status 过滤与补漏一致（只补匹配状态的 auto 任务）", () => {
+    const mapped: UnifiedTask[] = [];
+    const map = fallbackMap({
+      "team:3": ctxTask({ status: "completed" }),
+      "team:4": ctxTask({ status: "pending" }),
+    });
+    const res = mergeUnifiedWithFallback(mapped, map, { status: "done" });
+    expect(res.map((x) => x.key)).toEqual(["team:3"]);
+  });
+
+  it("source 过滤：非 team 时不补任何任务", () => {
+    const mapped: UnifiedTask[] = [
+      { key: "task:9", source: "task", title: "我的任务", status: "done", rawStatus: "success", createdAt: "2026-08-19T08:00:00.000Z" },
+    ];
+    const map = fallbackMap({ "team:3": ctxTask() });
+    const res = mergeUnifiedWithFallback(mapped, map, { source: "task" });
+    expect(res.map((x) => x.key)).toEqual(["task:9"]);
+  });
+
+  it("合并后统一按 createdAt 倒序且不修改原数组", () => {
+    const mapped: UnifiedTask[] = [
+      { key: "team:1", source: "team", title: "旧任务", status: "todo", rawStatus: "pending", createdAt: "2026-08-18T08:00:00.000Z" },
+    ];
+    const map = fallbackMap({
+      "team:3": ctxTask({ createdAt: "2026-08-20T08:00:00.000Z" }),
+    });
+    const res = mergeUnifiedWithFallback(mapped, map);
+    expect(res.map((x) => x.key)).toEqual(["team:3", "team:1"]);
+    expect(mapped.map((x) => x.key)).toEqual(["team:1"]);
   });
 });
