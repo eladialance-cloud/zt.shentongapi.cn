@@ -62,7 +62,7 @@ export class BriefEntity extends BaseEntity {
   @Column({ name: 'dispatch_result', type: 'json', nullable: true })
   dispatchResult?: DispatchTaskItem[] | null;
 
-  @Column({ name: 'dispatch_error', length: 512, nullable: true })
+  @Column({ name: 'dispatch_error', type: 'varchar', length: 512, nullable: true })
   dispatchError?: string | null;
 
   @Column({ name: 'dispatch_params', type: 'json', nullable: true })
