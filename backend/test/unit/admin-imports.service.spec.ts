@@ -516,3 +516,51 @@ test('verifyCatalogCandidates: 并发校验保持顺序并回调进度', async (
   const last = progress[progress.length - 1];
   assert.deepEqual(last, { done: 13, total: 13 });
 });
+test('verifyCatalogCandidates: 页面兜底解析跳过目录仓库本身，取真实技能仓库', async () => {
+  const jobRepo = makeJobRepo();
+  jobRepo.set(makePendingJob('skill'));
+  const skillSourceRepo = makeRepo<SkillSourceEntity>();
+  const github = makeGithub({
+    getRepoTree: async (): Promise<RepoFileEntry[]> => [{ path: 'categories/ai.md', type: 'blob' }],
+    getFileContent: async (): Promise<string | null> => '- [s](https://clawskills.sh/skills/owner-skill) - x',
+    probeArchiveBranch: async (owner: string, repo: string): Promise<{ status: 'ok' | 'missing'; branch?: string | null }> =>
+      owner === 'guess1' && repo === 'wrong'
+        ? { status: 'missing' }
+        : { status: 'ok', branch: owner === 'voltagent' ? 'main' : 'master' },
+  });
+  const service = buildService(jobRepo, makeRepo<AgentEntity>(), makeRepo<WorkflowEntity>(), makeRepo<McpCatalogEntity>(), makeRepo<SkillPackageEntity>(), github, skillSourceRepo);
+  // 模拟 clawskills.sh 页面：第一个链接是目录仓库，第二个才是真实技能仓库
+  (service as any).fetchPageHtml = async () =>
+    '<nav><a href="https://github.com/voltagent/awesome-openclaw-skills">目录</a></nav>' +
+    '<main><a href="https://github.com/owner/skill">技能源码</a></main>';
+  const entries = await (service as any).verifyCatalogCandidates(
+    [
+      { name: 's', sourceUrl: 'https://clawskills.sh/skills/owner-skill', candidates: [{ owner: 'guess1', repo: 'wrong' }] },
+    ],
+    undefined,
+    { owner: 'voltagent', repo: 'awesome-openclaw-skills' },
+  );
+  assert.equal(entries.length, 1);
+  assert.deepEqual(entries[0].candidates, [{ owner: 'owner', repo: 'skill', defaultBranch: 'master' }]);
+});
+
+test('verifyCatalogCandidates: 页面只有目录仓库链接时候选为空，不误用目录仓库', async () => {
+  const jobRepo = makeJobRepo();
+  jobRepo.set(makePendingJob('skill'));
+  const skillSourceRepo = makeRepo<SkillSourceEntity>();
+  const github = makeGithub({
+    getRepoTree: async (): Promise<RepoFileEntry[]> => [{ path: 'categories/ai.md', type: 'blob' }],
+    getFileContent: async (): Promise<string | null> => '- [s](https://clawskills.sh/skills/ghost) - x',
+    probeArchiveBranch: async (owner: string, repo: string): Promise<{ status: 'ok' | 'missing'; branch?: string | null }> =>
+      owner === 'guess1' && repo === 'wrong' ? { status: 'missing' } : { status: 'ok', branch: 'main' },
+  });
+  const service = buildService(jobRepo, makeRepo<AgentEntity>(), makeRepo<WorkflowEntity>(), makeRepo<McpCatalogEntity>(), makeRepo<SkillPackageEntity>(), github, skillSourceRepo);
+  (service as any).fetchPageHtml = async () => '<a href="https://github.com/voltagent/awesome-openclaw-skills">目录</a>';
+  const entries = await (service as any).verifyCatalogCandidates(
+    [{ name: 's', sourceUrl: 'https://clawskills.sh/skills/ghost', candidates: [{ owner: 'guess1', repo: 'wrong' }] }],
+    undefined,
+    { owner: 'voltagent', repo: 'awesome-openclaw-skills' },
+  );
+  assert.equal(entries.length, 1);
+  assert.deepEqual(entries[0].candidates, []);
+});

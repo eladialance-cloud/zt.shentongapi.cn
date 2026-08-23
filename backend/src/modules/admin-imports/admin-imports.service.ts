@@ -5,7 +5,7 @@ import { AssetImportJobEntity, ImportStep, ImportJobCatalogStats, ImportJobResul
 import { CreateImportDto } from './dto/create-import.dto';
 import { ImportQueryDto } from './dto/import-query.dto';
 import { IMPORT_STEPS, ImportStepKey, AssetImportType } from './admin-imports.constants';
-import { GitHubClientService, extractGithubRepoFromHtml, raceTimeout } from './github-client.service';
+import { GitHubClientService, extractGithubReposFromHtml, raceTimeout } from './github-client.service';
 import { ImportParser, ImportedAssetDraft, ImportFile } from './parsers/import-parser.interface';
 import { AgentParser } from './parsers/agent-parser';
 import { WorkflowParser } from './parsers/workflow-parser';
@@ -238,7 +238,7 @@ export class AdminImportsService implements OnModuleInit {
         catalogEntries = await this.verifyCatalogCandidates(catalogEntries, async (done, total) => {
           this.setStep(job, 'parse', 'running', { done, total });
           await this.jobRepo.save(job);
-        });
+        }, { owner, repo });
         catalogStats = { totalEntries: catalogEntries.length, attempted: catalogEntries.length, fetched: 0, failed: 0 };
       } else {
         const files: ImportFile[] = [];
@@ -349,7 +349,7 @@ export class AdminImportsService implements OnModuleInit {
   /** 目录条目候选仓库校验：只保留 GitHub 上真实存在的仓库（默认分支可探测到）；
    *  仅对非 github.com 直链来源做校验（直链无需探测）；猜测全部失效时，尝试从来源页解析真实仓库。
    *  遇到 API 限流(403)时停止校验并保留原候选，避免导入整体失败。 */
-  private async verifyCatalogCandidates(entries: SkillCatalogEntry[], onProgress?: (done: number, total: number) => Promise<void>): Promise<SkillCatalogEntry[]> {
+  private async verifyCatalogCandidates(entries: SkillCatalogEntry[], onProgress?: (done: number, total: number) => Promise<void>, exclude?: { owner: string; repo: string }): Promise<SkillCatalogEntry[]> {
     if (entries.length === 0) return entries;
     const started = Date.now();
     let processed = 0;
@@ -376,7 +376,7 @@ export class AdminImportsService implements OnModuleInit {
             this.logger.warn('GitHub 候选校验网络异常，保留本条原候选: ' + e.sourceUrl);
             results[i] = { ...e };
           } else {
-            const resolved = await this.resolveSourceRepo(e.sourceUrl);
+            const resolved = await this.resolveSourceRepo(e.sourceUrl, exclude);
             if (resolved) good.push(resolved);
             results[i] = { ...e, candidates: good };
           }
@@ -397,25 +397,35 @@ export class AdminImportsService implements OnModuleInit {
   }
 
   /** 从来源页解析真实 GitHub 仓库：github.com 直链直接解析；clawskills.sh 详情页提取 github 链接后校验 */
-  private async resolveSourceRepo(url: string): Promise<SkillRepoCandidate | null> {
+  private async resolveSourceRepo(url: string, exclude?: { owner: string; repo: string }): Promise<SkillRepoCandidate | null> {
     const u = (url || '').trim();
     if (!/^https?:\/\//i.test(u)) return null;
     let m = u.match(/^https?:\/\/(?:www\.)?github\.com\/([^/\s?#]+)\/([^/\s?#]+)/i);
-    if (m) return { owner: m[1], repo: m[2].replace(/\.git$/, '') };
+    if (m) {
+      const direct = { owner: m[1], repo: m[2].replace(/\.git$/, '') };
+      return this.isCatalogRepo(direct, exclude) ? null : direct;
+    }
     m = u.match(/^https?:\/\/(?:www\.)?clawskills\.sh\/skills\/([^/\s?#]+)/i);
     if (m) {
       try {
         const html = await this.fetchPageHtml(u);
-        const repo = html ? extractGithubRepoFromHtml(html) : null;
-        if (repo) {
-          const probed = await this.githubClient.probeArchiveBranch(repo.owner, repo.repo);
+        const repos = html ? extractGithubReposFromHtml(html) : [];
+        // 依次探测页面上的仓库链接，跳过目录仓库本身（clawskills.sh 页头/页脚常链到目录仓库）
+        for (const r of repos.slice(0, 8)) {
+          if (this.isCatalogRepo(r, exclude)) continue;
+          const probed = await this.githubClient.probeArchiveBranch(r.owner, r.repo);
           if (probed.status === 'ok') {
-            return { owner: repo.owner, repo: repo.repo, defaultBranch: probed.branch ?? undefined };
+            return { owner: r.owner, repo: r.repo, defaultBranch: probed.branch ?? undefined };
           }
         }
       } catch { /* 解析失败返回 null */ }
     }
     return null;
+  }
+
+  /** 是否为当前导入的目录仓库本身（大小写不敏感） */
+  private isCatalogRepo(r: { owner: string; repo: string }, exclude?: { owner: string; repo: string }): boolean {
+    return !!exclude && r.owner.toLowerCase() === exclude.owner.toLowerCase() && r.repo.toLowerCase() === exclude.repo.toLowerCase();
   }
 
   /** 抓取页面 HTML（带 UA 与超时；失败返回 null，不影响导入） */

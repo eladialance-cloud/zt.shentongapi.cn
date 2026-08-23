@@ -22,11 +22,27 @@ export function raceTimeout<T>(promise: Promise<T>, ms: number, label = 'request
 }
 
 /** 从页面 HTML 提取首个 github.com/<owner>/<repo> 链接（目录站详情页解析用，纯函数便于单测） */
+/** 从页面 HTML 提取所有 github.com/<owner>/<repo> 链接（去重、保持顺序）；目录站详情页常含多个链接，需逐个校验 */
+export function extractGithubReposFromHtml(html: string): Array<{ owner: string; repo: string }> {
+  if (!html) return [];
+  const out: Array<{ owner: string; repo: string }> = [];
+  const seen = new Set<string>();
+  const re = /github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const repo = m[2].replace(/\.git$/, '');
+    const key = m[1] + '/' + repo;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push({ owner: m[1], repo });
+    }
+  }
+  return out;
+}
+
+/** 从页面 HTML 提取首个 github.com/<owner>/<repo> 链接（兼容旧调用，新代码请用 extractGithubReposFromHtml） */
 export function extractGithubRepoFromHtml(html: string): { owner: string; repo: string } | null {
-  if (!html) return null;
-  const m = html.match(/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/);
-  if (!m) return null;
-  return { owner: m[1], repo: m[2].replace(/\.git$/, '') };
+  return extractGithubReposFromHtml(html)[0] ?? null;
 }
 
 /** 非 API 兜底：解压 tar.gz 列出文件（GitHub archive 首层是 <owner>-<repo>-<branch> 根目录，已剥离） */

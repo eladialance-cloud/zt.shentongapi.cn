@@ -1,7 +1,7 @@
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { gzipSync } from 'node:zlib';
-import { GitHubClientService, extractGithubRepoFromHtml, listTarGzEntries, probeGithubArchive, raceTimeout } from '../../src/modules/admin-imports/github-client.service';
+import { GitHubClientService, extractGithubRepoFromHtml, extractGithubReposFromHtml, listTarGzEntries, probeGithubArchive, raceTimeout } from '../../src/modules/admin-imports/github-client.service';
 
 type FetchImpl = (url: RequestInfo | URL, init?: RequestInit) => Promise<any>;
 
@@ -217,4 +217,14 @@ test('raceTimeout 超时兜底（DNS 挂起场景）', async () => {
     raceTimeout(new Promise(() => { /* never settles */ }), 30, 'hang'),
     /hang 超时（30ms）/
   );
+});
+test('extractGithubReposFromHtml 提取全部链接并去重、剥离 .git', () => {
+  const html = '<a href="https://github.com/foo/bar">a</a><a href="https://github.com/foo/bar">dup</a><a href="https://github.com/voltagent/awesome-openclaw-skills">catalog</a><a href="https://github.com/a/b.git">git</a>';
+  assert.deepEqual(extractGithubReposFromHtml(html), [
+    { owner: 'foo', repo: 'bar' },
+    { owner: 'voltagent', repo: 'awesome-openclaw-skills' },
+    { owner: 'a', repo: 'b' },
+  ]);
+  // 兼容函数仍返回第一个
+  assert.deepEqual(extractGithubRepoFromHtml(html), { owner: 'foo', repo: 'bar' });
 });
