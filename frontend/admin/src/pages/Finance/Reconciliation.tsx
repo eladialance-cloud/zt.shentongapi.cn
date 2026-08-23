@@ -36,12 +36,14 @@ import {
   ignoreReconciliationDiff,
   listReconciliationDiffs
 } from '@/api/admin-finance-api'
+import { getPaymentConfigs } from '@/api/admin-payment-api'
 import type {
   ReconciliationDiff,
   ReconciliationStats,
   ReconciliationStatus,
   ReconciliationType
 } from '@/types/admin-finance'
+import type { PaymentConfig } from '@/types/admin-payment'
 import type { AdminPaginatedResult } from '@/types/admin-auth'
 import styles from './styles.module.css'
 
@@ -72,6 +74,7 @@ export default function FinanceReconciliation() {
   const [page, setPage] = useState(1)
   const [tab, setTab] = useState<ReconciliationType>('credit_balance')
   const [stats, setStats] = useState<ReconciliationStats | null>(null)
+  const [payConfigs, setPayConfigs] = useState<PaymentConfig[] | null>(null)
 
   const [adjustTarget, setAdjustTarget] = useState<ReconciliationDiff | null>(null)
   const [adjustForm] = Form.useForm<AdjustFormValues>()
@@ -112,6 +115,15 @@ export default function FinanceReconciliation() {
   useEffect(() => {
     void loadList()
   }, [loadList])
+
+  useEffect(() => {
+    getPaymentConfigs()
+      .then(setPayConfigs)
+      .catch((err) => {
+        console.error('[FinanceReconciliation] load payment configs failed:', err)
+        setPayConfigs([])
+      })
+  }, [])
 
   const handleTabChange = (key: string) => {
     setTab(key as ReconciliationType)
@@ -304,13 +316,24 @@ export default function FinanceReconciliation() {
         </Button>
       </div>
 
-      <Alert
-        type="warning"
-        showIcon
-        style={{ marginBottom: 16 }}
-        message="模拟支付阶段说明"
-        description="当前为模拟支付阶段，「支付流水」对账暂无数据；「流水vs余额」「Token用量」为真实对账数据。"
-      />
+      {payConfigs &&
+        (payConfigs.some((c) => c.enabled && !c.isMock) ? (
+          <Alert
+            type="success"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="真实支付已启用"
+            description="已启用真实支付渠道，用户下单将调用真实网关；「支付流水」对账将随真实订单产生数据，其余对账项均为真实数据。"
+          />
+        ) : (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="模拟支付阶段说明"
+            description="当前为模拟支付阶段，「支付流水」对账暂无数据；「流水vs余额」「Token用量」「Key池扣减」为真实对账数据。"
+          />
+        ))}
 
       {/* 顶部统计卡片 */}
       <div className={styles.statsGrid}>
