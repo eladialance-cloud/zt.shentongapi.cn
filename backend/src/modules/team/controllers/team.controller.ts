@@ -1,5 +1,5 @@
 ﻿import {
-  Body, Controller, Delete, Get, Param, Patch, Post, Query,
+  Body, Controller, Delete, Get, Param, Patch, Post, Put, Query,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Public } from "../../../common/decorators/public.decorator";
@@ -63,6 +63,32 @@ export class TeamController {
     @Param("teamId") teamId: string,
   ) {
     return this.service.getTeamDetail(userId, Number(teamId));
+  }
+
+  @Get(":teamId/workflow")
+  @ApiOperation({ summary: "团队协作流程" })
+  getWorkflow(
+    @CurrentUser("userId") userId: number,
+    @Param("teamId") teamId: string,
+  ) {
+    return this.service.getWorkflow(userId, Number(teamId));
+  }
+
+  @Put(":teamId/workflow")
+  @ApiOperation({ summary: "保存团队协作流程（整表替换）" })
+  saveWorkflow(
+    @CurrentUser("userId") userId: number,
+    @Param("teamId") teamId: string,
+    @Body() body: {
+      nodes: Array<{
+        name: string;
+        description?: string;
+        sortOrder?: number;
+        assigneeMemberIds?: number[];
+      }>;
+    },
+  ) {
+    return this.service.saveWorkflow(userId, Number(teamId), body.nodes);
   }
 
   @Patch(":teamId")

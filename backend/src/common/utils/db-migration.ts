@@ -471,6 +471,32 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
     for (const [colName, colDef] of teamTaskCols) {
       await ensureColumn('team_tasks', colName, colDef);
     }
+    // 团队协作流程节点（Hermes 编排时作为任务主干模板；整表替换保存）
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS team_workflow_nodes (
+      id BIGINT NOT NULL AUTO_INCREMENT,
+      team_id BIGINT NOT NULL COMMENT '团队 ID',
+      name VARCHAR(128) NOT NULL COMMENT '流程节点名',
+      description VARCHAR(512) NULL COMMENT '节点说明',
+      sort_order INT NOT NULL DEFAULT 0 COMMENT '节点顺序（升序）',
+      assignee_member_ids JSON NULL COMMENT '负责成员 ID 列表（team_members.id）',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+      PRIMARY KEY (id),
+      INDEX idx_team_workflow_team (team_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='团队协作流程节点'`);
+    logger.log('Ensured table: team_workflow_nodes');
+    const teamWorkflowCols: Array<[string, string]> = [
+      ['team_id', 'BIGINT NOT NULL DEFAULT 0'],
+      ['name', "VARCHAR(128) NOT NULL DEFAULT '' COMMENT '流程节点名'"],
+      ['description', 'VARCHAR(512) DEFAULT NULL'],
+      ['sort_order', 'INT NOT NULL DEFAULT 0'],
+      ['assignee_member_ids', 'JSON DEFAULT NULL'],
+      ['created_at', "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'"],
+      ['updated_at', "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'"],
+    ];
+    for (const [colName, colDef] of teamWorkflowCols) {
+      await ensureColumn('team_workflow_nodes', colName, colDef);
+    }
     // 旧版 teams/team_members 表（init.sql 结构）含 owner_id/user_id/role 等 NOT NULL 旧列，
     // 新实体（creator_id/agent_id/role_title）INSERT 时不提供这些列会报
     // "Field ... doesn't have a default value"。这里把旧列调整为可空，兼容新旧两套结构共存。

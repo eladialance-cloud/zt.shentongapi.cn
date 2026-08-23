@@ -139,6 +139,22 @@ describe("buildPlanPrompt / buildStepPrompt", () => {
     expect(p).toContain("调研：结论A");
     expect(p).toContain("review");
   });
+  it("规划 prompt 注入团队协作流程（按序主干，不跳步）", () => {
+    const p = buildPlanPrompt("写文案", null, null, [
+      { name: "选题确认", description: "确认主题", order: 1 },
+      { name: "初稿", order: 2 },
+    ]);
+    expect(p).toContain("团队已配置协作流程");
+    expect(p).toContain("1. 选题确认（确认主题）");
+    expect(p).toContain("2. 初稿");
+    expect(p).toContain("不得跳步");
+    expect(p).not.toContain("拆解为 2~5 个有序执行节点");
+  });
+  it("单步 prompt 注入知识库 SOP 参考", () => {
+    const p = buildStepPrompt({ task: "写文案", stepName: "成稿", knowledge: "SOP：标题不超过20字" });
+    expect(p).toContain("SOP：标题不超过20字");
+    expect(p).toContain("参考知识库内容");
+  });
   it("单步 prompt 注入打回原因（重做）", () => {
     const p = buildStepPrompt({ task: "写文案", stepName: "成稿", feedback: "风格不对，重写" });
     expect(p).toContain("风格不对，重写");

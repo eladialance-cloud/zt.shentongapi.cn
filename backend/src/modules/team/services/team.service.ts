@@ -4,6 +4,7 @@ import { DataSource, Repository, In } from "typeorm";
 import { TeamEntity } from "../entities/team.entity";
 import { TeamMemberEntity } from "../entities/team-member.entity";
 import { TeamTaskEntity } from "../entities/team-task.entity";
+import { TeamWorkflowNodeEntity } from "../entities/team-workflow-node.entity";
 import { BusinessException } from "../../../common/exceptions/business.exception";
 import { ErrorCode } from "../../../common/constants/error.constant";
 
@@ -27,6 +28,8 @@ export class TeamService {
     private readonly memberRepo: Repository<TeamMemberEntity>,
     @InjectRepository(TeamTaskEntity)
     private readonly taskRepo: Repository<TeamTaskEntity>,
+    @InjectRepository(TeamWorkflowNodeEntity)
+    private readonly workflowRepo: Repository<TeamWorkflowNodeEntity>,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -115,12 +118,93 @@ export class TeamService {
   async getTeamDetail(
     userId: number,
     teamId: number,
-  ): Promise<{ team: TeamEntity }> {
+  ): Promise<{ team: TeamEntity; workflow: TeamWorkflowNodeEntity[] }> {
     const team = await this.teamRepo.findOne({ where: { id: teamId } });
     if (!team) {
       BusinessException.throw(ErrorCode.NOT_FOUND, "团队不存在");
     }
-    return { team };
+    const workflow = await this.workflowRepo.find({
+      where: { teamId },
+      order: { sortOrder: "ASC", id: "ASC" },
+    });
+    return { team, workflow };
+  }
+
+  /** 读取团队协作流程（升序） */
+  async getWorkflow(
+    userId: number,
+    teamId: number,
+  ): Promise<TeamWorkflowNodeEntity[]> {
+    const team = await this.teamRepo.findOne({ where: { id: teamId } });
+    if (!team) {
+      BusinessException.throw(ErrorCode.NOT_FOUND, "团队不存在");
+    }
+    if (Number(team.creatorId) !== userId) {
+      const isMember = await this.memberRepo.findOne({ where: { teamId, agentId: userId } });
+      if (!isMember) {
+        BusinessException.throw(ErrorCode.FORBIDDEN, "无权查看该团队");
+      }
+    }
+    return this.workflowRepo.find({
+      where: { teamId },
+      order: { sortOrder: "ASC", id: "ASC" },
+    });
+  }
+
+  /** 保存团队协作流程（整表替换；nodes 为空 = 清空，走默认流程） */
+  async saveWorkflow(
+    userId: number,
+    teamId: number,
+    nodes: Array<{
+      name: string;
+      description?: string;
+      sortOrder?: number;
+      assigneeMemberIds?: number[];
+    }>,
+  ): Promise<TeamWorkflowNodeEntity[]> {
+    const team = await this.teamRepo.findOne({ where: { id: teamId } });
+    if (!team) {
+      BusinessException.throw(ErrorCode.NOT_FOUND, "团队不存在");
+    }
+    // 安全加固：仅创建者或成员可修改协作流程
+    if (Number(team.creatorId) !== userId) {
+      const isMember = await this.memberRepo.findOne({ where: { teamId, agentId: userId } });
+      if (!isMember) {
+        BusinessException.throw(ErrorCode.FORBIDDEN, "仅团队创建者或成员可修改协作流程");
+      }
+    }
+    const list = Array.isArray(nodes) ? nodes : [];
+    if (list.length > 20) {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, "协作流程节点最多 20 个");
+    }
+    const cleaned = list
+      .map((n, index) => ({
+        name: String(n?.name ?? "").trim().slice(0, 128),
+        description: n?.description ? String(n.description).trim().slice(0, 512) : undefined,
+        sortOrder: Number.isFinite(n?.sortOrder) ? Number(n.sortOrder) : index,
+        assigneeMemberIds: Array.isArray(n?.assigneeMemberIds) ? n.assigneeMemberIds : [],
+      }))
+      .filter((n) => n.name.length > 0);
+    await this.dataSource.transaction(async (manager) => {
+      await manager.delete(TeamWorkflowNodeEntity, { teamId });
+      if (cleaned.length > 0) {
+        await manager.save(
+          cleaned.map((n) =>
+            manager.create(TeamWorkflowNodeEntity, {
+              teamId,
+              name: n.name,
+              description: n.description,
+              sortOrder: n.sortOrder,
+              assigneeMemberIds: n.assigneeMemberIds,
+            }),
+          ),
+        );
+      }
+    });
+    return this.workflowRepo.find({
+      where: { teamId },
+      order: { sortOrder: "ASC", id: "ASC" },
+    });
   }
 
   async updateTeam(
@@ -154,6 +238,7 @@ export class TeamService {
     await this.dataSource.transaction(async (manager) => {
       await manager.delete(TeamMemberEntity, { teamId });
       await manager.delete(TeamTaskEntity, { teamId });
+      await manager.delete(TeamWorkflowNodeEntity, { teamId });
       await manager.delete(TeamEntity, { id: teamId });
     });
   }

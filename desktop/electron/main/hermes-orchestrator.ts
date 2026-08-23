@@ -20,6 +20,15 @@ export interface TeamMemberProfile {
   knowledgeBaseIds?: number[];
 }
 
+/** 团队协作流程节点（来自团队配置；Hermes 规划时作为任务主干模板） */
+export interface WorkflowNode {
+  id?: number;
+  name: string;
+  description?: string;
+  order: number;
+  assigneeIds?: number[];
+}
+
 export interface OrchestrateInput {
   executionRef: string;
   teamTaskId: number;
@@ -27,6 +36,8 @@ export interface OrchestrateInput {
   briefId?: number;
   task: string;
   teamMembers?: TeamMemberProfile[];
+  /** 团队已配置的协作流程（可选；Hermes 规划时作为主干，未配置则动态拆解） */
+  workflow?: WorkflowNode[];
   context?: Record<string, unknown>;
   /** 设置页每类默认模型（方案 B）：Hermes 按子任务类型自行调度模型 */
   modelDefaults?: {
@@ -157,6 +168,8 @@ export interface StepRunnerDeps {
   persistOutputs: (taskId: number, outputs: HermesOutput[]) => Promise<void>;
   /** 自动确认开关（调用时实时读取，便于中途切换） */
   isAutoConfirm: () => boolean;
+  /** 按节点检索知识库（SOP/标准），返回可直接注入 prompt 的文本；返回空串 = 无参考 */
+  retrieveKnowledge?: (query: string) => Promise<string>;
   /** 立即中断当前 Hermes CLI（stop 时杀掉正在跑的进程） */
   abortCurrent?: () => void;
   now: () => number;
@@ -169,15 +182,31 @@ export function buildPlanPrompt(
   task: string,
   teamMembers?: TeamMemberProfile[] | null,
   modelDefaults?: OrchestrateInput["modelDefaults"] | null,
+  workflow?: WorkflowNode[] | null,
 ): string {
   const base = buildTaskPrompt(task, teamMembers, modelDefaults ?? null);
-  return [
-    base,
-    "请先把上述任务拆解为 2~5 个有序执行节点（每个节点由一个子代理完成，节点之间按依赖排序）。",
+  const parts: string[] = [base];
+  const wf = Array.isArray(workflow) && workflow.length > 0 ? workflow : null;
+  if (wf) {
+    const nodes = wf
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((n, i) => {
+        const desc = n.description ? "（" + n.description + "）" : "";
+        return (i + 1) + ". " + n.name + desc;
+      })
+      .join("\n");
+    parts.push(
+      "团队已配置协作流程（必须按以下顺序作为任务主干，不得跳步、不得改变顺序，可在每个节点内细化）：\n" + nodes,
+    );
+  }
+  const countHint = wf ? "有序执行节点" : "2~5 个有序执行节点";
+  parts.push(
+    "请把上述任务按" + (wf ? "该协作流程" : "业务依赖") + "拆解为 " + countHint + "（每个节点由一个子代理完成，节点之间按依赖排序）。",
     "严格输出单行 JSON，不要输出任何其他文字：{\"steps\":[{\"name\":\"节点名\",\"agentRole\":\"可选角色\"}]}",
-  ].join("\n\n");
+  );
+  return parts.join("\n\n");
 }
-
 /** 单步执行 prompt：任务背景 + 前序产出 + 本步指令 + 输出格式约束 */
 export function buildStepPrompt(input: {
   task: string;
@@ -186,6 +215,8 @@ export function buildStepPrompt(input: {
   stepName: string;
   previousSummary?: string;
   feedback?: string;
+  /** 知识库检索结果（SOP/标准），注入为参考约束 */
+  knowledge?: string;
 }): string {
   const base = buildTaskPrompt(input.task, input.teamMembers ?? null, input.modelDefaults ?? null);
   const parts = [base];
@@ -193,6 +224,9 @@ export function buildStepPrompt(input: {
     parts.push("已完成的前序节点与产出：" + input.previousSummary);
   }
   parts.push("当前要执行节点：" + input.stepName);
+  if (input.knowledge) {
+    parts.push("参考知识库内容（SOP/标准，必须遵守；与任务描述冲突时以知识库为准）：\n" + input.knowledge);
+  }
   if (input.feedback) {
     parts.push("该节点上一次被打回，原因：" + input.feedback + "。请针对该原因修正后再输出，不要重复犯错。");
   }
@@ -301,7 +335,7 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
       // 1) 规划
       await deps.patchTask(input.teamId, input.teamTaskId, { status: "in_progress" });
       const planResp = await deps.runPrompt(
-        buildPlanPrompt(input.task, input.teamMembers ?? null, input.modelDefaults ?? null),
+        buildPlanPrompt(input.task, input.teamMembers ?? null, input.modelDefaults ?? null, input.workflow ?? null),
         input.modelDefaults?.chat ? { model: input.modelDefaults.chat } : undefined,
       );
       if (planResp.error) return await failTask("任务规划失败", planResp.error);
@@ -323,6 +357,9 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
           await pausePoint();
           step.status = "running";
           await sync();
+          const knowledge = deps.retrieveKnowledge
+            ? await deps.retrieveKnowledge(step.name).catch(() => "")
+            : "";
           const execResp = await deps.runPrompt(
             buildStepPrompt({
               task: input.task,
@@ -331,6 +368,7 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
               stepName: step.name,
               previousSummary: previousSummary.join("\n"),
               feedback: step.lastFeedback,
+              knowledge,
             }),
             input.modelDefaults?.chat ? { model: input.modelDefaults.chat } : undefined,
           );

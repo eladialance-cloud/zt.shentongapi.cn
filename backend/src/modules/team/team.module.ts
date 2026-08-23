@@ -3,6 +3,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import { TeamEntity } from "./entities/team.entity";
 import { TeamMemberEntity } from "./entities/team-member.entity";
 import { TeamTaskEntity } from "./entities/team-task.entity";
+import { TeamWorkflowNodeEntity } from "./entities/team-workflow-node.entity";
 import { TeamController } from "./controllers/team.controller";
 import { TeamService } from "./services/team.service";
 
@@ -12,6 +13,7 @@ import { TeamService } from "./services/team.service";
       TeamEntity,
       TeamMemberEntity,
       TeamTaskEntity,
+      TeamWorkflowNodeEntity,
     ]),
   ],
   controllers: [TeamController],

@@ -268,6 +268,27 @@ function buildStepRunnerDeps(token: string, taskKey: string): StepRunnerDeps {
     isAutoConfirm: () => stepAutoConfirm.get(taskKey) ?? false,
     now: () => Date.now(),
     maxRetries: 2,
+    retrieveKnowledge: async (query: string) => {
+      try {
+        const res = await fetch(ST_API_BASE + '/knowledge/search-all', {
+          method: 'POST',
+          headers: auth,
+          body: JSON.stringify({ query, topK: 4 }),
+          signal: AbortSignal.timeout(15000),
+        })
+        if (!res.ok) return ''
+        const data = (await res.json()) as Array<{ content?: string; documentName?: string; kbName?: string }>
+        if (!Array.isArray(data) || data.length === 0) return ''
+        return data
+          .filter((d): d is { content: string; documentName?: string; kbName?: string } => typeof d.content === 'string' && d.content.trim().length > 0)
+          .slice(0, 4)
+          .map((d) => (d.documentName ? d.content.trim() + '（来源：' + d.documentName + '）' : d.content.trim()))
+          .join('\n\n')
+      } catch (err) {
+        console.warn('[step-runner] retrieveKnowledge failed:', err)
+        return ''
+      }
+    },
   }
 }
 
@@ -472,6 +493,40 @@ function registerIpcHandlers(): void {
         const input = { ...payload.input }
         if (!input.teamMembers && input.teamId) {
           input.teamMembers = await loadTeamMembers(payload.token, input.teamId)
+        }
+        // 协作流程注入：未显式传 workflow 时拉取团队已配置流程（Hermes 按流程当主干，不跳步）
+        if (!input.workflow && input.teamId) {
+          try {
+            const wfRes = await fetch(ST_API_BASE + '/teams/' + input.teamId + '/workflow', {
+              headers: { Authorization: 'Bearer ' + payload.token },
+              signal: AbortSignal.timeout(10000),
+            })
+            if (wfRes.ok) {
+              const raw = (await wfRes.json()) as Array<{
+                id?: number
+                name?: unknown
+                description?: unknown
+                sortOrder?: unknown
+                assigneeMemberIds?: unknown
+              }>
+              if (Array.isArray(raw) && raw.length > 0) {
+                input.workflow = raw
+                  .filter((n) => n && typeof n.name === 'string' && n.name.trim().length > 0)
+                  .map((n, i) => ({
+                    id: typeof n.id === 'number' ? n.id : undefined,
+                    name: String(n.name).trim(),
+                    ...(typeof n.description === 'string' && n.description.trim() ? { description: n.description } : {}),
+                    order: Number.isFinite(Number(n.sortOrder)) ? Number(n.sortOrder) : i,
+                    ...(Array.isArray(n.assigneeMemberIds) && n.assigneeMemberIds.length > 0
+                      ? { assigneeIds: n.assigneeMemberIds.filter((x: unknown) => typeof x === 'number') }
+                      : {}),
+                  }))
+                  .sort((a, b) => a.order - b.order)
+              }
+            }
+          } catch (err) {
+            console.warn('[hermes-orchestrate] 拉取团队协作流程失败，按动态拆解继续:', err)
+          }
         }
         const taskKey = 'team:' + input.teamTaskId
         if (stepRunners.has(taskKey)) return { ok: true, started: true } // 已在运行：幂等，不重复起

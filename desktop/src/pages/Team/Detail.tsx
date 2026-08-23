@@ -10,7 +10,7 @@ import {
 } from "antd";
 import type { TableColumnsType } from "antd";
 import {
-  ArrowLeft, Briefcase, LayoutGrid, ListTodo, Pencil,
+  ArrowDown, ArrowLeft, ArrowUp, Briefcase, LayoutGrid, ListTodo, Pencil,
   Plus, Trash2, UserRound, Users, Workflow,
 } from "lucide-react";
 import * as teamApi from "@/api/team-api";
@@ -92,6 +92,11 @@ export default function TeamDetail() {
   const [savingMember, setSavingMember] = useState(false);
   const [selectableAgents, setSelectableAgents] = useState<SelectableAgent[]>([]);
 
+  // 协作流程编辑弹窗
+  const [workflowModalOpen, setWorkflowModalOpen] = useState(false);
+  const [workflowDraft, setWorkflowDraft] = useState<TeamWorkflowNode[]>([]);
+  const [savingWorkflow, setSavingWorkflow] = useState(false);
+
   const loadData = useCallback(async () => {
     if (!Number.isFinite(teamId)) return;
     setLoading(true);
@@ -125,7 +130,7 @@ export default function TeamDetail() {
     if (member) {
       memberForm.setFieldsValue({
         agentId: member.agentId,
-        roleTitle: member.roleTitle,
+        roleTitle: member.roleTitle ? [member.roleTitle] : undefined,
         roleDescription: member.roleDescription || "",
         roleEmoji: member.roleEmoji || "",
         themeColor: member.themeColor || PRESET_COLORS[0],
@@ -142,10 +147,14 @@ export default function TeamDetail() {
   const saveMember = async () => {
     try {
       const values = await memberForm.validateFields();
+      // 自定义职能为标签式输入（值可能是数组），统一还原为字符串
+      const roleTitle = Array.isArray(values.roleTitle)
+        ? (values.roleTitle[0] ?? "")
+        : (values.roleTitle ?? "");
       setSavingMember(true);
       if (editingMember) {
         await teamApi.updateMember(teamId, editingMember.id, {
-          roleTitle: values.roleTitle,
+          roleTitle,
           roleDescription: values.roleDescription,
           roleEmoji: values.roleEmoji,
           themeColor: values.themeColor,
@@ -155,7 +164,7 @@ export default function TeamDetail() {
       } else {
         await teamApi.addMember(teamId, {
           agentId: values.agentId,
-          roleTitle: values.roleTitle,
+          roleTitle,
           roleDescription: values.roleDescription,
           roleEmoji: values.roleEmoji,
           themeColor: values.themeColor,
@@ -171,6 +180,57 @@ export default function TeamDetail() {
       message.error("保存成员失败: " + (err as Error).message);
     } finally {
       setSavingMember(false);
+    }
+  };
+
+  // ===== 协作流程编辑 =====
+  const openWorkflowModal = () => {
+    setWorkflowDraft(workflow.map((w, i) => ({ ...w, order: i })));
+    setWorkflowModalOpen(true);
+  };
+
+  const addWorkflowNode = () => {
+    setWorkflowDraft((prev) => [...prev, { id: 0, name: "", description: "", order: prev.length }]);
+  };
+
+  const updateWorkflowNode = (index: number, patch: Partial<TeamWorkflowNode>) => {
+    setWorkflowDraft((prev) => prev.map((n, i) => (i === index ? { ...n, ...patch } : n)));
+  };
+
+  const moveWorkflowNode = (index: number, dir: -1 | 1) => {
+    setWorkflowDraft((prev) => {
+      const next = [...prev];
+      const target = index + dir;
+      if (target < 0 || target >= next.length) return prev;
+      [next[index], next[target]] = [next[target], next[index]];
+      return next.map((n, i) => ({ ...n, order: i }));
+    });
+  };
+
+  const removeWorkflowNode = (index: number) => {
+    setWorkflowDraft((prev) => prev.filter((_, i) => i !== index).map((n, i) => ({ ...n, order: i })));
+  };
+
+  const saveWorkflow = async () => {
+    if (workflowDraft.length > 20) {
+      message.warning("协作流程节点最多 20 个");
+      return;
+    }
+    if (workflowDraft.some((n) => !n.name?.trim())) {
+      message.warning("请填写所有节点名称");
+      return;
+    }
+    setSavingWorkflow(true);
+    try {
+      const saved = await teamApi.saveWorkflow(teamId, workflowDraft.map((n, i) => ({ ...n, order: i })));
+      setWorkflow(saved);
+      setWorkflowModalOpen(false);
+      message.success("协作流程已保存");
+    } catch (err) {
+      console.error("[TeamDetail] save workflow failed:", err);
+      message.error("保存协作流程失败: " + (err as Error).message);
+    } finally {
+      setSavingWorkflow(false);
     }
   };
 
@@ -347,6 +407,7 @@ export default function TeamDetail() {
           <div className={styles.sectionCard}>
             <div className={styles.sectionTitle}>
               <span className={styles.sectionTitleText}><Workflow size={14} />协作流程</span>
+              <Button size="small" icon={<Pencil size={12} />} onClick={openWorkflowModal}>编辑流程</Button>
             </div>
             {workflow.length === 0 ? (
               <div style={{ color: "var(--color-text-tertiary)", fontSize: 12, lineHeight: 1.6 }}>
@@ -370,6 +431,53 @@ export default function TeamDetail() {
           </div>
         </div>
       </Spin>
+
+      {/* 协作流程编辑弹窗 */}
+      <Modal
+        title="编辑协作流程"
+        open={workflowModalOpen}
+        onCancel={() => setWorkflowModalOpen(false)}
+        onOk={saveWorkflow}
+        confirmLoading={savingWorkflow}
+        okText="保存"
+        cancelText="取消"
+        width={640}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
+          {workflowDraft.length === 0 && (
+            <div style={{ color: "var(--color-text-tertiary)", fontSize: 12 }}>
+              暂无节点。Hermes 将按默认流程执行：任务创建 → 负责人接收 → 执行中 → 提交审核 → 审核通过 → 完成。
+            </div>
+          )}
+          {workflowDraft.map((node, idx) => (
+            <div key={idx} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <div style={{ width: 20, lineHeight: "32px", color: "var(--color-text-tertiary)", fontSize: 13, flexShrink: 0 }}>{idx + 1}</div>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                <Input
+                  placeholder="节点名，如 选题确认"
+                  value={node.name}
+                  maxLength={128}
+                  onChange={(e) => updateWorkflowNode(idx, { name: e.target.value })}
+                />
+                <Input
+                  placeholder="节点说明（可选）：这一步要做什么、谁负责"
+                  value={node.description ?? ""}
+                  maxLength={512}
+                  onChange={(e) => updateWorkflowNode(idx, { description: e.target.value })}
+                />
+              </div>
+              <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                <Button size="small" icon={<ArrowUp size={12} />} disabled={idx === 0} onClick={() => moveWorkflowNode(idx, -1)} />
+                <Button size="small" icon={<ArrowDown size={12} />} disabled={idx === workflowDraft.length - 1} onClick={() => moveWorkflowNode(idx, 1)} />
+                <Button size="small" danger icon={<Trash2 size={12} />} onClick={() => removeWorkflowNode(idx)} />
+              </div>
+            </div>
+          ))}
+        </div>
+        <Button type="dashed" block icon={<Plus size={14} />} onClick={addWorkflowNode}>
+          添加节点
+        </Button>
+      </Modal>
 
       {/* 添加/编辑成员弹窗 */}
       <Modal
@@ -395,7 +503,17 @@ export default function TeamDetail() {
             </Form.Item>
           )}
           <Form.Item label="自定义职能" name="roleTitle"
-            rules={[{ required: true, message: "请输入职能名称" }, { max: 64 }]}>
+            rules={[
+              { required: true, message: "请输入职能名称" },
+              {
+                validator: (_: unknown, v: unknown) => {
+                  const val = Array.isArray(v) ? v[0] : v;
+                  const text = typeof val === "string" ? val : "";
+                  if (text.length > 64) return Promise.reject(new Error("职能名称最多 64 个字符"));
+                  return Promise.resolve();
+                },
+              },
+            ]}>
             <Select
               mode="tags"
               maxCount={1}

@@ -51,6 +51,40 @@ export async function getTeamDetail(
   return httpClient.get(`/teams/${id}`);
 }
 
+/** 团队协作流程 GET /teams/:id/workflow（nodes 按 order 升序） */
+export async function getWorkflow(teamId: number): Promise<TeamWorkflowNode[]> {
+  const res = await httpClient.get<Array<Record<string, unknown>>>(`/teams/` + teamId + `/workflow`);
+  return (Array.isArray(res) ? res : []).map((n) => ({
+    id: Number(n.id ?? 0),
+    name: String(n.name ?? ""),
+    description: n.description ? String(n.description) : undefined,
+    order: Number(n.sortOrder ?? 0),
+    assigneeIds: Array.isArray(n.assigneeMemberIds) ? n.assigneeMemberIds.map(Number) : undefined,
+  }));
+}
+
+/** 保存团队协作流程 PUT /teams/:id/workflow（整表替换） */
+export async function saveWorkflow(
+  teamId: number,
+  nodes: TeamWorkflowNode[],
+): Promise<TeamWorkflowNode[]> {
+  const res = await httpClient.put<Array<Record<string, unknown>>>(`/teams/` + teamId + `/workflow`, {
+    nodes: nodes.map((n, index) => ({
+      name: n.name,
+      description: n.description,
+      sortOrder: Number.isFinite(n.order) ? n.order : index,
+      assigneeMemberIds: Array.isArray(n.assigneeIds) ? n.assigneeIds : [],
+    })),
+  });
+  return (Array.isArray(res) ? res : []).map((n) => ({
+    id: Number(n.id ?? 0),
+    name: String(n.name ?? ""),
+    description: n.description ? String(n.description) : undefined,
+    order: Number(n.sortOrder ?? 0),
+    assigneeIds: Array.isArray(n.assigneeMemberIds) ? n.assigneeMemberIds.map(Number) : undefined,
+  }));
+}
+
 /** 成员列表 GET /teams/:id/members */
 export async function listMembers(id: number): Promise<TeamMember[]> {
   return httpClient.get<TeamMember[]>(`/teams/${id}/members`);
@@ -146,6 +180,8 @@ export default {
   createTeam,
   deleteTeam,
   getTeamDetail,
+  getWorkflow,
+  saveWorkflow,
   listMembers,
   addMember,
   updateMember,
