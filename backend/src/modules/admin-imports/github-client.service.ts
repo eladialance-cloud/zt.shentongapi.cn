@@ -75,11 +75,12 @@ export type ArchiveProbeResult =
 
 type ProbeFetcher = (
   url: string,
-  init?: { method?: string; redirect?: 'follow'; signal?: AbortSignal },
+  init?: { method?: string; redirect?: 'follow' | 'manual'; signal?: AbortSignal },
 ) => Promise<{ ok: boolean; status: number }>;
 
 /** 直连 GitHub archive 检测仓库/分支可用性（不走 API、不受限流影响）：
- *  依次 HEAD main → master → HEAD.tar.gz；404 判定仓库/分支不存在，403/网络异常返回 error 由调用方决定 */
+ *  依次 HEAD main → master → HEAD.tar.gz；不跟随重定向——存在时 GitHub 会 302 到 codeload（跟随反而可能因 codeload 慢而超时），
+ *  404 判定仓库/分支不存在，403/网络异常返回 error 由调用方决定 */
 export async function probeGithubArchive(
   owner: string,
   repo: string,
@@ -88,8 +89,10 @@ export async function probeGithubArchive(
   const base = `https://github.com/${owner}/${repo}/archive`;
   const probe = async (u: string): Promise<'ok' | 'missing' | 'blocked' | 'error'> => {
     try {
-      const res = await raceTimeout(fetcher(u, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(7000) }), 7000, 'GitHub archive 探测');
+      const res = await raceTimeout(fetcher(u, { method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(7000) }), 7000, 'GitHub archive 探测');
       if (res.ok) return 'ok';
+      // GitHub 仓库/分支存在时 archive 会 302 重定向到 codeload（无需跟随，避免 codeload 慢导致误判超时）
+      if (res.status === 301 || res.status === 302 || res.status === 303 || res.status === 307 || res.status === 308) return 'ok';
       return res.status === 404 ? 'missing' : 'blocked';
     } catch {
       return 'error';

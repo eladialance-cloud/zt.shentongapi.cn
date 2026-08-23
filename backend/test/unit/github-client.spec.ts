@@ -228,3 +228,7 @@ test('extractGithubReposFromHtml 提取全部链接并去重、剥离 .git', () 
   // 兼容函数仍返回第一个
   assert.deepEqual(extractGithubRepoFromHtml(html), { owner: 'foo', repo: 'bar' });
 });
+test('probeGithubArchive 302 重定向视为仓库存在（不跟随 codeload，避免慢连接误判）', async () => {
+  mockFetch(async (url) => ({ ok: false, status: String(url).includes('main.tar.gz') ? 302 : 404 }));
+  assert.deepEqual(await probeGithubArchive('x', 'y'), { status: 'ok', branch: 'main' });
+});
