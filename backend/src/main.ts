@@ -14,6 +14,7 @@ import { corsConfig } from './config/cors.config';
 import { validateJwtSecrets } from './common/utils/env-validator';
 import { runStartupMigrations } from './common/utils/db-migration';
 import { DataSource } from 'typeorm';
+import * as path from 'path';
 
 /**
  * 应用入口
@@ -38,6 +39,9 @@ async function bootstrap() {
 
   // Helmet 安全头
   app.use(helmet());
+
+  // 静态托管 uploads（上传文件 / 口播工坊产物），配合前端 resolveMediaUrl 拼 API origin
+  app.useStaticAssets(path.join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
 
   // 全局管道
   app.useGlobalPipes(new AppValidationPipe());

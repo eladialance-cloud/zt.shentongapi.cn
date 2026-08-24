@@ -86,3 +86,11 @@ desktop/resources/openclaw/skills/video-claw/video-claw/frontend/node_modules/
 desktop/resources/openclaw/skills/video-claw/video-claw/frontend/.next/
 
 .superpowers/
+# Local caches
+.codex/
+.npm-cache/
+.tmp-jest/
+desktop/.cache/
+
+# Runtime uploads
+backend/uploads/

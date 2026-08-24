@@ -11,7 +11,7 @@ const config: Config = {
     "^.+\\.tsx?$": ["ts-jest", { tsconfig: { jsx: "react-jsx", esModuleInterop: true, allowSyntheticDefaultImports: true } }],
   },
   testEnvironment: "jsdom",
-  testMatch: ["<rootDir>/tests/**/*.test.ts"],
+  testMatch: ["<rootDir>/tests/**/*.test.{ts,tsx}"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
     "^@shared/(.*)$": "<rootDir>/electron/shared/$1",

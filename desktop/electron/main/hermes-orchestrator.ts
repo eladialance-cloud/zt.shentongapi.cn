@@ -255,7 +255,8 @@ export function buildStepPrompt(input: {
   parts.push(
     "完成该节点后严格输出单行 JSON，不要输出其他文字：",
     '{"summary":"完成说明","outputs":[{"type":"text|image|video|audio|file","content":"文本内容","url":"文件URL"}],"review":{"verdict":"pass|rework","reason":"自评说明"}}',
-    "review.verdict：产出达标用 pass；未达标用 rework 并写明原因。outputs 至少给出产出内容。"
+    "review.verdict：产出达标用 pass；未达标用 rework 并写明原因。outputs 至少给出产出内容。",
+    "禁止调用任何工具（不要读文件、不要搜索、不要执行命令、不要思考过程），直接输出 JSON。"
   );
   return parts.join("\n\n");
 }

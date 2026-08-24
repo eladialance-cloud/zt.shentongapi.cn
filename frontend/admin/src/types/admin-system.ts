@@ -4,7 +4,7 @@
 import type { AdminPaginatedResult } from './admin-auth'
 
 /** 系统配置分区 */
-export type SystemConfigSection = 'cache' | 'rate_limit' | 'notification'
+export type SystemConfigSection = 'cache' | 'rate_limit' | 'notification' | 'oral_workshop'
 
 /** 缓存层级 */
 export type CacheLayer = 'L1' | 'L2' | 'L3'
@@ -57,8 +57,20 @@ export interface NotificationConfig {
   }
 }
 
+/** 口播工坊引擎配置（M8-4）：volcano=火山方舟（默认）/ local=本地 IndexTTS2 v2.0（预留） */
+export interface OralWorkshopConfig {
+  /** 声音克隆引擎 */
+  voiceEngine: 'volcano' | 'local'
+  /** 数字人合成引擎 */
+  digitalHumanEngine: 'volcano' | 'local'
+  /** 免费档水印开关 */
+  watermarkEnabled: boolean
+  /** 并发任务上限 */
+  maxConcurrentJobs: number
+}
+
 /** 系统配置(联合) */
-export type SystemConfig = CacheConfig | RateLimitConfig | NotificationConfig
+export type SystemConfig = CacheConfig | RateLimitConfig | NotificationConfig | OralWorkshopConfig
 
 /** 清空缓存 DTO */
 export interface ClearCacheDto {

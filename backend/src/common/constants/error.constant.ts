@@ -22,6 +22,12 @@ export enum ErrorCode {
   FILE_DELETE_FAILED = 1105,
   THIRD_PARTY_ERROR = 1106,
   ACCOUNT_DISABLED = 1016,
+  MEMBERSHIP_REQUIRED = 1201,
+  FEATURE_LOCKED = 1202,
+  INSUFFICIENT_CREDITS = 1203,
+  REDEEM_CODE_INVALID = 1204,
+  REDEEM_CODE_USED = 1205,
+  REDEEM_CODE_REVOKED = 1206,
   INTERNAL_ERROR = 1099,
 }
 
@@ -49,5 +55,11 @@ export const ErrorMessage: Record<ErrorCode, string> = {
   [ErrorCode.FILE_DELETE_FAILED]: '文件删除失败',
   [ErrorCode.THIRD_PARTY_ERROR]: '第三方服务异常',
   [ErrorCode.ACCOUNT_DISABLED]: '账号已被禁用',
+  [ErrorCode.MEMBERSHIP_REQUIRED]: '需要开通会员',
+  [ErrorCode.FEATURE_LOCKED]: '功能未开放',
+  [ErrorCode.INSUFFICIENT_CREDITS]: 'Credits 余额不足',
+  [ErrorCode.REDEEM_CODE_INVALID]: '兑换码无效',
+  [ErrorCode.REDEEM_CODE_USED]: '兑换码已被使用',
+  [ErrorCode.REDEEM_CODE_REVOKED]: '兑换码已作废',
   [ErrorCode.INTERNAL_ERROR]: '服务器内部错误',
 };

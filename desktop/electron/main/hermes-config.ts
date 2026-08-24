@@ -39,6 +39,12 @@ function yamlScalar(value: string): string {
 /** Hermes 单次响应输出上限：模型推理 token 会占满默认 4096，导致规划 JSON 被截断（Response truncated due to output length limit） */
 export const HERMES_MAX_OUTPUT_TOKENS = 8192
 
+/** 平台工具集：cli 平台显式关闭全部工具（no_mcp 哨兵=同时禁用 MCP 服务器）。
+ * 规划/步骤/评审都是纯 JSON 结构化调用，Hermes 作为完整 agent 尝试工具调用时
+ * 工具参数 JSON 会在输出上限处被截断（Response truncated due to output length limit），
+ * 因此这些调用不允许启用任何工具。 */
+export const HERMES_PLATFORM_TOOLSETS: Record<string, string[]> = { cli: ['no_mcp'] }
+
 function buildModelBlock(opts: HermesConfigOptions): string[] {
   return [
     'model:',
@@ -59,9 +65,17 @@ function buildCustomProviderItem(opts: HermesConfigOptions): string[] {
   ]
 }
 
+/** platform_toolsets 段：按平台显式配置工具集（cli: [no_mcp] = 无工具 + 无 MCP） */
+function buildPlatformToolsetsBlock(): string[] {
+  return [
+    'platform_toolsets:',
+    ...Object.entries(HERMES_PLATFORM_TOOLSETS).map(([k, v]) => `  ${k}: [${v.join(', ')}]`),
+  ]
+}
+
 /** 生成 Hermes $HERMES_HOME/config.yaml 全文（全新安装时使用） */
 export function buildHermesConfigYaml(opts: HermesConfigOptions): string {
-  return [...buildModelBlock(opts), 'custom_providers:', ...buildCustomProviderItem(opts), ''].join('\n')
+  return [...buildModelBlock(opts), ...buildPlatformToolsetsBlock(), 'custom_providers:', ...buildCustomProviderItem(opts), ''].join('\n')
 }
 
 function indentOf(line: string): number {
@@ -87,6 +101,32 @@ function patchModelBlock(lines: string[], block: string[]): string[] {
   if (idx < 0) return [...block, ...lines]
   // 标量写法（model: xxx）只占一行；块写法（model:）到下一个顶层键/空行结束
   const rest = lines[idx].replace(/^model:\s*/, '')
+  if (rest && !rest.startsWith('#')) return [...lines.slice(0, idx), ...block, ...lines.slice(idx + 1)]
+  let end = idx + 1
+  while (end < lines.length) {
+    const l = lines[end]
+    if (!l.trim() || isTopLevelKey(l)) break
+    end++
+  }
+  return [...lines.slice(0, idx), ...block, ...lines.slice(end)]
+}
+
+/**
+ * 替换/插入顶层 platform_toolsets 段：
+ * - 已存在（标量或块）→ 整体替换（平台工具集由应用统一管理，关闭 Hermes 工具调用）；
+ * - 不存在 → 插到 custom_providers 之前，没有则追加文件末尾。
+ */
+function patchPlatformToolsetsBlock(lines: string[], block: string[]): string[] {
+  const idx = lines.findIndex((l) => /^platform_toolsets:\s*/.test(l))
+  if (idx < 0) {
+    const cpIdx = lines.findIndex((l) => /^custom_providers:\s*/.test(l))
+    if (cpIdx < 0) {
+      const tail = lines.length && lines[lines.length - 1].trim() ? [''] : []
+      return [...lines, ...tail, ...block]
+    }
+    return [...lines.slice(0, cpIdx), ...block, ...lines.slice(cpIdx)]
+  }
+  const rest = lines[idx].replace(/^platform_toolsets:\s*/, '')
   if (rest && !rest.startsWith('#')) return [...lines.slice(0, idx), ...block, ...lines.slice(idx + 1)]
   let end = idx + 1
   while (end < lines.length) {
@@ -143,6 +183,7 @@ export function patchHermesConfig(content: string, opts: HermesConfigOptions): s
   const hadTrailingNL = /(?:\r?\n)$/.test(content)
   let lines = content.split(/\r?\n/)
   lines = patchModelBlock(lines, buildModelBlock(opts))
+  lines = patchPlatformToolsetsBlock(lines, buildPlatformToolsetsBlock())
   lines = upsertCustomProviderItem(lines, buildCustomProviderItem(opts), opts.llmProxyBaseUrl.trim().replace(/\/+$/, ''))
   let out = lines.join('\n')
   if (hadTrailingNL && !/[\r\n]$/.test(out)) out += '\n'

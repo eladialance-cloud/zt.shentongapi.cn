@@ -25,6 +25,7 @@ import type {
   CreateAnnouncementDto,
   CreateTenantDto,
   NotificationConfig,
+  OralWorkshopConfig,
   RateLimitConfig,
   SystemConfigSection,
   Tenant,
@@ -61,6 +62,18 @@ export async function getNotificationConfig(): Promise<NotificationConfig> {
   return adminRequest<NotificationConfig>('get', '/admin/system/config', {
     params: { section: 'notification' }
   })
+}
+
+/** 获取口播工坊引擎配置(强类型) */
+export async function getOralWorkshopConfig(): Promise<OralWorkshopConfig> {
+  return adminRequest<OralWorkshopConfig>('get', '/admin/system/config', {
+    params: { section: 'oral_workshop' }
+  })
+}
+
+/** 更新口播工坊引擎配置 */
+export async function updateOralWorkshopConfig(cfg: OralWorkshopConfig): Promise<void> {
+  await updateSystemConfig({ section: 'oral_workshop', config: cfg as unknown as Record<string, unknown> })
 }
 
 /** 更新系统配置 */
@@ -148,6 +161,8 @@ export default {
   getCacheConfig,
   getRateLimitConfig,
   getNotificationConfig,
+  getOralWorkshopConfig,
+  updateOralWorkshopConfig,
   updateSystemConfig,
   clearCache,
   listTenants,

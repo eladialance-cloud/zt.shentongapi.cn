@@ -27,7 +27,10 @@ describe('供应商按类型匹配端点（同一 Key，URL 后缀不同）', ()
   it('图片类型 -> 自动匹配文生图/图生图生成端点（绝对 URL）', () => {
     const hints = endpointsForProviderType(dash, 'image');
     assert.ok(hints.length >= 1);
-    assert.ok(hints[0].path.includes('/text2image/image-synthesis'));
+    // 2026 新一代图像模型走 image-generation/generation（input.messages 消息体）
+    assert.ok(hints[0].label === '文生图 / 图生图');
+    assert.ok(hints[0].path.startsWith('https://dashscope.aliyuncs.com/api/v1/services/aigc/'));
+    assert.ok(hints[0].path.includes('/image-generation/generation'));
   });
 
   it('视频类型 -> 自动匹配视频生成 + 异步任务查询端点', () => {

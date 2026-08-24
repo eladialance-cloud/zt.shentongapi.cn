@@ -5,9 +5,12 @@ import {
   IsIn,
   IsInt,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
+  Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { MediaAssetType } from '../entities/media-asset.entity';
@@ -51,6 +54,17 @@ export class CreateMediaAssetDto {
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
+
+  @ApiPropertyOptional({ description: '素材描述（参与语义检索）', example: '产品宣传海报，科技蓝风格' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  description?: string;
+
+  @ApiPropertyOptional({ description: '扩展元数据（时长/分辨率/封面/字幕摘要）', example: { duration: 12.5 } })
+  @IsOptional()
+  @IsObject()
+  meta?: Record<string, unknown>;
 }
 
 /** 更新素材 DTO（全部可选） */
@@ -72,6 +86,12 @@ export class UpdateMediaAssetDto {
   @IsOptional()
   @IsBoolean()
   archived?: boolean;
+
+  @ApiPropertyOptional({ description: '素材描述（参与语义检索）', maxLength: 2000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  description?: string;
 }
 
 /** 导入素材 DTO（taskId / mediaJobId 二选一） */
@@ -109,3 +129,25 @@ export class MediaAssetQueryDto {
   @IsInt()
   pageSize?: number;
 }
+/** 素材语义检索 DTO */
+export class MaterialSearchQueryDto {
+  @ApiProperty({ description: '搜索内容（自然语言/关键词）', example: '科技风宣传片' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  q: string;
+
+  @ApiPropertyOptional({ description: '素材类型过滤', enum: ['image', 'video', 'audio', 'file'] })
+  @IsOptional()
+  @IsIn(['image', 'video', 'audio', 'file'])
+  type?: MediaAssetType;
+
+  @ApiPropertyOptional({ description: '返回条数（上限 50）', example: 10 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  topK?: number;
+}
+
+/** 素材语义检索 DTO */

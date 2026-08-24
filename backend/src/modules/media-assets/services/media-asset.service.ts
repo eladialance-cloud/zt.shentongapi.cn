@@ -81,6 +81,9 @@ export class MediaAssetService {
       mimeType: dto.mimeType ?? null,
       fileSize: dto.fileSize ?? null,
       tags: dto.tags ?? null,
+      description: dto.description ?? null,
+      meta: dto.meta ?? null,
+      vectorStatus: 'none',
       archived: false,
     } as unknown as MediaAssetEntity);
     return this.assetRepo.save(asset);
@@ -168,7 +171,11 @@ export class MediaAssetService {
     }
     if (dto.title !== undefined) asset.title = dto.title;
     if (dto.tags !== undefined) asset.tags = dto.tags;
+    if (dto.description !== undefined) asset.description = dto.description;
     if (dto.archived !== undefined) asset.archived = dto.archived;
+    if (dto.title !== undefined || dto.tags !== undefined || dto.description !== undefined) {
+      asset.vectorStatus = 'none';
+    }
     return this.assetRepo.save(asset);
   }
 

@@ -32,7 +32,9 @@ import {
   clearCache,
   getCacheConfig,
   getNotificationConfig,
+  getOralWorkshopConfig,
   getRateLimitConfig,
+  updateOralWorkshopConfig,
   updateSystemConfig
 } from '@/api/admin-system-api'
 import type {
@@ -89,6 +91,7 @@ export default function SystemConfigPage() {
   const [cacheForm] = Form.useForm<CacheFormValues>()
   const [rateLimitForm] = Form.useForm<RateLimitFormValues>()
   const [notificationForm] = Form.useForm<NotificationFormValues>()
+  const [oralForm] = Form.useForm<OralWorkshopConfig>()
 
   const loadCache = useCallback(async () => {
     try {
@@ -140,17 +143,31 @@ export default function SystemConfigPage() {
     }
   }, [notificationForm])
 
+  const loadOralWorkshop = useCallback(async () => {
+    try {
+      const cfgv = await getOralWorkshopConfig()
+      oralForm.setFieldsValue({
+        voiceEngine: cfgv.voiceEngine || 'volcano',
+        digitalHumanEngine: cfgv.digitalHumanEngine || 'volcano',
+        watermarkEnabled: cfgv.watermarkEnabled !== false,
+        maxConcurrentJobs: cfgv.maxConcurrentJobs || 2
+      })
+    } catch (err) {
+      console.error('[SystemConfig] load oral_workshop failed:', err)
+    }
+  }, [oralForm])
+
   const loadAll = useCallback(async () => {
     setLoading(true)
     try {
-      await Promise.all([loadCache(), loadRateLimit(), loadNotification()])
+      await Promise.all([loadCache(), loadRateLimit(), loadNotification(), loadOralWorkshop()])
     } catch (err) {
       console.error('[SystemConfig] load failed:', err)
       message.error('加载系统配置失败')
     } finally {
       setLoading(false)
     }
-  }, [loadCache, loadRateLimit, loadNotification])
+  }, [loadCache, loadRateLimit, loadNotification, loadOralWorkshop])
 
   useEffect(() => {
     void loadAll()
@@ -235,6 +252,27 @@ export default function SystemConfigPage() {
     }
   }
 
+  const handleSaveOralWorkshop = async () => {
+    try {
+      const values = await oralForm.validateFields()
+      setSaving(true)
+      const cfgv: OralWorkshopConfig = {
+        voiceEngine: values.voiceEngine,
+        digitalHumanEngine: values.digitalHumanEngine,
+        watermarkEnabled: values.watermarkEnabled,
+        maxConcurrentJobs: values.maxConcurrentJobs
+      }
+      await updateOralWorkshopConfig(cfgv)
+      message.success('口播工坊引擎配置已保存')
+    } catch (err) {
+      if (err && typeof err === 'object' && 'errorFields' in err) return
+      console.error('[SystemConfig] save oral_workshop failed:', err)
+      message.error('保存失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleClearCache = async (layer: CacheLayer) => {
     try {
       await clearCache({ layer })
@@ -271,7 +309,8 @@ export default function SystemConfigPage() {
           items={[
             { key: 'cache', label: '缓存配置' },
             { key: 'rate_limit', label: '限流配置' },
-            { key: 'notification', label: '通知配置' }
+            { key: 'notification', label: '通知配置' },
+            { key: 'oral_workshop', label: '口播工坊' }
           ]}
         />
 
@@ -452,6 +491,62 @@ export default function SystemConfigPage() {
                 type="primary"
                 icon={<SaveOutlined />}
                 onClick={handleSaveNotification}
+                loading={saving}
+                className={styles.primaryBtn}
+              >
+                保存
+              </Button>
+            </Form>
+          </Card>
+        )}
+        {tab === 'oral_workshop' && (
+          <Card className={styles.card} bordered={false}>
+            <div className={styles.sectionTitle}>
+              <ThunderboltOutlined /> 口播工坊引擎开关（M8-4）
+            </div>
+            <Form<OralWorkshopConfig> form={oralForm} layout="vertical">
+              <div className={styles.levelGrid} style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                <Form.Item
+                  name="voiceEngine"
+                  label="声音克隆引擎"
+                  rules={[{ required: true, message: '请选择' }]}
+                  extra="volcano=火山方舟（默认）；local=本地 IndexTTS2 v2.0（预留，未接入）"
+                >
+                  <Select
+                    options={[
+                      { value: 'volcano', label: '火山方舟（volcano）' },
+                      { value: 'local', label: '本地引擎（local，预留）' }
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item
+                  name="digitalHumanEngine"
+                  label="数字人合成引擎"
+                  rules={[{ required: true, message: '请选择' }]}
+                  extra="volcano=火山方舟（默认）；local=本地引擎（预留）"
+                >
+                  <Select
+                    options={[
+                      { value: 'volcano', label: '火山方舟（volcano）' },
+                      { value: 'local', label: '本地引擎（local，预留）' }
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item name="watermarkEnabled" label="免费档水印" valuePropName="checked">
+                  <Switch checkedChildren="开" unCheckedChildren="关" />
+                </Form.Item>
+                <Form.Item
+                  name="maxConcurrentJobs"
+                  label="并发任务上限"
+                  rules={[{ required: true, message: '请输入' }]}
+                >
+                  <InputNumber min={1} max={20} style={{ width: '100%' }} />
+                </Form.Item>
+              </div>
+              <Button
+                type="primary"
+                icon={<SaveOutlined />}
+                onClick={handleSaveOralWorkshop}
                 loading={saving}
                 className={styles.primaryBtn}
               >

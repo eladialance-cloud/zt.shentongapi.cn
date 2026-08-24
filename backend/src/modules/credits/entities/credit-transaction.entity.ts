@@ -26,12 +26,14 @@ export type CreditTxnSource =
   | 'llm_proxy'
   | 'market_purchase'
   | 'media_generation'
+  | 'oral_workshop'
   | 'recharge_refund';
 
 /**
  * 积分流水实体（不可变，仅追加）
  * 数据合同真源：Task 29 - 积分数据流完整链路
  */
+
 @Entity('credit_transactions')
 export class CreditTransactionEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })

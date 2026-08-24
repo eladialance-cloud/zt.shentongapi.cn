@@ -87,6 +87,14 @@ const MENU_ENTRIES: MenuEntry[] = [
     ]
   },
   {
+    key: 'group-membership',
+    label: '会员管理',
+    icon: <SafetyCertificateOutlined />,
+    children: [
+      { key: 'membership', label: '会员与兑换码', path: '/membership' }
+    ]
+  },
+  {
     key: 'group-system',
     label: '系统管理',
     icon: <SettingOutlined />,

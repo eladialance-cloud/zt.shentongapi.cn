@@ -1,0 +1,31 @@
+/* 会员管理样式 - 复用共享样式 */
+.page {
+  composes: page from '../shared.module.css';
+}
+.header {
+  composes: header from '../shared.module.css';
+}
+.title {
+  composes: title from '../shared.module.css';
+}
+.subtitle {
+  composes: subtitle from '../shared.module.css';
+}
+.toolbar {
+  composes: toolbar from '../shared.module.css';
+}
+.toolbarLeft {
+  composes: toolbarLeft from '../shared.module.css';
+}
+.tableWrap {
+  composes: tableWrap from '../shared.module.css';
+}
+.card {
+  composes: card from '../shared.module.css';
+}
+.searchBox {
+  composes: searchBox from '../shared.module.css';
+}
+.filterSelect {
+  composes: filterSelect from '../shared.module.css';
+}

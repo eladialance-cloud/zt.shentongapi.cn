@@ -25,6 +25,8 @@ describe('buildHermesConfigYaml', () => {
     expect(yaml).toContain('name: shentong')
     expect(yaml).toContain('base_url: https://zt.shentongapi.cn/api/llm-proxy/v1')
     expect(yaml).toContain('api_key: sk-shentong-test')
+    expect(yaml).toContain('platform_toolsets:')
+    expect(yaml).toContain('cli: [no_mcp]')
   })
 
   it('provider 键必须是 custom:<name> 形态（裸 custom 运行时无兜底）', () => {

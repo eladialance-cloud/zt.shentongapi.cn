@@ -7,6 +7,9 @@ import { TaskOutputItemEntity } from '../task/entities/task-output-item.entity';
 import { MediaJobEntity } from '../media-generation/entities/media-job.entity';
 import { AgentTaskEntity } from '../task/entities/agent-task.entity';
 import { PublishPlanEntity } from '../channel/entities/publish-plan.entity';
+import { MaterialSearchService } from './services/material-search.service';
+import { CommonModule } from '../../common/common.module';
+import { OralWorkshopModule } from '../oral-workshop/oral-workshop.module';
 
 /**
  * 素材资产模块
@@ -21,9 +24,11 @@ import { PublishPlanEntity } from '../channel/entities/publish-plan.entity';
       AgentTaskEntity,
       PublishPlanEntity,
     ]),
+    CommonModule,
+    OralWorkshopModule,
   ],
   controllers: [MediaAssetController],
-  providers: [MediaAssetService],
-  exports: [MediaAssetService],
+  providers: [MediaAssetService, MaterialSearchService],
+  exports: [MediaAssetService, MaterialSearchService],
 })
 export class MediaAssetsModule {}

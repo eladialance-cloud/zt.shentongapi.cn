@@ -23,6 +23,7 @@ import {
   Settings,
   Server,
   MoreHorizontal,
+  Mic,
   type LucideIcon,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
@@ -46,6 +47,7 @@ const PRIMARY_NAV: NavItem[] = [
   { key: 'analytics',   label: '数据分析', icon: BarChart3,         path: '/analytics' },
   { key: 'knowledge',   label: '知识库',   icon: BookOpen,          path: '/knowledge' },
   { key: 'video-claw',  label: 'ST-Claw',  icon: Clapperboard,      path: '/video-claw' },
+  { key: 'oral-workshop', label: '口播工坊', icon: Mic,               path: '/oral-workshop' },
   { key: 'office',      label: 'AI 办公室',icon: Building2,         path: '/office' },
 ]
 

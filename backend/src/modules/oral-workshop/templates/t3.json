@@ -1,0 +1,96 @@
+{
+  "template_id": "t3",
+  "name": "家居暖棕",
+  "version": "1.0",
+  "description": "暖棕背景+横向遮罩大标题+上下黄色提示，家居/生活类",
+  "preview_video_url": "",
+  "cover_image_url": "",
+  "auto_bgm": false,
+  "project_settings": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "duration": 30,
+    "background": "#000000"
+  },
+  "global_elements": {
+    "h1": {
+      "content": "{{h1_content}}",
+      "style": {
+        "fontSize": 125,
+        "fontFamily": "思源黑体",
+        "color": "#FFD54F",
+        "position": [
+          540,
+          120
+        ],
+        "bold": true,
+        "shadow": {
+          "color": "#000000",
+          "distance": 4,
+          "opacity": 0.8
+        }
+      },
+      "animation": "{{h1_animation}}",
+      "animation_options": [],
+      "animation_duration": 0.8,
+      "duration": "all"
+    },
+    "h2": {
+      "content": "{{h2_content}}",
+      "style": {
+        "fontSize": 120,
+        "fontFamily": "思源黑体",
+        "color": "#FFECB3",
+        "position": [
+          540,
+          260
+        ],
+        "shadow": {
+          "color": "#000000",
+          "distance": 4,
+          "opacity": 0.8
+        }
+      },
+      "animation": "{{h2_animation}}",
+      "animation_options": [],
+      "animation_duration": 0.6,
+      "duration": "all"
+    }
+  },
+  "subtitle_config": {
+    "position": [
+      540,
+      1500
+    ],
+    "style": {
+      "fontSize": 95,
+      "fontFamily": "思源黑体",
+      "color": "#FFFFFF",
+      "shadow": {
+        "color": "#000000",
+        "distance": 3,
+        "opacity": 0.7
+      }
+    },
+    "animation_options": [
+      "fade_in",
+      "zoom_in",
+      "zoom_out",
+      "bounce_in"
+    ],
+    "highlight_style": {
+      "color": "#FFD54F",
+      "bold": true
+    }
+  },
+  "pip_config": {
+    "position": "center",
+    "scale": 1
+  },
+  "content_prompts": {
+    "h1": "请生成一个吸引人的主标题，8个字以内，简洁有力",
+    "h2": "请生成一个简洁的副标题，6个字以内，补充信息",
+    "subtitles": "请分析以下字幕内容，提取关键词并选择动画效果"
+  }
+}

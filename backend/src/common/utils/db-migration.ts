@@ -1,5 +1,7 @@
 import { Logger } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, QueryRunner } from 'typeorm';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * 启动时自动迁移检查
@@ -1378,6 +1380,47 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       logger.log('Created table: media_assets');
     }
 
+    // 口播工坊：voice_assets 表（我的声音资产，对标参考软件声音克隆/训练/预览）
+    const [voiceAssetsTable] = await queryRunner.query(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'voice_assets'`
+    );
+    if (!voiceAssetsTable) {
+      await queryRunner.query(`CREATE TABLE IF NOT EXISTS voice_assets (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id BIGINT NOT NULL,
+        name VARCHAR(128) NOT NULL,
+        ref_audio_url VARCHAR(512) NOT NULL,
+        speaker_id VARCHAR(128),
+        status VARCHAR(16) NOT NULL DEFAULT 'ready',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY idx_va_user_id (user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='口播工坊-我的声音资产'`);
+      logger.log('Created table: voice_assets');
+    }
+
+    // 口播工坊：digital_human_assets 表（我的数字人形象，对标参考软件形象库/授权状态）
+    const [dhAssetsTable] = await queryRunner.query(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'digital_human_assets'`
+    );
+    if (!dhAssetsTable) {
+      await queryRunner.query(`CREATE TABLE IF NOT EXISTS digital_human_assets (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id BIGINT NOT NULL,
+        name VARCHAR(128) NOT NULL,
+        cloud_id VARCHAR(128) NOT NULL,
+        preview_url VARCHAR(512),
+        authorized TINYINT(1) NOT NULL DEFAULT 1,
+        status VARCHAR(16) NOT NULL DEFAULT 'ready',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY idx_dha_user_id (user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='口播工坊-我的数字人形象'`);
+      logger.log('Created table: digital_human_assets');
+    }
+
     // 既有表加列（幂等）：team_tasks 关联 briefs 需求单
     const [teamTasksBriefIdCol] = await queryRunner.query(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -1513,11 +1556,114 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       );
       logger.log('Added column: team_tasks.agent_id');
     }
-        logger.log('Startup migrations completed');
+    // 口播工坊：oral_workshop_jobs.bilingual（双语字幕开关）
+    const [owBilingualCol] = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'oral_workshop_jobs' AND COLUMN_NAME = 'bilingual'`
+    );
+    if (!owBilingualCol) {
+      await queryRunner.query(
+        `ALTER TABLE oral_workshop_jobs ADD COLUMN bilingual TINYINT(1) NOT NULL DEFAULT 0 COMMENT '双语字幕开关'`
+      );
+      logger.log('Added column: oral_workshop_jobs.bilingual');
+    }
+
+    // 素材中心：media_assets.description（语义检索文本）
+    const [maDescCol] = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'media_assets' AND COLUMN_NAME = 'description'`
+    );
+    if (!maDescCol) {
+      await queryRunner.query(
+        `ALTER TABLE media_assets ADD COLUMN description TEXT NULL COMMENT '素材描述（向量化检索文本）'`
+      );
+      logger.log('Added column: media_assets.description');
+    }
+
+    // 素材中心：media_assets.vector_status（向量化状态 none|pending|ready|failed）
+    const [maVecCol] = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'media_assets' AND COLUMN_NAME = 'vector_status'`
+    );
+    if (!maVecCol) {
+      await queryRunner.query(
+        `ALTER TABLE media_assets ADD COLUMN vector_status VARCHAR(16) NOT NULL DEFAULT 'none' COMMENT '向量化状态 none|pending|ready|failed'`
+      );
+      logger.log('Added column: media_assets.vector_status');
+    }
+
+    // 素材中心：media_assets.meta（时长/分辨率/封面等扩展元数据）
+    const [maMetaCol] = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'media_assets' AND COLUMN_NAME = 'meta'`
+    );
+    if (!maMetaCol) {
+      await queryRunner.query(
+        `ALTER TABLE media_assets ADD COLUMN meta JSON NULL COMMENT '素材扩展元数据（时长/分辨率/封面）'`
+      );
+      logger.log('Added column: media_assets.meta');
+    }
+
+    // 顺序执行 migrations/*.sql（幂等台账 schema_migrations；存量库自动标记已应用）
+    await runSqlMigrations(queryRunner, logger);
+
+    logger.log('Startup migrations completed');
   } catch (err) {
     logger.error(`Startup migration failed: ${(err as Error).message}`);
     // 不抛出错误，允许后端继续启动
   } finally {
     await queryRunner.release();
   }
+}
+
+/** 按文件名顺序执行 migrations/*.sql（幂等台账 schema_migrations；存量库自动标记已应用，新库自动建表） */
+export async function runSqlMigrations(queryRunner: QueryRunner, logger: Logger): Promise<void> {
+  const migrationsDir = path.join(process.cwd(), 'migrations');
+  if (!fs.existsSync(migrationsDir)) return;
+  await queryRunner.query(
+    `CREATE TABLE IF NOT EXISTS schema_migrations (name VARCHAR(255) NOT NULL PRIMARY KEY, applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  );
+  const files = fs
+    .readdirSync(migrationsDir)
+    .filter((f) => /^\d+_.*\.sql$/i.test(f))
+    .sort();
+  const rows = (await queryRunner.query('SELECT name FROM schema_migrations')) as Array<{ name: string }>;
+  const applied = new Set((rows || []).map((r) => r.name));
+  if (applied.size === 0) {
+    const [userTable] = await queryRunner.query(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'`,
+    );
+    if (userTable) {
+      for (const f of files) {
+        await queryRunner.query('INSERT IGNORE INTO schema_migrations (name) VALUES (?)', [f]);
+      }
+      logger.log(`Legacy database detected: marked ${files.length} existing SQL migrations as applied`);
+      return;
+    }
+  }
+  for (const f of files) {
+    if (applied.has(f)) continue;
+    const sql = fs.readFileSync(path.join(migrationsDir, f), 'utf8');
+    try {
+      for (const stmt of splitSqlStatements(sql)) {
+        if (stmt.trim()) await queryRunner.query(stmt);
+      }
+      await queryRunner.query('INSERT IGNORE INTO schema_migrations (name) VALUES (?)', [f]);
+      logger.log(`SQL migration applied: ${f}`);
+    } catch (err) {
+      logger.warn(`SQL migration ${f} skipped (already applied or error): ${(err as Error).message}`);
+      break;
+    }
+  }
+}
+
+/** 简易 SQL 语句拆分：去掉整行注释，按行尾分号切分 */
+export function splitSqlStatements(sql: string): string[] {
+  return sql
+    .split(/\r?\n/)
+    .filter((l) => !/^\s*--/.test(l))
+    .join('\n')
+    .split(/;\s*(?:\r?\n|$)/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }

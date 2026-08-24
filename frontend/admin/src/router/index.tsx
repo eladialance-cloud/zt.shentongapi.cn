@@ -67,6 +67,7 @@ const AdminInfraHub = lazy(() => import('@/pages/InfraHub'))
 const AdminPlans = lazy(() => import('@/pages/Plans'))
 const AdminApiKeyPool = lazy(() => import('@/pages/ApiKeyPool'))
 const AdminImports = lazy(() => import('@/pages/Imports'))
+const AdminMembership = lazy(() => import('@/pages/Membership'))
 
 /** Suspense fallback：Ant Design Spin 居中加载 */
 const SuspenseFallback = (
@@ -169,7 +170,8 @@ const router = createBrowserRouter(
         { path: 'imports', element: withSuspense(<AdminImports />) },
 { path: 'mcp', element: withSuspense(<AdminMcp />) },
         { path: 'infra', element: withSuspense(<AdminInfraHub />) },
-        { path: 'plans', element: withSuspense(<AdminPlans />) }
+        { path: 'plans', element: withSuspense(<AdminPlans />) },
+        { path: 'membership', element: withSuspense(<AdminMembership />) }
       ]
     },
 

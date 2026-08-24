@@ -31,6 +31,13 @@ const DEFAULT_SECTION_CONFIG: Record<string, Record<string, unknown>> = {
       5: 5000000,
     },
   },
+  // 口播工坊引擎开关（M8-4）：volcano=火山方舟（默认）/ local=本地 IndexTTS2 v2.0（预留，未接入）
+  oral_workshop: {
+    voiceEngine: 'volcano',
+    digitalHumanEngine: 'volcano',
+    watermarkEnabled: true,
+    maxConcurrentJobs: 2,
+  },
   notification: {
     smtp: {
       host: '',

@@ -10,8 +10,8 @@ import {
  * 数据合同真源：Task 28 - 系统配置 / frontend UpdateSystemConfigDto
  */
 export class UpdateSystemConfigDto {
-  @IsIn(['cache', 'rate_limit', 'notification'])
-  section: 'cache' | 'rate_limit' | 'notification';
+  @IsIn(['cache', 'rate_limit', 'notification', 'oral_workshop'])
+  section: 'cache' | 'rate_limit' | 'notification' | 'oral_workshop';
 
   @IsObject()
   config: Record<string, unknown>;

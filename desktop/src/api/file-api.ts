@@ -6,6 +6,7 @@
 
 import { httpClient } from './http-client'
 import { useAuthStore } from '@/store/auth'
+import { resolveMediaUrl } from '@/utils/media'
 import type { UploadResult } from '@/types/chat'
 
 /** API 基础地址 */
@@ -46,7 +47,7 @@ export function uploadFile(
             const d = body.data as any
             resolve({
               fileId: String(d.id),
-              url: d.path,
+              url: resolveMediaUrl(d.path),
               fileName: d.name,
               fileSize: d.size,
               mimeType: d.mimeType || 'application/octet-stream'

@@ -52,6 +52,18 @@ export class MediaAssetEntity extends BaseEntity {
   @Column({ type: 'json', nullable: true })
   tags?: string[] | null;
 
+  /** 素材描述（向量化检索文本：标题+标签+描述+meta 摘要） */
+  @Column({ type: 'text', nullable: true })
+  description?: string | null;
+
+  /** 向量化状态 none|pending|ready|failed（Qdrant 语义索引） */
+  @Column({ name: 'vector_status', length: 16, default: 'none' })
+  vectorStatus: string;
+
+  /** 扩展元数据（时长/分辨率/封面/字幕摘要等） */
+  @Column({ type: 'json', nullable: true })
+  meta?: Record<string, unknown> | null;
+
   @Column({ type: 'boolean', default: false })
   archived: boolean;
 }

@@ -45,6 +45,9 @@ import TeamBoard from "@/pages/Team/Board";
 import Settings from "@/pages/Settings";
 import ServiceManager from "@/pages/ServiceManager";
 import VideoClaw from "@/pages/VideoClaw";
+import OralWorkshopWorkbench from "@/pages/OralWorkshop/Workbench";
+import OralWorkshopProjects from "@/pages/OralWorkshop/Projects";
+import OralWorkshopDetail from "@/pages/OralWorkshop/Detail";
 import BriefsList from "@/pages/Briefs";
 import BriefsNew from "@/pages/Briefs/New";
 import BriefsDetail from "@/pages/Briefs/Detail";
@@ -149,6 +152,10 @@ const router = createHashRouter([
       // ===== Task 16: 服务管理 =====
       { path: "/services", element: <ServiceManager /> },
       { path: "/video-claw", element: <VideoClaw /> },
+      // ===== 口播工坊 =====
+      { path: "/oral-workshop", element: <OralWorkshopProjects /> },
+      { path: "/oral-workshop/workbench", element: <OralWorkshopWorkbench /> },
+      { path: "/oral-workshop/:id", element: <OralWorkshopDetail /> },
     ],
   },
 

@@ -62,7 +62,7 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
       imageRequestTemplate: { model: '{upstreamModelId}', input: { messages: [{ role: 'user', content: [{ type: 'text', text: '{prompt}' }] }] }, parameters: { n: 1, size: '{size}' } },
       videosPath: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis',
       taskPath: 'https://dashscope.aliyuncs.com/api/v1/tasks/{id}',
-      requestTemplate: { model: '{upstreamModelId}', input: { prompt: '{prompt}' }, parameters: { resolution: '{resolutionTier}', duration: '{duration}', fps: '{fps}' } },
+      requestTemplate: { model: '{upstreamModelId}', input: { prompt: '{prompt}' }, parameters: { resolution: '{resolution}', duration: '{duration}', fps: '{fps}' } },
       taskIdPath: 'output.task_id',
       statusPath: 'output.task_status',
       successValues: ['SUCCEEDED'],

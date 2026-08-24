@@ -1,0 +1,193 @@
+/**
+ * 口播工坊 LLM 调用封装（M2）
+ *
+ * 职责：渲染 prompts.ts 模板 → 调用 LlmCaller（M0-2 确认后端 LLM 通道后注入）→ 解析结构化输出。
+ * JSON 容错：strip 前后缀与代码块包裹 → JSON.parse → 提取首个 JSON 对象 → 失败抛 LlmOutputError（由步骤重试机制接管）。
+ */
+import { renderPrompt } from './prompts';
+
+/** LLM 输出解析失败（可重试） */
+export class LlmOutputError extends Error {
+  name = 'LlmOutputError';
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+export interface LlmMessage {
+  role: 'system' | 'user';
+  content: string;
+}
+
+/** LLM 调用器抽象：由 M0-2 确认的通道实现（llm-proxy 网关 / 现有 LLM 服务） */
+export interface LlmCaller {
+  chat(messages: LlmMessage[], opts?: { temperature?: number }): Promise<string>;
+}
+
+/**
+ * 从 LLM 输出中提取 JSON：
+ * 1. 去掉 ```json 代码块包裹
+ * 2. 直接 JSON.parse
+ * 3. 失败则截取首个 { ... } 再试
+ * 4. 仍失败抛 LlmOutputError
+ */
+export function extractJson(text: string): unknown {
+  let cleaned = text.trim();
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '');
+  cleaned = cleaned.replace(/\s*```$/i, '');
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    /* 继续尝试截取 JSON 对象 */
+  }
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    try {
+      return JSON.parse(cleaned.slice(start, end + 1));
+    } catch {
+      /* 失败走统一异常 */
+    }
+  }
+  throw new LlmOutputError('LLM 输出不是合法 JSON');
+}
+
+export interface TopicItem {
+  title: string;
+  persona_angle?: string;
+  hook?: string;
+  viral_logic?: string;
+}
+
+/** 双语字幕行（zh 中文行 + en 英文行） */
+export interface BilingualPair {
+  zh: string;
+  en: string;
+}
+
+export interface KeywordTopicsResult {
+  keyword_analysis: string;
+  topics: TopicItem[];
+}
+
+export interface StyleAnalysisResult {
+  style_analysis: string;
+  topics: string[];
+}
+
+export interface LegalIssue {
+  type: string;
+  quote: string;
+  suggestion: string;
+}
+
+export interface LegalReviewResult {
+  risk_level: 'low' | 'medium' | 'high';
+  issues: LegalIssue[];
+  safe_script: string;
+}
+
+/**
+ * 口播工坊 LLM 服务：功能函数 = 渲染模板 + 调用 + 结构化解析
+ */
+export class OralWorkshopLlmService {
+  constructor(private readonly caller: LlmCaller) {}
+
+  private async call(templateId: string, values: Record<string, string>, temperature = 0.7): Promise<string> {
+    const prompt = renderPrompt(templateId, values);
+    return this.caller.chat([{ role: 'user', content: prompt }], { temperature });
+  }
+
+  /** 文案改写（信息保全，260 字左右） */
+  async rewriteScript(script: string, persona?: string, style?: string): Promise<string> {
+    return this.call('rewrite_master', {
+      script,
+      persona: persona ?? '',
+      style: style ?? '口语化、有网感',
+    });
+  }
+
+  /** 选题 → 口播文案创作 */
+  async createScript(topic: string, reference?: string, persona?: string): Promise<string> {
+    return this.call('script_creation', {
+      topic,
+      reference: reference ?? '',
+      persona: persona ?? '',
+    });
+  }
+
+  /** 选题生成：关键词 + 人设 → topics 数组 */
+  async generateTopics(
+    keywords: string,
+    opts: { persona?: string; count?: number; excludedTopics?: string[] } = {},
+  ): Promise<TopicItem[]> {
+    const text = await this.call('topic_generation', {
+      keywords,
+      persona: opts.persona ?? '',
+      count: String(opts.count ?? 5),
+      excludedTopics: opts.excludedTopics?.length ? opts.excludedTopics.join('、') : '',
+    });
+    const data = extractJson(text) as { topics?: TopicItem[] };
+    if (!Array.isArray(data.topics)) throw new LlmOutputError('选题输出缺少 topics 数组');
+    return data.topics;
+  }
+
+  /** 关键词选题（带机会分析） */
+  async keywordTopics(
+    keywords: string,
+    opts: { persona?: string; count?: number; excludedTopics?: string[] } = {},
+  ): Promise<KeywordTopicsResult> {
+    const text = await this.call('keyword_topics', {
+      keywords,
+      persona: opts.persona ?? '',
+      count: String(opts.count ?? 5),
+      excludedTopics: opts.excludedTopics?.length ? opts.excludedTopics.join('、') : '',
+    });
+    const data = extractJson(text) as Partial<KeywordTopicsResult>;
+    if (typeof data.keyword_analysis !== 'string' || !Array.isArray(data.topics)) {
+      throw new LlmOutputError('关键词选题输出结构不完整');
+    }
+    return data as KeywordTopicsResult;
+  }
+
+  /** 对标账号风格分析 → style_analysis + 5 个新选题 */
+  async styleAnalysis(referenceContent: string, excludedTopics: string[] = []): Promise<StyleAnalysisResult> {
+    const text = await this.call('style_analysis', {
+      referenceContent,
+      excludedTopics: excludedTopics.join('、'),
+    });
+    const data = extractJson(text) as Partial<StyleAnalysisResult>;
+    if (typeof data.style_analysis !== 'string' || !Array.isArray(data.topics)) {
+      throw new LlmOutputError('风格分析输出结构不完整');
+    }
+    return data as StyleAnalysisResult;
+  }
+
+  /** 标题 + 发布描述（文本返回，后续由导出步骤整理） */
+  /** 双语字幕翻译：中文文案 → 中英逐行对照（供 videoEdit 双语字幕渲染） */
+  async translateBilingual(script: string): Promise<BilingualPair[]> {
+    const raw = await this.call('bilingual_subtitle', { script });
+    const parsed = extractJson(raw) as { lines?: Array<{ zh?: unknown; en?: unknown }> };
+    const lines = Array.isArray(parsed?.lines) ? parsed.lines : null;
+    if (!lines || lines.length === 0) {
+      throw new LlmOutputError('翻译结果缺少 lines 数组');
+    }
+    return lines
+      .filter((l) => l && typeof l.zh === 'string' && String(l.zh).trim() && typeof l.en === 'string')
+      .map((l) => ({ zh: String(l.zh).trim(), en: String(l.en).trim() }));
+  }
+
+  async generateTitle(script: string, platform = '抖音'): Promise<string> {
+    return this.call('title_publish', { script, platform });
+  }
+
+  /** 法务审核：低温度，返回结构化结果 */
+  async legalReview(script: string): Promise<LegalReviewResult> {
+    const text = await this.call('legal_review', { script }, 0.2);
+    const data = extractJson(text) as Partial<LegalReviewResult>;
+    if (typeof data.risk_level !== 'string' || !Array.isArray(data.issues) || typeof data.safe_script !== 'string') {
+      throw new LlmOutputError('法务审核输出结构不完整');
+    }
+    return data as LegalReviewResult;
+  }
+}

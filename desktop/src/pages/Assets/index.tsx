@@ -6,7 +6,7 @@ import {
 import {
   FileOutlined, FolderOutlined, LinkOutlined, PlusOutlined, ReloadOutlined,
 } from "@ant-design/icons";
-import { createMediaAsset, listMediaAssets, updateMediaAsset } from "@/api/media-asset-api";
+import { createMediaAsset, listMediaAssets, searchMediaAssets, updateMediaAsset, vectorizeMediaAsset } from "@/api/media-asset-api";
 import type { MediaAsset, MediaAssetType } from "@/api/media-asset-api";
 import { paginateFiltered } from "./asset-group";
 import type { AssetTab } from "./asset-group";
@@ -75,6 +75,7 @@ interface CreateFormValues {
   url: string;
   assetType?: MediaAssetType;
   tags?: string[];
+  description?: string;
 }
 
 export default function AssetsPage() {
@@ -89,6 +90,9 @@ export default function AssetsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [actingId, setActingId] = useState<number | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchMode, setSearchMode] = useState(false);
+  const [searchResults, setSearchResults] = useState<Array<{ asset: MediaAsset; score: number }>>([]);
   const [form] = Form.useForm<CreateFormValues>();
   /** 请求序号守卫：快速切换 Tab 时丢弃过期请求的结果 */
   const seqRef = useRef(0);
@@ -172,6 +176,7 @@ export default function AssetsPage() {
         url: vals.url,
         assetType: vals.assetType ?? guessTypeByUrl(vals.url),
         tags: vals.tags,
+        description: vals.description,
       });
       message.success("素材已登记");
       setCreateOpen(false);
@@ -181,6 +186,46 @@ export default function AssetsPage() {
       message.error("登记失败: " + (err as Error).message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const searchSeqRef = useRef(0);
+  const handleSearch = async (q: string) => {
+    const kw = q.trim();
+    if (!kw) {
+      setSearchMode(false);
+      setSearchResults([]);
+      return;
+    }
+    const seq = ++searchSeqRef.current;
+    setSearching(true);
+    try {
+      const res = await searchMediaAssets({ q: kw, topK: 30 });
+      if (seq !== searchSeqRef.current) return; // 旧响应不覆盖新结果
+      setSearchResults(res);
+      setSearchMode(true);
+    } catch (err) {
+      if (seq !== searchSeqRef.current) return;
+      message.error("语义检索失败: " + (err as Error).message);
+      setSearchMode(false);
+    } finally {
+      if (seq === searchSeqRef.current) setSearching(false);
+    }
+  };
+
+  const handleVectorize = async (asset: MediaAsset) => {
+    setActingId(asset.id);
+    try {
+      const updated = await vectorizeMediaAsset(asset.id);
+      message.success(updated.vectorStatus === "ready" ? "已加入语义检索索引" : "向量化失败，请检查嵌入模型配置");
+      setDetail(updated);
+      if (searchMode) {
+        setSearchResults((prev) => prev.map((r) => (r.asset.id === updated.id ? { asset: updated, score: r.score } : r)));
+      }
+    } catch (err) {
+      message.error("向量化失败: " + (err as Error).message);
+    } finally {
+      setActingId(null);
     }
   };
 
@@ -247,17 +292,54 @@ export default function AssetsPage() {
           <Switch checked={showArchived} onChange={setShowArchived} checkedChildren="含已归档" unCheckedChildren="仅未归档" />
           <Input
             allowClear
-            placeholder="搜索标题/标签"
+            placeholder="本地筛选：标题/标签"
             prefix={<FileOutlined />}
-            style={{ width: 220 }}
+            style={{ width: 200 }}
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
           />
+          <Input.Search
+            allowClear
+            placeholder="语义检索：如「科技风宣传片」"
+            style={{ width: 260 }}
+            loading={searching}
+            onSearch={(v) => void handleSearch(v)}
+          />
+          {searchMode && (
+            <Button size="small" type="text" onClick={() => { setSearchMode(false); setSearchResults([]); }}>
+              退出检索
+            </Button>
+          )}
         </Space>
       </Card>
 
       <Spin spinning={loading}>
-        {filtered.length === 0 && !loading ? (
+        {searchMode ? (
+          <div className={styles.grid}>
+            {searchResults.map(({ asset, score }) => (
+              <Card
+                key={asset.id}
+                className={styles.assetCard}
+                bordered={false}
+                hoverable
+                onClick={() => setDetail(asset)}
+              >
+                <div className={styles.previewBox}>{renderPreview(asset)}</div>
+                <div className={styles.assetMeta}>
+                  <div className={styles.assetTitle} title={asset.title}>{asset.title}</div>
+                  <Space size={4} wrap>
+                    <Tag color={asset.assetType === "image" ? "blue" : asset.assetType === "video" ? "purple" : "default"}>
+                      {TYPE_LABELS[asset.assetType] || asset.assetType}
+                    </Tag>
+                    {score > 0 && <Tag color="green">相关度 {(score * 100).toFixed(0)}%</Tag>}
+                    {asset.vectorStatus === "ready" && <Tag color="cyan">已索引</Tag>}
+                    {asset.archived && <Tag color="orange">已归档</Tag>}
+                  </Space>
+                </div>
+              </Card>
+            ))}
+          </div>
+        ) : filtered.length === 0 && !loading ? (
           <Card className={styles.tableCard} bordered={false}>
             <Empty style={{ margin: "48px 0" }} description={keyword ? "没有匹配的素材" : "暂无素材，去对话/任务里生成并登记"} />
           </Card>
@@ -290,7 +372,7 @@ export default function AssetsPage() {
         )}
       </Spin>
 
-      {total > PAGE_SIZE && (
+      {!searchMode && total > PAGE_SIZE && (
         <div className={styles.pager}>
           <Pagination current={page} total={total} pageSize={PAGE_SIZE} showSizeChanger={false} onChange={(p) => void load(p, tab, showArchived)} />
         </div>
@@ -306,6 +388,12 @@ export default function AssetsPage() {
               <Button loading={actingId === detail.id} onClick={() => onArchive(detail)}>
                 {detail.archived ? "恢复" : "归档"}
               </Button>
+              <Button
+                loading={actingId === detail.id}
+                disabled={detail.vectorStatus === "ready"}
+                onClick={() => handleVectorize(detail)}
+              >
+                {detail.vectorStatus === "ready" ? "已索引" : detail.vectorStatus === "failed" ? "重新索引" : "加入语义索引"}</Button>
               <Button type="primary" onClick={() => setDetail(null)}>关闭</Button>
             </Space>
           ) : null
@@ -330,6 +418,8 @@ export default function AssetsPage() {
               </Descriptions.Item>
               <Descriptions.Item label="大小">{formatSize(detail.fileSize)}</Descriptions.Item>
               <Descriptions.Item label="标签">{detail.tags?.length ? detail.tags.join("、") : "-"}</Descriptions.Item>
+              <Descriptions.Item label="描述">{detail.description || "-"}</Descriptions.Item>
+              <Descriptions.Item label="语义索引">{detail.vectorStatus === "ready" ? "已索引" : detail.vectorStatus === "failed" ? "失败（可重试）" : detail.vectorStatus === "pending" ? "索引中" : "未索引"}</Descriptions.Item>
               <Descriptions.Item label="创建时间">{formatTime(detail.createdAt)}</Descriptions.Item>
               <Descriptions.Item label="地址">
                 <Typography.Link onClick={() => copyUrl(detail.url)}>{detail.url}</Typography.Link>
@@ -362,6 +452,9 @@ export default function AssetsPage() {
           </Form.Item>
           <Form.Item label="标签" name="tags">
             <Select mode="tags" placeholder="如: 海报、电商" tokenSeparators={[",", "，"]} allowClear />
+          </Form.Item>
+          <Form.Item label="描述" name="description" tooltip="描述越具体，语义检索越准（AI 选素材）">
+            <Input.TextArea placeholder="如：蓝色科技感背景的产品宣传片，适合 AI 主题口播" maxLength={2000} rows={2} showCount />
           </Form.Item>
         </Form>
       </Modal>
