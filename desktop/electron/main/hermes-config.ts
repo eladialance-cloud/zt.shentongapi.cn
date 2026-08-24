@@ -36,11 +36,15 @@ function yamlScalar(value: string): string {
 }
 
 /** model 段（顶层） */
+/** Hermes 单次响应输出上限：模型推理 token 会占满默认 4096，导致规划 JSON 被截断（Response truncated due to output length limit） */
+export const HERMES_MAX_OUTPUT_TOKENS = 8192
+
 function buildModelBlock(opts: HermesConfigOptions): string[] {
   return [
     'model:',
     '  provider: ' + yamlScalar(HERMES_PROVIDER_KEY),
     '  default: ' + yamlScalar(opts.llmModel),
+    '  max_tokens: ' + HERMES_MAX_OUTPUT_TOKENS,
   ]
 }
 
@@ -51,6 +55,7 @@ function buildCustomProviderItem(opts: HermesConfigOptions): string[] {
     '    base_url: ' + yamlScalar(opts.llmProxyBaseUrl),
     '    api_key: ' + yamlScalar(opts.apiKey),
     '    model: ' + yamlScalar(opts.llmModel),
+    '    max_output_tokens: ' + HERMES_MAX_OUTPUT_TOKENS,
   ]
 }
 
