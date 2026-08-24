@@ -25,6 +25,13 @@ import type {
   DigitalHumanAsset,
 } from '@/types/oral-workshop'
 
+/**
+ * 学习对标：从对标视频 URL 提取口播文案
+ * POST /oral-workshop/extract-script  body: { videoUrl }
+ */
+export async function extractScriptFromVideo(videoUrl: string): Promise<{ text: string }> {
+  return httpClient.post<{ text: string }>('/oral-workshop/extract-script', { videoUrl })
+}
 /** 单条任务预估 Credits（与后端 DEFAULT_ESTIMATED_CREDITS 一致，提交前展示） */
 export const ORAL_WORKSHOP_ESTIMATED_CREDITS = 21
 

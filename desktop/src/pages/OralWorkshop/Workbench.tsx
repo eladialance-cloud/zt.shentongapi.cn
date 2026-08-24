@@ -1,12 +1,29 @@
 /**
- * 口播工坊 · 工作台（M6-2 + 对标参考软件补全）
- * 输入文案 / 人设 / 目标受众 / 风格 → 选题灵感（关键词选题）
- * 我的声音（参考音频） / 我的形象（火山形象 ID） / 上传成音 / 上传数字人视频
- * → 选择模板 → 预估 Credits → 提交任务
+ * 口播工坊 · 创作工作台（多步骤向导，对标参考软件 UI）
+ * ① 文案与选题（含学习对标-提取文案 / 选题灵感）
+ * ② 人设与风格（IP 大脑预设 + 自定义）
+ * ③ 配音（我的声音 / 上传成音）
+ * ④ 数字人形象（我的形象 / 上传视频）
+ * ⑤ 模板（卡片选择）+ 双语字幕
+ * ⑥ 预览提交（汇总 → 创建任务 → 进入 7 步流水线）
  */
-import { useEffect, useState } from 'react'
-import { Button, Card, Form, Input, Modal, Select, Spin, Switch, Tag, Upload, message } from 'antd'
+import { useEffect, useMemo, useState } from 'react'
 import {
+  Button,
+  Card,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Spin,
+  Steps,
+  Switch,
+  Tag,
+  Upload,
+  message,
+} from 'antd'
+import {
+  Clapperboard,
   Coins,
   FileText,
   Layers,
@@ -17,6 +34,8 @@ import {
   Sparkles,
   Trash2,
   Upload as UploadIcon,
+  User,
+  ExternalLink,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -27,6 +46,7 @@ import {
   createOralWorkshopJob,
   deleteMyDigitalHuman,
   deleteMyVoice,
+  extractScriptFromVideo,
   generateTopics,
   listMyDigitalHumans,
   listMyVoices,
@@ -34,9 +54,6 @@ import {
 } from '@/api/oral-workshop-api'
 import { uploadFile } from '@/api/file-api'
 import { useOralWorkshopStore } from '@/store/oral-workshop'
-import { useCreditsStore } from '@/store/credits'
-import { getMembershipStatus } from '@/api/membership-api'
-import { LEVEL_COLOR, LEVEL_LABEL, voiceCloneEnabled, type MembershipStatusView } from '@/types/membership'
 import type { DigitalHumanAsset, OralWorkshopTemplateMeta, TopicItem, VoiceAsset } from '@/types/oral-workshop'
 import styles from './styles.module.css'
 
@@ -92,17 +109,25 @@ function MediaUploadRow(props: {
   )
 }
 
+/** IP 大脑预设人设（点击即选，可自定义覆盖） */
+const PERSONA_PRESETS = [
+  { label: '老板型 IP', value: '老板型IP：有格局、敢说真话，讲经营/行业真相' },
+  { label: '避坑顾问型', value: '避坑顾问型IP：专业、务实，专注帮用户避坑' },
+  { label: '知识干货型', value: '知识干货型IP：严谨专业，输出方法论与清单' },
+  { label: '故事经验型', value: '故事经验型IP：以亲身经历切入，讲故事讲复盘' },
+  { label: '轻松育娃型', value: '轻松育娃型IP：亲切温暖，分享育儿实操经验' },
+]
+
 export default function OralWorkshopWorkbench() {
   const navigate = useNavigate()
   const [form] = Form.useForm()
   const { draft, setDraft } = useOralWorkshopStore()
-  const { balance, loaded, fetchBalance } = useCreditsStore()
+  const [current, setCurrent] = useState(0)
   const [templates, setTemplates] = useState<OralWorkshopTemplateMeta[]>([])
   const [templatesLoading, setTemplatesLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [membership, setMembership] = useState<MembershipStatusView | null>(null)
 
-  // 对标参考软件新增：我的声音 / 我的形象 / 上传素材 / 选题灵感
+  // 对标参考软件新增：我的声音 / 我的形象 / 上传素材 / 选题灵感 / 学习对标
   const [voices, setVoices] = useState<VoiceAsset[]>([])
   const [dhAssets, setDhAssets] = useState<DigitalHumanAsset[]>([])
   const [audioUrl, setAudioUrl] = useState<string | undefined>()
@@ -121,19 +146,18 @@ export default function OralWorkshopWorkbench() {
   const [batchVoiceIds, setBatchVoiceIds] = useState<number[]>([])
   const [batchDhIds, setBatchDhIds] = useState<number[]>([])
   const [batchSubmitting, setBatchSubmitting] = useState(false)
+  // 学习对标（提取文案）
+  const [benchmarkUrl, setBenchmarkUrl] = useState('')
+  const [benchmarkLoading, setBenchmarkLoading] = useState(false)
 
   useEffect(() => {
-    void fetchBalance()
-    void getMembershipStatus()
-      .then(setMembership)
-      .catch(() => setMembership(null))
     void listOralWorkshopTemplates()
       .then(setTemplates)
       .catch((err: Error) => message.error('模板列表加载失败: ' + (err?.message ?? err)))
       .finally(() => setTemplatesLoading(false))
     void listMyVoices().then(setVoices).catch(() => setVoices([]))
     void listMyDigitalHumans().then(setDhAssets).catch(() => setDhAssets([]))
-  }, [fetchBalance])
+  }, [])
 
   // 草稿回填（localStorage 持久化）
   useEffect(() => {
@@ -171,6 +195,24 @@ export default function OralWorkshopWorkbench() {
     setTopicsOpen(false)
     setTopics([])
     setTopicsKeywords('')
+  }
+
+  /** 学习对标：从对标视频 URL 提取文案并回填 */
+  const handleExtractScript = async () => {
+    if (!benchmarkUrl.trim()) {
+      message.warning('请输入对标视频链接')
+      return
+    }
+    setBenchmarkLoading(true)
+    try {
+      const res = await extractScriptFromVideo(benchmarkUrl.trim())
+      form.setFieldsValue({ scriptInput: res.text })
+      message.success('文案提取成功，已填入文案（可继续修改）')
+    } catch (err) {
+      message.error('提取失败: ' + (err as Error).message)
+    } finally {
+      setBenchmarkLoading(false)
+    }
   }
 
   const addRefAudio = async () => {
@@ -291,6 +333,38 @@ export default function OralWorkshopWorkbench() {
     }
   }
 
+  const steps = useMemo(
+    () => [
+      { title: '文案与选题', icon: <FileText size={15} /> },
+      { title: '人设与风格', icon: <User size={15} /> },
+      { title: '配音', icon: <Mic size={15} /> },
+      { title: '数字人形象', icon: <Clapperboard size={15} /> },
+      { title: '模板', icon: <Layers size={15} /> },
+      { title: '预览提交', icon: <Send size={15} /> },
+    ],
+    []
+  )
+
+  const selectedTemplate = templates.find((t) => Number(t.template_id.replace(/^t/, '')) === form.getFieldValue('templateId'))
+  const summary = {
+    script: (form.getFieldValue('scriptInput') as string) ?? '',
+    persona: (form.getFieldValue('persona') as string) ?? '',
+    audience: (form.getFieldValue('targetAudience') as string) ?? '',
+    style: (form.getFieldValue('style') as string) ?? '',
+    voice: voices.find((v) => v.id === form.getFieldValue('voiceId'))?.name,
+    dh: dhAssets.find((d) => d.id === form.getFieldValue('digitalHumanId'))?.name,
+    template: selectedTemplate?.name,
+  }
+
+  const goNext = async () => {
+    if (current === 0 && scriptChars === 0) {
+      message.warning('请先填写口播文案（可选题灵感 / 学习对标生成）')
+      return
+    }
+    setCurrent((c) => Math.min(c + 1, steps.length - 1))
+  }
+  const goPrev = () => setCurrent((c) => Math.max(c - 1, 0))
+
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -300,7 +374,7 @@ export default function OralWorkshopWorkbench() {
           </span>
           <div>
             <h1 className={styles.title}>口播工坊</h1>
-            <div className={styles.subtitle}>输入文案 → 自动生成数字人口播短视频 → 导出发布包</div>
+            <div className={styles.subtitle}>多步骤创作 · 文案 → 人设 → 配音 → 形象 → 模板 → 成片</div>
           </div>
         </div>
         <div className={styles.headerActions}>
@@ -310,85 +384,109 @@ export default function OralWorkshopWorkbench() {
           <Button icon={<Layers size={14} />} onClick={() => setBatchOpen(true)}>
             批量生成
           </Button>
-          <div className={styles.balancePill}>
-            <Coins size={14} />
-            <span>Credits 余额</span>
-            <strong>{loaded ? balance : '--'}</strong>
-          </div>
         </div>
       </header>
 
-      <div className={styles.workbenchGrid}>
-        <Card
-          className={styles.card}
-          title={
-            <span className={styles.cardTitle}>
-              <FileText size={14} /> 创作输入
-            </span>
-          }
-        >
-          <Form form={form} layout="vertical" onFinish={handleSubmit}>
-            <Form.Item
-              name="scriptInput"
-              label="口播文案 / 选题"
-              rules={[{ required: true, message: '请输入口播文案或选题' }]}
-            >
+      <div className={styles.wizardNav}>
+        <Steps
+          current={current}
+          items={steps.map((s) => ({
+            title: s.title,
+            icon: s.icon,
+          }))}
+          size="small"
+        />
+      </div>
+
+      <Card className={styles.card} bodyStyle={{ padding: 20 }}>
+        {/* ① 文案与选题 */}
+        {current === 0 && (
+          <div className={styles.panel}>
+            <div className={styles.panelTitle}>
+              <FileText size={15} /> 口播文案 / 选题
+            </div>
+            <div className={styles.extractRow}>
+              <Input
+                placeholder="学习对标：粘贴对标视频链接（抖音/快手/B站…）自动提取文案"
+                value={benchmarkUrl}
+                maxLength={512}
+                onChange={(e) => setBenchmarkUrl(e.target.value)}
+                onPressEnter={() => void handleExtractScript()}
+                prefix={<ExternalLink size={13} />}
+              />
+              <Button loading={benchmarkLoading} onClick={() => void handleExtractScript()}>
+                提取文案
+              </Button>
+              <Button type="dashed" icon={<Lightbulb size={13} />} onClick={() => setTopicsOpen(true)}>
+                选题灵感
+              </Button>
+            </div>
+            <Form.Item name="scriptInput" rules={[{ required: true, message: '请输入口播文案或选题' }]}>
               <TextArea
-                rows={8}
+                rows={10}
                 maxLength={20000}
-                placeholder="粘贴您的文案或选题，例如：3 个让你效率翻倍的 AI 技巧…（可点击右上角「选题灵感」生成）"
+                placeholder="粘贴您的文案或选题，例如：3 个让你效率翻倍的 AI 技巧…"
                 showCount
               />
             </Form.Item>
+            <div className={styles.panelHint}>支持直接粘贴文案，或通过「选题灵感 / 学习对标」一键生成。</div>
+          </div>
+        )}
+
+        {/* ② 人设与风格 */}
+        {current === 1 && (
+          <div className={styles.panel}>
+            <div className={styles.panelTitle}>
+              <User size={15} /> IP 大脑 · 人设与风格
+            </div>
+            <div className={styles.presetGrid}>
+              {PERSONA_PRESETS.map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  className={
+                    styles.presetChip +
+                    (form.getFieldValue('persona') === p.value ? ' ' + styles.presetChipActive : '')
+                  }
+                  onClick={() => form.setFieldsValue({ persona: p.value })}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <Form.Item name="persona" label="人设（可自定义覆盖预设）">
+              <Input placeholder="如：资深 AI 产品经理，犀利点评行业真相" maxLength={512} />
+            </Form.Item>
             <div className={styles.formRow}>
-              <Form.Item name="persona" label="人设（可选）" className={styles.formCol}>
-                <Input placeholder="如：资深 AI 产品经理" maxLength={512} />
-              </Form.Item>
               <Form.Item name="targetAudience" label="目标受众（可选）" className={styles.formCol}>
                 <Input placeholder="如：职场新人 / 宝妈 / 创业者" maxLength={255} />
               </Form.Item>
-            </div>
-            <div className={styles.formRow}>
               <Form.Item name="style" label="口播风格（可选）" className={styles.formCol}>
                 <Input placeholder="如：口语化、有网感、干货型" maxLength={512} />
               </Form.Item>
-              <Form.Item name="goal" label="创作目标（可选）" className={styles.formCol}>
-                <Input placeholder="如：涨粉 / 带货 / 知识科普" maxLength={2000} />
-              </Form.Item>
             </div>
+            <Form.Item name="goal" label="创作目标（可选）">
+              <Input placeholder="如：涨粉 / 带货 / 知识科普" maxLength={2000} />
+            </Form.Item>
+          </div>
+        )}
 
-            <div className={styles.formRow}>
-              <Form.Item name="voiceId" label="我的声音（火山克隆）" className={styles.formCol}>
-                <Select
-                  placeholder="选择克隆声音（留空=预设/系统语音/上传成音）"
-                  allowClear
-                  options={voices.map((v) => ({ value: v.id, label: v.name + (v.speakerId ? ' ✓' : '') }))}
-                />
-              </Form.Item>
-              <Form.Item name="digitalHumanId" label="我的形象（火山数字人）" className={styles.formCol}>
-                <Select
-                  placeholder="选择数字人形象（留空=上传视频/卡片兜底）"
-                  allowClear
-                  options={dhAssets.map((d) => ({ value: d.id, label: d.name + (d.authorized ? '' : '（未授权）') }))}
-                />
-              </Form.Item>
+        {/* ③ 配音 */}
+        {current === 2 && (
+          <div className={styles.panel}>
+            <div className={styles.panelTitle}>
+              <Mic size={15} /> 配音
             </div>
+            <Form.Item name="voiceId" label="我的声音（火山克隆）">
+              <Select
+                placeholder="选择克隆声音（留空=预设/系统语音/上传成音）"
+                allowClear
+                options={voices.map((v) => ({ value: v.id, label: v.name + (v.speakerId ? ' ✓' : '') }))}
+              />
+            </Form.Item>
             <div className={styles.assetActions}>
-              <Button
-                size="small"
-                type="dashed"
-                icon={<Plus size={12} />}
-                onClick={() => setRefAudioOpen(true)}
-              >
+              <Button size="small" type="dashed" icon={<Plus size={12} />} onClick={() => setRefAudioOpen(true)}>
                 添加参考音频（我的声音）
-              </Button>
-              <Button
-                size="small"
-                type="dashed"
-                icon={<Plus size={12} />}
-                onClick={() => setDhModalOpen(true)}
-              >
-                添加形象 ID
               </Button>
               {voices.some((v) => v.id === form.getFieldValue('voiceId')) && (
                 <Button
@@ -405,6 +503,37 @@ export default function OralWorkshopWorkbench() {
                   删除当前声音
                 </Button>
               )}
+            </div>
+            <div className={styles.uploadGroup}>
+              <MediaUploadRow
+                label="上传成音"
+                accept="audio/*"
+                value={audioUrl}
+                onUpload={setAudioUrl}
+                onClear={() => setAudioUrl(undefined)}
+              />
+            </div>
+            <div className={styles.panelHint}>未配置火山克隆时自动使用上传成音或本地语音兜底。</div>
+          </div>
+        )}
+
+        {/* ④ 数字人形象 */}
+        {current === 3 && (
+          <div className={styles.panel}>
+            <div className={styles.panelTitle}>
+              <Clapperboard size={15} /> 数字人形象
+            </div>
+            <Form.Item name="digitalHumanId" label="我的形象（火山数字人）">
+              <Select
+                placeholder="选择数字人形象（留空=上传视频/卡片兜底）"
+                allowClear
+                options={dhAssets.map((d) => ({ value: d.id, label: d.name + (d.authorized ? '' : '（未授权）') }))}
+              />
+            </Form.Item>
+            <div className={styles.assetActions}>
+              <Button size="small" type="dashed" icon={<Plus size={12} />} onClick={() => setDhModalOpen(true)}>
+                添加形象 ID
+              </Button>
               {dhAssets.some((d) => d.id === form.getFieldValue('digitalHumanId')) && (
                 <Button
                   size="small"
@@ -421,15 +550,7 @@ export default function OralWorkshopWorkbench() {
                 </Button>
               )}
             </div>
-
             <div className={styles.uploadGroup}>
-              <MediaUploadRow
-                label="上传成音"
-                accept="audio/*"
-                value={audioUrl}
-                onUpload={setAudioUrl}
-                onClear={() => setAudioUrl(undefined)}
-              />
               <MediaUploadRow
                 label="上传数字人/绿幕视频"
                 accept="video/*"
@@ -438,38 +559,91 @@ export default function OralWorkshopWorkbench() {
                 onClear={() => setVideoUrl(undefined)}
               />
             </div>
+            <div className={styles.panelHint}>未配置火山数字人时自动使用上传视频或本地卡片兜底。</div>
+          </div>
+        )}
 
-            <Form.Item name="templateId" label="模板">
-              <Select
-                placeholder="选择视频模板（默认 t1 经典黄白）"
-                loading={templatesLoading}
-                allowClear
-                options={templates.map((t) => ({
-                  value: Number(t.template_id.replace(/^t/, '')),
-                  label:
-                    t.name +
-                    '  ' +
-                    t.width +
-                    'x' +
-                    t.height +
-                    ' · ' +
-                    t.duration +
-                    's' +
-                    (t.description ? ' — ' + t.description : ''),
-                }))}
-              />
-            </Form.Item>
-            <Form.Item
-              name="bilingual"
-              label="双语字幕（中英对照）"
-              valuePropName="checked"
-              tooltip="开启后字幕渲染中英双行（LLM 翻译），适合出海/国际受众"
-            >
+        {/* ⑤ 模板 */}
+        {current === 4 && (
+          <div className={styles.panel}>
+            <div className={styles.panelTitle}>
+              <Layers size={15} /> 视频模板
+            </div>
+            {templatesLoading ? (
+              <div className={styles.templateLoading}>
+                <Spin /> 模板加载中…
+              </div>
+            ) : (
+              <div className={styles.templateGrid}>
+                {templates.map((t) => {
+                  const id = Number(t.template_id.replace(/^t/, ''))
+                  const active = form.getFieldValue('templateId') === id
+                  return (
+                    <div
+                      key={t.template_id}
+                      className={styles.templateCard + (active ? ' ' + styles.templateCardActive : '')}
+                      onClick={() => form.setFieldsValue({ templateId: active ? undefined : id })}
+                    >
+                      <div className={styles.templateCardName}>{t.name}</div>
+                      <div className={styles.templateCardMeta}>
+                        {t.width}x{t.height} · {t.duration}s
+                      </div>
+                      {t.description && <div className={styles.templateCardDesc}>{t.description}</div>}
+                      {active && <Tag color="blue" className={styles.templateCardTag}>已选</Tag>}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            <Form.Item name="bilingual" label="双语字幕（中英对照）" valuePropName="checked" tooltip="开启后字幕渲染中英双行（LLM 翻译），适合出海/国际受众">
               <Switch checkedChildren="中英双行" unCheckedChildren="仅中文" />
             </Form.Item>
+          </div>
+        )}
+
+        {/* ⑥ 预览提交 */}
+        {current === 5 && (
+          <div className={styles.panel}>
+            <div className={styles.panelTitle}>
+              <Send size={15} /> 预览与提交
+            </div>
+            <div className={styles.summaryCard}>
+              <div className={styles.summaryRow}>
+                <span className={styles.summaryLabel}>口播文案</span>
+                <span className={styles.summaryValue}>
+                  {summary.script ? summary.script.slice(0, 120) + (summary.script.length > 120 ? '…' : '') : '—'}
+                </span>
+              </div>
+              <div className={styles.summaryRow}>
+                <span className={styles.summaryLabel}>人设</span>
+                <span className={styles.summaryValue}>{summary.persona || '—'}</span>
+              </div>
+              <div className={styles.summaryRow}>
+                <span className={styles.summaryLabel}>受众 / 风格</span>
+                <span className={styles.summaryValue}>
+                  {summary.audience || '—'} / {summary.style || '—'}
+                </span>
+              </div>
+              <div className={styles.summaryRow}>
+                <span className={styles.summaryLabel}>配音</span>
+                <span className={styles.summaryValue}>{summary.voice || (audioUrl ? '上传成音' : '系统默认')}</span>
+              </div>
+              <div className={styles.summaryRow}>
+                <span className={styles.summaryLabel}>数字人</span>
+                <span className={styles.summaryValue}>{summary.dh || (videoUrl ? '上传视频' : '系统兜底')}</span>
+              </div>
+              <div className={styles.summaryRow}>
+                <span className={styles.summaryLabel}>模板</span>
+                <span className={styles.summaryValue}>{summary.template || '默认模板'}</span>
+              </div>
+              <div className={styles.summaryRow}>
+                <span className={styles.summaryLabel}>字幕</span>
+                <span className={styles.summaryValue}>{form.getFieldValue('bilingual') ? '中英双行' : '仅中文'}</span>
+              </div>
+            </div>
             <div className={styles.submitRow}>
               <div className={styles.estimate}>
-                <Sparkles size={14} />
+                <Coins size={14} />
                 <span>预估扣费</span>
                 <Tag color="gold">{ORAL_WORKSHOP_ESTIMATED_CREDITS} Credits</Tag>
                 <span className={styles.estimateHint}>预扣后按实际结算，失败自动退还</span>
@@ -485,44 +659,33 @@ export default function OralWorkshopWorkbench() {
                 生成口播视频
               </Button>
             </div>
-          </Form>
-        </Card>
+          </div>
+        )}
 
-        <div className={styles.sideCol}>
-          <Card className={styles.card} title={<span className={styles.cardTitle}>7 步流水线</span>}>
-            <div className={styles.membershipRow}>
-              <span className={styles.membershipLabel}>当前会员</span>
-              {membership ? (
-                <Tag color={LEVEL_COLOR[membership.level]}>{LEVEL_LABEL[membership.level]}</Tag>
-              ) : (
-                <Tag>--</Tag>
-              )}
-            </div>
-            <ol className={styles.stepsList}>
-              <li>extract — 文案抽取</li>
-              <li>rewrite — LLM 改写</li>
-              <li>voiceClone — 声音克隆</li>
-              <li>digitalHuman — 数字人合成</li>
-              <li>videoEdit — ffmpeg 合成</li>
-              <li>titleCover — 标题 + 封面</li>
-              <li>publishReady — 发布就绪</li>
-            </ol>
-            {membership && !voiceCloneEnabled(membership.features) && (
-              <div className={styles.lockHint}>🔒 声音克隆需专业版解锁（免费档使用预设声音）</div>
-            )}
-            {membership && membership.features.digitalHumans === 0 && (
-              <div className={styles.lockHint}>🔒 数字人形象未开放</div>
-            )}
-            {membership && membership.features.publish === 'export_only' && (
-              <div className={styles.lockHint}>📦 当前等级仅支持导出，专业版解锁发布包</div>
-            )}
-            <div className={styles.notice}>
-              <Spin spinning={templatesLoading} size="small" />
-              <span>声音克隆与数字人形象需先配置火山方舟密钥；未配置时自动使用上传素材或本地兜底。</span>
-            </div>
-          </Card>
+        {/* 底部导航 */}
+        <div className={styles.wizardFooter}>
+          <Button disabled={current === 0} onClick={goPrev}>
+            上一步
+          </Button>
+          {current < steps.length - 1 ? (
+            <Button type="primary" onClick={() => void goNext()}>
+              下一步
+            </Button>
+          ) : (
+            <Button
+              type="primary"
+              htmlType="submit"
+              icon={<Sparkles size={14} />}
+              loading={submitting}
+              onClick={() => void form.submit()}
+            >
+              生成口播视频
+            </Button>
+          )}
         </div>
-      </div>
+      </Card>
+
+      <Form form={form} layout="vertical" onFinish={handleSubmit} style={{ display: 'none' }} />
 
       {/* 选题灵感弹窗 */}
       <Modal
@@ -598,75 +761,69 @@ export default function OralWorkshopWorkbench() {
             label="火山数字人形象 ID"
             rules={[{ required: true, message: '请输入火山形象 ID' }]}
           >
-            <Input placeholder="火山控制台-数字人-形象 ID" maxLength={128} />
+            <Input placeholder="如：5f6a9e3c…" maxLength={128} />
           </Form.Item>
         </Form>
       </Modal>
 
-      {/* 批量生成弹窗（矩阵化：文案 × 模板 × 声音 × 形象） */}
+      {/* 批量生成弹窗 */}
       <Modal
         open={batchOpen}
-        title="批量生成（矩阵化建单）"
+        title="批量生成（文案 × 模板 × 声音 × 形象 矩阵）"
         onCancel={() => setBatchOpen(false)}
         onOk={() => void handleBatchSubmit()}
-        okText={batchSubmitting ? '创建中…' : '开始批量创建'}
+        okText="开始批量生成"
         confirmLoading={batchSubmitting}
-        width={640}
+        width={680}
       >
-        <div className={styles.topicInputRow} style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 6, fontWeight: 600 }}>文案列表（每行一条）</div>
           <TextArea
-            rows={8}
-            placeholder={'粘贴多条文案，每行一条（最多 50 条）。\n例：\n3 个让你效率翻倍的 AI 技巧\n普通人如何靠 AI 副业月入过万'}
+            rows={6}
+            placeholder={'第一行\n第二行\n第三行'}
             value={batchTopics}
-            maxLength={50000}
+            maxLength={20000}
             onChange={(e) => setBatchTopics(e.target.value)}
           />
-          <div className={styles.batchCount}>已解析文案：{batchTopicCount} 条</div>
         </div>
-        <div className={styles.formRow}>
-          <Form.Item label="模板矩阵（可多选）" className={styles.formCol}>
-            <Select
-              mode="multiple"
-              allowClear
-              placeholder="不选 = 默认模板"
-              value={batchTemplateIds}
-              onChange={setBatchTemplateIds}
-              options={templates.map((t) => ({
-                value: Number(t.template_id.replace(/^t/, '')),
-                label: t.name + '  ' + t.width + 'x' + t.height + ' ' + t.duration + 's',
-              }))}
-            />
-          </Form.Item>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 6, fontWeight: 600 }}>模板（可多选）</div>
+          <Select
+            mode="multiple"
+            style={{ width: '100%' }}
+            placeholder="留空 = 全部模板"
+            value={batchTemplateIds}
+            onChange={setBatchTemplateIds}
+            options={templates.map((t) => ({
+              value: Number(t.template_id.replace(/^t/, '')),
+              label: t.name,
+            }))}
+          />
         </div>
-        <div className={styles.formRow}>
-          <Form.Item label="声音矩阵（可多选）" className={styles.formCol}>
-            <Select
-              mode="multiple"
-              allowClear
-              placeholder="不选 = 系统语音"
-              value={batchVoiceIds}
-              onChange={setBatchVoiceIds}
-              options={voices.map((v) => ({ value: v.id, label: v.name + (v.speakerId ? ' ✓' : '') }))}
-            />
-          </Form.Item>
-          <Form.Item label="形象矩阵（可多选）" className={styles.formCol}>
-            <Select
-              mode="multiple"
-              allowClear
-              placeholder="不选 = 上传视频/卡片兜底"
-              value={batchDhIds}
-              onChange={setBatchDhIds}
-              options={dhAssets.map((d) => ({ value: d.id, label: d.name + (d.authorized ? '' : '（未授权）') }))}
-            />
-          </Form.Item>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 6, fontWeight: 600 }}>声音（可多选）</div>
+          <Select
+            mode="multiple"
+            style={{ width: '100%' }}
+            placeholder="留空 = 默认声音"
+            value={batchVoiceIds}
+            onChange={setBatchVoiceIds}
+            options={voices.map((v) => ({ value: v.id, label: v.name }))}
+          />
         </div>
-        <div className={styles.estimate}>
-          <Sparkles size={14} />
-          <span>将创建</span>
-          <Tag color="gold">{batchEstimated}</Tag>
-          <span>个任务，预估消耗</span>
-          <Tag color="gold">{batchEstimated * ORAL_WORKSHOP_ESTIMATED_CREDITS} Credits</Tag>
-          <span className={styles.estimateHint}>逐单预扣，失败自动退还</span>
+        <div>
+          <div style={{ marginBottom: 6, fontWeight: 600 }}>数字人形象（可多选）</div>
+          <Select
+            mode="multiple"
+            style={{ width: '100%' }}
+            placeholder="留空 = 默认形象"
+            value={batchDhIds}
+            onChange={setBatchDhIds}
+            options={dhAssets.map((d) => ({ value: d.id, label: d.name }))}
+          />
+        </div>
+        <div style={{ marginTop: 12, color: '#888' }}>
+          组合数：{batchEstimated}（超过 50 将被拦截）
         </div>
       </Modal>
     </div>

@@ -26,18 +26,22 @@ export class OralWorkshopController {
 
   @Post('jobs')
   @ApiOperation({ summary: '创建口播工坊任务（预扣 Credits，返回任务+步骤）' })
-  @RequireFeature('create_job')
   create(@CurrentUser() user: ICurrentUser, @Body() dto: CreateOralWorkshopJobDto) {
     return this.oralWorkshopService.create(user.userId, dto);
   }
 
   @Post('jobs/batch')
   @ApiOperation({ summary: '批量矩阵化建单（文案 × 模板 × 声音 × 形象，逐单预扣 Credits）' })
-  @RequireFeature('create_job')
   createBatch(@CurrentUser() user: ICurrentUser, @Body() dto: BatchCreateOralWorkshopJobsDto) {
     return this.oralWorkshopService.createBatch(user.userId, dto);
   }
 
+  @Post('extract-script')
+  @ApiOperation({ summary: '学习对标：从对标视频 URL 提取口播文案（下载+抽音频+STT，不计费）' })
+  extractScript(@CurrentUser() user: ICurrentUser, @Body() body: { videoUrl: string }) {
+    if (!body?.videoUrl) throw new BadRequestException('videoUrl 不能为空');
+    return this.oralWorkshopService.extractScript(user.userId, body.videoUrl);
+  }
   @Get('jobs')
   @ApiOperation({ summary: '我的口播工坊任务列表（分页）' })
   list(@CurrentUser() user: ICurrentUser, @Query() query: OralWorkshopJobQueryDto) {

@@ -10,6 +10,8 @@ import { Repository } from 'typeorm';
 import { ModelProviderEntity } from '../admin-model/entities/model-provider.entity';
 import { ApiKeyPoolService } from '../api-key-pool/services/api-key-pool.service';
 import { EncryptionService } from '../../common/services/encryption.service';
+import { readFileSync } from 'fs';
+import * as path from 'path';
 import type { LlmCaller, LlmMessage } from './llm';
 
 const PROVIDER_PREFERENCE = ['deepseek', 'openai', 'qwen', 'doubao'];
@@ -122,6 +124,36 @@ export class SystemLlmService implements LlmCaller {
     return null;
   }
 
+  /** 语音识别（audio -> 文本）：直连 OpenAI 兼容 /audio/transcriptions（multipart），不计费（任务预扣已覆盖） */
+  async stt(audioPath: string): Promise<string> {
+    const target = await this.resolveTarget(process.env.ORAL_WORKSHOP_STT_MODEL || 'whisper-1');
+    if (!target) {
+      throw new ServiceUnavailableException('未配置可用的大模型供应商（STT 识别）');
+    }
+    const buf = readFileSync(audioPath);
+    const form = new FormData();
+    form.append('file', new Blob([buf]), path.basename(audioPath));
+    form.append('model', target.model);
+    let resp: Response;
+    try {
+      resp = await fetch(`${target.endpoint}/audio/transcriptions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${target.apiKey}` },
+        body: form,
+        signal: AbortSignal.timeout(180000),
+      });
+    } catch (e) {
+      throw new ServiceUnavailableException('STT 请求失败: ' + (e as Error).message);
+    }
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new ServiceUnavailableException('STT 上游 HTTP ' + resp.status + ': ' + text.slice(0, 200));
+    }
+    const data = (await resp.json()) as { text?: string; data?: { text?: string } };
+    const out = String(data?.text ?? data?.data?.text ?? '').trim();
+    if (!out) throw new ServiceUnavailableException('STT 上游返回空文本');
+    return out;
+  }
   /** 非流式调用 OpenAI 兼容 /chat/completions，返回完整文本 */
   async chat(messages: LlmMessage[], opts?: { temperature?: number }): Promise<string> {
     const target = await this.resolveTarget();

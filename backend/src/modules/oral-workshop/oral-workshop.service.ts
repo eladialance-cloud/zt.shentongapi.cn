@@ -10,7 +10,8 @@ import { DigitalHumanAssetEntity } from './entities/digital-human-asset.entity';
 import type { OralWorkshopLlmService } from './llm';
 import type { TopicItem } from './llm';
 import { CreditsBillingService } from '../credits/services/credits-billing.service';
-import { MembershipService } from '../payment/services/membership.service';
+import { SystemLlmService } from './system-llm.service';
+import { defaultFfmpegRunner, downloadTo } from './oral-workshop.executor';
 import { BatchCreateOralWorkshopJobsDto, CreateOralWorkshopJobDto, OralWorkshopJobQueryDto } from './dto/oral-workshop.dto';
 import { listTemplates as listTemplatesLoader } from './template-loader';
 import {
@@ -75,8 +76,8 @@ export class OralWorkshopService implements OnModuleInit {
     @InjectRepository(DigitalHumanAssetEntity)
     private readonly dhAssetRepo: Repository<DigitalHumanAssetEntity>,
     private readonly billing: CreditsBillingService,
-    private readonly membership: MembershipService,
     private readonly llm: OralWorkshopLlmService,
+    private readonly systemLlm: SystemLlmService,
   ) {}
 
   /** 启动时回收孤儿任务：pending/processing → failed 并退还预扣 Credits（参考 media-generation） */
@@ -105,6 +106,35 @@ export class OralWorkshopService implements OnModuleInit {
     }
   }
 
+  /** 学习对标：从对标视频 URL 提取口播文案（下载视频 → ffmpeg 抽音频 → STT 识别，不计费） */
+  async extractScript(userId: number, videoUrl: string): Promise<{ text: string }> {
+    if (!/^https?:\/\//i.test(videoUrl)) {
+      throw new BadRequestException('请输入有效的视频链接（http/https）');
+    }
+    const dir = path.join(process.env.ORAL_WORKSHOP_UPLOADS_DIR || 'uploads', 'oral-workshop', 'extract', String(userId), String(Date.now()));
+    fs.mkdirSync(dir, { recursive: true });
+    const videoPath = path.join(dir, 'source' + (/\.(mp4|mov|avi|mkv|flv|webm)(\?|$)/i.test(videoUrl) ? videoUrl.match(/\.(mp4|mov|avi|mkv|flv|webm)/i)![0] : '.mp4'));
+    try {
+      await downloadTo(videoUrl, videoPath);
+    } catch (err) {
+      throw new BadRequestException('对标视频下载失败: ' + (err as Error).message);
+    }
+    const audioPath = path.join(dir, 'audio.wav');
+    try {
+      await defaultFfmpegRunner(
+        ['ffmpeg', '-y', '-i', videoPath, '-vn', '-ar', '16000', '-ac', '1', audioPath],
+        dir,
+      );
+    } catch (err) {
+      throw new BadRequestException('音频提取失败（服务器需安装 ffmpeg）: ' + (err as Error).message);
+    }
+    try {
+      const text = await this.systemLlm.stt(audioPath);
+      return { text };
+    } catch (err) {
+      throw new BadRequestException('语音识别失败: ' + (err as Error).message);
+    }
+  }
   /** 幂等创建任务：先预扣 Credits，再建 job + 7 个初始步骤 */
   async create(userId: number, dto: CreateOralWorkshopJobDto): Promise<OralWorkshopJobItem> {
     // 幂等：clientTxnId 已存在直接返回
@@ -112,9 +142,6 @@ export class OralWorkshopService implements OnModuleInit {
       const existed = await this.jobRepo.findOne({ where: { clientTxnId: dto.clientTxnId, userId } });
       if (existed) return this.get(userId, existed.id);
     }
-
-    // M7-3 会员闸门：免费档月生成上限 / 付费功能校验（服务端强制）
-    await this.membership.ensureFeature(userId, 'create_job', { monthCount: await this.countCreatedThisMonth(userId) });
 
     const estimatedCost = DEFAULT_ESTIMATED_CREDITS;
     const frozen = await this.billing.estimateAndFreeze(
@@ -509,14 +536,6 @@ export class OralWorkshopService implements OnModuleInit {
       ...(s.startedAt ? { startedAt: s.startedAt } : {}),
       ...(finished ? { finishedAt: new Date() } : {}),
     };
-  }
-
-  /** 本月已创建任务数（免费档月上限统计） */
-  private async countCreatedThisMonth(userId: number): Promise<number> {
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const rows = await this.jobRepo.find({ where: { userId } });
-    return rows.filter((j) => j.createdAt && j.createdAt.getTime() >= monthStart.getTime()).length;
   }
 
   /** 从步骤产物回填任务产物列（rewritten_script / video_url / audio_url / cover_url / 标题元数据） */

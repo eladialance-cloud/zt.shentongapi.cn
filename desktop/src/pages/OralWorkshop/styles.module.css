@@ -517,3 +517,183 @@
   font-size: 12px;
   color: var(--color-text-secondary, #888);
 }
+
+
+/* ===== 新增：6步创作向导（对标参考软件 UI） ===== */
+.wizardNav {
+  margin-bottom: 16px;
+  padding: 14px 20px;
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.wizardFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-split);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.panelTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 12px;
+}
+
+.panelHint {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  margin-top: 6px;
+}
+
+.extractRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.formCol {
+  margin-bottom: 0;
+}
+
+.presetGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.presetChip {
+  padding: 6px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg-container);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.presetChip:hover {
+  border-color: var(--color-brand);
+  color: var(--color-brand);
+}
+
+.presetChipActive {
+  background: var(--color-brand-bg);
+  border-color: var(--color-brand);
+  color: var(--color-brand);
+  font-weight: 500;
+}
+
+.templateLoading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  padding: 28px 0;
+}
+
+.templateGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.templateCard {
+  position: relative;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg-container);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.templateCard:hover {
+  border-color: var(--color-brand);
+}
+
+.templateCardActive {
+  border-color: var(--color-brand) !important;
+  background: var(--color-brand-bg);
+  box-shadow: 0 0 0 1px var(--color-brand);
+}
+
+.templateCardName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+  padding-right: 36px;
+}
+
+.templateCardMeta {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  margin-bottom: 6px;
+}
+
+.templateCardDesc {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.templateCardTag {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+.summaryCard {
+  background: var(--color-bg-layout);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.summaryRow {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--color-split);
+}
+
+.summaryRow:last-child {
+  border-bottom: none;
+}
+
+.summaryLabel {
+  flex-shrink: 0;
+  width: 96px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+.summaryValue {
+  font-size: 12px;
+  color: var(--color-text-primary);
+  word-break: break-all;
+  line-height: 1.6;
+}
