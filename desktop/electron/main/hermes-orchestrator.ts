@@ -451,7 +451,10 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
       );
       if (planResp.error) return await failTask("任务规划失败", planResp.error);
       const plan = parsePlan(planResp.stdout);
-      if (plan.length === 0) return await failTask("任务规划失败", "Hermes 未输出有效节点清单");
+      if (plan.length === 0) {
+        const raw = (planResp.stdout || "").replace(/\s+/g, " ").trim().slice(0, 200);
+        return await failTask("任务规划失败", "Hermes 未输出有效节点清单" + (raw ? "（Hermes 实际输出: " + raw + "）" : "（Hermes 无输出）"));
+      }
       for (const p of plan) steps.push({ name: p.name, agentRole: p.agentRole, status: "pending", retryCount: 0 });
       await deps.patchTask(input.teamId, input.teamTaskId, {
         status: "in_progress",

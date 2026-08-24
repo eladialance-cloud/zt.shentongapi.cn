@@ -288,8 +288,11 @@ async function ensureVideoClawConfigSafe(): Promise<void> {
  * model.provider=custom:shentong + custom_providers 指向平台 llm-proxy 网关（用户零配置，
  * 解决 Hermes 空壳 No inference provider configured）；未登录（无 Key）时跳过，不抛错。
  */
-async function ensureHermesConfigSafe(): Promise<void> {
-  if (!openclawProxyKey) return
+/** 同步 $HERMES_HOME/config.yaml（Hermes CLI 推理必需）；返回是否成功。供任务执行前强制同步调用。 */
+async function ensureHermesConfigSafe(): Promise<{ ok: boolean; reason?: string }> {
+  if (!openclawProxyKey) {
+    return { ok: false, reason: 'llm-proxy Key 未注入（未登录或登录态未同步）' }
+  }
   try {
     const platformModels = await fetchPlatformModels(OPENCLAW_LLM_PROXY_BASE, openclawProxyKey)
     const opts = pickPlatformModels(platformModels, DEFAULT_VIDEO_CLAW_MODELS)
@@ -298,9 +301,12 @@ async function ensureHermesConfigSafe(): Promise<void> {
       apiKey: openclawProxyKey,
       llmModel: opts.llmModel,
     })
-    console.log('[service-manager] hermes config.yaml 已就绪: ' + getHermesHome())
+    console.log('[service-manager] hermes config.yaml 已就绪: ' + getHermesHome() + ' model=' + opts.llmModel)
+    return { ok: true }
   } catch (err) {
-    console.warn('[service-manager] hermes config 生成失败（忽略）: ' + (err instanceof Error ? err.message : String(err)))
+    const reason = err instanceof Error ? err.message : String(err)
+    console.warn('[service-manager] hermes config 生成失败: ' + reason)
+    return { ok: false, reason }
   }
 }
 
@@ -651,6 +657,14 @@ export class ServiceManager extends EventEmitter {
       })
     }
     this.startMetricsSampler()
+  }
+
+  /**
+   * 任务执行前强制同步 Hermes config.yaml（Hermes CLI 每次读取；登录后异步同步可能失败/未触发）。
+   * 返回是否成功；未登录（无 Key）或同步失败时返回原因，由调用方决定是否中止任务。
+   */
+  async ensureHermesConfig(): Promise<{ ok: boolean; reason?: string }> {
+    return ensureHermesConfigSafe()
   }
 
   /**

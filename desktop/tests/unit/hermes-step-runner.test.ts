@@ -297,13 +297,14 @@ describe("createStepRunner（子代理逐步执行 + 人工/自评确认 + 打�
     expect(result.steps[0].lastFeedback).toBe("不够好");
   });
 
-  it("规划失败 → failed（错误信息透出）", async () => {
+  it("规划失败 → failed（错误信息透出原始输出，便于诊断）", async () => {
     const h = makeDeps();
-    h.setPlan("我不理解这个任务");
+    h.setPlan("It looks like Hermes isn't configured yet -- no API keys or providers found.");
     const handle = createStepRunner(makeInput(), h.deps);
     const result = await handle.wait();
     expect(result.status).toBe("failed");
     expect(result.error).toContain("节点清单");
+    expect(result.error).toContain("isn't configured yet");
   });
 
   it("单步执行异常（Hermes 未安装）→ 节点 rejected → failed", async () => {

@@ -244,6 +244,11 @@ function buildStepRunnerDeps(token: string, taskKey: string, input: OrchestrateI
   return {
     runPrompt: async (prompt, opts) => {
       try {
+        // 每次 Hermes CLI 调用前强制同步 config.yaml（Hermes CLI 每次读取；登录时异步同步可能未触发/失败）
+        const cfg = await serviceManager.ensureHermesConfig()
+        if (!cfg.ok) {
+          console.error('[hermes-orchestrate] Hermes 推理配置同步失败（任务将失败）: ' + (cfg.reason || '未知原因'))
+        }
         const { child, stdout, stderr } = base.spawnCli(prompt, opts)
         stepAborts.set(taskKey, () => {
           try {
