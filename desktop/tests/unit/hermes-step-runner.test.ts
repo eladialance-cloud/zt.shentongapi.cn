@@ -446,38 +446,7 @@ describe("createStepRunner（Hermes 独立评审）", () => {
   });
 });
 
-describe("createStepRunner（planReasoning 保留 + 规划失败兜底）", () => {
-  it("planReasoning 在 sync/最终回写中保留（不被覆盖丢失）", async () => {
-    const h = makeDeps();
-    h.setAuto(true);
-    h.setPlan("我先拆解：需要两步。\n" + JSON.stringify({ steps: [{ name: "调研" }, { name: "成稿" }] }));
-    h.nextStepResult(stepPass("调研完成", "结论A"));
-    h.nextStepResult(stepPass("成稿完成", "正文B"));
-    const handle = createStepRunner(makeInput(), h.deps);
-    const result = await handle.wait();
-    expect(result.status).toBe("completed");
-    expect(result.planReasoning).toContain("我先拆解");
-    const kept = h.patches.filter((p) => {
-      const r = p.payload.result as { planReasoning?: string };
-      return typeof r?.planReasoning === "string" && r.planReasoning.includes("我先拆解");
-    });
-    // 规划回写 + 每节点 running sync + 最终 completed 都保留
-    expect(kept.length).toBeGreaterThanOrEqual(4);
-    const finalPatch = h.patches[h.patches.length - 1];
-    expect((finalPatch.payload.result as { planReasoning?: string }).planReasoning).toContain("我先拆解");
-  });
-
-  it("规划失败（非 JSON）→ failed 仍保留原始输出作为排查线索", async () => {
-    const h = makeDeps();
-    h.setAuto(true);
-    h.setPlan("我先思考：这个任务要分几步做。\n但是我不会输出JSON");
-    const handle = createStepRunner(makeInput(), h.deps);
-    const result = await handle.wait();
-    expect(result.status).toBe("failed");
-    expect(result.error).toContain("未输出有效节点清单");
-    expect(result.planReasoning).toContain("我先思考");
-  });
-
+describe("createStepRunner（CLI 输出健壮性兜底）", () => {
   it("单步输出非 JSON 全文 → 按文本产出收录通过（不误判重做）", async () => {
     const h = makeDeps();
     h.setAuto(true);

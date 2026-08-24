@@ -1,6 +1,6 @@
 /** Hermes 编排桥：team_task 状态机 + 团队指派（成员人设注入，无团队降级子代理）+ CLI 调用 + 结果回写（主进程） */
 import { spawn } from "node:child_process";
-import { extractReasoning, parseHermesResult, parseLastJson, parseStepResult, type HermesOutput, type HermesStep, type OrchestrateResult, type StepRunResult } from "./hermes-result";
+import { parseHermesResult, parseLastJson, parseStepResult, type HermesOutput, type HermesStep, type OrchestrateResult, type StepRunResult } from "./hermes-result";
 
 export type TeamTaskStatus = "pending" | "in_progress" | "completed" | "failed";
 
@@ -163,7 +163,6 @@ export interface RunnerStep {
   status: RunnerStepStatus;
   assigneeMemberId?: number;
   assigneeName?: string;
-  reasoning?: string;
   outputs?: HermesOutput[];
   review?: { verdict: "pass" | "rework"; reason?: string; by: "hermes" | "user"; at?: string };
   /** 执行者原始自评（仅展示；通过决定权归 Hermes 评审） */
@@ -220,8 +219,7 @@ export function buildPlanPrompt(
   const countHint = wf ? "有序执行节点" : "2~5 个有序执行节点";
   parts.push(
     "请把上述任务按" + (wf ? "该协作流程" : "业务依赖") + "拆解为 " + countHint + "（每个节点由一个执行者完成，节点之间按依赖排序）。",
-    "先简要说明你的拆解思路（这部分会展示给用户看），最后一行严格输出 JSON：{\"steps\":[{\"name\":\"节点名\",\"assigneeRole\":\"认领的成员职能（团队模式必填，无团队可不填）\"}]}",
-    "JSON 必须是完整独立的单行对象，不要用代码围栏包裹，JSON 之后不要再输出任何文字。"
+    "只输出一行 JSON，不要任何其他文字（不要代码围栏、不要说明）：{\"steps\":[{\"name\":\"节点名\",\"assigneeRole\":\"认领的成员职能（团队模式必填，无团队可不填）\"}]}"
   );
   return parts.join("\n\n");
 }
@@ -415,8 +413,6 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
   let finished = false;
   const steps: RunnerStep[] = [];
   const finalOutputs: HermesOutput[] = [];
-  /** 规划思考过程：所有回写（sync/完成/失败）都保留，避免被后续覆盖丢失 */
-  let planReasoning = "";
   const decisionWaiters = new Map<number, (d: { verdict: "pass" } | { verdict: "rework"; reason: string }) => void>();
   const resultPromise = run();
 
@@ -434,7 +430,6 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
     const start = deps.now();
     const fail = (summary: string, error: string): OrchestrateResult => ({
       status: "failed", summary, steps: steps.map(toResultStep), outputs: finalOutputs, error, durationMs: deps.now() - start,
-      ...(planReasoning ? { planReasoning } : {}),
     });
     /** 失败统一出口：先 PATCH failed（含 steps 明细），再返回失败结果 */
     const failTask = async (summary: string, error: string): Promise<OrchestrateResult> => {
@@ -454,15 +449,9 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
         buildPlanPrompt(input.task, input.teamMembers ?? null, input.modelDefaults ?? null, input.workflow ?? null),
         input.modelDefaults?.chat ? { model: input.modelDefaults.chat } : undefined,
       );
-      // 无论规划成败都保留思考文本：失败时用户也能看到 Hermes 的思路，便于排查
-      planReasoning = extractReasoning(planResp.stdout, 3000);
       if (planResp.error) return await failTask("任务规划失败", planResp.error);
       const plan = parsePlan(planResp.stdout);
-      if (plan.length === 0) {
-        // 规划失败且无任何可提取的思考文本时，把 CLI 原始输出作为排查线索保留
-        if (!planReasoning && planResp.stdout.trim()) planReasoning = planResp.stdout.trim().slice(0, 3000);
-        return await failTask("任务规划失败", "Hermes 未输出有效节点清单");
-      }
+      if (plan.length === 0) return await failTask("任务规划失败", "Hermes 未输出有效节点清单");
       for (const p of plan) steps.push({ name: p.name, agentRole: p.agentRole, status: "pending", retryCount: 0 });
       await deps.patchTask(input.teamId, input.teamTaskId, {
         status: "in_progress",
@@ -471,7 +460,6 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
           status: "running",
           steps: steps.map(toResultStep),
           outputs: [],
-          ...(planReasoning ? { planReasoning } : {}),
         },
       });
 
@@ -518,7 +506,6 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
           }
           const res: StepRunResult = parseStepResult(execResp.stdout);
           step.outputs = res.outputs ?? [];
-          if (res.reasoning) step.reasoning = res.reasoning;
           if (res.review) step.selfReview = res.review; // 执行者原始自评（仅展示）
           const execVerdict: "pass" | "rework" = res.review?.verdict ?? (step.outputs.length > 0 ? "pass" : "rework");
           const execReason = res.review?.reason;
@@ -613,7 +600,6 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
         outputs: finalOutputs,
         error: null,
         durationMs: deps.now() - start,
-        ...(planReasoning ? { planReasoning } : {}),
       };
       await deps.patchTask(input.teamId, input.teamTaskId, {
         status: "completed",
@@ -644,7 +630,6 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
       ...(s.agentRole ? { agentRole: s.agentRole } : {}),
       ...(s.assigneeMemberId ? { assigneeMemberId: s.assigneeMemberId } : {}),
       ...(s.assigneeName ? { assigneeName: s.assigneeName } : {}),
-      ...(s.reasoning ? { reasoning: s.reasoning } : {}),
       ...(s.outputs && s.outputs.length > 0 ? { outputs: s.outputs } : {}),
       ...(s.review ? { review: s.review } : {}),
       ...(s.selfReview ? { selfReview: s.selfReview } : {}),
@@ -657,7 +642,7 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
   function sync() {
     return deps.patchTask(input.teamId, input.teamTaskId, {
       status: "in_progress",
-      result: { executionRef: input.executionRef, status: "running", steps: steps.map(toResultStep), outputs: finalOutputs, ...(planReasoning ? { planReasoning } : {}) },
+      result: { executionRef: input.executionRef, status: "running", steps: steps.map(toResultStep), outputs: finalOutputs },
     });
   }
 

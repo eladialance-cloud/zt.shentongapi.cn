@@ -19,8 +19,6 @@ export interface HermesStep {
   selfReview?: { verdict: "pass" | "rework"; reason?: string };
   retryCount?: number;
   lastFeedback?: string;
-  /** 节点执行时 Hermes 的思考过程（JSON 前文本） */
-  reasoning?: string;
   /** 逐步执行原始状态（pending/running/pending_review/done/rejected），顶层 status 为其收敛值 */
   rawStatus?: string;
 }
@@ -32,8 +30,6 @@ export interface OrchestrateResult {
   outputs: HermesOutput[];
   error: string | null;
   durationMs: number;
-  /** 规划阶段 Hermes 的思考过程（JSON 前文本） */
-  planReasoning?: string;
 }
 
 function normalizeOutput(raw: unknown): HermesOutput | null {
@@ -57,13 +53,11 @@ function normalizeStep(raw: unknown): HermesStep | null {
     : undefined;
   const assigneeMemberId = typeof r.assigneeMemberId === "number" ? r.assigneeMemberId : undefined;
   const assigneeName = typeof r.assigneeName === "string" ? r.assigneeName : undefined;
-  const reasoning = typeof r.reasoning === "string" && r.reasoning.trim() ? r.reasoning : undefined;
   return {
     name,
     status,
     ...(assigneeMemberId !== undefined ? { assigneeMemberId } : {}),
     ...(assigneeName ? { assigneeName } : {}),
-    ...(reasoning ? { reasoning } : {}),
     ...(outputs && outputs.length > 0 ? { outputs } : {}),
   };
 }
@@ -137,18 +131,6 @@ export function parseLastJson(text: string): { text: string; start: number } | n
   return null;
 }
 
-/** 提取 JSON 之前的思考文本（去空行、截断）；无 JSON 返回空串 */
-export function extractReasoning(text: string, maxLen = 3000): string {
-  const t = (text || "").trim();
-  if (!t) return "";
-  const found = parseLastJson(t);
-  const pre = found && found.start > 0 ? t.slice(0, found.start) : "";
-  // 去掉思考文本末尾的代码围栏起始符（fenced JSON 场景）
-  const preCleaned = pre.replace(/```(?:json)?\s*$/i, "");
-  const lines = preCleaned.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
-  const out = lines.join("\n");
-  return out.length > maxLen ? out.slice(0, maxLen) : out;
-}
 
 export function parseHermesResult(stdout: string, durationMs: number): OrchestrateResult {
   const text = (stdout || "").trim();
@@ -167,7 +149,6 @@ export function parseHermesResult(stdout: string, durationMs: number): Orchestra
     if (!data || typeof data !== "object") return fallback;
     const d = data as Record<string, unknown>;
     const summary = typeof d.summary === "string" ? d.summary : fallback.summary;
-    const planReasoning = extractReasoning(text, 3000);
     return {
       status: d.status === "failed" ? "failed" : "completed",
       summary,
@@ -175,7 +156,6 @@ export function parseHermesResult(stdout: string, durationMs: number): Orchestra
       outputs: Array.isArray(d.outputs) ? d.outputs.map(normalizeOutput).filter((o): o is HermesOutput => o !== null) : [],
       error: typeof d.error === "string" ? d.error : null,
       durationMs,
-      ...(planReasoning ? { planReasoning } : {}),
     };
   } catch {
     return fallback;
@@ -187,8 +167,6 @@ export interface StepRunResult {
   outputs?: HermesOutput[];
   review?: { verdict: "pass" | "rework"; reason?: string };
   error?: string;
-  /** 单步思考过程（JSON 前文本） */
-  reasoning?: string;
 }
 
 /**
@@ -223,12 +201,10 @@ export function parseStepResult(stdout: string): StepRunResult {
     const rawReview = data.review as Record<string, unknown> | undefined;
     const verdict = rawReview?.verdict === "rework" ? "rework" : "pass";
     const reason = typeof rawReview?.reason === "string" ? rawReview.reason : undefined;
-    const reasoning = extractReasoning(text, 1500);
     return {
       summary,
       ...(outputs.length > 0 ? { outputs } : {}),
       review: { verdict, ...(reason ? { reason } : {}) },
-      ...(reasoning ? { reasoning } : {}),
     };
   } catch {
     return fallback;

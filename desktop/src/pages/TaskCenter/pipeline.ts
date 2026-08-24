@@ -47,8 +47,7 @@ export interface PipelineStep {
   retryCount?: number;
   /** 最近一次打回原因/反馈 */
   lastFeedback?: string;
-  /** 节点执行时 Hermes 的思考过程（JSON 前文本，团队驱动执行时回写） */
-  reasoning?: string;
+
 }
 
 /** 老板动作：select-topic=去选择 approve=通过 reject=打回 */
@@ -206,8 +205,7 @@ export function parseTeamSteps(result: unknown): PipelineStep[] {
     if (typeof r.retryCount === "number" && r.retryCount > 0) step.retryCount = r.retryCount;
     const lastFeedback = typeof r.lastFeedback === "string" ? r.lastFeedback : undefined;
     if (lastFeedback) step.lastFeedback = lastFeedback;
-    const reasoning = typeof r.reasoning === "string" && r.reasoning.trim() ? r.reasoning : undefined;
-    if (reasoning) step.reasoning = reasoning;
+
     out.push(step);
   });
   return out;

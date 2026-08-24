@@ -3,7 +3,7 @@
 // 产出内容（文字/图片/视频）内联预览；通过/打回走逐步编排 IPC；自动确认（自评）开关可中途切换
 // 我的任务源：保留旧版 outputs 拆解 JSON 流水线与老板动作（选题/终审），不回归
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Button, Collapse, Empty, Input, message, Modal, Radio, Select, Space, Spin, Switch, Tooltip } from "antd";
+import { Alert, Button, Empty, Input, message, Modal, Radio, Select, Space, Spin, Switch, Tooltip } from "antd";
 import {
   ApartmentOutlined,
   CheckCircleFilled,
@@ -199,13 +199,7 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
   const candidates = useMemo(() => topicCandidates(outputs), [outputs]);
   /** 当前执行方式：auto/agent 任务无 teamId，按 executeMode 展示 */
   const executeMode = task.executeMode ?? (teamId != null ? "team" : "auto");
-  /** 规划阶段思考过程（Hermes 拆解任务时 JSON 前的文本） */
-  const planReasoning = useMemo(() => {
-    if (!isTeam) return undefined;
-    const result = task.result as Record<string, unknown> | null | undefined;
-    const v = result?.planReasoning;
-    return typeof v === "string" && v.trim() ? v : undefined;
-  }, [isTeam, task.result]);
+
   /** 失败原因（result.error）：执行失败时展示给用户便于排查 */
   const failError = useMemo(() => {
     if (!isTeam || task.status !== "failed") return undefined
@@ -502,21 +496,6 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
           </div>
         </div>
 
-        {/* ===== 规划思考过程（Hermes 拆解任务时的思路） ===== */}
-        {planReasoning && (
-          <Collapse
-            ghost
-            size="small"
-            style={{ margin: "4px 0" }}
-            items={[
-              {
-                key: "plan",
-                label: "Hermes 规划思路（思考过程）",
-                children: <pre className={styles.reasonBlockPre}>{planReasoning}</pre>,
-              },
-            ]}
-          />
-        )}
 
         {failError && (
           <Alert
@@ -582,13 +561,6 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
                     {/* 产出预览 */}
                     <StepOutputs outputs={step.outputs} />
 
-                    {/* 节点思考过程（Hermes 执行该节点时的思路） */}
-                    {step.reasoning && (
-                      <details className={styles.reasonBlock}>
-                        <summary>节点思考过程（Hermes 执行该节点时的思路）</summary>
-                        <pre>{step.reasoning}</pre>
-                      </details>
-                    )}
 
                     {/* 执行者自评（原始，仅展示） */}
                     {step.selfReview && (step.status === "done" || step.status === "rejected") && (
