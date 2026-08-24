@@ -206,6 +206,13 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
     const v = result?.planReasoning;
     return typeof v === "string" && v.trim() ? v : undefined;
   }, [isTeam, task.result]);
+  /** 失败原因（result.error）：执行失败时展示给用户便于排查 */
+  const failError = useMemo(() => {
+    if (!isTeam || task.status !== "failed") return undefined
+    const result = task.result as Record<string, unknown> | null | undefined
+    const v = result?.error
+    return typeof v === "string" && v.trim() ? v : undefined
+  }, [isTeam, task.status, task.result]);
   /** 僵尸运行态：任务标 running 但无任何团队节点（App 中断/规划失败残留），允许重新开始 */
   const brokenRunning = isTeam && task.status === "running" && parseTeamSteps(task.result).length === 0;
 
@@ -434,7 +441,7 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
               <span className={styles[statusCls]}>{statusLabel}</span>
             </div>
             <div className={styles.taskMetaRow}>
-              <span>{task.source === "team" ? "团队任务" : task.source === "task" ? "我的任务" : "Hermes 调用"}</span>
+              <span>{task.source === "team" ? (task.executeMode === "auto" ? "Hermes 自动匹配任务" : task.executeMode === "agent" ? "指定 Agent 任务" : "团队任务") : task.source === "task" ? "我的任务" : "Hermes 调用"}</span>
               {isTeam && (
                 <span className={styles[MODE_CLS[executeMode] || "modeBadge"]}>
                   {MODE_LABEL[executeMode] ?? "自动匹配"}
@@ -511,6 +518,15 @@ export default function PipelineView({ task, teamId, onUpdated }: PipelineViewPr
           />
         )}
 
+        {failError && (
+          <Alert
+            type="error"
+            showIcon
+            message="执行失败原因"
+            description={failError}
+            style={{ margin: "12px 0" }}
+          />
+        )}
         {/* ===== 步骤轨道 ===== */}
         {steps.length === 0 ? (
           brokenRunning ? (

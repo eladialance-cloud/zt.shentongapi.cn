@@ -1,6 +1,6 @@
 /** Hermes 编排桥：team_task 状态机 + 团队指派（成员人设注入，无团队降级子代理）+ CLI 调用 + 结果回写（主进程） */
 import { spawn } from "node:child_process";
-import { extractReasoning, parseHermesResult, parseStepResult, type HermesOutput, type HermesStep, type OrchestrateResult, type StepRunResult } from "./hermes-result";
+import { extractReasoning, parseHermesResult, parseLastJson, parseStepResult, type HermesOutput, type HermesStep, type OrchestrateResult, type StepRunResult } from "./hermes-result";
 
 export type TeamTaskStatus = "pending" | "in_progress" | "completed" | "failed";
 
@@ -221,6 +221,7 @@ export function buildPlanPrompt(
   parts.push(
     "请把上述任务按" + (wf ? "该协作流程" : "业务依赖") + "拆解为 " + countHint + "（每个节点由一个执行者完成，节点之间按依赖排序）。",
     "先简要说明你的拆解思路（这部分会展示给用户看），最后一行严格输出 JSON：{\"steps\":[{\"name\":\"节点名\",\"assigneeRole\":\"认领的成员职能（团队模式必填，无团队可不填）\"}]}",
+    "JSON 必须是完整独立的单行对象，不要用代码围栏包裹，JSON 之后不要再输出任何文字。"
   );
   return parts.join("\n\n");
 }
@@ -292,8 +293,8 @@ export function buildReviewPrompt(input: {
 /** 解析评审 stdout → verdict/reason；非法/空 → 保守打回 */
 export function parseReview(stdout: string): { verdict: "pass" | "rework"; reason?: string } {
   const text = (stdout || "").trim();
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const jsonText = fence ? fence[1].trim() : text.match(/\{[\s\S]*\}/)?.[0] ?? "";
+  const found = parseLastJson(text);
+  const jsonText = found?.text ?? "";
   try {
     const data = JSON.parse(jsonText) as Record<string, unknown>;
     const verdict = data?.verdict === "rework" ? "rework" : "pass";
@@ -304,30 +305,61 @@ export function parseReview(stdout: string): { verdict: "pass" | "rework"; reaso
   }
 }
 
-/** 解析规划 stdout → 节点清单；非法/空 → []（调用方按失败处理） */
+/** 解析规划 stdout → 节点清单；非法/空 → []（调用方按失败处理）
+ *  健壮性：接受根数组 / steps|nodes|tasks|plan 键 / fenced JSON / 事件流中最后一个 JSON；
+ *  无 JSON 时按有序/无序列表兜底（CLI 输出非 JSON 也能拆出节点）。 */
 export function parsePlan(stdout: string): Array<{ name: string; agentRole?: string; assigneeRole?: string }> {
   const text = (stdout || "").trim();
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const jsonText = fence ? fence[1].trim() : text.match(/\{[\s\S]*\}/)?.[0] ?? "";
-  try {
-    const data = JSON.parse(jsonText) as { steps?: unknown };
-    if (!data || !Array.isArray(data.steps)) return [];
-    const out: Array<{ name: string; agentRole?: string; assigneeRole?: string }> = [];
-    for (const raw of data.steps) {
-      if (!raw || typeof raw !== "object") continue;
-      const r = raw as Record<string, unknown>;
-      const name = typeof r.name === "string" ? r.name.trim() : "";
-      if (!name) continue;
-      out.push({
-        name,
-        ...(typeof r.agentRole === "string" && r.agentRole.trim() ? { agentRole: r.agentRole.trim() } : {}),
-        ...(typeof r.assigneeRole === "string" && r.assigneeRole.trim() ? { assigneeRole: r.assigneeRole.trim() } : {}),
-      });
+  if (!text) return [];
+  const found = parseLastJson(text);
+  if (found) {
+    try {
+      const data = JSON.parse(found.text) as unknown;
+      const rawSteps = Array.isArray(data)
+        ? data
+        : data && typeof data === "object"
+          ? (data as Record<string, unknown>).steps ?? (data as Record<string, unknown>).nodes ?? (data as Record<string, unknown>).tasks ?? (data as Record<string, unknown>).plan
+          : undefined;
+      if (Array.isArray(rawSteps)) {
+        const out: Array<{ name: string; agentRole?: string; assigneeRole?: string }> = [];
+        for (const raw of rawSteps) {
+          if (!raw || typeof raw !== "object") continue;
+          const r = raw as Record<string, unknown>;
+          const name = typeof r.name === "string" ? r.name.trim() : "";
+          if (!name) continue;
+          out.push({
+            name,
+            ...(typeof r.agentRole === "string" && r.agentRole.trim() ? { agentRole: r.agentRole.trim() } : {}),
+            ...(typeof r.assigneeRole === "string" && r.assigneeRole.trim() ? { assigneeRole: r.assigneeRole.trim() } : {}),
+          });
+        }
+        if (out.length > 0) return out;
+      }
+    } catch {
+      /* 落到列表兜底 */
     }
-    return out;
-  } catch {
-    return [];
   }
+  return parsePlanFromList(text);
+}
+
+/** 兜底：CLI 输出非 JSON 时，按有序/无序列表解析节点（至少 2 项才视为拆解） */
+function parsePlanFromList(text: string): Array<{ name: string }> {
+  const lines = (text || "").split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  const items: string[] = [];
+  for (const line of lines) {
+    const numbered = line.match(/^\d+[\.、\)]?\s*(.+)$/);
+    const bullet = line.match(/^[-*•·]\s+(.+)$/);
+    const stepLabel = line.match(/^(步骤|节点|任务|Step\s*)[一二三四五六七八九十\d]*[、.．:：]\s*(.+)$/i);
+    const raw = (numbered?.[1] ?? bullet?.[1] ?? stepLabel?.[2] ?? "").trim();
+    if (!raw) continue;
+    const clean = raw
+      .replace(/^(步骤|节点|任务|Step\s*)[一二三四五六七八九十\d]*[、.．:：\s]*/i, "")
+      .replace(/[。！？!?]+$/, "")
+      .trim();
+    if (clean && clean.length <= 80) items.push(clean);
+  }
+  if (items.length < 2) return [];
+  return items.map((name) => ({ name }));
 }
 
 /** 按节点认领的角色匹配执行成员；无匹配或未提供成员 → null（降级 Hermes 原生子代理） */
@@ -383,6 +415,8 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
   let finished = false;
   const steps: RunnerStep[] = [];
   const finalOutputs: HermesOutput[] = [];
+  /** 规划思考过程：所有回写（sync/完成/失败）都保留，避免被后续覆盖丢失 */
+  let planReasoning = "";
   const decisionWaiters = new Map<number, (d: { verdict: "pass" } | { verdict: "rework"; reason: string }) => void>();
   const resultPromise = run();
 
@@ -400,6 +434,7 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
     const start = deps.now();
     const fail = (summary: string, error: string): OrchestrateResult => ({
       status: "failed", summary, steps: steps.map(toResultStep), outputs: finalOutputs, error, durationMs: deps.now() - start,
+      ...(planReasoning ? { planReasoning } : {}),
     });
     /** 失败统一出口：先 PATCH failed（含 steps 明细），再返回失败结果 */
     const failTask = async (summary: string, error: string): Promise<OrchestrateResult> => {
@@ -419,10 +454,15 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
         buildPlanPrompt(input.task, input.teamMembers ?? null, input.modelDefaults ?? null, input.workflow ?? null),
         input.modelDefaults?.chat ? { model: input.modelDefaults.chat } : undefined,
       );
+      // 无论规划成败都保留思考文本：失败时用户也能看到 Hermes 的思路，便于排查
+      planReasoning = extractReasoning(planResp.stdout, 3000);
       if (planResp.error) return await failTask("任务规划失败", planResp.error);
       const plan = parsePlan(planResp.stdout);
-      if (plan.length === 0) return await failTask("任务规划失败", "Hermes 未输出有效节点清单");
-      const planReasoning = extractReasoning(planResp.stdout, 3000);
+      if (plan.length === 0) {
+        // 规划失败且无任何可提取的思考文本时，把 CLI 原始输出作为排查线索保留
+        if (!planReasoning && planResp.stdout.trim()) planReasoning = planResp.stdout.trim().slice(0, 3000);
+        return await failTask("任务规划失败", "Hermes 未输出有效节点清单");
+      }
       for (const p of plan) steps.push({ name: p.name, agentRole: p.agentRole, status: "pending", retryCount: 0 });
       await deps.patchTask(input.teamId, input.teamTaskId, {
         status: "in_progress",
@@ -573,6 +613,7 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
         outputs: finalOutputs,
         error: null,
         durationMs: deps.now() - start,
+        ...(planReasoning ? { planReasoning } : {}),
       };
       await deps.patchTask(input.teamId, input.teamTaskId, {
         status: "completed",
@@ -616,7 +657,7 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
   function sync() {
     return deps.patchTask(input.teamId, input.teamTaskId, {
       status: "in_progress",
-      result: { executionRef: input.executionRef, status: "running", steps: steps.map(toResultStep), outputs: finalOutputs },
+      result: { executionRef: input.executionRef, status: "running", steps: steps.map(toResultStep), outputs: finalOutputs, ...(planReasoning ? { planReasoning } : {}) },
     });
   }
 

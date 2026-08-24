@@ -69,11 +69,71 @@ function normalizeStep(raw: unknown): HermesStep | null {
 }
 
 function extractJson(text: string): string | null {
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fence) return fence[1].trim();
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start >= 0 && end > start) return text.slice(start, end + 1);
+  return parseLastJson(text)?.text ?? null;
+}
+
+/** 扫描文本中的 JSON 候选块：先取所有代码围栏内容，再按花括号配对扫描全部 {…} 片段（保持原文顺序） */
+function scanJsonCandidates(text: string): string[] {
+  const out: string[] = [];
+  const t = (text || "");
+  const fenceRe = /```(?:json)?\s*([\s\S]*?)```/g;
+  let fm: RegExpExecArray | null;
+  while ((fm = fenceRe.exec(t)) !== null) out.push(fm[1].trim());
+  let i = 0;
+  while (i < t.length) {
+    const ch0 = t[i];
+    if (ch0 !== "{" && ch0 !== "[") {
+      i++;
+      continue;
+    }
+    const open = ch0;
+    const close = ch0 === "{" ? "}" : "]";
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    let j = i;
+    for (; j < t.length; j++) {
+      const ch = t[j];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === "\\") esc = true;
+        else if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') {
+        inStr = true;
+        continue;
+      }
+      if (ch === open) {
+        depth++;
+        continue;
+      }
+      if (ch === close) {
+        depth--;
+        if (depth === 0) {
+          out.push(t.slice(i, j + 1));
+          i = j + 1;
+          break;
+        }
+      }
+    }
+    i++;
+  }
+  return out;
+}
+
+/** 取最后一个可解析的 JSON 对象：CLI 输出可能含日志/工具调用等事件流，最终答案通常在末尾 */
+export function parseLastJson(text: string): { text: string; start: number } | null {
+  const candidates = scanJsonCandidates(text || "");
+  for (let k = candidates.length - 1; k >= 0; k--) {
+    const c = candidates[k];
+    try {
+      JSON.parse(c);
+    } catch {
+      continue;
+    }
+    return { text: c, start: (text || "").indexOf(c) };
+  }
   return null;
 }
 
@@ -81,11 +141,11 @@ function extractJson(text: string): string | null {
 export function extractReasoning(text: string, maxLen = 3000): string {
   const t = (text || "").trim();
   if (!t) return "";
-  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const jsonText = fence ? fence[1] : (t.match(/\{[\s\S]*\}/)?.[0] ?? "");
-  const idx = jsonText ? t.indexOf(jsonText) : -1;
-  const pre = idx > 0 ? t.slice(0, idx) : "";
-  const lines = pre.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  const found = parseLastJson(t);
+  const pre = found && found.start > 0 ? t.slice(0, found.start) : "";
+  // 去掉思考文本末尾的代码围栏起始符（fenced JSON 场景）
+  const preCleaned = pre.replace(/```(?:json)?\s*$/i, "");
+  const lines = preCleaned.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
   const out = lines.join("\n");
   return out.length > maxLen ? out.slice(0, maxLen) : out;
 }
@@ -139,15 +199,27 @@ export interface StepRunResult {
 export function parseStepResult(stdout: string): StepRunResult {
   const text = (stdout || "").trim();
   const fallback: StepRunResult = { summary: text || "(Hermes 无输出)" };
-  const jsonText = extractJson(text);
-  if (!jsonText) return fallback;
+  const found = parseLastJson(text);
+  if (!found) {
+    // 非 JSON：把全文按文本产出收录（避免“无产出”误判重做；Hermes 独立评审仍会把关质量）
+    if (!text) return fallback;
+    return {
+      summary: (text.split("\n")[0] ?? "").trim().slice(0, 200) || fallback.summary,
+      outputs: [{ type: "text", content: text }],
+      review: { verdict: "pass", reason: "输出非 JSON，按文本产出收录（由 Hermes 评审把关）" },
+    };
+  }
   try {
-    const data = JSON.parse(jsonText) as Record<string, unknown>;
+    const data = JSON.parse(found.text) as Record<string, unknown>;
     if (!data || typeof data !== "object") return fallback;
-    const summary = typeof data.summary === "string" ? data.summary : fallback.summary;
-    const outputs = Array.isArray(data.outputs)
+    const summary = typeof data.summary === "string" && data.summary.trim() ? data.summary.trim() : fallback.summary;
+    let outputs = Array.isArray(data.outputs)
       ? data.outputs.map(normalizeOutput).filter((o): o is HermesOutput => o !== null)
       : [];
+    // JSON 只有说明没有产出 → 以 summary 作为文本产出，避免“空产出”被误判重做
+    if (outputs.length === 0 && summary && summary !== fallback.summary) {
+      outputs = [{ type: "text", content: summary }];
+    }
     const rawReview = data.review as Record<string, unknown> | undefined;
     const verdict = rawReview?.verdict === "rework" ? "rework" : "pass";
     const reason = typeof rawReview?.reason === "string" ? rawReview.reason : undefined;

@@ -76,3 +76,36 @@ describe("parseHermesResult planReasoning", () => {
     expect(r.planReasoning).toContain("分 3 步");
   });
 });
+
+describe("parseStepResult 健壮性（CLI 输出不稳定）", () => {
+  it("多 JSON 事件流 → 取最后一个可解析（最终答案）", () => {
+    const r = parseStepResult('{"type":"log","message":"开始执行"}\n中间说明\n{"summary":"完成","outputs":[{"type":"text","content":"x"}]}');
+    expect(r.summary).toBe("完成");
+    expect(r.outputs?.[0].content).toBe("x");
+  });
+
+  it("非 JSON 纯文本 → 全文作为文本产出收录（verdict pass，交由 Hermes 评审把关）", () => {
+    const r = parseStepResult("调研完成：目标人群是 25-40 岁，主要痛点是时间碎片化。");
+    expect(r.summary).toContain("调研完成");
+    expect(r.outputs?.[0]).toEqual({ type: "text", content: "调研完成：目标人群是 25-40 岁，主要痛点是时间碎片化。" });
+    expect(r.review?.verdict).toBe("pass");
+  });
+
+  it("JSON 只有 summary 无 outputs → 以 summary 作为文本产出", () => {
+    const r = parseStepResult('{"summary":"完成","review":{"verdict":"pass"}}');
+    expect(r.outputs?.[0]).toEqual({ type: "text", content: "完成" });
+    expect(r.review?.verdict).toBe("pass");
+  });
+});
+
+describe("extractReasoning 多 JSON / fenced", () => {
+  it("多个 JSON 块时取最后一个 JSON 之前的文本", () => {
+    const r = extractReasoning('{"log":"a"}\n思考过程\n{"steps":[]}', 500);
+    expect(r).toContain("思考过程");
+  });
+  it("fenced JSON 不把围栏起始符当思考文本", () => {
+    const tick = String.fromCharCode(96);
+    const r = extractReasoning(tick.repeat(3) + "json\n{\"steps\":[]}\n" + tick.repeat(3), 500);
+    expect(r).toBe("");
+  });
+});

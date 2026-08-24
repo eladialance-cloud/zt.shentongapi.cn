@@ -150,6 +150,22 @@ describe("parsePlan", () => {
     expect(parsePlan("")).toEqual([]);
     expect(parsePlan('{"foo":1}')).toEqual([]);
   });
+  it("解析根数组 JSON", () => {
+    expect(parsePlan('[{"name":"a"},{"name":"b"}]')).toEqual([{ name: "a" }, { name: "b" }]);
+  });
+  it("解析 nodes/tasks/plan 键", () => {
+    expect(parsePlan('{"nodes":[{"name":"a"}]}')).toEqual([{ name: "a" }]);
+    expect(parsePlan('{"plan":[{"name":"a"}]}')).toEqual([{ name: "a" }]);
+  });
+  it("事件流输出（日志+最终计划）取最后一个可解析 JSON", () => {
+    expect(parsePlan('{"type":"thinking","content":"..."}\n{"steps":[{"name":"a"}]}')).toEqual([{ name: "a" }]);
+  });
+  it("非 JSON 文本列表兜底（有序/无序/步骤标签）", () => {
+    expect(parsePlan("1. 调研\n2. 成稿\n3. 发布")).toEqual([{ name: "调研" }, { name: "成稿" }, { name: "发布" }]);
+    expect(parsePlan("- 调研\n- 成稿")).toEqual([{ name: "调研" }, { name: "成稿" }]);
+    expect(parsePlan("步骤一：调研\n步骤二：成稿")).toEqual([{ name: "调研" }, { name: "成稿" }]);
+  });
+
 });
 
 describe("buildPlanPrompt / buildStepPrompt", () => {
@@ -427,5 +443,49 @@ describe("createStepRunner（Hermes 独立评审）", () => {
     const result = await waitP;
     expect(result.status).toBe("completed");
     expect(result.steps[0].review?.by).toBe("user");
+  });
+});
+
+describe("createStepRunner（planReasoning 保留 + 规划失败兜底）", () => {
+  it("planReasoning 在 sync/最终回写中保留（不被覆盖丢失）", async () => {
+    const h = makeDeps();
+    h.setAuto(true);
+    h.setPlan("我先拆解：需要两步。\n" + JSON.stringify({ steps: [{ name: "调研" }, { name: "成稿" }] }));
+    h.nextStepResult(stepPass("调研完成", "结论A"));
+    h.nextStepResult(stepPass("成稿完成", "正文B"));
+    const handle = createStepRunner(makeInput(), h.deps);
+    const result = await handle.wait();
+    expect(result.status).toBe("completed");
+    expect(result.planReasoning).toContain("我先拆解");
+    const kept = h.patches.filter((p) => {
+      const r = p.payload.result as { planReasoning?: string };
+      return typeof r?.planReasoning === "string" && r.planReasoning.includes("我先拆解");
+    });
+    // 规划回写 + 每节点 running sync + 最终 completed 都保留
+    expect(kept.length).toBeGreaterThanOrEqual(4);
+    const finalPatch = h.patches[h.patches.length - 1];
+    expect((finalPatch.payload.result as { planReasoning?: string }).planReasoning).toContain("我先拆解");
+  });
+
+  it("规划失败（非 JSON）→ failed 仍保留原始输出作为排查线索", async () => {
+    const h = makeDeps();
+    h.setAuto(true);
+    h.setPlan("我先思考：这个任务要分几步做。\n但是我不会输出JSON");
+    const handle = createStepRunner(makeInput(), h.deps);
+    const result = await handle.wait();
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("未输出有效节点清单");
+    expect(result.planReasoning).toContain("我先思考");
+  });
+
+  it("单步输出非 JSON 全文 → 按文本产出收录通过（不误判重做）", async () => {
+    const h = makeDeps();
+    h.setAuto(true);
+    h.setPlan(JSON.stringify({ steps: [{ name: "调研" }] }));
+    h.nextStepResult("调研完成：目标人群是 25-40 岁，主要痛点是时间碎片化。");
+    const handle = createStepRunner(makeInput(), h.deps);
+    const result = await handle.wait();
+    expect(result.status).toBe("completed");
+    expect(result.steps[0].outputs?.[0].content).toContain("目标人群");
   });
 });

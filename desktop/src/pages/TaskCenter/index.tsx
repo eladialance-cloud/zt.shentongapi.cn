@@ -27,6 +27,8 @@ import {
   groupTasksByBatch,
   sortByCreatedAtDesc,
   SOURCE_TAG_META,
+  sourceColorOf,
+  sourceLabelOf,
   STATUS_TAG_META,
 } from "./unified";
 import type { TaskGroup, UnifiedTask, UnifiedTaskSource, UnifiedTaskStatus } from "./unified";
@@ -481,7 +483,6 @@ export default function TaskCenter() {
                         <div className={styles.taskGroupTasks}>
                           {filtered.map((t) => {
                             const meta = STATUS_TAG_META[t.status];
-                            const srcMeta = SOURCE_TAG_META[t.source];
                             const isSelected = selected?.key === t.key;
                             const isRunning = t.status === "running";
                             const hasReview =
@@ -489,8 +490,6 @@ export default function TaskCenter() {
                               (t.result as { steps?: Array<Record<string, unknown>> } | undefined)?.steps?.some(
                                 (s) => s.rawStatus === "pending_review"
                               );
-                            const srcColor =
-                              srcMeta.color === "blue" ? "var(--color-brand)" : srcMeta.color === "purple" ? "var(--color-purple)" : "var(--color-accent)";
                             return (
                               <div
                                 key={t.key}
@@ -512,7 +511,7 @@ export default function TaskCenter() {
                                 </div>
                                 <div className={styles.taskCardMeta}>
                                   <span className={styles[PILL_CLS[t.status]]}>{meta.label}</span>
-                                  <span className={styles.srcTag} style={{ color: srcColor }}>{srcMeta.label}</span>
+                                  <span className={styles.srcTag} style={{ color: sourceColorOf(t) }}>{sourceLabelOf(t)}</span>
                                   {t.assignee && (
                                     <span className={styles.cardAssignee}>
                                       <UserOutlined /> {t.assignee}

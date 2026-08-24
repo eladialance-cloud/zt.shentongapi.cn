@@ -6,6 +6,8 @@ import {
   sortByCreatedAtDesc,
   mergeUnifiedWithFallback,
   SOURCE_TAG_META,
+  sourceColorOf,
+  sourceLabelOf,
   STATUS_COLORS,
   STATUS_TAG_META,
   type UnifiedTask,
@@ -232,5 +234,28 @@ describe("mergeUnifiedWithFallback 补漏合并", () => {
     const res = mergeUnifiedWithFallback(mapped, map);
     expect(res.map((x) => x.key)).toEqual(["team:3", "team:1"]);
     expect(mapped.map((x) => x.key)).toEqual(["team:1"]);
+  });
+});
+
+
+describe("sourceLabelOf / sourceColorOf 来源展示（auto/agent 不误显示团队）", () => {
+  it("team 模式显示团队", () => {
+    expect(sourceLabelOf({ source: "team" })).toBe("团队");
+    expect(sourceColorOf({ source: "team" })).toBe("var(--color-brand)");
+  });
+
+  it("auto 模式显示自动匹配（紫色）", () => {
+    expect(sourceLabelOf({ source: "team", executeMode: "auto" })).toBe("自动匹配");
+    expect(sourceColorOf({ source: "team", executeMode: "auto" })).toBe("var(--color-purple)");
+  });
+
+  it("agent 模式显示 Agent（金色）", () => {
+    expect(sourceLabelOf({ source: "team", executeMode: "agent" })).toBe("Agent");
+    expect(sourceColorOf({ source: "team", executeMode: "agent" })).toBe("var(--color-accent)");
+  });
+
+  it("task/hermes 来源不受 executeMode 影响", () => {
+    expect(sourceLabelOf({ source: "task", executeMode: "auto" })).toBe("任务");
+    expect(sourceLabelOf({ source: "hermes", executeMode: "auto" })).toBe("Hermes");
   });
 });

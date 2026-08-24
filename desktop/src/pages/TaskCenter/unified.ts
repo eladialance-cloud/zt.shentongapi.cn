@@ -67,6 +67,27 @@ export const SOURCE_TAG_META: Record<UnifiedTaskSource, { label: string; color: 
   hermes: { label: "Hermes", color: "purple" },
 }
 
+/** 任务来源展示文案：auto/agent 无团队归属任务按执行方式展示，避免误显示「团队」 */
+export function sourceLabelOf(task: { source: UnifiedTaskSource; executeMode?: "team" | "auto" | "agent" }): string {
+  if (task.source === "team") {
+    if (task.executeMode === "auto") return "自动匹配"
+    if (task.executeMode === "agent") return "Agent"
+    return "团队"
+  }
+  return SOURCE_TAG_META[task.source].label
+}
+
+/** 任务来源展示颜色：auto=紫（Hermes）agent=金（独立Agent）team=蓝 */
+export function sourceColorOf(task: { source: UnifiedTaskSource; executeMode?: "team" | "auto" | "agent" }): string {
+  if (task.source === "team") {
+    if (task.executeMode === "auto") return "var(--color-purple)"
+    if (task.executeMode === "agent") return "var(--color-accent)"
+    return "var(--color-brand)"
+  }
+  const meta = SOURCE_TAG_META[task.source]
+  return meta.color === "purple" ? "var(--color-purple)" : meta.color === "gold" ? "var(--color-accent)" : "var(--color-brand)"
+}
+
 /** 状态主题色（TaskFlow 单线模式 themeColor 使用） */
 export const STATUS_COLORS: Record<UnifiedTaskStatus, string> = {
   todo: "var(--color-text-tertiary)",
