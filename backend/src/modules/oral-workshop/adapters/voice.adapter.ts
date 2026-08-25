@@ -1,27 +1,41 @@
 /**
- * 火山方舟声音克隆 + TTS 适配器（M3）
+ * 火山语音技术 声音复刻 + TTS 适配器（对齐官方 API，2026-08）
  *
- * 参考轻语 voiceClone 参数映射（speaker_audio_url / emotion_weight / emotion_text / mode=slow）：
- *   1. 声音复刻：POST /audio/voice/clone（multipart：参考音频 + audio_format/audio_text）→ speaker_id
- *   2. 语音合成：POST /tts（text + speaker_id + speed_ratio=0.9[slow]）→ mp3
- * 端点/模型均通过环境变量或注入配置覆盖（管理后台联调时确认最终路径）。
+ * 官方接口：
+ *   1. 声音复刻：POST https://openspeech.bytedance.com/api/v3/tts/voice_clone
+ *      请求头 X-Api-Key + X-Api-Request-Id；body: { speaker_id, custom_speaker_id?, audio:{data(base64),format,text,language}, extra_params }
+ *      → 响应 { code, message, speaker_id, status(1=训练中/2=成功/4=可用), demo_audio }
+ *   2. TTS 合成：POST https://openspeech.bytedance.com/api/v3/tts/unidirectional（HTTP Chunked 流式）
+ *      请求头 X-Api-Key + X-Api-Resource-Id(seed-tts-2.0/seed-icl-2.0) + X-Api-Request-Id
+ *      body: { req_params: { text, speaker, model?, audio_params, context_texts? } }
+ *      → 响应 chunked JSON 行：{ code, message, data(base64 音频), sentence, usage }
  * 产物由调用方落盘 + 上传 OSS（本适配器只负责 HTTP 调用，纯逻辑可单测）。
  */
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 
 export interface VolcanoVoiceConfig {
-  /** 火山方舟端点，默认 https://ark.cn-beijing.volces.com/api/v3 */
+  /** TTS 合成端点（HTTP unidirectional，默认官方地址） */
   endpoint?: string;
+  /** 声音复刻端点（默认官方地址） */
+  cloneEndpoint?: string;
+  /** 语音技术 X-Api-Key */
   apiKey: string;
-  /** TTS 模型 ID（管理后台配置） */
-  model: string;
-  /** 模型版本：V1=标准版 / V2=高清增强版（云端服务端算法版本，可留空） */
-  modelVersion?: 'V1' | 'V2';
-  /** 声音复刻路径（默认 /audio/voice/clone） */
-  clonePath?: string;
-  /** TTS 路径（默认 /tts） */
-  ttsPath?: string;
+  /** X-Api-Resource-Id：seed-tts-2.0=豆包语音合成大模型2.0（标准音色）/ seed-icl-2.0=豆包声音复刻大模型2.0 */
+  resourceId?: string;
+  /** 仅复刻音色时需指定的 model（如 seed-tts-2.0-standard / seed-icl-2.0-standard，默认不传用服务端默认） */
+  model?: string;
+  /** 音频格式：mp3/pcm/ogg_opus/wav（默认 mp3） */
+  format?: string;
+  /** 采样率 Hz（默认 24000） */
+  sampleRate?: number;
+  /** 语速 -50..100（0=正常；100=2.0倍速） */
+  speechRate?: number;
+  /** 音量 -50..100（0=正常；100=2.0倍音量） */
+  loudnessRate?: number;
+  /** 启用字幕时间戳（默认 false） */
+  enableSubtitle?: boolean;
   /** 请求超时（默认 60s） */
   timeoutMs?: number;
 }
@@ -30,25 +44,27 @@ export interface VoiceCloneOptions {
   /** 参考音频（OSS URL 或本地路径） */
   refAudioUrl: string;
   /** 参考音频格式（默认 mp3） */
-  refAudioFormat?: 'mp3' | 'wav';
-  /** 参考音频对应文本（提升克隆质量，建议必填） */
+  refAudioFormat?: 'mp3' | 'wav' | 'ogg' | 'm4a' | 'aac' | 'pcm';
+  /** 参考音频对应文本（复刻质量关键，建议必填） */
   refAudioText?: string;
   /** 待合成文案 */
   text: string;
-  /** 已有克隆音色（跳过复刻，直接 TTS） */
+  /** 已有音色（speaker_id，跳过复刻直接合成） */
   speakerId?: string;
-  /** 语速倍率：slow≈0.9 / normal≈1.0 / fast≈1.1（默认 0.9） */
+  /** 自定义音色代号（复刻用；默认 st_voice_<userId>_<随机>） */
+  customSpeakerId?: string;
+  /** 语速倍率 0.5-2.0（兼容旧调用，映射 speech_rate） */
   speedRatio?: number;
-  /** 情绪强度 0-1（可选） */
-  emotionWeight?: number;
-  /** 情绪文本（可选） */
+  /** 情绪文本 → context_texts 语音指令（仅标准音色支持） */
   emotionText?: string;
-  /** 用户标识（写 request 元数据） */
+  /** 用户标识（用于生成自定义音色代号） */
   userId?: number;
 }
 
 export interface VoiceCloneResult {
   speakerId?: string;
+  /** 训练状态：1=训练中 2=成功 4=可用（未复刻时 undefined） */
+  cloneStatus?: number;
   /** TTS 合成音频 buffer（调用方落盘/上传 OSS） */
   audioBuffer: Buffer;
   mimeType: string;
@@ -62,19 +78,32 @@ export class VoiceCloneError extends Error {
   }
 }
 
-/** 从环境变量构建默认火山配置（管理后台配置落地后可注入覆盖） */
+/** 默认官方端点 */
+export const DEFAULT_VOICE_TTS_ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional';
+export const DEFAULT_VOICE_CLONE_ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/voice_clone';
+
+/** 从环境变量构建默认配置（管理后台配置落地后可注入覆盖） */
 export function defaultVoiceConfig(): VolcanoVoiceConfig {
   const apiKey = process.env.VOLCANO_ARK_API_KEY || '';
-  if (!apiKey) throw new VoiceCloneError('未配置 VOLCANO_ARK_API_KEY（请在管理后台配置火山方舟密钥）');
+  if (!apiKey) throw new VoiceCloneError('未配置火山语音技术 API Key（请在管理后台配置）');
   return {
-    endpoint: process.env.VOLCANO_ARK_ENDPOINT || 'https://ark.cn-beijing.volces.com/api/v3',
+    endpoint: process.env.VOLCANO_VOICE_TTS_ENDPOINT || DEFAULT_VOICE_TTS_ENDPOINT,
+    cloneEndpoint: process.env.VOLCANO_VOICE_CLONE_ENDPOINT || DEFAULT_VOICE_CLONE_ENDPOINT,
     apiKey,
+    resourceId: process.env.VOLCANO_VOICE_RESOURCE_ID || 'seed-icl-2.0',
     model: process.env.VOLCANO_VOICE_MODEL || '',
-    modelVersion: (process.env.VOLCANO_VOICE_MODEL_VERSION as 'V1' | 'V2') || undefined,
-    clonePath: process.env.VOLCANO_VOICE_CLONE_PATH || '/audio/voice/clone',
-    ttsPath: process.env.VOLCANO_VOICE_TTS_PATH || '/tts',
+    format: process.env.VOLCANO_VOICE_FORMAT || 'mp3',
+    sampleRate: Number(process.env.VOLCANO_VOICE_SAMPLE_RATE || 24000),
+    speechRate: Number(process.env.VOLCANO_VOICE_SPEECH_RATE || 0),
+    loudnessRate: Number(process.env.VOLCANO_VOICE_LOUDNESS_RATE || 0),
+    enableSubtitle: process.env.VOLCANO_VOICE_ENABLE_SUBTITLE === 'true',
     timeoutMs: Number(process.env.VOLCANO_REQUEST_TIMEOUT_MS || 60000),
   };
+}
+
+/** 自定义音色代号默认生成（命名规范：8-256 字符、字母开头、数字/字母/-/_） */
+export function defaultCustomSpeakerId(userId?: number): string {
+  return 'st_voice_' + (userId ?? 0) + '_' + randomUUID().replace(/-/g, '').slice(0, 16);
 }
 
 @Injectable()
@@ -82,6 +111,11 @@ export class VoiceCloneAdapter {
   private readonly logger = new Logger(VoiceCloneAdapter.name);
 
   constructor(private readonly config?: VolcanoVoiceConfig) {}
+
+  private cfg(): VolcanoVoiceConfig {
+    if (this.config) return this.config;
+    return defaultVoiceConfig();
+  }
 
   /** 读取参考音频（URL 或本地路径）为 Buffer */
   async loadRefAudio(refAudioUrl: string): Promise<Buffer> {
@@ -101,102 +135,127 @@ export class VoiceCloneAdapter {
     throw new VoiceCloneError('参考音频无法访问: ' + refAudioUrl);
   }
 
-  /** 声音复刻：multipart 提交参考音频 → speaker_id */
-  async cloneSpeaker(opts: VoiceCloneOptions): Promise<string> {
-    if (opts.speakerId) return opts.speakerId;
-    const cfg = this.config || defaultVoiceConfig();
+  /** 声音复刻：JSON 提交 base64 参考音频 → speaker_id + 训练状态 */
+  async cloneSpeaker(opts: VoiceCloneOptions): Promise<{ speakerId: string; status?: number }> {
+    if (opts.speakerId) return { speakerId: opts.speakerId };
+    const cfg = this.cfg();
     const audio = await this.loadRefAudio(opts.refAudioUrl);
-    const boundary = '----ow-' + Math.random().toString(36).slice(2, 12);
-    const fields: Record<string, string> = {
-      audio_format: opts.refAudioFormat || 'mp3',
-      ...(opts.refAudioText ? { audio_text: opts.refAudioText } : {}),
-      ...(opts.userId ? { user_id: String(opts.userId) } : {}),
-    };
-    const body = this.buildMultipart(audio, 'audio', fields, boundary);
-    const resp = await fetch(this.url(cfg.endpoint!, cfg.clonePath!), {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + cfg.apiKey,
-        'Content-Type': 'multipart/form-data; boundary=' + boundary,
+    const customSpeakerId = opts.customSpeakerId || defaultCustomSpeakerId(opts.userId);
+    const body = {
+      speaker_id: 'custom_speaker_id',
+      custom_speaker_id: customSpeakerId,
+      audio: {
+        data: audio.toString('base64'),
+        format: opts.refAudioFormat || 'mp3',
+        text: opts.refAudioText || '',
+        language: 0,
       },
-      // undici 运行时接受 Buffer，TS 类型层面需收窄为 BodyInit
-      body: body as unknown as BodyInit,
-      signal: AbortSignal.timeout(cfg.timeoutMs || 60000),
-    });
-    if (!resp.ok) {
-      const txt = await resp.text().catch(() => '');
-      throw new VoiceCloneError('声音复刻失败: HTTP ' + resp.status + ' ' + txt.slice(0, 300));
-    }
-    const data = (await resp.json()) as { data?: { speaker_id?: string }; code?: number; message?: string };
-    const speakerId = data?.data?.speaker_id;
-    if (!speakerId) throw new VoiceCloneError('声音复刻未返回 speaker_id: ' + JSON.stringify(data).slice(0, 300));
-    return speakerId;
-  }
-
-  /** TTS 合成：文案 → mp3 buffer（同步返回；异步任务由数字人阶段承载） */
-  async synthesize(opts: VoiceCloneOptions): Promise<{ audio: Buffer; mimeType: string }> {
-    const cfg = this.config || defaultVoiceConfig();
-    if (!cfg.model) throw new VoiceCloneError('未配置火山 TTS 模型（VOLCANO_VOICE_MODEL）');
-    const speakerId = await this.cloneSpeaker(opts);
-    const body: Record<string, unknown> = {
-      model: cfg.model,
-      text: opts.text,
-      speaker_id: speakerId,
-      speed_ratio: opts.speedRatio ?? 0.9,
-      response_format: 'mp3',
+      extra_params: {
+        demo_text: (opts.refAudioText || '你好').slice(0, 300),
+        enable_audio_denoise: true,
+        disable_volume_normalization: false,
+      },
     };
-    if (cfg.modelVersion) body.model_version = cfg.modelVersion;
-    if (opts.emotionWeight !== undefined) body.emotion_weight = opts.emotionWeight;
-    if (opts.emotionText) body.emotion_text = opts.emotionText;
-    const resp = await fetch(this.url(cfg.endpoint!, cfg.ttsPath!), {
+    const resp = await fetch((cfg.cloneEndpoint || DEFAULT_VOICE_CLONE_ENDPOINT).replace(/\/+$/, ''), {
       method: 'POST',
       headers: {
-        Authorization: 'Bearer ' + cfg.apiKey,
         'Content-Type': 'application/json',
+        'X-Api-Key': cfg.apiKey,
+        'X-Api-Request-Id': randomUUID(),
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(cfg.timeoutMs || 60000),
     });
+    const text = await resp.text().catch(() => '');
     if (!resp.ok) {
-      const txt = await resp.text().catch(() => '');
-      throw new VoiceCloneError('TTS 合成失败: HTTP ' + resp.status + ' ' + txt.slice(0, 300));
+      throw new VoiceCloneError('声音复刻失败: HTTP ' + resp.status + ' ' + text.slice(0, 300));
     }
-    const ctype = resp.headers.get('content-type') || '';
-    if (ctype.includes('json')) {
-      const j = (await resp.json()) as { data?: { audio_base64?: string }; code?: number; message?: string };
-      if (!j?.data?.audio_base64) throw new VoiceCloneError('TTS 未返回音频: ' + JSON.stringify(j).slice(0, 300));
-      return { audio: Buffer.from(j.data.audio_base64, 'base64'), mimeType: 'audio/mpeg' };
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      throw new VoiceCloneError('声音复刻响应非 JSON: ' + text.slice(0, 300));
     }
-    return { audio: Buffer.from(await resp.arrayBuffer()), mimeType: ctype.split(';')[0] || 'audio/mpeg' };
+    const code = data.code;
+    if (code !== undefined && code !== 0 && code !== 200) {
+      throw new VoiceCloneError('声音复刻失败: ' + (String(data.message || data.error || '') || String(code)).slice(0, 300));
+    }
+    const speakerId = String(data.speaker_id || customSpeakerId);
+    const status = typeof data.status === 'number' ? data.status : undefined;
+    if (status === 1) {
+      this.logger.warn('[oral-workshop] 声音复刻训练中（status=Training），音色 ' + speakerId + ' 完成后可合成');
+    }
+    return { speakerId, status };
   }
 
-  /** 总入口：克隆（如需）→ TTS → 返回音频 buffer + speakerId */
-  async generateVoice(opts: VoiceCloneOptions): Promise<VoiceCloneResult> {
-    const speakerId = await this.cloneSpeaker(opts);
-    const { audio, mimeType } = await this.synthesize({ ...opts, speakerId });
-    return { speakerId, audioBuffer: audio, mimeType };
-  }
-
-  private url(endpoint: string, p: string): string {
-    return endpoint.replace(/\/+$/, '') + (p.startsWith('/') ? p : '/' + p);
-  }
-
-  /** 手工构造 multipart body（便于单测断言） */
-  buildMultipart(file: Buffer, fileField: string, fields: Record<string, string>, boundary: string): Buffer {
+  /** TTS 合成：HTTP Chunked 流式收集 base64 音频 → Buffer（一次性输入完整文本） */
+  async synthesize(opts: VoiceCloneOptions): Promise<{ audio: Buffer; mimeType: string; subtitle?: string[] }> {
+    const cfg = this.cfg();
+    const { speakerId } = await this.cloneSpeaker(opts);
+    const reqParams: Record<string, unknown> = {
+      text: opts.text,
+      speaker: speakerId,
+      audio_params: {
+        format: cfg.format || 'mp3',
+        sample_rate: cfg.sampleRate || 24000,
+        speech_rate: cfg.speechRate !== undefined ? cfg.speechRate : Math.round(((opts.speedRatio ?? 0.9) - 1) * 100),
+        loudness_rate: cfg.loudnessRate ?? 0,
+        enable_subtitle: cfg.enableSubtitle || false,
+      },
+    };
+    if (cfg.model) reqParams.model = cfg.model;
+    if (opts.emotionText) reqParams.context_texts = [opts.emotionText];
+    const resp = await fetch((cfg.endpoint || DEFAULT_VOICE_TTS_ENDPOINT).replace(/\/+$/, ''), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Api-Key': cfg.apiKey,
+        'X-Api-Resource-Id': cfg.resourceId || 'seed-icl-2.0',
+        'X-Api-Request-Id': randomUUID(),
+      },
+      body: JSON.stringify({ req_params: reqParams }),
+      signal: AbortSignal.timeout(cfg.timeoutMs || 60000),
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new VoiceCloneError('TTS 合成失败: HTTP ' + resp.status + ' ' + text.slice(0, 300));
+    }
+    const raw = await resp.text().catch(() => '');
+    if (!raw) throw new VoiceCloneError('TTS 合成返回空响应');
     const chunks: Buffer[] = [];
-    const CRLF = '\r\n';
-    const push = (s: string) => chunks.push(Buffer.from(s, 'utf8'));
-    for (const [k, v] of Object.entries(fields)) {
-      push('--' + boundary + CRLF);
-      push('Content-Disposition: form-data; name="' + k + '"' + CRLF + CRLF);
-      push(v + CRLF);
+    const subtitle: string[] = [];
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let item: Record<string, unknown>;
+      try {
+        item = JSON.parse(trimmed) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      const code = item.code;
+      if (code !== undefined && code !== 0 && code !== 200) {
+        throw new VoiceCloneError('TTS 合成失败: ' + (String(item.message || item.error || '') || String(code)).slice(0, 300));
+      }
+      const data = typeof item.data === 'string' ? item.data : '';
+      if (data) chunks.push(Buffer.from(data, 'base64'));
+      const sentence = item.sentence as Record<string, unknown> | undefined;
+      if (sentence && typeof sentence.text === 'string' && sentence.text.trim()) {
+        subtitle.push(sentence.text.trim());
+      }
     }
-    push('--' + boundary + CRLF);
-    push('Content-Disposition: form-data; name="' + fileField + '"; filename="ref.' + (fields.audio_format || 'mp3') + '"' + CRLF);
-    push('Content-Type: application/octet-stream' + CRLF + CRLF);
-    chunks.push(file);
-    push(CRLF);
-    push('--' + boundary + '--' + CRLF);
-    return Buffer.concat(chunks);
+    if (!chunks.length) throw new VoiceCloneError('TTS 合成未返回音频数据');
+    return {
+      audio: Buffer.concat(chunks),
+      mimeType: 'audio/' + (cfg.format === 'wav' ? 'wav' : cfg.format === 'pcm' ? 'wav' : 'mpeg'),
+      subtitle: subtitle.length ? subtitle : undefined,
+    };
+  }
+
+  /** 总入口：复刻（如需）→ TTS → 返回音频 buffer + speakerId */
+  async generateVoice(opts: VoiceCloneOptions): Promise<VoiceCloneResult> {
+    const cloned = await this.cloneSpeaker(opts);
+    const { audio, mimeType } = await this.synthesize({ ...opts, speakerId: cloned.speakerId });
+    return { speakerId: cloned.speakerId, cloneStatus: cloned.status, audioBuffer: audio, mimeType };
   }
 }

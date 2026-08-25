@@ -95,12 +95,30 @@ export interface OralWorkshopConfig {
   // ===== 火山声音克隆 / TTS（云端）=====
   /** 火山方舟统一 API Key（LLM/声音/数字人共用） */
   volcanoApiKey?: string
-  /** 声音克隆 TTS 接入端点 */
+  /** TTS 合成端点（HTTP unidirectional，默认 openspeech.bytedance.com/api/v3/tts/unidirectional） */
   voiceEndpoint?: string
-  /** TTS 模型 ID */
+  /** V1 档音色 ID（speaker，用户任务选 V1 时使用） */
+  voiceModelV1?: string
+  /** V2 档音色 ID（speaker，用户任务选 V2 时使用） */
+  voiceModelV2?: string
+  /** 旧版单一 TTS 模型 ID（兼容兜底） */
   voiceModel?: string
-  /** 声音克隆模型版本：V1=标准 / V2=高清增强 */
-  voiceModelVersion?: 'V1' | 'V2'
+  /** 语音技术 X-Api-Key（语音技术控制台获取，独立于方舟 Key） */
+  voiceApiKey?: string
+  /** X-Api-Resource-Id：seed-tts-2.0=标准音色 / seed-icl-2.0=复刻音色 */
+  voiceResourceId?: 'seed-tts-2.0' | 'seed-icl-2.0'
+  /** 声音复刻端点 */
+  voiceCloneEndpoint?: string
+  /** TTS 音频格式：mp3/pcm/ogg_opus/wav */
+  voiceFormat?: string
+  /** TTS 采样率 */
+  voiceSampleRate?: number
+  /** TTS 语速 -50..100 */
+  voiceSpeechRate?: number
+  /** TTS 音量 -50..100 */
+  voiceLoudnessRate?: number
+  /** TTS 字幕时间戳 */
+  voiceEnableSubtitle?: boolean
   /** 默认参考音频 URL（用户未选"我的声音"时兜底） */
   voiceRefAudioUrl?: string
   /** 已训练 speaker_id（优先复用） */

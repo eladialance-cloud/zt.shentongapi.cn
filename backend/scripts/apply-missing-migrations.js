@@ -25,6 +25,7 @@ const DEFAULTS = [
   '018_create_membership_tables.sql',
   '020_add_oral_workshop_bilingual.sql',
   '022_create_oral_workshop_asset_tables.sql',
+  '023_add_oral_workshop_model_version.sql',
   '019_seed_oral_workshop_config.sql',
 ];
 

@@ -72,6 +72,10 @@ export interface CreateOralWorkshopJobDto {
   persona?: string
   digitalHumanId?: number
   voiceId?: number
+  /** 配音音质档位：V1=标准 / V2=高清（留空=后台默认） */
+  voiceModelVersion?: 'V1' | 'V2'
+  /** 数字人清晰度档位：V1=标准 / V2=高清（留空=后台默认） */
+  dhModelVersion?: 'V1' | 'V2'
   templateId?: number
   /** 用户提供的成音（OSS URL 或服务器路径）：有值时 voiceClone 直接采用，不调 TTS */
   audioUrl?: string
@@ -159,6 +163,10 @@ export interface BatchCreateOralWorkshopJobsDto {
   voiceIds?: number[]
   /** 形象矩阵（不传 = 上传视频/卡片兜底） */
   digitalHumanIds?: number[]
+  /** 批量统一配音音质档位：V1=标准 / V2=高清（留空=后台默认） */
+  voiceModelVersion?: 'V1' | 'V2'
+  /** 批量统一数字人清晰度档位：V1=标准 / V2=高清（留空=后台默认） */
+  dhModelVersion?: 'V1' | 'V2'
   audioUrl?: string
   videoUrl?: string
   /** 双语字幕：true 时每个任务字幕渲染中英双行 */

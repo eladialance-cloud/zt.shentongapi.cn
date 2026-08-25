@@ -12,6 +12,7 @@ import { SystemConfigEntity } from '../admin-system/entities/system-config.entit
 import { ApiKeyPoolService } from '../api-key-pool/services/api-key-pool.service';
 import { EncryptionService } from '../../common/services/encryption.service';
 import { readFileSync } from 'fs';
+import { randomUUID } from 'crypto';
 import * as path from 'path';
 import type { LlmCaller, LlmMessage } from './llm';
 
@@ -451,6 +452,123 @@ export class SystemLlmService implements LlmCaller {
     } catch (err) {
       return { success: false, models: [], message: '请求失败：' + ((err as Error).message || String(err)) };
     }
+  }
+
+  /** 云端能力测试：TTS 合成 / 声音复刻 / 数字人 / 语音识别 / 向量 Embedding（用传入配置，不落库） */
+  async testCapability(type: string, cfg: Record<string, unknown>): Promise<{ success: boolean; message: string }> {
+    const str = (v: unknown): string => (typeof v === 'string' && v ? v.trim() : '');
+    const apiKey = str(cfg.volcanoApiKey) || str(cfg.llmApiKey);
+    try {
+      switch (type) {
+        case 'tts': {
+          const ttsKey = str(cfg.voiceApiKey) || apiKey;
+          if (!ttsKey) return { success: false, message: '未配置语音技术 API Key（voiceApiKey）' };
+          const speakerId = str(cfg.voiceModelV2) || str(cfg.voiceModelV1) || str(cfg.voiceSpeakerId);
+          if (!speakerId) return { success: false, message: '未配置音色 ID（V1/V2 音色或 voiceSpeakerId）' };
+          const resourceId = str(cfg.voiceResourceId) || 'seed-icl-2.0';
+          const endpoint = (str(cfg.voiceEndpoint) || 'https://openspeech.bytedance.com/api/v3/tts/unidirectional').replace(/\/+$/, '');
+          const resp = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Api-Key': ttsKey,
+              'X-Api-Resource-Id': resourceId,
+              'X-Api-Request-Id': randomUUID(),
+            },
+            body: JSON.stringify({ req_params: { text: '测试', speaker: speakerId, audio_params: { format: 'mp3', sample_rate: 24000 } } }),
+            signal: AbortSignal.timeout(25000),
+          });
+          const text = (await resp.text().catch(() => '')).slice(0, 400);
+          if (!resp.ok) return { success: false, message: 'HTTP ' + resp.status + ': ' + text };
+          if (/\"code\"\s*:\s*(?!0|200)[1-9]/.test(text)) {
+            return { success: false, message: text.slice(0, 300) };
+          }
+          return { success: true, message: 'TTS 合成成功（speaker=' + speakerId + '，resource=' + resourceId + '）' };
+        }
+        case 'clone': {
+          const clKey = str(cfg.voiceApiKey) || apiKey;
+          if (!clKey) return { success: false, message: '未配置语音技术 API Key（voiceApiKey）' };
+          const refUrl = str(cfg.voiceRefAudioUrl);
+          if (!refUrl) return { success: false, message: '未配置参考音频 URL（voiceRefAudioUrl），无法测试声音复刻' };
+          const audioBuf = await this.downloadBytes(refUrl);
+          const customSpeakerId = 'st_probe_' + randomUUID().replace(/-/g, '').slice(0, 16);
+          const cloneEndpoint = (str(cfg.voiceCloneEndpoint) || 'https://openspeech.bytedance.com/api/v3/tts/voice_clone').replace(/\/+$/, '');
+          const resp = await fetch(cloneEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Api-Key': clKey, 'X-Api-Request-Id': randomUUID() },
+            body: JSON.stringify({
+              speaker_id: 'custom_speaker_id',
+              custom_speaker_id: customSpeakerId,
+              audio: { data: audioBuf.toString('base64'), format: 'mp3', text: '', language: 0 },
+              extra_params: { demo_text: '你好', enable_audio_denoise: true, disable_volume_normalization: false },
+            }),
+            signal: AbortSignal.timeout(60000),
+          });
+          const text = (await resp.text().catch(() => '')).slice(0, 300);
+          if (!resp.ok) return { success: false, message: 'HTTP ' + resp.status + ': ' + text };
+          return { success: true, message: '声音复刻已提交（custom_speaker_id=' + customSpeakerId + '）：' + text.slice(0, 150) };
+        }
+        case 'dh': {
+          const endpoint = str(cfg.dhEndpoint);
+          if (!apiKey) return { success: false, message: '未配置火山方舟 API Key' };
+          if (!endpoint) return { success: false, message: '未配置数字人服务端点（dhEndpoint）' };
+          const submitPath = str(cfg.dhSubmitPath) || '/digital-human/submit';
+          const resp = await fetch(endpoint.replace(/\/+$/, '') + submitPath, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+            body: JSON.stringify({ digital_human_id: '__probe__', audio_url: 'https://example.com/probe.mp3', model_version: 'V2' }),
+            signal: AbortSignal.timeout(20000),
+          });
+          const text = (await resp.text().catch(() => '')).slice(0, 300);
+          if (resp.ok) return { success: true, message: '数字人服务可达（HTTP ' + resp.status + '）：' + text.slice(0, 150) };
+          return { success: true, message: '数字人服务可达（HTTP ' + resp.status + '，协议已通，请求被拒属预期）：' + text.slice(0, 200) };
+        }
+        case 'stt': {
+          const sttKey = str(cfg.sttApiKey) || apiKey;
+          if (!sttKey) return { success: false, message: '未配置语音识别 API Key（sttApiKey 或火山方舟 Key）' };
+          const isVolcano = str(cfg.sttProvider) === 'volcano';
+          const endpoint = (str(cfg.sttEndpoint) || (isVolcano ? DEFAULT_VOLCANO_LLM_ENDPOINT : 'https://api.openai.com/v1')).replace(/\/+$/, '');
+          const resp = await fetch(endpoint + '/models', {
+            headers: { Authorization: 'Bearer ' + sttKey },
+            signal: AbortSignal.timeout(20000),
+          });
+          if (!resp.ok) {
+            const text = (await resp.text().catch(() => '')).slice(0, 300);
+            return { success: false, message: 'HTTP ' + resp.status + ': ' + text };
+          }
+          return { success: true, message: '语音识别服务连通（' + endpoint + '）' };
+        }
+        case 'embedding': {
+          const provider = str(cfg.embeddingProvider);
+          const endpoint = (str(cfg.embeddingEndpoint) || (provider === 'doubao' ? DEFAULT_VOLCANO_LLM_ENDPOINT : DEFAULT_ENDPOINTS[provider]) || '').replace(/\/+$/, '');
+          const embKey = str(cfg.embeddingApiKey) || apiKey;
+          if (!endpoint || !embKey) return { success: false, message: '未配置向量 Embedding 端点/Key' };
+          const model = str(cfg.embeddingModel) || EMBEDDING_MODEL_BY_SLUG[provider] || 'text-embedding-3-small';
+          const resp = await fetch(endpoint + '/embeddings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + embKey },
+            body: JSON.stringify({ model, input: ['测试'] }),
+            signal: AbortSignal.timeout(25000),
+          });
+          if (!resp.ok) {
+            const text = (await resp.text().catch(() => '')).slice(0, 300);
+            return { success: false, message: 'HTTP ' + resp.status + ': ' + text };
+          }
+          return { success: true, message: '向量 Embedding 测试成功（' + model + '）' };
+        }
+        default:
+          return { success: false, message: '未知测试类型: ' + type };
+      }
+    } catch (e) {
+      return { success: false, message: (e as Error).message || String(e) };
+    }
+  }
+
+  /** 下载公网文件为 Buffer（能力测试用） */
+  private async downloadBytes(url: string): Promise<Buffer> {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(30000) });
+    if (!resp.ok) throw new Error('参考音频下载失败: HTTP ' + resp.status);
+    return Buffer.from(await resp.arrayBuffer());
   }
 }
 

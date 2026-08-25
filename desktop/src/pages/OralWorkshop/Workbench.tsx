@@ -151,6 +151,7 @@ export default function OralWorkshopWorkbench() {
   const [batchTopics, setBatchTopics] = useState('')
   const [batchTemplateIds, setBatchTemplateIds] = useState<number[]>([])
   const [batchVoiceIds, setBatchVoiceIds] = useState<number[]>([])
+const [batchVoiceVersion, setBatchVoiceVersion] = useState<'V1' | 'V2' | undefined>('V2')
   const [batchDhIds, setBatchDhIds] = useState<number[]>([])
   const [batchSubmitting, setBatchSubmitting] = useState(false)
   // 学习对标（提取文案）
@@ -295,6 +296,7 @@ export default function OralWorkshopWorkbench() {
         templateIds: batchTemplateIds.length ? batchTemplateIds : undefined,
         voiceIds: batchVoiceIds.length ? batchVoiceIds : undefined,
         digitalHumanIds: batchDhIds.length ? batchDhIds : undefined,
+      voiceModelVersion: batchVoiceVersion || undefined,
         batchTxnId: 'ow-batch-' + Date.now(),
       })
       if (res.skipped > 0) {
@@ -324,6 +326,7 @@ export default function OralWorkshopWorkbench() {
     templateId?: number
     voiceId?: number
     digitalHumanId?: number
+    voiceModelVersion?: 'V1' | 'V2'
     targetLang?: string
     executionMode?: 'auto' | 'manual' | 'single'
   }) => {
@@ -339,6 +342,7 @@ export default function OralWorkshopWorkbench() {
         templateId: values.templateId ?? undefined,
         voiceId: values.voiceId,
         digitalHumanId: values.digitalHumanId,
+        voiceModelVersion: values.voiceModelVersion ?? 'V2',
         audioUrl,
         videoUrl,
         bilingual: !!targetLang,
@@ -508,7 +512,16 @@ export default function OralWorkshopWorkbench() {
             <div className={styles.panelTitle}>
               <Mic size={15} /> 配音
             </div>
-            <Form.Item name="voiceId" label="我的声音（火山克隆）">
+                            <Form.Item name="voiceModelVersion" label="配音音质" initialValue="V2" extra="V1=标准（快、省）；V2=高清（更自然，默认）">
+                  <Select
+                    options={[
+                      { value: 'V1', label: 'V1（标准）' },
+                      { value: 'V2', label: 'V2（高清）' }
+                    ]}
+                    style={{ width: '100%' }}
+                  />
+                </Form.Item>
+                <Form.Item name="voiceId" label="我的声音（火山克隆）">
               <Select
                 placeholder="选择克隆声音（留空=预设/系统语音/上传成音）"
                 allowClear
@@ -874,6 +887,19 @@ export default function OralWorkshopWorkbench() {
             value={batchVoiceIds}
             onChange={setBatchVoiceIds}
             options={voices.map((v) => ({ value: v.id, label: v.name }))}
+          />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 6, fontWeight: 600 }}>配音音质</div>
+          <Select
+            style={{ width: '100%' }}
+            placeholder="留空 = 后台默认"
+            value={batchVoiceVersion}
+            onChange={setBatchVoiceVersion}
+            options={[
+              { value: 'V1', label: 'V1（标准）' },
+              { value: 'V2', label: 'V2（高清）' },
+            ]}
           />
         </div>
         <div>

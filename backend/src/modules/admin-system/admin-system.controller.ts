@@ -62,6 +62,11 @@ export class AdminSystemController {
       model: body?.model,
     });
   }
+  @Post('oral-workshop/test-capability')
+  @ApiOperation({ summary: '口播工坊云端能力测试（tts/clone/dh/stt/embedding，用传入配置不落库）' })
+  async testOralWorkshopCapability(@Body() body: { type?: string; config?: Record<string, unknown> }) {
+    return this.systemLlm.testCapability(body?.type || '', body?.config ?? {});
+  }
   @Post('oral-workshop/list-models')
   @ApiOperation({ summary: '口播工坊 LLM 模型列表（baseUrl+apiKey 拉取可用模型）' })
   async listOralWorkshopModels(@Body() body: { baseUrl?: string; apiKey?: string; source?: string }) {

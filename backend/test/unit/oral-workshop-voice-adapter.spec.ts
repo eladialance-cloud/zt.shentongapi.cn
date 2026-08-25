@@ -1,4 +1,4 @@
-/** 火山声音克隆适配器单元测试（mock fetch，不依赖真实网络）
+/** 火山语音技术 声音复刻/TTS 适配器单元测试（mock fetch，不依赖真实网络）
  * 运行: node -r ts-node/register --test test/unit/oral-workshop-voice-adapter.spec.ts
  */
 import { describe, it, afterEach } from 'node:test';
@@ -6,36 +6,47 @@ import assert from 'node:assert/strict';
 import {
   VoiceCloneAdapter,
   VoiceCloneError,
+  defaultCustomSpeakerId,
+  DEFAULT_VOICE_TTS_ENDPOINT,
+  DEFAULT_VOICE_CLONE_ENDPOINT,
   type VolcanoVoiceConfig,
 } from '../../src/modules/oral-workshop/adapters/voice.adapter';
 
 const cfg: VolcanoVoiceConfig = {
-  endpoint: 'https://ark.example.com/api/v3',
-  apiKey: 'test-key',
-  model: 'tts-model-1',
-  clonePath: '/audio/voice/clone',
-  ttsPath: '/tts',
+  endpoint: 'https://openspeech.example.com/api/v3/tts/unidirectional',
+  cloneEndpoint: 'https://openspeech.example.com/api/v3/tts/voice_clone',
+  apiKey: 'voice-key-1',
+  resourceId: 'seed-icl-2.0',
+  format: 'mp3',
+  sampleRate: 24000,
   timeoutMs: 5000,
 };
 
-function jsonResp(obj: unknown, status = 200, headers: Record<string, string> = {}) {
+function jsonResp(obj: unknown, status = 200) {
   return {
     ok: status >= 200 && status < 300,
     status,
     text: async () => JSON.stringify(obj),
     json: async () => obj,
     arrayBuffer: async () => Buffer.from(JSON.stringify(obj)),
-    headers: { get: (k: string) => headers[k.toLowerCase()] || null },
   } as any;
 }
 
-/** 参考音频二进制响应（下载 refAudioUrl 时命中） */
+/** HTTP Chunked 流式响应：每行一个 JSON（data 为 base64 音频分片） */
+function chunkedResp(lines: unknown[], status = 200) {
+  const text = lines.map((l) => JSON.stringify(l)).join('\n') + '\n';
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => text,
+  } as any;
+}
+
 function binaryResp(bytes: string) {
   return {
     ok: true,
     status: 200,
     arrayBuffer: async () => Buffer.from(bytes),
-    headers: { get: () => 'audio/mpeg' },
   } as any;
 }
 
@@ -44,101 +55,123 @@ afterEach(() => {
 });
 
 describe('VoiceCloneAdapter', () => {
-  it('cloneSpeaker：multipart 提交参考音频并返回 speaker_id', async () => {
+  it('cloneSpeaker：JSON 提交 base64 参考音频并返回 speaker_id + status', async () => {
     const calls: Array<{ url: string; opts: any }> = [];
     (globalThis as any).fetch = async (url: string, opts: any) => {
       calls.push({ url, opts });
-      return jsonResp({ code: 200, data: { speaker_id: 'spk_123' } });
+      if (url.startsWith('https://cdn/')) return binaryResp('REF-AUDIO');
+      return jsonResp({ code: 0, speaker_id: 'st_voice_7_abc', status: 2 });
     };
     const svc = new VoiceCloneAdapter(cfg);
-    const speakerId = await svc.cloneSpeaker({
-      refAudioUrl: 'https://cdn/ref.mp3',
-      refAudioFormat: 'mp3',
-      refAudioText: '参考音频文本',
-      text: '测试文案',
-      userId: 7,
-    });
-    assert.equal(speakerId, 'spk_123');
+    const out = await svc.cloneSpeaker({ refAudioUrl: 'https://cdn/ref.mp3', refAudioText: '参考音频文本', text: '测试文案', userId: 7 });
+    assert.equal(out.speakerId, 'st_voice_7_abc');
+    assert.equal(out.status, 2);
     assert.equal(calls.length, 2); // 下载参考音频 + 复刻
     const cloneCall = calls[1];
-    assert.ok(cloneCall.url.endsWith('/audio/voice/clone'));
+    assert.equal(cloneCall.url, cfg.cloneEndpoint);
     assert.equal(cloneCall.opts.method, 'POST');
-    assert.ok(cloneCall.opts.headers.Authorization.startsWith('Bearer test-key'));
-    const body = cloneCall.opts.body as Buffer;
-    assert.ok(body.toString('utf8').includes('audio_format'));
-    assert.ok(body.toString('utf8').includes('spk'));
+    assert.equal(cloneCall.opts.headers['X-Api-Key'], 'voice-key-1');
+    assert.ok(cloneCall.opts.headers['X-Api-Request-Id']);
+    const body = JSON.parse(cloneCall.opts.body);
+    assert.equal(body.speaker_id, 'custom_speaker_id');
+    assert.ok(body.custom_speaker_id.startsWith('st_voice_7_'));
+    assert.equal(body.audio.format, 'mp3');
+    assert.equal(Buffer.from(body.audio.data, 'base64').toString(), 'REF-AUDIO');
   });
 
   it('cloneSpeaker：已有 speakerId 时跳过复刻请求', async () => {
     let fetchCalls = 0;
     (globalThis as any).fetch = async () => { fetchCalls += 1; return jsonResp({}); };
     const svc = new VoiceCloneAdapter(cfg);
-    const id = await svc.cloneSpeaker({ refAudioUrl: 'x.mp3', text: 't', speakerId: 'spk_existing' });
-    assert.equal(id, 'spk_existing');
+    const out = await svc.cloneSpeaker({ refAudioUrl: 'x.mp3', text: 't', speakerId: 'spk_existing' });
+    assert.equal(out.speakerId, 'spk_existing');
     assert.equal(fetchCalls, 0);
   });
 
   it('cloneSpeaker：上游非 2xx 抛 VoiceCloneError', async () => {
     (globalThis as any).fetch = async () => ({ ok: false, status: 401, text: async () => 'unauthorized' } as any);
     const svc = new VoiceCloneAdapter(cfg);
-    await assert.rejects(
-      () => svc.cloneSpeaker({ refAudioUrl: 'https://cdn/ref.mp3', text: 't' }),
-      VoiceCloneError,
-    );
+    await assert.rejects(() => svc.cloneSpeaker({ refAudioUrl: 'https://cdn/ref.mp3', text: 't' }), VoiceCloneError);
   });
 
-  it('synthesize：JSON 响应 audio_base64 解码为音频 buffer', async () => {
+  it('cloneSpeaker：code 非 0 抛 VoiceCloneError（含平台错误信息）', async () => {
+    (globalThis as any).fetch = async (url: string) => (url.startsWith('https://cdn/') ? binaryResp('X') : jsonResp({ code: 45001109, message: 'WERError' }));
+    const svc = new VoiceCloneAdapter(cfg);
+    await assert.rejects(() => svc.cloneSpeaker({ refAudioUrl: 'https://cdn/ref.mp3', text: 't' }), /WERError/);
+  });
+
+  it('synthesize：Chunked JSON 行 data base64 拼接为音频 buffer（请求头含 X-Api-Key/X-Api-Resource-Id）', async () => {
     let captured: any = null;
     (globalThis as any).fetch = async (url: string, opts: any) => {
-      if (url.endsWith('/audio/voice/clone')) return jsonResp({ data: { speaker_id: 'spk_1' } });
-      if (url.endsWith('/tts')) {
-        captured = JSON.parse(opts.body);
-        return jsonResp({ data: { audio_base64: Buffer.from('audio-bytes').toString('base64') } }, 200, { 'content-type': 'application/json' });
+      if (url === cfg.cloneEndpoint) return jsonResp({ code: 0, speaker_id: 'st_voice_1_x', status: 2 });
+      if (url === cfg.endpoint) {
+        captured = { url, opts };
+        const part1 = Buffer.from('audio-part-1').toString('base64');
+        const part2 = Buffer.from('audio-part-2').toString('base64');
+        return chunkedResp([
+          { code: 0, data: part1, sentence: { text: '你好' } },
+          { code: 0, data: part2 },
+        ]);
       }
-      return binaryResp('REF-AUDIO');
+      return binaryResp('REF');
     };
     const svc = new VoiceCloneAdapter(cfg);
     const out = await svc.synthesize({ refAudioUrl: 'https://cdn/ref.mp3', refAudioText: '参考', text: '你好世界', speedRatio: 0.9 });
-    assert.equal(out.audio.toString('utf8'), 'audio-bytes');
+    assert.equal(out.audio.toString('utf8'), 'audio-part-1audio-part-2');
     assert.equal(out.mimeType, 'audio/mpeg');
-    assert.equal(captured.model, 'tts-model-1');
-    assert.equal(captured.speaker_id, 'spk_1');
-    assert.equal(captured.speed_ratio, 0.9);
-    assert.equal(captured.response_format, 'mp3');
-    assert.equal(captured.text, '你好世界');
+    assert.deepEqual(out.subtitle, ['你好']);
+    assert.equal(captured.url, cfg.endpoint);
+    assert.equal(captured.opts.headers['X-Api-Key'], 'voice-key-1');
+    assert.equal(captured.opts.headers['X-Api-Resource-Id'], 'seed-icl-2.0');
+    const req = JSON.parse(captured.opts.body);
+    assert.equal(req.req_params.text, '你好世界');
+    assert.equal(req.req_params.speaker, 'st_voice_1_x');
+    assert.equal(req.req_params.audio_params.format, 'mp3');
+    assert.equal(req.req_params.audio_params.sample_rate, 24000);
   });
 
-  it('synthesize：二进制响应直接返回 buffer', async () => {
+  it('synthesize：chunk 内 code 非 0 抛 VoiceCloneError', async () => {
     (globalThis as any).fetch = async (url: string) => {
-      if (url.endsWith('/audio/voice/clone')) return jsonResp({ data: { speaker_id: 'spk_1' } });
-      if (url.endsWith('/tts')) return binaryResp('MP3DATA');
-      return binaryResp('REF-AUDIO');
+      if (url === cfg.cloneEndpoint) return jsonResp({ code: 0, speaker_id: 's1', status: 2 });
+      return chunkedResp([{ code: 1, message: '合成失败' }]);
     };
     const svc = new VoiceCloneAdapter(cfg);
-    const out = await svc.synthesize({ refAudioUrl: 'https://cdn/ref.mp3', text: 'x' });
-    assert.equal(out.audio.toString('utf8'), 'MP3DATA');
+    await assert.rejects(() => svc.synthesize({ refAudioUrl: 'https://cdn/ref.mp3', text: 't', speakerId: 's1' }), /合成失败/);
   });
 
-  it('generateVoice：克隆 + TTS 返回 speakerId 与音频', async () => {
+  it('synthesize：无音频数据抛 VoiceCloneError', async () => {
     (globalThis as any).fetch = async (url: string) => {
-      if (url.endsWith('/audio/voice/clone')) return jsonResp({ data: { speaker_id: 'spk_gen' } });
-      if (url.endsWith('/tts')) return jsonResp({ data: { audio_base64: Buffer.from('GEN').toString('base64') } }, 200, { 'content-type': 'application/json' });
-      return binaryResp('REF-AUDIO');
+      if (url === cfg.cloneEndpoint) return jsonResp({ code: 0, speaker_id: 's1', status: 2 });
+      return chunkedResp([{ code: 0, sentence: { text: '只有字幕' } }]);
     };
     const svc = new VoiceCloneAdapter(cfg);
-    const res = await svc.generateVoice({ refAudioUrl: 'https://cdn/ref.mp3', refAudioText: '参考', text: 't' });
-    assert.equal(res.speakerId, 'spk_gen');
-    assert.equal(res.audioBuffer.toString('utf8'), 'GEN');
+    await assert.rejects(() => svc.synthesize({ refAudioUrl: 'https://cdn/ref.mp3', text: 't', speakerId: 's1' }), /未返回音频数据/);
   });
 
-  it('buildMultipart：包含 boundary 与字段', () => {
+  it('generateVoice：复刻 + 合成返回 speakerId 与音频', async () => {
+    (globalThis as any).fetch = async (url: string) => {
+      if (url.startsWith('https://cdn/')) return binaryResp('REF');
+      if (url === cfg.cloneEndpoint) return jsonResp({ code: 0, speaker_id: 'st_voice_9_y', status: 4 });
+      if (url === cfg.endpoint) return chunkedResp([{ code: 0, data: Buffer.from('VOICE-BYTES').toString('base64') }]);
+      return jsonResp({});
+    };
     const svc = new VoiceCloneAdapter(cfg);
-    const body = svc.buildMultipart(Buffer.from('FILE'), 'audio', { audio_format: 'mp3', audio_text: '参考' }, 'BOUND1');
-    const txt = body.toString('utf8');
-    assert.ok(txt.includes('--BOUND1'));
-    assert.ok(txt.includes('name="audio_format"'));
-    assert.ok(txt.includes('name="audio"'));
-    assert.ok(txt.includes('filename="ref.mp3"'));
-    assert.ok(txt.endsWith('--BOUND1--' + '\r\n'));
+    const out = await svc.generateVoice({ refAudioUrl: 'https://cdn/ref.mp3', refAudioText: '参考', text: '你好' });
+    assert.equal(out.speakerId, 'st_voice_9_y');
+    assert.equal(out.audioBuffer.toString('utf8'), 'VOICE-BYTES');
+  });
+
+  it('defaultCustomSpeakerId：命名符合规范（字母开头、8-256 字符、仅数字字母-_）', () => {
+    for (let i = 0; i < 5; i++) {
+      const id = defaultCustomSpeakerId(7);
+      assert.match(id, /^[a-z][a-z0-9_-]{7,}$/);
+      assert.ok(id.length >= 8 && id.length <= 256);
+      assert.ok(id.startsWith('st_voice_7_'));
+    }
+  });
+
+  it('默认端点常量正确', () => {
+    assert.equal(DEFAULT_VOICE_TTS_ENDPOINT, 'https://openspeech.bytedance.com/api/v3/tts/unidirectional');
+    assert.equal(DEFAULT_VOICE_CLONE_ENDPOINT, 'https://openspeech.bytedance.com/api/v3/tts/voice_clone');
   });
 });

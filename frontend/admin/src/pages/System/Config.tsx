@@ -38,6 +38,7 @@ import {
   getOralWorkshopConfig,
   getRateLimitConfig,
   listOralWorkshopModels,
+  testOralWorkshopCapability,
   testOralWorkshopLlm,
   updateOralWorkshopConfig,
   updateSystemConfig
@@ -95,6 +96,7 @@ export default function SystemConfigPage() {
   const [testingLlm, setTestingLlm] = useState(false)
   const [modelOptions, setModelOptions] = useState<{ value: string }[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
+  const [testingCap, setTestingCap] = useState<Record<string, boolean>>({})
   const [tab, setTab] = useState<SystemConfigSection>('cache')
 
   const [cacheForm] = Form.useForm<CacheFormValues>()
@@ -172,9 +174,16 @@ export default function SystemConfigPage() {
         translateModel: cfgv.translateModel || '',
         reviewModel: cfgv.reviewModel || '',
         volcanoApiKey: cfgv.volcanoApiKey || '',
-        voiceEndpoint: cfgv.voiceEndpoint || 'https://ark.cn-beijing.volces.com/api/v3',
+        voiceEndpoint: cfgv.voiceEndpoint || 'https://openspeech.bytedance.com/api/v3/tts/unidirectional',
         voiceModel: cfgv.voiceModel || '',
-        voiceModelVersion: cfgv.voiceModelVersion || 'V1',
+        voiceModelV1: cfgv.voiceModelV1 || '',
+        voiceModelV2: cfgv.voiceModelV2 || '',
+        voiceApiKey: cfgv.voiceApiKey || '',
+        voiceResourceId: cfgv.voiceResourceId || 'seed-icl-2.0',
+        voiceCloneEndpoint: cfgv.voiceCloneEndpoint || 'https://openspeech.bytedance.com/api/v3/tts/voice_clone',
+        voiceFormat: cfgv.voiceFormat || 'mp3',
+        voiceSampleRate: cfgv.voiceSampleRate ?? 24000,
+        voiceEnableSubtitle: cfgv.voiceEnableSubtitle ?? false,
         voiceRefAudioUrl: cfgv.voiceRefAudioUrl || '',
         voiceSpeakerId: cfgv.voiceSpeakerId || '',
         dhEndpoint: cfgv.dhEndpoint || '',
@@ -314,7 +323,14 @@ export default function SystemConfigPage() {
         volcanoApiKey: values.volcanoApiKey || '',
         voiceEndpoint: values.voiceEndpoint || '',
         voiceModel: values.voiceModel || '',
-        voiceModelVersion: values.voiceModelVersion || 'V1',
+        voiceModelV1: values.voiceModelV1 || '',
+        voiceModelV2: values.voiceModelV2 || '',
+        voiceApiKey: values.voiceApiKey || '',
+        voiceResourceId: values.voiceResourceId || 'seed-icl-2.0',
+        voiceCloneEndpoint: values.voiceCloneEndpoint || '',
+        voiceFormat: values.voiceFormat || 'mp3',
+        voiceSampleRate: values.voiceSampleRate ?? 24000,
+        voiceEnableSubtitle: values.voiceEnableSubtitle ?? false,
         voiceRefAudioUrl: values.voiceRefAudioUrl || '',
         voiceSpeakerId: values.voiceSpeakerId || '',
         dhEndpoint: values.dhEndpoint || '',
@@ -339,6 +355,21 @@ export default function SystemConfigPage() {
       message.error('保存失败')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleTestCapability = async (type: 'tts' | 'clone' | 'dh' | 'stt' | 'embedding') => {
+    try {
+      const cfg = oralForm.getFieldsValue() as Record<string, unknown>
+      setTestingCap((p) => ({ ...p, [type]: true }))
+      const res = await testOralWorkshopCapability({ type, config: cfg })
+      if (res.success) message.success(res.message)
+      else message.error(res.message)
+    } catch (err) {
+      console.error('[SystemConfig] test capability failed:', err)
+      message.error('测试失败：' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setTestingCap((p) => ({ ...p, [type]: false }))
     }
   }
 
@@ -738,20 +769,73 @@ export default function SystemConfigPage() {
                 <Form.Item name="volcanoApiKey" label="火山方舟统一 API Key" extra="声音克隆/数字人共用；若已填上方 LLM Key 可留空">
                   <Input.Password placeholder="火山方舟 API Key" autoComplete="new-password" allowClear />
                 </Form.Item>
-                <Form.Item name="voiceEndpoint" label="声音克隆 TTS 接入端点">
-                  <Input placeholder="https://ark.cn-beijing.volces.com/api/v3" allowClear />
+                <Form.Item name="voiceApiKey" label="语音技术 API Key（X-Api-Key）" extra="语音技术控制台获取（console.volcengine.com/speech），独立于方舟 Key">
+                  <Input.Password placeholder="语音技术 API Key" autoComplete="new-password" allowClear />
                 </Form.Item>
-                <Form.Item name="voiceModel" label="TTS 模型 ID" extra="如火山方舟 doubao-tts 系列模型">
-                  <Input placeholder="如 doubao-tts" allowClear />
-                </Form.Item>
-                <Form.Item name="voiceModelVersion" label="声音克隆模型版本">
+                <Form.Item name="voiceResourceId" label="TTS 资源 ID（X-Api-Resource-Id）">
                   <Select
                     options={[
-                      { value: 'V1', label: 'V1（标准版，快）' },
-                      { value: 'V2', label: 'V2（高清增强版，更自然）' }
+                      { value: 'seed-icl-2.0', label: 'seed-icl-2.0（声音复刻大模型2.0，默认）' },
+                      { value: 'seed-tts-2.0', label: 'seed-tts-2.0（语音合成大模型2.0）' }
                     ]}
                   />
                 </Form.Item>
+                <Form.Item name="voiceEndpoint" label="TTS 合成端点" extra="官方默认 https://openspeech.bytedance.com/api/v3/tts/unidirectional">
+                  <Input placeholder="https://openspeech.bytedance.com/api/v3/tts/unidirectional" allowClear />
+                </Form.Item>
+                <Form.Item name="voiceCloneEndpoint" label="声音复刻端点" extra="官方默认 https://openspeech.bytedance.com/api/v3/tts/voice_clone">
+                  <Input placeholder="https://openspeech.bytedance.com/api/v3/tts/voice_clone" allowClear />
+                </Form.Item>
+                <Form.Item name="voiceModelV1" label="V1 档音色 ID（speaker）" extra="用户任务选「标准 V1」时用此音色；留空=用 voiceSpeakerId">
+                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="音色库音色 ID" allowClear />
+                </Form.Item>
+                <Form.Item name="voiceModelV2" label="V2 档音色 ID（speaker）" extra="用户任务选「高清 V2」时用此音色；留空=用 voiceSpeakerId">
+                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="音色库音色 ID" allowClear />
+                </Form.Item>
+                <Form.Item name="voiceFormat" label="音频格式">
+                  <Select
+                    options={[
+                      { value: 'mp3', label: 'mp3（默认）' },
+                      { value: 'pcm', label: 'pcm' },
+                      { value: 'ogg_opus', label: 'ogg_opus' },
+                      { value: 'wav', label: 'wav' }
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item name="voiceSampleRate" label="采样率">
+                  <Select
+                    options={[
+                      { value: 16000, label: '16000' },
+                      { value: 24000, label: '24000（默认）' },
+                      { value: 44100, label: '44100' },
+                      { value: 48000, label: '48000' }
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item name="voiceEnableSubtitle" label="字幕时间戳" valuePropName="checked">
+                  <Switch checkedChildren="开" unCheckedChildren="关" />
+                </Form.Item>
+                <div style={{ marginBottom: 12 }}>
+                  <Button
+                    type="dashed"
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    onClick={() => void handleTestCapability('tts')}
+                    loading={testingCap.tts}
+                    style={{ marginRight: 12 }}
+                  >
+                    测试 TTS 合成（需已填 Key+模型+speaker_id/参考音频）
+                  </Button>
+                  <Button
+                    type="dashed"
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    onClick={() => void handleTestCapability('clone')}
+                    loading={testingCap.clone}
+                  >
+                    测试声音复刻（需参考音频 URL）
+                  </Button>
+                </div>
                 <Form.Item name="voiceRefAudioUrl" label="默认参考音频 URL" extra={'用户未选“我的声音”时的兜底参考音频（克隆音色用）'}>
                   <Input placeholder="https://.../ref.mp3" allowClear />
                 </Form.Item>
@@ -776,7 +860,7 @@ export default function SystemConfigPage() {
                 <Form.Item name="dhQueryPath" label="查询任务路径">
                   <Input placeholder="/digital-human/query" allowClear />
                 </Form.Item>
-                <Form.Item name="dhModelVersion" label="数字人模型版本">
+                <Form.Item name="dhModelVersion" label="默认数字人模型版本" extra="用户任务未选清晰度时使用；用户可在创作任务中自选 V1/V2">
                   <Select
                     options={[
                       { value: 'V1', label: 'V1（标准版，快）' },
@@ -784,6 +868,17 @@ export default function SystemConfigPage() {
                     ]}
                   />
                 </Form.Item>
+                <div style={{ marginBottom: 12 }}>
+                  <Button
+                    type="dashed"
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    onClick={() => void handleTestCapability('dh')}
+                    loading={testingCap.dh}
+                  >
+                    测试数字人服务（探测提交接口连通性）
+                  </Button>
+                </div>
               </div>
 
               <div className={styles.sectionTitle} style={{ marginTop: 16 }}>
@@ -825,6 +920,27 @@ export default function SystemConfigPage() {
                 <Form.Item name="embeddingApiKey" label="Embedding API Key" extra="留空=用上方 LLM/火山 API Key 兜底">
                   <Input.Password placeholder="请输入向量检索密钥" allowClear />
                 </Form.Item>
+                <div style={{ marginBottom: 12 }}>
+                  <Button
+                    type="dashed"
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    onClick={() => void handleTestCapability('stt')}
+                    loading={testingCap.stt}
+                    style={{ marginRight: 12 }}
+                  >
+                    测试语音识别
+                  </Button>
+                  <Button
+                    type="dashed"
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    onClick={() => void handleTestCapability('embedding')}
+                    loading={testingCap.embedding}
+                  >
+                    测试向量检索
+                  </Button>
+                </div>
                 <Form.Item name="watermarkText" label="水印文案" extra="免费档叠加的品牌水印文字">
                   <Input placeholder="如 深瞳AI" allowClear />
                 </Form.Item>

@@ -88,6 +88,16 @@ export class CreateOralWorkshopJobDto {
   @MaxLength(16)
   targetLang?: string;
 
+  /** 配音音质档位：V1=标准 / V2=高清（留空=后台默认模型） */
+  @IsOptional()
+  @IsIn(['V1', 'V2'])
+  voiceModelVersion?: 'V1' | 'V2';
+
+  /** 数字人清晰度档位：V1=标准 / V2=高清（留空=后台默认） */
+  @IsOptional()
+  @IsIn(['V1', 'V2'])
+  dhModelVersion?: 'V1' | 'V2';
+
   /** 幂等键：重复提交同一 clientTxnId 直接返回已有任务，防止重复扣费 */
   @IsOptional()
   @IsString()
@@ -154,6 +164,16 @@ export class BatchCreateOralWorkshopJobsDto {
   @IsArray()
   @IsInt({ each: true })
   digitalHumanIds?: number[];
+
+  /** 批量统一配音音质档位：V1=标准 / V2=高清（留空=后台默认） */
+  @IsOptional()
+  @IsIn(['V1', 'V2'])
+  voiceModelVersion?: 'V1' | 'V2';
+
+  /** 批量统一数字人清晰度档位：V1=标准 / V2=高清（留空=后台默认） */
+  @IsOptional()
+  @IsIn(['V1', 'V2'])
+  dhModelVersion?: 'V1' | 'V2';
 
   @IsOptional()
   @IsString()

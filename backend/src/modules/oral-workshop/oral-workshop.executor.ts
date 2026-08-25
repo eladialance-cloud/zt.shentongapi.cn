@@ -48,10 +48,28 @@ export interface OralWorkshopEngineConfig {
     apiKey: string;
     /** 声音克隆 TTS 端点（默认 ark.cn-beijing.volces.com/api/v3） */
     voiceEndpoint: string;
-    /** TTS 模型 ID（如 doubao-tts 系列） */
+    /** V1 档音色 ID（speaker，用户任务选 V1 时使用） */
+    voiceModelV1: string;
+    /** V2 档音色 ID（speaker，用户任务选 V2 时使用） */
+    voiceModelV2: string;
+    /** 旧版单一 TTS 模型 ID / 兜底音色（兼容） */
     voiceModel: string;
-    /** 声音克隆模型版本：V1=标准 / V2=高清增强 */
-    voiceModelVersion?: 'V1' | 'V2';
+    /** 语音技术 X-Api-Key（独立于方舟 Key） */
+    voiceApiKey: string;
+    /** X-Api-Resource-Id：seed-tts-2.0 / seed-icl-2.0 */
+    voiceResourceId: string;
+    /** 声音复刻端点 */
+    voiceCloneEndpoint: string;
+    /** TTS 音频格式：mp3/pcm/ogg_opus/wav */
+    voiceFormat: string;
+    /** TTS 采样率 */
+    voiceSampleRate: number;
+    /** TTS 语速 -50..100 */
+    voiceSpeechRate: number;
+    /** TTS 音量 -50..100 */
+    voiceLoudnessRate: number;
+    /** TTS 字幕时间戳 */
+    voiceEnableSubtitle: boolean;
     /** 默认参考音频 URL（用户未选"我的声音"时兜底） */
     voiceRefAudio: string;
     /** 已训练 speaker_id（优先复用，跳过克隆） */
@@ -246,7 +264,9 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       if (!script) throw new Error('voiceClone 缺少文案（rewrittenScript/scriptInput 为空）');
       // 我的声音资产（voiceId）优先；其次环境变量参考音频/音色
       let refAudioUrl = config.volcano.voiceRefAudio || process.env.ORAL_WORKSHOP_VOICE_REF_AUDIO || '';
-      let speakerId = config.volcano.voiceSpeakerId || process.env.ORAL_WORKSHOP_VOICE_SPEAKER_ID || undefined;
+      const voiceVersion: 'V1' | 'V2' = job.voiceModelVersion || 'V2';
+      const versionSpeaker = (voiceVersion === 'V1' ? config.volcano.voiceModelV1 : config.volcano.voiceModelV2) || '';
+      let speakerId = versionSpeaker || config.volcano.voiceSpeakerId || process.env.ORAL_WORKSHOP_VOICE_SPEAKER_ID || undefined;
       if (job.voiceId && this.voiceAssetRepo) {
         const asset = await this.voiceAssetRepo.findOne({ where: { id: job.voiceId, userId: job.userId } });
         if (asset) {
@@ -261,9 +281,15 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       }
       const adapter = new VoiceCloneAdapter({
         endpoint: config.volcano.voiceEndpoint || undefined,
-        apiKey: config.volcano.apiKey,
-        model: config.volcano.voiceModel,
-        modelVersion: config.volcano.voiceModelVersion,
+        cloneEndpoint: config.volcano.voiceCloneEndpoint || undefined,
+        apiKey: config.volcano.voiceApiKey || config.volcano.apiKey,
+        resourceId: config.volcano.voiceResourceId || 'seed-icl-2.0',
+        model: config.volcano.voiceModel || undefined,
+        format: config.volcano.voiceFormat || 'mp3',
+        sampleRate: config.volcano.voiceSampleRate || 24000,
+        speechRate: config.volcano.voiceSpeechRate ?? 0,
+        loudnessRate: config.volcano.voiceLoudnessRate ?? 0,
+        enableSubtitle: config.volcano.voiceEnableSubtitle,
         timeoutMs: Number(process.env.VOLCANO_REQUEST_TIMEOUT_MS || 60000),
       });
       const res = await adapter.generateVoice({
@@ -272,7 +298,6 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
         text: script,
         speakerId,
         speedRatio: Number(process.env.ORAL_WORKSHOP_VOICE_SPEED || 0.9),
-        emotionWeight: Number(process.env.ORAL_WORKSHOP_VOICE_EMOTION_WEIGHT || 0),
         emotionText: process.env.ORAL_WORKSHOP_VOICE_EMOTION_TEXT || undefined,
       });
       const ext = res.mimeType.includes('mp3') || res.mimeType.includes('mpeg') ? 'mp3' : 'wav';
@@ -349,7 +374,7 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
         apiKey: config.volcano.apiKey,
         submitPath: config.volcano.dhSubmitPath,
         queryPath: config.volcano.dhQueryPath,
-        modelVersion: config.volcano.dhModelVersion,
+        modelVersion: job.dhModelVersion || config.volcano.dhModelVersion || 'V1',
         pollIntervalMs: Number(process.env.VOLCANO_DH_POLL_INTERVAL_MS || 3000),
         maxAttempts: Number(process.env.VOLCANO_DH_MAX_ATTEMPTS || 120),
         timeoutMs: Number(process.env.VOLCANO_REQUEST_TIMEOUT_MS || 60000),
@@ -547,8 +572,17 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       volcano: {
         apiKey: str('VOLCANO_ARK_API_KEY', 'volcanoApiKey', ''),
         voiceEndpoint: str('VOLCANO_ARK_ENDPOINT', 'voiceEndpoint', 'https://ark.cn-beijing.volces.com/api/v3'),
+        voiceModelV1: str('VOLCANO_VOICE_MODEL_V1', 'voiceModelV1', ''),
+        voiceModelV2: str('VOLCANO_VOICE_MODEL_V2', 'voiceModelV2', ''),
         voiceModel: str('VOLCANO_VOICE_MODEL', 'voiceModel', ''),
-        voiceModelVersion: version('VOLCANO_VOICE_MODEL_VERSION', 'voiceModelVersion'),
+        voiceApiKey: str('VOLCANO_VOICE_API_KEY', 'voiceApiKey', ''),
+        voiceResourceId: str('VOLCANO_VOICE_RESOURCE_ID', 'voiceResourceId', 'seed-icl-2.0'),
+        voiceCloneEndpoint: str('VOLCANO_VOICE_CLONE_ENDPOINT', 'voiceCloneEndpoint', 'https://openspeech.bytedance.com/api/v3/tts/voice_clone'),
+        voiceFormat: str('VOLCANO_VOICE_FORMAT', 'voiceFormat', 'mp3'),
+        voiceSampleRate: num('VOLCANO_VOICE_SAMPLE_RATE', 'voiceSampleRate', 24000),
+        voiceSpeechRate: num('VOLCANO_VOICE_SPEECH_RATE', 'voiceSpeechRate', 0),
+        voiceLoudnessRate: num('VOLCANO_VOICE_LOUDNESS_RATE', 'voiceLoudnessRate', 0),
+        voiceEnableSubtitle: bool('VOLCANO_VOICE_ENABLE_SUBTITLE', 'voiceEnableSubtitle', false),
         voiceRefAudio: str('ORAL_WORKSHOP_VOICE_REF_AUDIO', 'voiceRefAudioUrl', ''),
         voiceSpeakerId: str('ORAL_WORKSHOP_VOICE_SPEAKER_ID', 'voiceSpeakerId', ''),
         dhEndpoint: str('VOLCANO_DIGITAL_HUMAN_ENDPOINT', 'dhEndpoint', ''),
@@ -561,7 +595,7 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
   }
 
   private hasVolcanoVoice(cfg: OralWorkshopEngineConfig): boolean {
-    return Boolean(cfg.volcano.apiKey && cfg.volcano.voiceModel);
+    return Boolean((cfg.volcano.voiceApiKey || cfg.volcano.apiKey) && (cfg.volcano.voiceModelV1 || cfg.volcano.voiceModelV2 || cfg.volcano.voiceModel || cfg.volcano.voiceSpeakerId));
   }
 
   private hasVolcanoDigitalHuman(cfg: OralWorkshopEngineConfig): boolean {

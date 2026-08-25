@@ -93,6 +93,16 @@ export async function listOralWorkshopModels(body: {
     data: body
   })
 }
+/** 口播工坊云端能力测试（tts/clone/dh/stt/embedding） */
+export async function testOralWorkshopCapability(body: {
+  type: string
+  config: Record<string, unknown>
+}): Promise<{ success: boolean; message: string }> {
+  return adminRequest<{ success: boolean; message: string }>('post', '/admin/system/oral-workshop/test-capability', {
+    data: body
+  })
+}
+
 /** 更新口播工坊引擎配置 */
 export async function updateOralWorkshopConfig(cfg: OralWorkshopConfig): Promise<void> {
   await updateSystemConfig({ section: 'oral_workshop', config: cfg as unknown as Record<string, unknown> })
@@ -185,6 +195,7 @@ export default {
   getNotificationConfig,
   getOralWorkshopConfig,
   listOralWorkshopModels,
+  testOralWorkshopCapability,
   updateOralWorkshopConfig,
   updateSystemConfig,
   clearCache,
