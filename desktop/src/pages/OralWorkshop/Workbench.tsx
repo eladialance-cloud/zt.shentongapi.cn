@@ -51,6 +51,7 @@ import {
   listMyDigitalHumans,
   listMyVoices,
   listOralWorkshopTemplates,
+  getOralWorkshopMeta,
 } from '@/api/oral-workshop-api'
 import { uploadFile } from '@/api/file-api'
 import { useOralWorkshopStore } from '@/store/oral-workshop'
@@ -61,6 +62,7 @@ import {
   type OralWorkshopTemplateMeta,
   type TopicItem,
   type VoiceAsset,
+  type VoicePoolItem,
 } from '@/types/oral-workshop'
 import styles from './styles.module.css'
 
@@ -151,8 +153,17 @@ export default function OralWorkshopWorkbench() {
   const [batchTopics, setBatchTopics] = useState('')
   const [batchTemplateIds, setBatchTemplateIds] = useState<number[]>([])
   const [batchVoiceIds, setBatchVoiceIds] = useState<number[]>([])
-const [batchVoiceVersion, setBatchVoiceVersion] = useState<'V1' | 'V2' | undefined>('V2')
+  const [batchVoiceVersion, setBatchVoiceVersion] = useState<'V1' | 'V2' | undefined>('V2')
+  const [voicePool, setVoicePool] = useState<VoicePoolItem[]>([])
+  const [pricing, setPricing] = useState<{ baseCredits: number; voiceV1: number; voiceV2: number; dhV1: number; dhV2: number }>({
+    baseCredits: 5,
+    voiceV1: 0,
+    voiceV2: 0,
+    dhV1: 0,
+    dhV2: 0
+  })
   const [batchDhIds, setBatchDhIds] = useState<number[]>([])
+  const [batchSpeakerId, setBatchSpeakerId] = useState<string | undefined>()
   const [batchSubmitting, setBatchSubmitting] = useState(false)
   // 学习对标（提取文案）
   const [benchmarkUrl, setBenchmarkUrl] = useState('')
@@ -165,6 +176,12 @@ const [batchVoiceVersion, setBatchVoiceVersion] = useState<'V1' | 'V2' | undefin
       .finally(() => setTemplatesLoading(false))
     void listMyVoices().then(setVoices).catch(() => setVoices([]))
     void listMyDigitalHumans().then(setDhAssets).catch(() => setDhAssets([]))
+    void getOralWorkshopMeta()
+      .then((meta) => {
+        setVoicePool(meta.voicePool || [])
+        setPricing(meta.pricing)
+      })
+      .catch(() => undefined)
   }, [])
 
   // 草稿回填（localStorage 持久化，仅在挂载时执行一次，避免与自动保存形成回环）
@@ -297,6 +314,7 @@ const [batchVoiceVersion, setBatchVoiceVersion] = useState<'V1' | 'V2' | undefin
         voiceIds: batchVoiceIds.length ? batchVoiceIds : undefined,
         digitalHumanIds: batchDhIds.length ? batchDhIds : undefined,
       voiceModelVersion: batchVoiceVersion || undefined,
+      speakerId: batchSpeakerId || undefined,
         batchTxnId: 'ow-batch-' + Date.now(),
       })
       if (res.skipped > 0) {
@@ -325,6 +343,7 @@ const [batchVoiceVersion, setBatchVoiceVersion] = useState<'V1' | 'V2' | undefin
     persona?: string
     templateId?: number
     voiceId?: number
+    speakerId?: string
     digitalHumanId?: number
     voiceModelVersion?: 'V1' | 'V2'
     targetLang?: string
@@ -341,6 +360,7 @@ const [batchVoiceVersion, setBatchVoiceVersion] = useState<'V1' | 'V2' | undefin
         persona: values.persona,
         templateId: values.templateId ?? undefined,
         voiceId: values.voiceId,
+        speakerId: values.speakerId,
         digitalHumanId: values.digitalHumanId,
         voiceModelVersion: values.voiceModelVersion ?? 'V2',
         audioUrl,
@@ -521,7 +541,24 @@ const [batchVoiceVersion, setBatchVoiceVersion] = useState<'V1' | 'V2' | undefin
                     style={{ width: '100%' }}
                   />
                 </Form.Item>
-                <Form.Item name="voiceId" label="我的声音（火山克隆）">
+                <Form.Item name="speakerId" label="官方音色（seed-tts-2.0 音色池）" extra={voicePool.length ? `共 ${voicePool.length} 个官方音色（管理后台维护）` : '管理后台未配置音色池，可手输音色 ID'}>
+              <Select
+                placeholder="选择官方音色（留空=用 V1/V2 档默认音色）"
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={[
+                  ...voicePool.map((v) => ({
+                    value: v.speakerId,
+                    label: (v.name ? v.name + '（' + v.speakerId + '）' : v.speakerId) + (v.resourceId && v.resourceId !== 'seed-tts-2.0' ? ' [' + v.resourceId + ']' : '')
+                  })),
+                  ...(form.getFieldValue('speakerId') && !voicePool.some((v) => v.speakerId === form.getFieldValue('speakerId'))
+                    ? [{ value: form.getFieldValue('speakerId') as string, label: form.getFieldValue('speakerId') as string }]
+                    : [])
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name="voiceId" label="我的声音（火山克隆）">
               <Select
                 placeholder="选择克隆声音（留空=预设/系统语音/上传成音）"
                 allowClear
@@ -558,6 +595,10 @@ const [batchVoiceVersion, setBatchVoiceVersion] = useState<'V1' | 'V2' | undefin
               />
             </div>
             <div className={styles.panelHint}>未配置火山克隆时自动使用上传成音或本地语音兜底。</div>
+            <div className={styles.panelHint}>
+              预计消耗：基础 {pricing.baseCredits} + 配音 {form.getFieldValue('voiceModelVersion') === 'V1' ? pricing.voiceV1 : pricing.voiceV2}
+              = {pricing.baseCredits + (form.getFieldValue('voiceModelVersion') === 'V1' ? pricing.voiceV1 : pricing.voiceV2)} 积分（数字人档位在下一步另行计费）
+            </div>
           </div>
         )}
 
@@ -900,6 +941,22 @@ const [batchVoiceVersion, setBatchVoiceVersion] = useState<'V1' | 'V2' | undefin
               { value: 'V1', label: 'V1（标准）' },
               { value: 'V2', label: 'V2（高清）' },
             ]}
+          />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 6, fontWeight: 600 }}>官方音色（可选，覆盖档位默认音色）</div>
+          <Select
+            style={{ width: '100%' }}
+            placeholder="选择官方音色 = 批量统一用该音色"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            value={batchSpeakerId}
+            onChange={setBatchSpeakerId}
+            options={voicePool.map((v) => ({
+              value: v.speakerId,
+              label: (v.name ? v.name + '（' + v.speakerId + '）' : v.speakerId) + (v.resourceId && v.resourceId !== 'seed-tts-2.0' ? ' [' + v.resourceId + ']' : '')
+            }))}
           />
         </div>
         <div>

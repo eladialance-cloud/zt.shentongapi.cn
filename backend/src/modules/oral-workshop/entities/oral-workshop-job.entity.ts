@@ -63,6 +63,9 @@ export class OralWorkshopJobEntity {
   /** 配音音质档位：V1=标准 / V2=高清（用户任务级选择，对应后台 voiceModelV1/voiceModelV2） */
   @Column({ name: 'voice_model_version', type: 'varchar', length: 8, nullable: true })
   voiceModelVersion?: 'V1' | 'V2' | null;
+  /** 任务级官方音色（seed-tts-2.0 音色池选择，覆盖档位默认音色） */
+  @Column({ name: 'voice_speaker_id', type: 'varchar', length: 128, nullable: true })
+  voiceSpeakerId?: string | null;
 
   /** 数字人清晰度档位：V1=标准 / V2=高清（用户任务级选择，留空=后台默认） */
   @Column({ name: 'dh_model_version', type: 'varchar', length: 8, nullable: true })

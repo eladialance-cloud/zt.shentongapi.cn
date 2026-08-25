@@ -93,6 +93,12 @@ export class CreateOralWorkshopJobDto {
   @IsIn(['V1', 'V2'])
   voiceModelVersion?: 'V1' | 'V2';
 
+  /** 任务级官方音色 speaker_id（seed-tts-2.0 音色池选择，覆盖档位默认音色；仅本地/火山合成时生效） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  speakerId?: string;
+
   /** 数字人清晰度档位：V1=标准 / V2=高清（留空=后台默认） */
   @IsOptional()
   @IsIn(['V1', 'V2'])
@@ -174,6 +180,12 @@ export class BatchCreateOralWorkshopJobsDto {
   @IsOptional()
   @IsIn(['V1', 'V2'])
   dhModelVersion?: 'V1' | 'V2';
+
+  /** 批量统一官方音色 speaker_id（seed-tts-2.0 音色池选择） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  speakerId?: string;
 
   @IsOptional()
   @IsString()

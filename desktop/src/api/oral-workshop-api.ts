@@ -23,6 +23,7 @@ import type {
   TopicItem,
   VoiceAsset,
   DigitalHumanAsset,
+  VoicePoolItem,
 } from '@/types/oral-workshop'
 
 /**
@@ -118,6 +119,28 @@ export async function listOralWorkshopTemplates(): Promise<OralWorkshopTemplateM
  * 我的声音列表
  * GET /oral-workshop/voices
  */
+/**
+ * 官方音色池（管理后台维护，seed-tts-2.0 官方音色）
+ * GET /oral-workshop/voice-pool
+ */
+/**
+ * 工作台元数据：官方音色池 + 档位积分定价
+ * GET /oral-workshop/meta
+ */
+export async function getOralWorkshopMeta(): Promise<{
+  voicePool: VoicePoolItem[]
+  pricing: { baseCredits: number; voiceV1: number; voiceV2: number; dhV1: number; dhV2: number }
+}> {
+  return httpClient.get<{
+    voicePool: VoicePoolItem[]
+    pricing: { baseCredits: number; voiceV1: number; voiceV2: number; dhV1: number; dhV2: number }
+  }>('/oral-workshop/meta')
+}
+
+export async function getVoicePool(): Promise<VoicePoolItem[]> {
+  return httpClient.get<VoicePoolItem[]>('/oral-workshop/voice-pool')
+}
+
 export async function listMyVoices(): Promise<VoiceAsset[]> {
   return httpClient.get<VoiceAsset[]>('/oral-workshop/voices')
 }

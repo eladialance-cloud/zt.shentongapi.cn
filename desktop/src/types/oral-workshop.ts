@@ -29,6 +29,7 @@ export interface OralWorkshopJob {
   persona: string | null
   digitalHumanId: number | null
   voiceId: number | null
+  voiceSpeakerId: string | null
   templateId: number | null
   videoUrl: string | null
   audioUrl: string | null
@@ -72,6 +73,8 @@ export interface CreateOralWorkshopJobDto {
   persona?: string
   digitalHumanId?: number
   voiceId?: number
+  /** 任务级官方音色 speaker_id（管理后台音色池选择，覆盖档位默认音色） */
+  speakerId?: string
   /** 配音音质档位：V1=标准 / V2=高清（留空=后台默认） */
   voiceModelVersion?: 'V1' | 'V2'
   /** 数字人清晰度档位：V1=标准 / V2=高清（留空=后台默认） */
@@ -167,6 +170,8 @@ export interface BatchCreateOralWorkshopJobsDto {
   voiceModelVersion?: 'V1' | 'V2'
   /** 批量统一数字人清晰度档位：V1=标准 / V2=高清（留空=后台默认） */
   dhModelVersion?: 'V1' | 'V2'
+  /** 批量统一官方音色 speaker_id（音色池选择，覆盖档位默认音色） */
+  speakerId?: string
   audioUrl?: string
   videoUrl?: string
   /** 双语字幕：true 时每个任务字幕渲染中英双行 */
@@ -260,4 +265,12 @@ export const SUBTITLE_LANG_OPTIONS: Array<{ value: string; label: string }> = [
 export function subtitleLangLabel(code: string | null | undefined): string {
   if (!code || code === 'zh') return '仅中文'
   return SUBTITLE_LANGS[code] ?? code
+}
+
+
+/** 官方音色池条目（GET /oral-workshop/voice-pool） */
+export interface VoicePoolItem {
+  speakerId: string
+  name?: string
+  resourceId?: string
 }

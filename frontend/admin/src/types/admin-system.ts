@@ -58,6 +58,22 @@ export interface NotificationConfig {
 }
 
 /** 口播工坊引擎配置 + 火山方舟（云端）模型配置（M8-4/M8-5） */
+/** 单档配音配置（V1/V2 分别配对模型/音色/积分） */
+export interface VoiceTierConfig {
+  /** X-Api-Resource-Id：seed-tts-2.0（官方音色） / seed-icl-2.0（复刻音色） */
+  resourceId?: 'seed-tts-2.0' | 'seed-icl-2.0'
+  /** 可选模型（如 seed-tts-2.0-standard，留空=服务端默认） */
+  model?: string
+  /** 档位默认音色 ID */
+  speakerId?: string
+  /** 档位兜底参考音频 URL（无 speakerId 时克隆用） */
+  refAudioUrl?: string
+  /** 参考音频对应文本（复刻质量关键） */
+  refAudioText?: string
+  /** 本档配音积分单价 */
+  creditsCost?: number
+}
+
 export interface OralWorkshopConfig {
   /** 声音克隆引擎 */
   voiceEngine: 'volcano' | 'local'
@@ -123,6 +139,20 @@ export interface OralWorkshopConfig {
   voiceRefAudioUrl?: string
   /** 已训练 speaker_id（优先复用） */
   voiceSpeakerId?: string
+  /** 任务基础积分（文案/标题/封面等 LLM 步骤，默认 5） */
+  baseCredits?: number
+  /** V1 档配音配置（模型/音色/参考音频/积分 独立配对） */
+  voiceTierV1?: VoiceTierConfig
+  /** V2 档配音配置 */
+  voiceTierV2?: VoiceTierConfig
+  /** 数字人 V1 档积分 */
+  dhTierV1?: { creditsCost?: number }
+  /** 数字人 V2 档积分 */
+  dhTierV2?: { creditsCost?: number }
+  /** 官方音色池（桌面端展示可选，管理员从火山控制台音色库维护） */
+  voicePool?: Array<{ speakerId: string; name?: string; resourceId?: string }>
+  /** 音色池批量编辑文本（仅表单用：每行 speaker_id|名称|resourceId，保存时解析为 voicePool） */
+  voicePoolText?: string
 
   // ===== 火山数字人（云端）=====
   /** 数字人服务端点 */

@@ -84,7 +84,34 @@ export interface OralWorkshopEngineConfig {
     dhModelVersion?: 'V1' | 'V2';
     /** 默认数字人形象 ID（用户未选"我的形象"时兜底） */
     dhDefaultImageId: string;
+    /** 任务基础积分（文案/标题/封面等 LLM 步骤） */
+    baseCredits: number;
+    /** V1 档配音配置（resourceId+model+音色+参考音频+积分） */
+    voiceTierV1: VoiceTierConfig;
+    /** V2 档配音配置 */
+    voiceTierV2: VoiceTierConfig;
+    /** 数字人 V1/V2 档积分 */
+    dhTierV1: { creditsCost: number };
+    dhTierV2: { creditsCost: number };
+    /** 官方音色池（管理后台维护，桌面端展示） */
+    voicePool: Array<{ speakerId: string; name?: string; resourceId?: string }>;
   };
+}
+
+/** 单档配音配置（V1/V2 分别配对模型/音色/积分） */
+export interface VoiceTierConfig {
+  /** X-Api-Resource-Id：seed-tts-2.0（官方音色） / seed-icl-2.0（复刻音色） */
+  resourceId: string;
+  /** 可选模型（如 seed-tts-2.0-standard，留空=服务端默认） */
+  model: string;
+  /** 档位默认音色 ID */
+  speakerId: string;
+  /** 档位兜底参考音频 URL（无 speakerId 时克隆用） */
+  refAudioUrl: string;
+  /** 参考音频对应文本（复刻质量关键） */
+  refAudioText: string;
+  /** 本档配音积分单价 */
+  creditsCost: number;
 }
 
 /** 当前已接入执行的步骤集合（其余步骤由对应里程碑落地后加入） */
@@ -262,29 +289,43 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
         throw new Error('声音引擎配置为 volcano，但缺少火山方舟密钥 / TTS 模型（请在管理后台-口播工坊-火山方舟配置 填写）');
       }
       if (!script) throw new Error('voiceClone 缺少文案（rewrittenScript/scriptInput 为空）');
-      // 我的声音资产（voiceId）优先；其次环境变量参考音频/音色
-      let refAudioUrl = config.volcano.voiceRefAudio || process.env.ORAL_WORKSHOP_VOICE_REF_AUDIO || '';
+      // 档位化：V1/V2 分别配对 resourceId+model+音色+参考音频（管理后台 voiceTierV1/voiceTierV2）
       const voiceVersion: 'V1' | 'V2' = job.voiceModelVersion || 'V2';
-      const versionSpeaker = (voiceVersion === 'V1' ? config.volcano.voiceModelV1 : config.volcano.voiceModelV2) || '';
-      let speakerId = versionSpeaker || config.volcano.voiceSpeakerId || process.env.ORAL_WORKSHOP_VOICE_SPEAKER_ID || undefined;
+      const tier = voiceVersion === 'V1' ? config.volcano.voiceTierV1 : config.volcano.voiceTierV2;
+      // 优先级：任务级官方音色（音色池选择） > 我的声音资产 > 档位音色 > 全局兜底
+      let refAudioUrl = tier.refAudioUrl || config.volcano.voiceRefAudio || process.env.ORAL_WORKSHOP_VOICE_REF_AUDIO || '';
+      let speakerId =
+        job.voiceSpeakerId ||
+        tier.speakerId ||
+        config.volcano.voiceSpeakerId ||
+        process.env.ORAL_WORKSHOP_VOICE_SPEAKER_ID ||
+        undefined;
+      let resourceId = tier.resourceId || config.volcano.voiceResourceId || 'seed-icl-2.0';
+      const model = tier.model || config.volcano.voiceModel || undefined;
+      const refAudioText = tier.refAudioText || '';
       if (job.voiceId && this.voiceAssetRepo) {
         const asset = await this.voiceAssetRepo.findOne({ where: { id: job.voiceId, userId: job.userId } });
         if (asset) {
           refAudioUrl = asset.refAudioUrl;
-          if (asset.speakerId) speakerId = asset.speakerId;
+          if (asset.speakerId && !job.voiceSpeakerId) speakerId = asset.speakerId;
         } else {
           throw new Error('声音资产不存在或不属于当前用户（voiceId=' + job.voiceId + '）');
         }
       }
+      // 任务级官方音色：resourceId 取音色池条目（默认 seed-tts-2.0）
+      if (job.voiceSpeakerId) {
+        const poolVoice = config.volcano.voicePool.find((v) => v.speakerId === job.voiceSpeakerId);
+        resourceId = poolVoice?.resourceId || 'seed-tts-2.0';
+      }
       if (!refAudioUrl && !speakerId) {
-        throw new Error('火山声音克隆未配置参考音频（请先在"我的声音"添加参考音频或设置 ORAL_WORKSHOP_VOICE_REF_AUDIO）');
+        throw new Error('火山声音克隆未配置参考音频/音色（请先在管理后台配置 V1/V2 档音色或参考音频，或"我的声音"添加参考音频）');
       }
       const adapter = new VoiceCloneAdapter({
         endpoint: config.volcano.voiceEndpoint || undefined,
         cloneEndpoint: config.volcano.voiceCloneEndpoint || undefined,
         apiKey: config.volcano.voiceApiKey || config.volcano.apiKey,
-        resourceId: config.volcano.voiceResourceId || 'seed-icl-2.0',
-        model: config.volcano.voiceModel || undefined,
+        resourceId,
+        model,
         format: config.volcano.voiceFormat || 'mp3',
         sampleRate: config.volcano.voiceSampleRate || 24000,
         speechRate: config.volcano.voiceSpeechRate ?? 0,
@@ -294,7 +335,7 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       });
       const res = await adapter.generateVoice({
         refAudioUrl,
-        refAudioText: script,
+        refAudioText: refAudioText || script,
         text: script,
         speakerId,
         speedRatio: Number(process.env.ORAL_WORKSHOP_VOICE_SPEED || 0.9),
@@ -303,8 +344,20 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       const ext = res.mimeType.includes('mp3') || res.mimeType.includes('mpeg') ? 'mp3' : 'wav';
       const dest = path.join(outputDir, 'voice.' + ext);
       fs.writeFileSync(dest, res.audioBuffer);
-      this.logger.log(`[oral-workshop] 任务 ${job.id} voiceClone 火山合成成功（speaker=${res.speakerId ?? '-'}）`);
-      return { audio_path: dest, source: 'volcano', engine: 'volcano', speaker_id: res.speakerId ?? null };
+      // 档位积分定价：基础 + 配音档 + 数字人档（结算时按 job.creditsCost）
+      const dhCost = (job.dhModelVersion === 'V1' ? config.volcano.dhTierV1.creditsCost : config.volcano.dhTierV2.creditsCost) || 0;
+      const tierCost = tier.creditsCost || 0;
+      this.logger.log(
+        `[oral-workshop] 任务 ${job.id} voiceClone 火山合成成功（speaker=${res.speakerId ?? '-'}，tier=${voiceVersion}，resource=${resourceId}，credits=${config.volcano.baseCredits + tierCost + dhCost}）`,
+      );
+      return {
+        audio_path: dest,
+        source: 'volcano',
+        engine: 'volcano',
+        speaker_id: res.speakerId ?? null,
+        tier: voiceVersion,
+        credits_cost: config.volcano.baseCredits + tierCost + dhCost,
+      };
     }
 
     // 3) 本地降级：Windows SAPI TTS（零依赖；Linux 需配置火山或提供音频）
@@ -557,6 +610,30 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       const v = db[dbKey];
       return typeof v === 'boolean' ? v : fallback;
     };
+    const tierOf = (dbKey: string, envPrefix: string): VoiceTierConfig => {
+      const raw = (db[dbKey] ?? {}) as Record<string, unknown>;
+      const tStr = (k: string, fb: string): string => {
+        const v = raw[k];
+        return typeof v === 'string' && v ? v : fb;
+      };
+      return {
+        resourceId: tStr('resourceId', str(envPrefix + '_RESOURCE_ID', dbKey + '_resourceId', 'seed-icl-2.0')),
+        model: tStr('model', str(envPrefix + '_MODEL', dbKey + '_model', '')),
+        speakerId: tStr('speakerId', str(envPrefix + '_SPEAKER_ID', dbKey + '_speakerId', '')),
+        refAudioUrl: tStr('refAudioUrl', str(envPrefix + '_REF_AUDIO', dbKey + '_refAudioUrl', '')),
+        refAudioText: tStr('refAudioText', str(envPrefix + '_REF_AUDIO_TEXT', dbKey + '_refAudioText', '')),
+        creditsCost: typeof raw.creditsCost === 'number' && raw.creditsCost >= 0 ? Math.round(raw.creditsCost) : 0,
+      };
+    };
+    const poolRaw = Array.isArray(db.voicePool) ? db.voicePool : [];
+    const voicePool = poolRaw
+      .filter((v): v is { speakerId?: unknown; name?: unknown; resourceId?: unknown } => typeof v === 'object' && v !== null)
+      .map((v) => ({
+        speakerId: String(v.speakerId ?? '').trim(),
+        name: typeof v.name === 'string' ? v.name : '',
+        resourceId: typeof v.resourceId === 'string' && v.resourceId ? v.resourceId : 'seed-tts-2.0',
+      }))
+      .filter((v) => !!v.speakerId);
     const version = (envKey: string, dbKey: string): 'V1' | 'V2' | undefined => {
       const env = process.env[envKey];
       if (env === 'V1' || env === 'V2') return env;
@@ -590,12 +667,24 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
         dhQueryPath: str('VOLCANO_DH_QUERY_PATH', 'dhQueryPath', '/digital-human/query'),
         dhModelVersion: version('VOLCANO_DH_MODEL_VERSION', 'dhModelVersion'),
         dhDefaultImageId: str('ORAL_WORKSHOP_DIGITAL_HUMAN_ID', 'dhDefaultImageId', ''),
+        baseCredits: num('ORAL_WORKSHOP_BASE_CREDITS', 'baseCredits', 5),
+        voiceTierV1: tierOf('voiceTierV1', 'ORAL_WORKSHOP_VOICE_TIER_V1'),
+        voiceTierV2: tierOf('voiceTierV2', 'ORAL_WORKSHOP_VOICE_TIER_V2'),
+        dhTierV1: { creditsCost: num('ORAL_WORKSHOP_DH_TIER_V1_CREDITS', 'dhTierV1.creditsCost', 0) },
+        dhTierV2: { creditsCost: num('ORAL_WORKSHOP_DH_TIER_V2_CREDITS', 'dhTierV2.creditsCost', 0) },
+        voicePool,
       },
     };
   }
 
   private hasVolcanoVoice(cfg: OralWorkshopEngineConfig): boolean {
-    return Boolean((cfg.volcano.voiceApiKey || cfg.volcano.apiKey) && (cfg.volcano.voiceModelV1 || cfg.volcano.voiceModelV2 || cfg.volcano.voiceModel || cfg.volcano.voiceSpeakerId));
+    const v = cfg.volcano;
+    const t1 = v.voiceTierV1;
+    const t2 = v.voiceTierV2;
+    return Boolean(
+      (v.voiceApiKey || v.apiKey) &&
+        (t1.speakerId || t1.refAudioUrl || t2.speakerId || t2.refAudioUrl || v.voiceModelV1 || v.voiceModelV2 || v.voiceModel || v.voiceSpeakerId),
+    );
   }
 
   private hasVolcanoDigitalHuman(cfg: OralWorkshopEngineConfig): boolean {

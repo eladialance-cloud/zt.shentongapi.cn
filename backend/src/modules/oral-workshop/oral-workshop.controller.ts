@@ -74,6 +74,20 @@ export class OralWorkshopController {
   }
 
 
+  // ===== 工作台元数据（音色池 + 积分定价） =====
+  @Get('meta')
+  @ApiOperation({ summary: '工作台元数据：官方音色池 + 档位积分定价' })
+  workshopMeta() {
+    return this.oralWorkshopService.getWorkshopMeta();
+  }
+
+  // ===== 官方音色池 =====
+  @Get('voice-pool')
+  @ApiOperation({ summary: '官方音色池（管理后台维护，创建任务时可选）' })
+  listVoicePool() {
+    return this.oralWorkshopService.getVoicePool();
+  }
+
   // ===== 我的声音资产 =====
   @Get('voices')
   @ApiOperation({ summary: '我的声音列表' })

@@ -70,6 +70,22 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       logger.log('Created table: operation_logs');
     }
 
+    // 4b. oral_workshop_jobs 表：任务级官方音色列（seed-tts-2.0 音色池）
+    try {
+      const [owVoiceCol] = await queryRunner.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'oral_workshop_jobs' AND COLUMN_NAME = 'voice_speaker_id'`
+      );
+      if (!owVoiceCol) {
+        await queryRunner.query(
+          `ALTER TABLE oral_workshop_jobs ADD COLUMN voice_speaker_id VARCHAR(128) DEFAULT NULL COMMENT '任务级官方音色 speaker_id'`
+        );
+        logger.log('Added column: oral_workshop_jobs.voice_speaker_id');
+      }
+    } catch (err) {
+      logger.warn('oral_workshop_jobs.voice_speaker_id 迁移跳过: ' + (err as Error).message);
+    }
+
     // 5. skill_packages 表（技能商店；实体存在但无建表脚本，缺失时启动自动补建）
     const [skillPackagesTable] = await queryRunner.query(
       `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES

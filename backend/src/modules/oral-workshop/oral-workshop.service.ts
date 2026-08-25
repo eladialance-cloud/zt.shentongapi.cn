@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import * as fs from 'fs';
@@ -11,6 +11,7 @@ import { OralWorkshopLlmService } from './llm';
 import type { TopicItem } from './llm';
 import { CreditsBillingService } from '../credits/services/credits-billing.service';
 import { SystemLlmService } from './system-llm.service';
+import { SystemConfigEntity } from '../admin-system/entities/system-config.entity';
 import { defaultFfmpegRunner, downloadTo, assertPublicMediaUrl } from './ffmpeg';
 import { BatchCreateOralWorkshopJobsDto, CreateOralWorkshopJobDto, OralWorkshopJobQueryDto } from './dto/oral-workshop.dto';
 import { listTemplates as listTemplatesLoader } from './template-loader';
@@ -36,6 +37,7 @@ export interface OralWorkshopJobItem {
   persona: string | null;
   digitalHumanId: number | null;
   voiceId: number | null;
+  voiceSpeakerId: string | null;
   templateId: number | null;
   videoUrl: string | null;
   audioUrl: string | null;
@@ -84,6 +86,8 @@ export class OralWorkshopService implements OnModuleInit {
     private readonly billing: CreditsBillingService,
     private readonly llm: OralWorkshopLlmService,
     private readonly systemLlm: SystemLlmService,
+    @Optional() @InjectRepository(SystemConfigEntity)
+    private readonly configRepo?: Repository<SystemConfigEntity>,
   ) {}
 
   /** 启动时回收孤儿任务：pending/processing → failed 并退还预扣 Credits（参考 media-generation） */
@@ -178,6 +182,81 @@ export class OralWorkshopService implements OnModuleInit {
     await this.jobRepo.save(job);
     return this.toItem(job);
   }
+  /** 档位积分估算：基础费 + 配音档价 + 数字人档价（读管理后台 system_config.oral_workshop） */
+  async estimateCredits(dto: { voiceModelVersion?: 'V1' | 'V2'; dhModelVersion?: 'V1' | 'V2' }): Promise<number> {
+    let base = 5;
+    let voiceCost = 0;
+    let dhCost = 0;
+    if (this.configRepo) {
+      try {
+        const row = await this.configRepo.findOne({ where: { section: 'oral_workshop' } });
+        const cfg = (row?.configValue ?? {}) as Record<string, unknown>;
+        if (typeof cfg.baseCredits === 'number' && cfg.baseCredits >= 0) base = Math.round(cfg.baseCredits);
+        const vv = dto.voiceModelVersion || 'V2';
+        const vt = cfg[vv === 'V1' ? 'voiceTierV1' : 'voiceTierV2'] as Record<string, unknown> | undefined;
+        if (vt && typeof vt.creditsCost === 'number' && vt.creditsCost >= 0) voiceCost = Math.round(vt.creditsCost);
+        const dv = dto.dhModelVersion || 'V2';
+        const dt = cfg[dv === 'V1' ? 'dhTierV1' : 'dhTierV2'] as Record<string, unknown> | undefined;
+        if (dt && typeof dt.creditsCost === 'number' && dt.creditsCost >= 0) dhCost = Math.round(dt.creditsCost);
+      } catch (err) {
+        this.logger.warn('[oral-workshop] 读取积分配置失败，使用默认值: ' + (err as Error).message);
+      }
+    }
+    return Math.max(base + voiceCost + dhCost, 1);
+  }
+
+  /** 口播工坊元数据（桌面端工作台）：官方音色池 + 档位积分定价 */
+  async getWorkshopMeta(): Promise<{
+    voicePool: Array<{ speakerId: string; name?: string; resourceId?: string }>;
+    pricing: { baseCredits: number; voiceV1: number; voiceV2: number; dhV1: number; dhV2: number };
+  }> {
+    const voicePool = await this.getVoicePool();
+    const pricing = { baseCredits: 5, voiceV1: 0, voiceV2: 0, dhV1: 0, dhV2: 0 };
+    if (this.configRepo) {
+      try {
+        const row = await this.configRepo.findOne({ where: { section: 'oral_workshop' } });
+        const cfg = (row?.configValue ?? {}) as Record<string, unknown>;
+        const numOf = (k: string, fb: number): number => {
+          const v = cfg[k];
+          return typeof v === 'number' && v >= 0 ? Math.round(v) : fb;
+        };
+        pricing.baseCredits = numOf('baseCredits', 5);
+        const t1 = (cfg.voiceTierV1 ?? {}) as Record<string, unknown>;
+        const t2 = (cfg.voiceTierV2 ?? {}) as Record<string, unknown>;
+        const d1 = (cfg.dhTierV1 ?? {}) as Record<string, unknown>;
+        const d2 = (cfg.dhTierV2 ?? {}) as Record<string, unknown>;
+        if (typeof t1.creditsCost === 'number') pricing.voiceV1 = Math.round(t1.creditsCost);
+        if (typeof t2.creditsCost === 'number') pricing.voiceV2 = Math.round(t2.creditsCost);
+        if (typeof d1.creditsCost === 'number') pricing.dhV1 = Math.round(d1.creditsCost);
+        if (typeof d2.creditsCost === 'number') pricing.dhV2 = Math.round(d2.creditsCost);
+      } catch (err) {
+        this.logger.warn('[oral-workshop] 读取工作台元数据失败: ' + (err as Error).message);
+      }
+    }
+    return { voicePool, pricing };
+  }
+
+  /** 官方音色池（管理后台维护，桌面端/工作台展示可选音色） */
+  async getVoicePool(): Promise<Array<{ speakerId: string; name?: string; resourceId?: string }>> {
+    if (!this.configRepo) return [];
+    try {
+      const row = await this.configRepo.findOne({ where: { section: 'oral_workshop' } });
+      const cfg = (row?.configValue ?? {}) as Record<string, unknown>;
+      if (!Array.isArray(cfg.voicePool)) return [];
+      return cfg.voicePool
+        .filter((v): v is { speakerId?: unknown; name?: unknown; resourceId?: unknown } => typeof v === 'object' && v !== null)
+        .map((v) => ({
+          speakerId: String(v.speakerId ?? '').trim(),
+          name: typeof v.name === 'string' ? v.name : '',
+          resourceId: typeof v.resourceId === 'string' && v.resourceId ? v.resourceId : 'seed-tts-2.0',
+        }))
+        .filter((v) => !!v.speakerId);
+    } catch (err) {
+      this.logger.warn('[oral-workshop] 读取音色池失败: ' + (err as Error).message);
+      return [];
+    }
+  }
+
   /** 幂等创建任务：先预扣 Credits，再建 job + 7 个初始步骤 */
   async create(userId: number, dto: CreateOralWorkshopJobDto): Promise<OralWorkshopJobItem> {
     // 幂等：clientTxnId 已存在直接返回
@@ -186,7 +265,7 @@ export class OralWorkshopService implements OnModuleInit {
       if (existed) return this.get(userId, existed.id);
     }
 
-    const estimatedCost = DEFAULT_ESTIMATED_CREDITS;
+    const estimatedCost = await this.estimateCredits(dto);
     const frozen = await this.billing.estimateAndFreeze(
       userId,
       'oral_workshop',
@@ -203,6 +282,7 @@ export class OralWorkshopService implements OnModuleInit {
         persona: dto.persona ?? null,
         digitalHumanId: dto.digitalHumanId ?? null,
         voiceId: dto.voiceId ?? null,
+        voiceSpeakerId: dto.speakerId || null,
         templateId: dto.templateId ?? null,
         audioUrl: dto.audioUrl ?? null,
         videoUrl: dto.videoUrl ?? null,
@@ -275,6 +355,9 @@ export class OralWorkshopService implements OnModuleInit {
                 bilingual: dto.bilingual ?? false,
                 targetLang: dto.targetLang,
                 executionMode: dto.executionMode ?? 'auto',
+                voiceModelVersion: dto.voiceModelVersion,
+                dhModelVersion: dto.dhModelVersion,
+                speakerId: dto.speakerId,
                 clientTxnId: `${batchKey}-${index}`,
               });
               created.push(job);
@@ -533,6 +616,10 @@ export class OralWorkshopService implements OnModuleInit {
     const next = pipelineMarkStepDone(steps, stepName, resultJson);
     await this.stepRepo.save(next.map((s) => this.toStepEntity(s, true)));
     this.applyJobArtifacts(job, resultJson);
+    // 档位积分：voiceClone 步骤产出 credits_cost（基础+配音档+数字人档），结算与展示按实际值
+    if (stepName === 'voiceClone' && resultJson && typeof resultJson.credits_cost === 'number' && resultJson.credits_cost > 0) {
+      job.creditsCost = Math.round(resultJson.credits_cost);
+    }
     await this.syncJobProgress(job, next);
     // 手动/单步模式：每完成一步暂停，等待用户"执行下一步"放行；任务结束则清除等待标记
     if (job.executionMode !== 'auto') {
@@ -654,6 +741,7 @@ export class OralWorkshopService implements OnModuleInit {
       persona: job.persona ?? null,
       digitalHumanId: job.digitalHumanId ?? null,
       voiceId: job.voiceId ?? null,
+      voiceSpeakerId: job.voiceSpeakerId ?? null,
       templateId: job.templateId ?? null,
       videoUrl: job.videoUrl ?? null,
       audioUrl: job.audioUrl ?? null,

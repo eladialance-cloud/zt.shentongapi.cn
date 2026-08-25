@@ -55,6 +55,23 @@ import styles from './styles.module.css'
 
 const USER_LEVELS = [1, 2, 3, 4, 5]
 
+/** 解析音色池文本：每行 speaker_id|名称|resourceId */
+function parseVoicePool(text?: string): Array<{ speakerId: string; name?: string; resourceId?: string }> {
+  if (!text) return []
+  const pool: Array<{ speakerId: string; name?: string; resourceId?: string }> = []
+  for (const line of String(text).split(/[\n\r]+/)) {
+    const parts = line.split('|').map((v) => v.trim())
+    const speakerId = parts[0] || ''
+    if (!speakerId) continue
+    pool.push({
+      speakerId,
+      name: parts[1] || '',
+      resourceId: parts[2] && parts[2] !== 'seed-tts-2.0' ? parts[2] : 'seed-tts-2.0'
+    })
+  }
+  return pool
+}
+
 interface CacheFormValues {
   l1Ttl: number
   l2Ttl: number
@@ -98,6 +115,7 @@ export default function SystemConfigPage() {
   const [loadingModels, setLoadingModels] = useState(false)
   const [testingCap, setTestingCap] = useState<Record<string, boolean>>({})
   const [tab, setTab] = useState<SystemConfigSection>('cache')
+  const [voiceOptions, setVoiceOptions] = useState<{ value: string; label: string }[]>([])
 
   const [cacheForm] = Form.useForm<CacheFormValues>()
   const [rateLimitForm] = Form.useForm<RateLimitFormValues>()
@@ -186,6 +204,26 @@ export default function SystemConfigPage() {
         voiceEnableSubtitle: cfgv.voiceEnableSubtitle ?? false,
         voiceRefAudioUrl: cfgv.voiceRefAudioUrl || '',
         voiceSpeakerId: cfgv.voiceSpeakerId || '',
+        baseCredits: cfgv.baseCredits ?? 5,
+        voiceTierV1: {
+          resourceId: cfgv.voiceTierV1?.resourceId || 'seed-icl-2.0',
+          model: cfgv.voiceTierV1?.model || '',
+          speakerId: cfgv.voiceTierV1?.speakerId || '',
+          refAudioUrl: cfgv.voiceTierV1?.refAudioUrl || '',
+          refAudioText: cfgv.voiceTierV1?.refAudioText || '',
+          creditsCost: cfgv.voiceTierV1?.creditsCost ?? 0
+        },
+        voiceTierV2: {
+          resourceId: cfgv.voiceTierV2?.resourceId || 'seed-icl-2.0',
+          model: cfgv.voiceTierV2?.model || '',
+          speakerId: cfgv.voiceTierV2?.speakerId || '',
+          refAudioUrl: cfgv.voiceTierV2?.refAudioUrl || '',
+          refAudioText: cfgv.voiceTierV2?.refAudioText || '',
+          creditsCost: cfgv.voiceTierV2?.creditsCost ?? 0
+        },
+        dhTierV1: { creditsCost: cfgv.dhTierV1?.creditsCost ?? 0 },
+        dhTierV2: { creditsCost: cfgv.dhTierV2?.creditsCost ?? 0 },
+        voicePool: cfgv.voicePool || [],
         dhEndpoint: cfgv.dhEndpoint || '',
         dhSubmitPath: cfgv.dhSubmitPath || '/digital-human/submit',
         dhQueryPath: cfgv.dhQueryPath || '/digital-human/query',
@@ -198,8 +236,17 @@ export default function SystemConfigPage() {
         embeddingProvider: cfgv.embeddingProvider || 'doubao',
         embeddingEndpoint: cfgv.embeddingEndpoint || '',
         embeddingApiKey: cfgv.embeddingApiKey || '',
-        embeddingModel: cfgv.embeddingModel || 'doubao-embedding-text-240715'
+        embeddingModel: cfgv.embeddingModel || 'doubao-embedding-text-240715',
+        voicePoolText: (cfgv.voicePool || [])
+          .map((v) => [v.speakerId, v.name || '', v.resourceId || 'seed-tts-2.0'].join('|'))
+          .join('\n')
       })
+      setVoiceOptions(
+        (cfgv.voicePool || []).map((v) => ({
+          value: v.speakerId,
+          label: (v.name ? v.name + '（' + v.speakerId + '）' : v.speakerId) + (v.resourceId && v.resourceId !== 'seed-tts-2.0' ? ' [' + v.resourceId + ']' : '')
+        }))
+      )
     } catch (err) {
       console.error('[SystemConfig] load oral_workshop failed:', err)
     }
@@ -333,6 +380,26 @@ export default function SystemConfigPage() {
         voiceEnableSubtitle: values.voiceEnableSubtitle ?? false,
         voiceRefAudioUrl: values.voiceRefAudioUrl || '',
         voiceSpeakerId: values.voiceSpeakerId || '',
+        baseCredits: values.baseCredits ?? 5,
+        voiceTierV1: {
+          resourceId: values.voiceTierV1?.resourceId || 'seed-icl-2.0',
+          model: values.voiceTierV1?.model || '',
+          speakerId: values.voiceTierV1?.speakerId || '',
+          refAudioUrl: values.voiceTierV1?.refAudioUrl || '',
+          refAudioText: values.voiceTierV1?.refAudioText || '',
+          creditsCost: values.voiceTierV1?.creditsCost ?? 0
+        },
+        voiceTierV2: {
+          resourceId: values.voiceTierV2?.resourceId || 'seed-icl-2.0',
+          model: values.voiceTierV2?.model || '',
+          speakerId: values.voiceTierV2?.speakerId || '',
+          refAudioUrl: values.voiceTierV2?.refAudioUrl || '',
+          refAudioText: values.voiceTierV2?.refAudioText || '',
+          creditsCost: values.voiceTierV2?.creditsCost ?? 0
+        },
+        dhTierV1: { creditsCost: values.dhTierV1?.creditsCost ?? 0 },
+        dhTierV2: { creditsCost: values.dhTierV2?.creditsCost ?? 0 },
+        voicePool: parseVoicePool(values.voicePoolText),
         dhEndpoint: values.dhEndpoint || '',
         dhSubmitPath: values.dhSubmitPath || '/digital-human/submit',
         dhQueryPath: values.dhQueryPath || '/digital-human/query',
@@ -786,12 +853,7 @@ export default function SystemConfigPage() {
                 <Form.Item name="voiceCloneEndpoint" label="声音复刻端点" extra="官方默认 https://openspeech.bytedance.com/api/v3/tts/voice_clone">
                   <Input placeholder="https://openspeech.bytedance.com/api/v3/tts/voice_clone" allowClear />
                 </Form.Item>
-                <Form.Item name="voiceModelV1" label="V1 档音色 ID（speaker）" extra="用户任务选「标准 V1」时用此音色；留空=用 voiceSpeakerId">
-                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="音色库音色 ID" allowClear />
-                </Form.Item>
-                <Form.Item name="voiceModelV2" label="V2 档音色 ID（speaker）" extra="用户任务选「高清 V2」时用此音色；留空=用 voiceSpeakerId">
-                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="音色库音色 ID" allowClear />
-                </Form.Item>
+
                 <Form.Item name="voiceFormat" label="音频格式">
                   <Select
                     options={[
@@ -836,7 +898,86 @@ export default function SystemConfigPage() {
                     测试声音复刻（需参考音频 URL）
                   </Button>
                 </div>
-                <Form.Item name="voiceRefAudioUrl" label="默认参考音频 URL" extra={'用户未选“我的声音”时的兜底参考音频（克隆音色用）'}>
+
+                <div className={styles.sectionTitle} style={{ marginTop: 16 }}>
+                  <ThunderboltOutlined /> 积分定价（按档位扣费，替换固定 21 分）
+                </div>
+                <div className={styles.levelGrid} style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                  <Form.Item name="baseCredits" label="任务基础积分" extra="每次任务固定扣费（文案/改写/标题/封面等 LLM 步骤）">
+                    <InputNumber min={0} style={{ width: '100%' }} />
+                  </Form.Item>
+                  <Form.Item name={['dhTierV1', 'creditsCost']} label="数字人 V1 档积分（标准）">
+                    <InputNumber min={0} style={{ width: '100%' }} />
+                  </Form.Item>
+                  <Form.Item name={['dhTierV2', 'creditsCost']} label="数字人 V2 档积分（高清）">
+                    <InputNumber min={0} style={{ width: '100%' }} />
+                  </Form.Item>
+                </div>
+
+                <div className={styles.sectionTitle} style={{ marginTop: 16 }}>
+                  <RobotOutlined /> V1 / V2 档位模型配对（用户前端选 V1/V2 用不同模型，扣不同积分）
+                </div>
+                <div className={styles.levelGrid} style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                  <Form.Item name={['voiceTierV1', 'resourceId']} label="V1 资源 ID（X-Api-Resource-Id）">
+                    <Select
+                      options={[
+                        { value: 'seed-icl-2.0', label: 'seed-icl-2.0（复刻音色）' },
+                        { value: 'seed-tts-2.0', label: 'seed-tts-2.0（官方音色）' }
+                      ]}
+                    />
+                  </Form.Item>
+                  <Form.Item name={['voiceTierV1', 'model']} label="V1 模型（可选）" extra="如 seed-tts-2.0-standard，留空=服务端默认">
+                    <Input placeholder="留空=服务端默认" allowClear />
+                  </Form.Item>
+                  <Form.Item name={['voiceTierV1', 'speakerId']} label="V1 档音色 ID" extra="从下方音色池选择，或手输火山控制台音色库 ID">
+                    <AutoComplete options={voiceOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="音色库音色 ID" allowClear />
+                  </Form.Item>
+                  <Form.Item name={['voiceTierV1', 'refAudioUrl']} label="V1 参考音频 URL" extra="无 speakerId 时克隆用">
+                    <Input placeholder="https://.../ref.mp3" allowClear />
+                  </Form.Item>
+                  <Form.Item name={['voiceTierV1', 'refAudioText']} label="V1 参考音频文本" extra="参考音频里说的内容（复刻质量关键）">
+                    <Input placeholder="参考音频对应文本" allowClear />
+                  </Form.Item>
+                  <Form.Item name={['voiceTierV1', 'creditsCost']} label="V1 配音积分（标准档）">
+                    <InputNumber min={0} style={{ width: '100%' }} />
+                  </Form.Item>
+                  <Form.Item name={['voiceTierV2', 'resourceId']} label="V2 资源 ID（X-Api-Resource-Id）">
+                    <Select
+                      options={[
+                        { value: 'seed-icl-2.0', label: 'seed-icl-2.0（复刻音色）' },
+                        { value: 'seed-tts-2.0', label: 'seed-tts-2.0（官方音色）' }
+                      ]}
+                    />
+                  </Form.Item>
+                  <Form.Item name={['voiceTierV2', 'model']} label="V2 模型（可选）">
+                    <Input placeholder="留空=服务端默认" allowClear />
+                  </Form.Item>
+                  <Form.Item name={['voiceTierV2', 'speakerId']} label="V2 档音色 ID" extra="用户默认选 V2">
+                    <AutoComplete options={voiceOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="音色库音色 ID" allowClear />
+                  </Form.Item>
+                  <Form.Item name={['voiceTierV2', 'refAudioUrl']} label="V2 参考音频 URL">
+                    <Input placeholder="https://.../ref.mp3" allowClear />
+                  </Form.Item>
+                  <Form.Item name={['voiceTierV2', 'refAudioText']} label="V2 参考音频文本">
+                    <Input placeholder="参考音频对应文本" allowClear />
+                  </Form.Item>
+                  <Form.Item name={['voiceTierV2', 'creditsCost']} label="V2 配音积分（高清档）">
+                    <InputNumber min={0} style={{ width: '100%' }} />
+                  </Form.Item>
+                </div>
+
+                <div className={styles.sectionTitle} style={{ marginTop: 16 }}>
+                  <ThunderboltOutlined /> 官方音色池（seed-tts-2.0 共 99 个官方音色，桌面端可选）
+                </div>
+                <Form.Item
+                  name="voicePoolText"
+                  label="音色池批量编辑"
+                  extra="每行一条：speaker_id|名称（可选）|resourceId（可选，默认 seed-tts-2.0）。音色 ID 从火山控制台 > 音色库 复制。桌面端创建任务时下拉展示。"
+                >
+                  <Input.TextArea rows={6} placeholder={'zh_female_wanwan_moon_bigtts|湾湾\nzh_female_xiaobei_bigtts|小北\nzh_female_tianmei_bigtts|甜妹'} />
+                </Form.Item>
+                <Form.Item
+                  name="voiceRefAudioUrl" label="默认参考音频 URL" extra={'用户未选“我的声音”时的兜底参考音频（克隆音色用）'}>
                   <Input placeholder="https://.../ref.mp3" allowClear />
                 </Form.Item>
                 <Form.Item name="voiceSpeakerId" label="已训练 speaker_id" extra="优先复用，跳过克隆直接合成">

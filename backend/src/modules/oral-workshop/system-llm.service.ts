@@ -463,9 +463,12 @@ export class SystemLlmService implements LlmCaller {
         case 'tts': {
           const ttsKey = str(cfg.voiceApiKey) || apiKey;
           if (!ttsKey) return { success: false, message: '未配置语音技术 API Key（voiceApiKey）' };
-          const speakerId = str(cfg.voiceModelV2) || str(cfg.voiceModelV1) || str(cfg.voiceSpeakerId);
-          if (!speakerId) return { success: false, message: '未配置音色 ID（V1/V2 音色或 voiceSpeakerId）' };
-          const resourceId = str(cfg.voiceResourceId) || 'seed-icl-2.0';
+          const tierV2 = (cfg.voiceTierV2 ?? {}) as Record<string, unknown>;
+          const tierV1 = (cfg.voiceTierV1 ?? {}) as Record<string, unknown>;
+          const speakerId = str(tierV2.speakerId) || str(tierV1.speakerId) || str(cfg.voiceModelV2) || str(cfg.voiceModelV1) || str(cfg.voiceSpeakerId);
+          if (!speakerId) return { success: false, message: '未配置音色 ID（V1/V2 档音色或 voiceSpeakerId）' };
+          const resourceId = str(tierV2.resourceId) || str(tierV1.resourceId) || str(cfg.voiceResourceId) || 'seed-icl-2.0';
+          const model = str(tierV2.model) || str(tierV1.model) || str(cfg.voiceModel);
           const endpoint = (str(cfg.voiceEndpoint) || 'https://openspeech.bytedance.com/api/v3/tts/unidirectional').replace(/\/+$/, '');
           const resp = await fetch(endpoint, {
             method: 'POST',
@@ -475,7 +478,7 @@ export class SystemLlmService implements LlmCaller {
               'X-Api-Resource-Id': resourceId,
               'X-Api-Request-Id': randomUUID(),
             },
-            body: JSON.stringify({ req_params: { text: '测试', speaker: speakerId, audio_params: { format: 'mp3', sample_rate: 24000 } } }),
+            body: JSON.stringify({ req_params: { text: '测试', speaker: speakerId, model: model || undefined, audio_params: { format: 'mp3', sample_rate: 24000 } } }),
             signal: AbortSignal.timeout(25000),
           });
           const text = (await resp.text().catch(() => '')).slice(0, 400);
@@ -488,8 +491,10 @@ export class SystemLlmService implements LlmCaller {
         case 'clone': {
           const clKey = str(cfg.voiceApiKey) || apiKey;
           if (!clKey) return { success: false, message: '未配置语音技术 API Key（voiceApiKey）' };
-          const refUrl = str(cfg.voiceRefAudioUrl);
-          if (!refUrl) return { success: false, message: '未配置参考音频 URL（voiceRefAudioUrl），无法测试声音复刻' };
+          const tierC2 = (cfg.voiceTierV2 ?? {}) as Record<string, unknown>;
+          const tierC1 = (cfg.voiceTierV1 ?? {}) as Record<string, unknown>;
+          const refUrl = str(cfg.voiceRefAudioUrl) || str(tierC2.refAudioUrl) || str(tierC1.refAudioUrl);
+          if (!refUrl) return { success: false, message: '未配置参考音频 URL（默认参考音频/V1/V2 档参考音频），无法测试声音复刻' };
           const audioBuf = await this.downloadBytes(refUrl);
           const customSpeakerId = 'st_probe_' + randomUUID().replace(/-/g, '').slice(0, 16);
           const cloneEndpoint = (str(cfg.voiceCloneEndpoint) || 'https://openspeech.bytedance.com/api/v3/tts/voice_clone').replace(/\/+$/, '');
