@@ -82,6 +82,15 @@ describe('OralWorkshopLlmService', () => {
     assert.equal(out[0].persona_angle, '角度1');
   });
 
+  it('generateTopics：兼容字符串数组并归一化为 title', async () => {
+    const payload = JSON.stringify({ topics: ['选题A', '选题B', ''] });
+    const svc = new OralWorkshopLlmService(fakeCaller(() => payload));
+    const out = await svc.generateTopics('副业', { count: 3 });
+    assert.equal(out.length, 2);
+    assert.equal(out[0].title, '选题A');
+    assert.equal(out[1].title, '选题B');
+  });
+
   it('generateTopics：非法 JSON 抛 LlmOutputError', async () => {
     const svc = new OralWorkshopLlmService(fakeCaller(() => '抱歉，我无法生成'));
     await assert.rejects(() => svc.generateTopics('副业', { count: 3 }), LlmOutputError);

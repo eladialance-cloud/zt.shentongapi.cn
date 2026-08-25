@@ -149,6 +149,30 @@ export interface LegalReviewResult {
 /**
  * 口播工坊 LLM 服务：功能函数 = 渲染模板 + 调用 + 结构化解析
  */
+/** 归一化选题项：兼容对象/字符串、字段名 title/topic/name，过滤无效项 */
+function normalizeTopicItems(items: unknown[]): TopicItem[] {
+  const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+  const out: TopicItem[] = [];
+  for (const it of items) {
+    if (typeof it === 'string') {
+      const title = it.trim();
+      if (title) out.push({ title });
+      continue;
+    }
+    if (!it || typeof it !== 'object') continue;
+    const r = it as Record<string, unknown>;
+    const title = str(r.title) || str(r.topic) || str(r.name);
+    if (!title) continue;
+    out.push({
+      title,
+      persona_angle: str(r.persona_angle) || undefined,
+      hook: str(r.hook) || undefined,
+      viral_logic: str(r.viral_logic) || undefined,
+    });
+  }
+  return out;
+}
+
 export class OralWorkshopLlmService {
   constructor(private readonly caller: LlmCaller) {}
 
@@ -186,9 +210,11 @@ export class OralWorkshopLlmService {
       count: String(opts.count ?? 5),
       excludedTopics: opts.excludedTopics?.length ? opts.excludedTopics.join('、') : '',
     }, 0.7, 'topic');
-    const data = extractJson(text) as { topics?: TopicItem[] };
+    const data = extractJson(text) as { topics?: unknown };
     if (!Array.isArray(data.topics)) throw new LlmOutputError('选题输出缺少 topics 数组');
-    return data.topics;
+    const topics = normalizeTopicItems(data.topics);
+    if (topics.length === 0) throw new LlmOutputError('选题输出缺少有效的 title 字段');
+    return topics;
   }
 
   /** 关键词选题（带机会分析） */
@@ -202,11 +228,13 @@ export class OralWorkshopLlmService {
       count: String(opts.count ?? 5),
       excludedTopics: opts.excludedTopics?.length ? opts.excludedTopics.join('、') : '',
     }, 0.7, 'topic');
-    const data = extractJson(text) as Partial<KeywordTopicsResult>;
+    const data = extractJson(text) as { keyword_analysis?: unknown; topics?: unknown };
     if (typeof data.keyword_analysis !== 'string' || !Array.isArray(data.topics)) {
       throw new LlmOutputError('关键词选题输出结构不完整');
     }
-    return data as KeywordTopicsResult;
+    const topics = normalizeTopicItems(data.topics);
+    if (topics.length === 0) throw new LlmOutputError('关键词选题缺少有效标题');
+    return { keyword_analysis: data.keyword_analysis, topics };
   }
 
   /** 对标账号风格分析 → style_analysis + 5 个新选题 */
