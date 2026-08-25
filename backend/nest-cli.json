@@ -4,6 +4,13 @@
   "sourceRoot": "src",
   "compilerOptions": {
     "deleteOutDir": true,
-    "tsConfigPath": "tsconfig.json"
+    "tsConfigPath": "tsconfig.json",
+    "assets": [
+      {
+        "include": "modules/oral-workshop/templates/*.json",
+        "outDir": "dist"
+      }
+    ],
+    "watchAssets": true
   }
 }
