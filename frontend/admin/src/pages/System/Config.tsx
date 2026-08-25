@@ -9,7 +9,6 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import {
-  AutoComplete,
   Button,
   Card,
   Form,
@@ -247,6 +246,22 @@ export default function SystemConfigPage() {
           label: (v.name ? v.name + '（' + v.speakerId + '）' : v.speakerId) + (v.resourceId && v.resourceId !== 'seed-tts-2.0' ? ' [' + v.resourceId + ']' : '')
         }))
       )
+      // 已保存的模型值合并进下拉（Select 回显 + 可重新选择）
+      const savedModels = [
+        cfgv.llmModel,
+        cfgv.topicModel,
+        cfgv.scriptModel,
+        cfgv.rewriteModel,
+        cfgv.titleModel,
+        cfgv.translateModel,
+        cfgv.reviewModel
+      ]
+        .filter((m): m is string => !!m)
+        .map((m) => ({ value: m, label: m }))
+      setModelOptions((prev) => {
+        const seen = new Set(prev.map((o) => o.value))
+        return [...prev, ...savedModels.filter((o) => !seen.has(o.value))]
+      })
     } catch (err) {
       console.error('[SystemConfig] load oral_workshop failed:', err)
     }
@@ -470,7 +485,7 @@ export default function SystemConfigPage() {
         source: v.llmSource
       })
       if (res.success && res.models?.length) {
-        setModelOptions(res.models.map((m) => ({ value: m })))
+        setModelOptions(res.models.map((m) => ({ value: m, label: m })))
         message.success('已加载 ' + res.models.length + ' 个模型，可在下方下拉中选择')
       } else {
         setModelOptions([])
@@ -776,7 +791,7 @@ export default function SystemConfigPage() {
                   />
                 </Form.Item>
                 <Form.Item name="llmModel" label="默认模型（兜底）" extra="各用途未单独配置时使用；如 doubao-seed-1-6-250615 / deepseek-v3.2">
-                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="如 doubao-seed-1-6-250615" allowClear />
+                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder="如 doubao-seed-1-6-250615" />
                 </Form.Item>
                 <Form.Item name="llmBaseUrl" label="LLM 接入端点（baseUrl）" extra="火山方舟默认 https://ark.cn-beijing.volces.com/api/v3；不同模型可换不同接入点">
                   <Input placeholder="https://ark.cn-beijing.volces.com/api/v3" allowClear />
@@ -810,22 +825,22 @@ export default function SystemConfigPage() {
               </div>
               <div className={styles.levelGrid} style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
                 <Form.Item name="topicModel" label="爆款选题模型">
-                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="如 doubao-seed-2-0-lite" allowClear />
+                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder="如 doubao-seed-2-0-lite" />
                 </Form.Item>
                 <Form.Item name="scriptModel" label="口播/营销文案模型">
-                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="留空=默认" allowClear />
+                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder="留空=默认" />
                 </Form.Item>
                 <Form.Item name="rewriteModel" label="文案改写模型">
-                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="留空=默认" allowClear />
+                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder="留空=默认" />
                 </Form.Item>
                 <Form.Item name="titleModel" label="标题/封面模型">
-                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="如 Qwen2.5-7B-Instruct" allowClear />
+                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder="如 Qwen2.5-7B-Instruct" />
                 </Form.Item>
                 <Form.Item name="translateModel" label="翻译/双语字幕模型">
-                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="如 meta-llama/Llama-3.3-70B-Instruct" allowClear />
+                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder="如 meta-llama/Llama-3.3-70B-Instruct" />
                 </Form.Item>
                 <Form.Item name="reviewModel" label="法务审核模型">
-                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="留空=默认" allowClear />
+                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder="留空=默认" />
                 </Form.Item>
               </div>
 
@@ -930,7 +945,7 @@ export default function SystemConfigPage() {
                     <Input placeholder="留空=服务端默认" allowClear />
                   </Form.Item>
                   <Form.Item name={['voiceTierV1', 'speakerId']} label="V1 档音色 ID" extra="从下方音色池选择，或手输火山控制台音色库 ID">
-                    <AutoComplete options={voiceOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="音色库音色 ID" allowClear />
+                    <Select showSearch allowClear optionFilterProp="label" options={voiceOptions} placeholder="音色库音色 ID" />
                   </Form.Item>
                   <Form.Item name={['voiceTierV1', 'refAudioUrl']} label="V1 参考音频 URL" extra="无 speakerId 时克隆用">
                     <Input placeholder="https://.../ref.mp3" allowClear />
@@ -953,7 +968,7 @@ export default function SystemConfigPage() {
                     <Input placeholder="留空=服务端默认" allowClear />
                   </Form.Item>
                   <Form.Item name={['voiceTierV2', 'speakerId']} label="V2 档音色 ID" extra="用户默认选 V2">
-                    <AutoComplete options={voiceOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="音色库音色 ID" allowClear />
+                    <Select showSearch allowClear optionFilterProp="label" options={voiceOptions} placeholder="音色库音色 ID" />
                   </Form.Item>
                   <Form.Item name={['voiceTierV2', 'refAudioUrl']} label="V2 参考音频 URL">
                     <Input placeholder="https://.../ref.mp3" allowClear />
