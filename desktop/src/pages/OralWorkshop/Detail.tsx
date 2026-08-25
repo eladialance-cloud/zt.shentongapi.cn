@@ -11,6 +11,7 @@ import {
   Download,
   ExternalLink,
   PackageOpen,
+  Palette,
   XCircle,
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -20,6 +21,7 @@ import {
   getOralWorkshopJob,
 } from '@/api/oral-workshop-api'
 import { useOralWorkshopStore } from '@/store/oral-workshop'
+import CoverDesigner from './CoverDesigner'
 import { resolveMediaUrl } from '@/utils/media'
 import type { OralWorkshopJob, OralWorkshopStepStatus, PublishPackage } from '@/types/oral-workshop'
 import styles from './styles.module.css'
@@ -61,6 +63,7 @@ export default function OralWorkshopDetail() {
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
   const [pkg, setPkg] = useState<PublishPackage | null>(null)
+  const [coverDesignerOpen, setCoverDesignerOpen] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
@@ -246,12 +249,23 @@ export default function OralWorkshopDetail() {
               <audio className={styles.audio} src={resolveMediaUrl(job.audioUrl)} controls preload="none" />
             </div>
           )}
-          {job.coverUrl && (
-            <div className={styles.metaRow}>
-              <span className={styles.metaLabel}>封面</span>
+          <div className={styles.metaRow}>
+            <span className={styles.metaLabel}>封面</span>
+            {job.coverUrl ? (
               <img className={styles.cover} src={resolveMediaUrl(job.coverUrl)} alt="封面" />
+            ) : (
+              <div className={styles.previewEmpty} style={{ minHeight: 60 }}>
+                <Empty description="暂无封面" />
+              </div>
+            )}
+            <div className={styles.coverActions}>
+              <Button size="small" icon={<Palette size={13} />} onClick={() => setCoverDesignerOpen(true)}>
+                设计封面
+              </Button>
+              {job.coverH1 && <Tag color="gold">{job.coverH1}</Tag>}
+              {job.coverH2 && <Tag>{job.coverH2}</Tag>}
             </div>
-          )}
+          </div>
           {job.persona && (
             <div className={styles.metaRow}>
               <span className={styles.metaLabel}>人设</span>
@@ -294,6 +308,20 @@ export default function OralWorkshopDetail() {
           )
         })}
       </Card>
+
+      <CoverDesigner
+        jobId={jobId}
+        videoUrl={job.videoUrl}
+        coverUrl={job.coverUrl}
+        coverH1={job.coverH1}
+        coverH2={job.coverH2}
+        open={coverDesignerOpen}
+        onClose={() => setCoverDesignerOpen(false)}
+        onSaved={(updated) => {
+          setJob(updated)
+          setLastJob(updated)
+        }}
+      />
 
       <Modal
         open={Boolean(pkg)}

@@ -32,6 +32,25 @@ import type {
 export async function extractScriptFromVideo(videoUrl: string): Promise<{ text: string }> {
   return httpClient.post<{ text: string }>('/oral-workshop/extract-script', { videoUrl })
 }
+
+/**
+ * 生成封面标题（主标题+副标题）
+ * POST /oral-workshop/jobs/:id/title
+ */
+export async function generateCoverTitle(jobId: number): Promise<{ h1: string; h2: string }> {
+  return httpClient.post<{ h1: string; h2: string }>(`/oral-workshop/jobs/${jobId}/title`)
+}
+
+/**
+ * 保存封面设计（封面图 URL + 主/副标题 + 配置）
+ * POST /oral-workshop/jobs/:id/cover  body: { coverUrl, coverH1?, coverH2?, coverConfig? }
+ */
+export async function saveJobCover(
+  jobId: number,
+  payload: { coverUrl: string; coverH1?: string; coverH2?: string; coverConfig?: string }
+): Promise<OralWorkshopJob> {
+  return httpClient.post<OralWorkshopJob>(`/oral-workshop/jobs/${jobId}/cover`, payload)
+}
 /** 单条任务预估 Credits（与后端 DEFAULT_ESTIMATED_CREDITS 一致，提交前展示） */
 export const ORAL_WORKSHOP_ESTIMATED_CREDITS = 21
 

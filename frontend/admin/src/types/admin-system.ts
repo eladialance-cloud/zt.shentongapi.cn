@@ -67,6 +67,12 @@ export interface OralWorkshopConfig {
   watermarkEnabled: boolean
   /** 并发任务上限 */
   maxConcurrentJobs: number
+  /** 口播工坊 LLM 模型（选题/文案/改写/标题/翻译等 AI 提示词用；留空=deepseek-chat 或供应商默认） */
+  llmModel?: string
+  /** 语音识别模型（学习对标-提取文案用；留空=whisper-1） */
+  sttModel?: string
+  /** 免费档水印文案 */
+  watermarkText?: string
 }
 
 /** 系统配置(联合) */

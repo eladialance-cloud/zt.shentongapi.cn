@@ -42,6 +42,22 @@ export class OralWorkshopController {
     if (!body?.videoUrl) throw new BadRequestException('videoUrl 不能为空');
     return this.oralWorkshopService.extractScript(user.userId, body.videoUrl);
   }
+
+  @Post('jobs/:id/title')
+  @ApiOperation({ summary: '生成封面标题（主标题+副标题，AI）' })
+  generateCoverTitle(@CurrentUser() user: ICurrentUser, @Param('id') id: string) {
+    return this.oralWorkshopService.generateCoverTitle(user.userId, Number(id));
+  }
+
+  @Post('jobs/:id/cover')
+  @ApiOperation({ summary: '保存封面设计（封面图 URL + 主/副标题 + 设计配置）' })
+  saveCover(
+    @CurrentUser() user: ICurrentUser,
+    @Param('id') id: string,
+    @Body() body: { coverUrl: string; coverH1?: string; coverH2?: string; coverConfig?: string },
+  ) {
+    return this.oralWorkshopService.saveCover(user.userId, Number(id), body);
+  }
   @Get('jobs')
   @ApiOperation({ summary: '我的口播工坊任务列表（分页）' })
   list(@CurrentUser() user: ICurrentUser, @Query() query: OralWorkshopJobQueryDto) {

@@ -180,6 +180,15 @@ export class OralWorkshopLlmService {
   async generateTitle(script: string, platform = '抖音'): Promise<string> {
     return this.call('title_publish', { script, platform });
   }
+  /** 封面标题（结构化 h1/h2，供封面设计器） */
+  async generateCoverTitle(script: string): Promise<{ h1: string; h2: string }> {
+    const text = await this.call('cover_title', { script }, 0.5);
+    const data = extractJson(text) as Partial<{ h1: unknown; h2: unknown }>;
+    const h1 = typeof data.h1 === 'string' ? data.h1.trim() : '';
+    const h2 = typeof data.h2 === 'string' ? data.h2.trim() : '';
+    if (!h1 || !h2) throw new LlmOutputError('封面标题输出结构不完整');
+    return { h1, h2 };
+  }
 
   /** 法务审核：低温度，返回结构化结果 */
   async legalReview(script: string): Promise<LegalReviewResult> {

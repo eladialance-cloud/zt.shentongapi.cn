@@ -1,4 +1,4 @@
-﻿// 主进程 / 渲染进程共享类型定义
+// 主进程 / 渲染进程共享类型定义
 // 该文件同时被 tsconfig.node.json 与 tsconfig.web.json 包含
 
 export type ServiceName = "openclaw" | "n8n" | "mcp" | "hermes" | "video-claw";
@@ -523,6 +523,11 @@ export interface ElectronAPI {
     disableHardwareAcceleration?(): Promise<void>;
     /** 使用系统默认浏览器打开外部链接（真实支付跳转用） */
     openExternal(url: string): Promise<void>;
+  };
+  /** 媒体代理：主进程拉取远程媒体（绕过 CORS，供 canvas 封面设计器免污染使用） */
+  media: {
+    /** 拉取远程文件为 base64 + mime（限 http/https，超时 60s，上限 50MB） */
+    fetchBuffer(url: string): Promise<{ data: string; mime: string }>;
   };
   /** 设置页每类默认模型同步（chat/vision/image/video/tts → Hermes/ST-Claw 配置） */
   modelDefaultsSync(dto: { chat?: string | null; vision?: string | null; image?: string | null; video?: string | null; tts?: string | null } | null): void;

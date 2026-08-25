@@ -64,7 +64,18 @@ export class OralWorkshopJobEntity {
   @Column({ name: 'cover_url', length: 512, nullable: true })
   coverUrl?: string | null;
 
-  /** 关联 channel.publish_plans（导出发布包后回填） */
+    /** 封面主标题（封面设计器 / AI 生成） */
+  @Column({ name: 'cover_h1', length: 64, nullable: true })
+  coverH1?: string | null;
+
+  /** 封面副标题 */
+  @Column({ name: 'cover_h2', length: 64, nullable: true })
+  coverH2?: string | null;
+
+  /** 封面设计配置（模板/背景/字体/颜色，JSON 字符串） */
+  @Column({ name: 'cover_config', type: 'text', nullable: true })
+  coverConfig?: string | null;
+/** 关联 channel.publish_plans（导出发布包后回填） */
   @Column({ name: 'publish_plan_id', type: 'bigint', nullable: true, transformer: bigintTransformer })
   publishPlanId?: number | null;
 

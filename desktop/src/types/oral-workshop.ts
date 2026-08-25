@@ -33,6 +33,9 @@ export interface OralWorkshopJob {
   videoUrl: string | null
   audioUrl: string | null
   coverUrl: string | null
+  coverH1: string | null
+  coverH2: string | null
+  coverConfig: string | null
   creditsCost: number
   bilingual: boolean
   error: string | null
@@ -160,4 +163,24 @@ export interface BatchCreateResult {
   created: OralWorkshopJob[]
   skipped: number
   errors: Array<{ topic: string; reason: string }>
+}
+
+/** 封面设计器配置（与 CoverDesigner 保存的 cover_config JSON 一致） */
+export interface CoverDesignConfig {
+  templateId: string
+  background: 'video-frame' | 'image' | 'color'
+  backgroundValue: string
+  bgColor: string
+  h1: string
+  h2: string
+  tag?: string
+  fontSizeH1: number
+  fontSizeH2: number
+  h1Color: string
+  h2Color: string
+  strokeColor: string
+  strokeWidth: number
+  letterSpacing: number
+  align: 'left' | 'center' | 'right'
+  position: 'top' | 'middle' | 'bottom'
 }

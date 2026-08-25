@@ -697,3 +697,127 @@
   word-break: break-all;
   line-height: 1.6;
 }
+
+
+/* ===== 封面设计器（对标参考软件「标题封面-封面设计」） ===== */
+.cdCanvasWrap {
+  position: relative;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0a1628;
+  max-width: 300px;
+}
+
+.cdCanvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 9 / 16;
+}
+
+.cdBgError {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 10px;
+  background: rgba(239, 68, 68, 0.9);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.cdSection {
+  margin-bottom: 14px;
+}
+
+.cdSectionTitle {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 8px;
+  gap: 4px;
+}
+
+.cdTemplateGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+  gap: 6px;
+}
+
+.cdTemplateItem {
+  padding: 8px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-container);
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cdTemplateItem:hover {
+  border-color: var(--color-brand);
+}
+
+.cdTemplateItemActive {
+  border-color: var(--color-brand) !important;
+  background: var(--color-brand-bg);
+}
+
+.cdTemplateName {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.cdTemplateItemActive .cdTemplateName {
+  color: var(--color-brand);
+  font-weight: 600;
+}
+
+.cdColorRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.cdColorRow input[type='color'] {
+  width: 36px;
+  height: 26px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.cdStyleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.cdStyleRow > span:first-child {
+  width: 64px;
+  flex-shrink: 0;
+}
+
+.cdStyleRow .ant-slider {
+  flex: 1;
+}
+
+.coverActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}

@@ -1,4 +1,4 @@
-﻿// 预加载脚本 - 通过 contextBridge 暴露安全 API 给渲染进程
+// 预加载脚本 - 通过 contextBridge 暴露安全 API 给渲染进程
 // 启用 contextIsolation: true，nodeIntegration: false
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
@@ -97,6 +97,10 @@ const electronAPI: ElectronAPI = {
         ipcRenderer.removeListener('update:status', handler)
       }
     }
+  },
+  media: {
+    fetchBuffer: (url: string) =>
+      ipcRenderer.invoke('media:fetch-buffer', url) as Promise<{ data: string; mime: string }>,
   },
   modelDefaultsSync: (dto) => ipcRenderer.send('model-defaults:sync', dto),
   hermesSkills: {

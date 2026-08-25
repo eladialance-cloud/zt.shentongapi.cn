@@ -8,6 +8,7 @@ import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ModelProviderEntity } from '../admin-model/entities/model-provider.entity';
+import { SystemConfigEntity } from '../admin-system/entities/system-config.entity';
 import { ApiKeyPoolService } from '../api-key-pool/services/api-key-pool.service';
 import { EncryptionService } from '../../common/services/encryption.service';
 import { readFileSync } from 'fs';
@@ -58,12 +59,29 @@ export class SystemLlmService implements LlmCaller {
   constructor(
     @InjectRepository(ModelProviderEntity)
     private readonly providerRepo: Repository<ModelProviderEntity>,
+    @InjectRepository(SystemConfigEntity)
+    private readonly configRepo: Repository<SystemConfigEntity>,
     private readonly apiKeyPool: ApiKeyPoolService,
     private readonly encryptionService: EncryptionService,
   ) {}
 
+  /** 读取口播工坊配置（system_config.oral_workshop），失败返回空对象 */
+  private async readOralConfig(): Promise<Record<string, unknown>> {
+    if (!this.configRepo) return {};
+    try {
+      const row = await this.configRepo.findOne({ where: { section: 'oral_workshop' } });
+      return (row?.configValue ?? {}) as Record<string, unknown>;
+    } catch (err) {
+      this.logger.warn('[oral-workshop] 读取口播工坊模型配置失败: ' + (err as Error).message);
+      return {};
+    }
+  }
+
   /** 解析可用供应商（与 agent-translate 一致：优先配置供应商，再走 API Key 池） */
   async resolveTarget(preferredModel?: string): Promise<LlmTarget | null> {
+    const cfg = await this.readOralConfig();
+    const cfgModel =
+      typeof cfg.llmModel === 'string' && cfg.llmModel ? cfg.llmModel : process.env.ORAL_WORKSHOP_LLM_MODEL || '';
     if (preferredModel) {
       const resolved = await this.resolvePreferredModel(preferredModel);
       if (resolved) return resolved;
@@ -80,7 +98,7 @@ export class SystemLlmService implements LlmCaller {
         return {
           endpoint: p.baseUrl.replace(/\/+$/, ''),
           apiKey: this.encryptionService.decryptAes(p.apiKey),
-          model: process.env.ORAL_WORKSHOP_LLM_MODEL || DEFAULT_MODEL_BY_SLUG[p.slug] || 'deepseek-chat',
+          model: cfgModel || DEFAULT_MODEL_BY_SLUG[p.slug] || 'deepseek-chat',
         };
       } catch (e) {
         this.logger.warn(`[oral-workshop] 解密供应商 ${p.slug} 的 API Key 失败: ${(e as Error).message}`);
@@ -97,7 +115,7 @@ export class SystemLlmService implements LlmCaller {
         return {
           endpoint: endpoint.replace(/\/+$/, ''),
           apiKey: this.encryptionService.decryptAes(poolKey.apiKey),
-          model: process.env.ORAL_WORKSHOP_LLM_MODEL || DEFAULT_MODEL_BY_SLUG[slug] || 'deepseek-chat',
+          model: cfgModel || DEFAULT_MODEL_BY_SLUG[slug] || 'deepseek-chat',
         };
       } catch (e) {
         this.logger.warn(`[oral-workshop] 解密 API Key 池 ${slug} 的 Key 失败: ${(e as Error).message}`);
@@ -126,7 +144,12 @@ export class SystemLlmService implements LlmCaller {
 
   /** 语音识别（audio -> 文本）：直连 OpenAI 兼容 /audio/transcriptions（multipart），不计费（任务预扣已覆盖） */
   async stt(audioPath: string): Promise<string> {
-    const target = await this.resolveTarget(process.env.ORAL_WORKSHOP_STT_MODEL || 'whisper-1');
+    const cfg = await this.readOralConfig();
+    const sttModel =
+      (typeof cfg.sttModel === 'string' && cfg.sttModel) ||
+      process.env.ORAL_WORKSHOP_STT_MODEL ||
+      'whisper-1';
+    const target = await this.resolveTarget(sttModel);
     if (!target) {
       throw new ServiceUnavailableException('未配置可用的大模型供应商（STT 识别）');
     }

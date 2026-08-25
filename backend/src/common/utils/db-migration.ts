@@ -1568,6 +1568,25 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       logger.log('Added column: oral_workshop_jobs.bilingual');
     }
 
+    // 口播工坊：oral_workshop_jobs 封面设计（主/副标题 + 设计配置）
+    const owCoverCols = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'oral_workshop_jobs' AND COLUMN_NAME IN ('cover_h1','cover_h2','cover_config')`
+    );
+    const haveCoverCol = (name: string) => owCoverCols.some((c: { COLUMN_NAME: string }) => c.COLUMN_NAME === name);
+    if (!haveCoverCol('cover_h1')) {
+      await queryRunner.query(`ALTER TABLE oral_workshop_jobs ADD COLUMN cover_h1 VARCHAR(64) NULL COMMENT '封面主标题'`);
+      logger.log('Added column: oral_workshop_jobs.cover_h1');
+    }
+    if (!haveCoverCol('cover_h2')) {
+      await queryRunner.query(`ALTER TABLE oral_workshop_jobs ADD COLUMN cover_h2 VARCHAR(64) NULL COMMENT '封面副标题'`);
+      logger.log('Added column: oral_workshop_jobs.cover_h2');
+    }
+    if (!haveCoverCol('cover_config')) {
+      await queryRunner.query(`ALTER TABLE oral_workshop_jobs ADD COLUMN cover_config TEXT NULL COMMENT '封面设计配置JSON'`);
+      logger.log('Added column: oral_workshop_jobs.cover_config');
+    }
+
     // 素材中心：media_assets.description（语义检索文本）
     const [maDescCol] = await queryRunner.query(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS

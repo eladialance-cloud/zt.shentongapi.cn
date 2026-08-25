@@ -40,6 +40,9 @@ export interface OralWorkshopJobItem {
   videoUrl: string | null;
   audioUrl: string | null;
   coverUrl: string | null;
+  coverH1: string | null;
+  coverH2: string | null;
+  coverConfig: string | null;
   creditsCost: number;
   bilingual: boolean;
   error: string | null;
@@ -134,6 +137,38 @@ export class OralWorkshopService implements OnModuleInit {
     } catch (err) {
       throw new BadRequestException('语音识别失败: ' + (err as Error).message);
     }
+  }
+  /** 生成封面标题（h1/h2，AI）并持久化到任务 */
+  async generateCoverTitle(userId: number, jobId: number): Promise<{ h1: string; h2: string }> {
+    const job = await this.jobRepo.findOne({ where: { id: jobId, userId } });
+    if (!job) throw new NotFoundException('任务不存在');
+    if (!this.llm) throw new BadRequestException('AI 服务未配置');
+    const script = job.rewrittenScript || job.scriptInput || '';
+    if (!script) throw new BadRequestException('任务没有文案，无法生成标题');
+    const title = await this.llm.generateCoverTitle(script);
+    job.coverH1 = title.h1;
+    job.coverH2 = title.h2;
+    await this.jobRepo.save(job);
+    return title;
+  }
+
+  /** 保存封面设计（封面图 URL + 主/副标题 + 设计配置） */
+  async saveCover(
+    userId: number,
+    jobId: number,
+    dto: { coverUrl: string; coverH1?: string; coverH2?: string; coverConfig?: string },
+  ): Promise<OralWorkshopJobItem> {
+    const job = await this.jobRepo.findOne({ where: { id: jobId, userId } });
+    if (!job) throw new NotFoundException('任务不存在');
+    if (!dto.coverUrl || !/^https?:\/\//i.test(dto.coverUrl)) {
+      throw new BadRequestException('coverUrl 必须是有效的 http/https 链接');
+    }
+    job.coverUrl = dto.coverUrl;
+    job.coverH1 = dto.coverH1?.trim() ? dto.coverH1.trim() : null;
+    job.coverH2 = dto.coverH2?.trim() ? dto.coverH2.trim() : null;
+    job.coverConfig = dto.coverConfig ?? null;
+    await this.jobRepo.save(job);
+    return this.toItem(job);
   }
   /** 幂等创建任务：先预扣 Credits，再建 job + 7 个初始步骤 */
   async create(userId: number, dto: CreateOralWorkshopJobDto): Promise<OralWorkshopJobItem> {
@@ -579,6 +614,9 @@ export class OralWorkshopService implements OnModuleInit {
       videoUrl: job.videoUrl ?? null,
       audioUrl: job.audioUrl ?? null,
       coverUrl: job.coverUrl ?? null,
+      coverH1: job.coverH1 ?? null,
+      coverH2: job.coverH2 ?? null,
+      coverConfig: job.coverConfig ?? null,
       creditsCost: job.creditsCost,
       bilingual: !!job.bilingual,
       error: job.error ?? null,

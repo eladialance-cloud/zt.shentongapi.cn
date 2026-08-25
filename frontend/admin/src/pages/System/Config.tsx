@@ -1,4 +1,4 @@
-﻿// 系统参数页 - SubTask 28.1
+// 系统参数页 - SubTask 28.1
 //
 // Tab:缓存配置/限流配置/通知配置
 // 缓存配置:L1/L2/L3 TTL 输入框 + 清空缓存按钮
@@ -15,6 +15,7 @@ import {
   Input,
   InputNumber,
   Popconfirm,
+  Select,
   Spin,
   Switch,
   Tabs,
@@ -24,6 +25,7 @@ import {
   BellOutlined,
   DeleteOutlined,
   ReloadOutlined,
+  RobotOutlined,
   SaveOutlined,
   SettingOutlined,
   ThunderboltOutlined
@@ -41,6 +43,7 @@ import type {
   CacheConfig,
   CacheLayer,
   NotificationConfig,
+  OralWorkshopConfig,
   RateLimitConfig,
   SystemConfigSection
 } from '@/types/admin-system'
@@ -150,7 +153,10 @@ export default function SystemConfigPage() {
         voiceEngine: cfgv.voiceEngine || 'volcano',
         digitalHumanEngine: cfgv.digitalHumanEngine || 'volcano',
         watermarkEnabled: cfgv.watermarkEnabled !== false,
-        maxConcurrentJobs: cfgv.maxConcurrentJobs || 2
+        maxConcurrentJobs: cfgv.maxConcurrentJobs || 2,
+        llmModel: cfgv.llmModel || '',
+        sttModel: cfgv.sttModel || '',
+        watermarkText: cfgv.watermarkText || ''
       })
     } catch (err) {
       console.error('[SystemConfig] load oral_workshop failed:', err)
@@ -260,7 +266,10 @@ export default function SystemConfigPage() {
         voiceEngine: values.voiceEngine,
         digitalHumanEngine: values.digitalHumanEngine,
         watermarkEnabled: values.watermarkEnabled,
-        maxConcurrentJobs: values.maxConcurrentJobs
+        maxConcurrentJobs: values.maxConcurrentJobs,
+        llmModel: values.llmModel || '',
+        sttModel: values.sttModel || '',
+        watermarkText: values.watermarkText || ''
       }
       await updateOralWorkshopConfig(cfgv)
       message.success('口播工坊引擎配置已保存')
@@ -539,8 +548,31 @@ export default function SystemConfigPage() {
                   name="maxConcurrentJobs"
                   label="并发任务上限"
                   rules={[{ required: true, message: '请输入' }]}
+                  extra="单轮同时推进的任务数（1-20），保存后立即生效"
                 >
                   <InputNumber min={1} max={20} style={{ width: '100%' }} />
+                </Form.Item>
+              </div>
+              <div className={styles.sectionTitle} style={{ marginTop: 16 }}>
+                <RobotOutlined /> 口播工坊模型设置
+              </div>
+              <div className={styles.levelGrid} style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                <Form.Item
+                  name="llmModel"
+                  label="LLM 模型"
+                  extra="口播工坊所有 AI 提示词（选题/文案/改写/标题/翻译）使用的模型；留空=deepseek-chat 或供应商默认模型"
+                >
+                  <Input placeholder="如 deepseek-chat / gpt-4o-mini / qwen-plus" allowClear />
+                </Form.Item>
+                <Form.Item
+                  name="sttModel"
+                  label="语音识别模型（提取文案）"
+                  extra="学习对标-提取文案的 ASR 模型；留空=whisper-1"
+                >
+                  <Input placeholder="如 whisper-1" allowClear />
+                </Form.Item>
+                <Form.Item name="watermarkText" label="水印文案" extra="免费档叠加的品牌水印文字">
+                  <Input placeholder="如 深瞳AI" allowClear />
                 </Form.Item>
               </div>
               <Button

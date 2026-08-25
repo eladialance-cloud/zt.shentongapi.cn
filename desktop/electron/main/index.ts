@@ -5,6 +5,8 @@ import log from 'electron-log'
 import { getRuntimeDirInfo, setRuntimeRoot, defaultRuntimeRoot, getRuntimeRoot } from './runtime-config'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
+import { get as httpGet } from 'node:http'
+import { get as httpsGet } from 'node:https'
 import {
   OpenClawChatService,
   createCustomLlmCaller,
@@ -723,6 +725,74 @@ ipcMain.handle(
     if (typeof url === 'string' && /^https?:\/\//.test(url)) {
       await shell.openExternal(url)
     }
+  })
+
+  // 封面设计器：主进程拉取远程媒体（绕过 CORS，canvas 免污染）
+  const fetchMediaOnce = (target: URL): Promise<{ data: string; mime: string }> =>
+    new Promise((resolve, reject) => {
+      const getter = target.protocol === 'https:' ? httpsGet : httpGet
+      const req = getter(
+        target,
+        { headers: { 'User-Agent': 'ShenTongAI-Desktop', Accept: '*/*' }, timeout: 60000 },
+        (res) => {
+          const status = res.statusCode ?? 0
+          if (status >= 300 && status < 400 && res.headers.location) {
+            res.resume()
+            let next: URL
+            try {
+              next = new URL(res.headers.location, target)
+            } catch {
+              reject(new Error('媒体重定向地址无效'))
+              return
+            }
+            resolve(fetchMediaOnce(next))
+            return
+          }
+          if (status !== 200) {
+            res.resume()
+            reject(new Error('媒体拉取失败 HTTP ' + status))
+            return
+          }
+          const chunks: Buffer[] = []
+          let total = 0
+          res.on('data', (c: Buffer) => {
+            total += c.length
+            if (total > 50 * 1024 * 1024) {
+              req.destroy(new Error('媒体文件过大（>50MB）'))
+              return
+            }
+            chunks.push(c)
+          })
+          res.on('end', () =>
+            resolve({
+              mime: String(res.headers['content-type'] || 'application/octet-stream'),
+              data: Buffer.concat(chunks).toString('base64'),
+            }),
+          )
+          res.on('error', reject)
+        },
+      )
+      req.on('error', reject)
+      req.on('timeout', () => req.destroy(new Error('媒体拉取超时')))
+    })
+  ipcMain.handle('media:fetch-buffer', async (_event, mediaUrl: string) => {
+    const raw = typeof mediaUrl === 'string' ? mediaUrl : ''
+    let target: URL
+    try {
+      target = new URL(raw)
+    } catch {
+      throw new Error('无效的媒体链接')
+    }
+    if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+      throw new Error('仅支持 http/https 媒体链接')
+    }
+    let result: { data: string; mime: string }
+    try {
+      result = await fetchMediaOnce(target)
+    } catch (err) {
+      throw new Error((err as Error).message || '媒体拉取失败')
+    }
+    return result
   })
   ipcMain.handle('service:getStatus', () => serviceManager.getAllStatus())
   ipcMain.handle('service:status', (_event, name: ServiceName) =>

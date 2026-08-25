@@ -40,6 +40,8 @@ export interface OralWorkshopEngineConfig {
   watermarkEnabled: boolean;
   /** 品牌水印文案 */
   watermarkText: string;
+  /** 单轮并发任务上限（管理后台可配） */
+  maxConcurrentJobs: number;
 }
 
 /** 当前已接入执行的步骤集合（其余步骤由对应里程碑落地后加入） */
@@ -174,7 +176,8 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
 
   /** 处理一批待执行任务，返回本批实际推进的步骤数 */
   async processBatch(): Promise<number> {
-    const jobs = await this.service.findExecutableJobs(BATCH_LIMIT);
+    const cfg = await this.readEngineConfig();
+    const jobs = await this.service.findExecutableJobs(cfg.maxConcurrentJobs);
     let processed = 0;
     for (const job of jobs) {
       try {
@@ -514,6 +517,15 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       const v = db[dbKey];
       return typeof v === 'string' && v ? v : fallback;
     };
+    const num = (envKey: string, dbKey: string, fallback: number): number => {
+      const env = process.env[envKey];
+      if (env !== undefined && env !== '') {
+        const n = Number(env);
+        if (Number.isFinite(n) && n > 0) return Math.round(n);
+      }
+      const v = db[dbKey];
+      return typeof v === 'number' && v > 0 ? Math.round(v) : fallback;
+    };
     const bool = (envKey: string, dbKey: string, fallback: boolean): boolean => {
       const env = process.env[envKey];
       if (env !== undefined) return env !== 'false';
@@ -525,6 +537,7 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       digitalHumanEngine: normalizeEngine(str('ORAL_WORKSHOP_DIGITAL_HUMAN_ENGINE', 'digitalHumanEngine', 'auto')),
       watermarkEnabled: bool('ORAL_WORKSHOP_WATERMARK_ENABLED', 'watermarkEnabled', true),
       watermarkText: str('ORAL_WORKSHOP_WATERMARK_TEXT', 'watermarkText', '深瞳AI'),
+      maxConcurrentJobs: num('ORAL_WORKSHOP_MAX_CONCURRENT_JOBS', 'maxConcurrentJobs', 5),
     };
   }
 
