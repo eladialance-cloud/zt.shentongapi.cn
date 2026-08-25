@@ -32,7 +32,7 @@ export class RedeemCodeEntity {
   usedAt?: Date | null;
 
   @Index()
-  @Column({ name: 'batch_id', length: 64, nullable: true })
+  @Column({ name: 'batch_id', type: 'varchar', length: 64, nullable: true })
   batchId?: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
