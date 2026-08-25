@@ -429,7 +429,7 @@ export default function OralWorkshopWorkbench() {
           </span>
           <div>
             <h1 className={styles.title}>口播工坊</h1>
-            <div className={styles.subtitle}>多步骤创作 · 文案 → 人设 → 配音 → 形象 → 模板 → 成片</div>
+            <div className={styles.subtitle}>多步骤创作 · 点击步骤可单独打开，流程中可上一步 / 下一步</div>
           </div>
         </div>
         <div className={styles.headerActions}>
@@ -445,6 +445,7 @@ export default function OralWorkshopWorkbench() {
       <div className={styles.wizardNav}>
         <Steps
           current={current}
+          onChange={(v) => setCurrent(v)}
           items={steps.map((s) => ({
             title: s.title,
             icon: s.icon,

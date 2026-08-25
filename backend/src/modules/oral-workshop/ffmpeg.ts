@@ -17,7 +17,7 @@ export function defaultFfmpegRunner(cmd: string[], cwd?: string): Promise<void> 
     argv[0] = process.env.ORAL_WORKSHOP_FFMPEG_PATH || 'ffmpeg';
   }
   return new Promise<void>((resolve, reject) => {
-    const child = spawn(argv[0], argv.slice(1), { cwd, stdio: 'ignore', windowsHide: true });
+    const child = spawn(argv[0], argv.slice(1), { cwd, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
     let stderrTail = '';
     const timeoutMs = Number(process.env.ORAL_WORKSHOP_FFMPEG_TIMEOUT_MS || 600000);
     const timer = setTimeout(() => {
@@ -32,6 +32,42 @@ export function defaultFfmpegRunner(cmd: string[], cwd?: string): Promise<void> 
       clearTimeout(timer);
       if (code === 0) resolve();
       else reject(new Error('ffmpeg 执行失败（退出码 ' + code + '）：' + stderrTail));
+    });
+  });
+}
+
+/** 判断下载内容是否为网页 HTML（而非音视频媒体文件）：取文件头字节探测 */
+export function looksLikeHtml(buf: Buffer): boolean {
+  if (!buf || !buf.length) return false;
+  const head = buf.subarray(0, Math.min(buf.length, 4096)).toString('utf8').replace(/^\uFEFF/, '').trimStart();
+  if (!head) return false;
+  if (/^<!doctype html/i.test(head) || /^<html[\s>]/i.test(head)) return true;
+  return /<(html|head|body|script|meta|title|div|iframe)[\s>]/i.test(head.slice(0, 512));
+}
+
+/** yt-dlp 解析网页为媒体直链（学习对标提取文案用）；未安装时抛错并提示安装命令 */
+export async function resolveDirectMediaUrl(pageUrl: string): Promise<string> {
+  const bin = process.env.ORAL_WORKSHOP_YTDLP_PATH || 'yt-dlp';
+  return new Promise<string>((resolve, reject) => {
+    const child = spawn(
+      bin,
+      ['--no-playlist', '--no-warnings', '-f', 'bestaudio/best', '-g', pageUrl],
+      { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
+    );
+    let stdout = '';
+    let stderrTail = '';
+    const timer = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch { /* 子进程已退出 */ }
+      reject(new Error('yt-dlp 解析超时（60 秒），请检查网络或稍后重试'));
+    }, 60000);
+    child.stdout?.on('data', (d: Buffer) => { stdout += d.toString('utf8'); });
+    child.stderr?.on('data', (d: Buffer) => { stderrTail = (stderrTail + d.toString('utf8')).slice(-500); });
+    child.on('error', (err) => { clearTimeout(timer); reject(err); });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      const url = stdout.trim().split(/\r?\n/).pop()?.trim() || '';
+      if (code === 0 && url) resolve(url);
+      else reject(new Error('yt-dlp 解析失败（退出码 ' + code + '）：' + (stderrTail || stdout.slice(-200))));
     });
   });
 }

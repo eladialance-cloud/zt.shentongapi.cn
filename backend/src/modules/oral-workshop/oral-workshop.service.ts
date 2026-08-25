@@ -12,7 +12,7 @@ import type { TopicItem } from './llm';
 import { CreditsBillingService } from '../credits/services/credits-billing.service';
 import { SystemLlmService } from './system-llm.service';
 import { SystemConfigEntity } from '../admin-system/entities/system-config.entity';
-import { defaultFfmpegRunner, downloadTo, assertPublicMediaUrl } from './ffmpeg';
+import { defaultFfmpegRunner, downloadTo, assertPublicMediaUrl, looksLikeHtml, resolveDirectMediaUrl } from './ffmpeg';
 import { BatchCreateOralWorkshopJobsDto, CreateOralWorkshopJobDto, OralWorkshopJobQueryDto } from './dto/oral-workshop.dto';
 import { listTemplates as listTemplatesLoader } from './template-loader';
 import {
@@ -116,7 +116,8 @@ export class OralWorkshopService implements OnModuleInit {
     }
   }
 
-  /** 学习对标：从对标视频 URL 提取口播文案（下载视频 → ffmpeg 抽音频 → STT 识别，不计费） */
+  /** 学习对标：从对标视频链接提取口播文案（下载 → ffmpeg 抽音频 → STT 识别，不计费）
+   *  支持媒体直链（.mp4/.mov/.mp3…）；抖音/快手/B站等网页链接自动尝试 yt-dlp 解析真实直链。 */
   async extractScript(userId: number, videoUrl: string): Promise<{ text: string }> {
     if (!/^https?:\/\//i.test(videoUrl)) {
       throw new BadRequestException('请输入有效的视频链接（http/https）');
@@ -128,12 +129,39 @@ export class OralWorkshopService implements OnModuleInit {
     }
     const dir = path.join(process.env.ORAL_WORKSHOP_UPLOADS_DIR || 'uploads', 'oral-workshop', 'extract', String(userId), String(Date.now()));
     fs.mkdirSync(dir, { recursive: true });
-    const videoPath = path.join(dir, 'source' + (/\.(mp4|mov|avi|mkv|flv|webm)(\?|$)/i.test(videoUrl) ? videoUrl.match(/\.(mp4|mov|avi|mkv|flv|webm)/i)![0] : '.mp4'));
+    const extMatch = videoUrl.match(/\.(mp4|mov|avi|mkv|flv|webm|mp3|m4a|wav|aac)(\?|$)/i);
+    const videoPath = path.join(dir, 'source' + (extMatch ? '.' + extMatch[1].toLowerCase() : '.mp4'));
+
+    // 1) 下载内容（媒体直链直接作为源文件；网页链接先下载探测）
     try {
       await downloadTo(videoUrl, videoPath);
     } catch (err) {
       throw new BadRequestException('对标视频下载失败: ' + (err as Error).message);
     }
+
+    // 2) 下载结果是网页（HTML）→ 尝试 yt-dlp 解析真实媒体直链后重新下载
+    if (looksLikeHtml(this.readFileHead(videoPath))) {
+      try {
+        const direct = await resolveDirectMediaUrl(videoUrl);
+        await downloadTo(direct, videoPath);
+      } catch (err) {
+        throw new BadRequestException(
+          '该链接是网页而非视频文件直链，自动解析失败: ' + (err as Error).message +
+          '。可直接粘贴 .mp4/.mov 等视频直链，或在服务器安装 yt-dlp（sudo pip3 install -U yt-dlp）后重试'
+        );
+      }
+    }
+
+    // 3) 二次校验：空文件 / 仍是 HTML → 明确报错（避免 ffmpeg 解析网页报无意义的退出码）
+    const stat = fs.statSync(videoPath);
+    if (!stat.size) {
+      throw new BadRequestException('对标视频下载为空，请确认链接可公开访问');
+    }
+    if (looksLikeHtml(this.readFileHead(videoPath))) {
+      throw new BadRequestException('下载内容不是可识别的音视频文件，请粘贴 .mp4/.mov/.mp3 等媒体直链');
+    }
+
+    // 4) ffmpeg 抽音频（16kHz 单声道 WAV 供 STT 识别）
     const audioPath = path.join(dir, 'audio.wav');
     try {
       await defaultFfmpegRunner(
@@ -141,13 +169,29 @@ export class OralWorkshopService implements OnModuleInit {
         dir,
       );
     } catch (err) {
-      throw new BadRequestException('音频提取失败（服务器需安装 ffmpeg）: ' + (err as Error).message);
+      const msg = (err as Error).message || String(err);
+      const missingFfmpeg = /ENOENT|spawn ffmpeg/.test(msg);
+      throw new BadRequestException(
+        '音频提取失败' + (missingFfmpeg ? '（服务器未安装 ffmpeg，请执行: sudo apt-get install -y ffmpeg）' : '') + ': ' + msg
+      );
     }
     try {
       const text = await this.systemLlm.stt(audioPath);
       return { text };
     } catch (err) {
       throw new BadRequestException('语音识别失败: ' + (err as Error).message);
+    }
+  }
+
+  /** 读取文件头 N 字节（大视频只读头部探测，避免整文件载入内存） */
+  private readFileHead(p: string, n = 4096): Buffer {
+    const fd = fs.openSync(p, 'r');
+    try {
+      const buf = Buffer.alloc(n);
+      const read = fs.readSync(fd, buf, 0, n, 0);
+      return buf.subarray(0, read);
+    } finally {
+      fs.closeSync(fd);
     }
   }
   /** 生成封面标题（h1/h2，AI）并持久化到任务 */

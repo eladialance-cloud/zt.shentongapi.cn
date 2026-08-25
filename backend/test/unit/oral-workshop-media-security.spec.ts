@@ -14,6 +14,7 @@ import {
   validateMediaRef,
   resolveLocalMediaPath,
   assertPublicMediaUrl,
+  looksLikeHtml,
 } from '../../src/modules/oral-workshop/ffmpeg';
 
 describe('validateMediaRef（DTO 白名单）', () => {
@@ -92,5 +93,22 @@ describe('assertPublicMediaUrl（SSRF 防护）', () => {
     } finally {
       (dns.promises as any).lookup = orig;
     }
+  });
+});
+
+describe('looksLikeHtml（网页内容探测）', () => {
+  it('识别常见 HTML 页面头（DOCTYPE / html / script / meta）', () => {
+    assert.equal(looksLikeHtml(Buffer.from('<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>hi</body></html>')), true);
+    assert.equal(looksLikeHtml(Buffer.from('<!doctype html>\n<html lang="zh-CN">...')), true);
+    assert.equal(looksLikeHtml(Buffer.from('<script>window.__INITIAL_STATE__={}</script>')), true);
+    assert.equal(looksLikeHtml(Buffer.from('  \n  <meta name="description" content="x">')), true);
+  });
+
+  it('不误判媒体文件头（mp4 flv 等二进制/文本直链内容）', () => {
+    assert.equal(looksLikeHtml(Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d])), false);
+    assert.equal(looksLikeHtml(Buffer.from([0x46, 0x4c, 0x56, 0x01, 0x05])), false);
+    assert.equal(looksLikeHtml(Buffer.from('')), false);
+    assert.equal(looksLikeHtml(Buffer.from('ID3\u0004\u0000\u0000\u0000\u0000\u0000\u0000')), false);
+    assert.equal(looksLikeHtml(Buffer.from('not html at all but plain text')), false);
   });
 });
