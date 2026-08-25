@@ -454,6 +454,7 @@ export default function OralWorkshopWorkbench() {
       </div>
 
       <Card className={styles.card} bodyStyle={{ padding: 20 }}>
+        <Form form={form} layout="vertical" onFinish={handleSubmit} onValuesChange={handleDraftChange}>
         {/* ① 文案与选题 */}
         {current === 0 && (
           <div className={styles.panel}>
@@ -796,15 +797,8 @@ export default function OralWorkshopWorkbench() {
             </Button>
           )}
         </div>
+        </Form>
       </Card>
-
-      <Form
-        form={form}
-        layout="vertical"
-        onFinish={handleSubmit}
-        onValuesChange={handleDraftChange}
-        style={{ display: 'none' }}
-      />
 
       {/* 选题灵感弹窗 */}
       <Modal
