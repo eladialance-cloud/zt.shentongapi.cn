@@ -12,6 +12,8 @@ import {
   OralWorkshopLlmService,
   extractJson,
   LlmOutputError,
+  TARGET_LANGS,
+  targetLangName,
   type LlmCaller,
 } from '../../src/modules/oral-workshop/llm';
 
@@ -137,4 +139,36 @@ describe('OralWorkshopLlmService', () => {
   it('translateBilingual：缺少 lines 抛 LlmOutputError', async () => {
     const llm = new OralWorkshopLlmService(fakeCaller(() => '{"foo":1}'));
     await assert.rejects(() => llm.translateBilingual('x'), LlmOutputError);
+  });
+
+  it('translateSubtitles：指定目标语言（粤语）渲染语言名并解析 zh+translated', async () => {
+    const llm = new OralWorkshopLlmService(
+      fakeCaller((content) => {
+        assert.ok(content.includes('粤语'));
+        assert.ok(content.includes('你好世界'));
+        return '{"lines":[{"zh":"你好世界","translated":"你好世界（粤）"},{"zh":"","translated":""},{"zh":"再见","translated":"再见（粤）"}]}';
+      }),
+    );
+    const lines = await llm.translateSubtitles('你好世界。再见', 'zh-HK');
+    assert.equal(lines.length, 2);
+    assert.deepEqual(lines[0], { zh: '你好世界', translated: '你好世界（粤）' });
+    assert.deepEqual(lines[1], { zh: '再见', translated: '再见（粤）' });
+  });
+
+  it('translateSubtitles：空结果不抛错返回空数组；无 lines 结构抛错', async () => {
+    const llm = new OralWorkshopLlmService(fakeCaller(() => '{"lines":[{"zh":"","translated":""}]}'));
+    const lines = await llm.translateSubtitles('x', 'en');
+    assert.equal(lines.length, 0);
+    const llm2 = new OralWorkshopLlmService(fakeCaller(() => '{"foo":1}'));
+    await assert.rejects(() => llm2.translateSubtitles('x', 'ja'), LlmOutputError);
+  });
+
+  it('TARGET_LANGS：30 种国际语言 + 9 种方言，targetLangName 兜底', () => {
+    assert.equal(Object.keys(TARGET_LANGS).length, 38);
+    assert.equal(TARGET_LANGS['zh-HK'], '粤语');
+    assert.equal(TARGET_LANGS['zh-WU'], '吴语');
+    assert.equal(TARGET_LANGS.en, '英语');
+    assert.equal(TARGET_LANGS.vi, '越南语');
+    assert.equal(targetLangName('zh-HK'), '粤语');
+    assert.equal(targetLangName('xx-unknown'), 'xx-unknown');
   });

@@ -133,6 +133,15 @@ export const ORAL_WORKSHOP_PROMPTS: PromptTemplate[] = [
     "template": "你是短视频字幕翻译专家。请将以下中文口播文案翻译为适合短视频双语字幕的「中英逐行对照」。\n要求：\n1. 按语义切分为若干行，每行中文不超过 20 个字，适合字幕单行展示\n2. 每行给出对应的英文翻译，口语化、自然，适合短视频观众快速阅读\n3. 英文行长度不超过 60 个字符\n4. 不要省略内容，不要增删观点\n5. 只返回 JSON，不要 Markdown：\n{\n  \"lines\": [\n    { \"zh\": \"中文一行\", \"en\": \"English line\" }\n  ]\n}\n6. JSON 必须能被 JSON.parse 直接解析，不要尾逗号，不要注释\n口播文案：\n{script}"
   },
   {
+    "id": "bilingual_subtitle_lang",
+    "name": "双语字幕翻译（指定目标语言）",
+    "params": [
+      "script",
+      "targetLangName"
+    ],
+    "template": "你是短视频字幕翻译专家。请将以下中文口播文案翻译为目标语言「{targetLangName}」，输出适合短视频双语字幕的逐行对照。\n要求：\n1. 按语义切分为若干行，每行中文不超过 20 个字，适合字幕单行展示\n2. 每行给出对应的{targetLangName}翻译，口语化、自然，适合短视频观众快速阅读\n3. {targetLangName}行长度不超过 80 个字符\n4. 不要省略内容，不要增删观点\n5. 只返回 JSON，不要 Markdown：\n{\n  \"lines\": [\n    { \"zh\": \"中文一行\", \"translated\": \"{targetLangName}一行\" }\n  ]\n}\n6. JSON 必须能被 JSON.parse 直接解析，不要尾逗号，不要注释\n口播文案：\n{script}"
+  },
+  {
     "id": "product_copy",
     "name": "产品文案",
     "params": [

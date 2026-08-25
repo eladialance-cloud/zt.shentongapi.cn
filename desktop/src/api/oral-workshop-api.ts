@@ -83,6 +83,14 @@ export async function getOralWorkshopJob(id: number): Promise<OralWorkshopJob> {
 }
 
 /**
+ * 手动/单步模式：执行下一步（放行暂停任务）
+ * POST /oral-workshop/jobs/:id/advance
+ */
+export async function advanceOralWorkshopJob(id: number): Promise<OralWorkshopJob> {
+  return httpClient.post<OralWorkshopJob>(`/oral-workshop/jobs/${id}/advance`)
+}
+
+/**
  * 取消任务（退还预扣 Credits）
  * POST /oral-workshop/jobs/:id/cancel
  */

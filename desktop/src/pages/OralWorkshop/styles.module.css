@@ -125,6 +125,13 @@
   gap: 12px;
 }
 
+.execModeRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 8px 0 16px;
+}
+
 .submitRow {
   display: flex;
   justify-content: space-between;
@@ -340,6 +347,16 @@
 .metaValue {
   font-size: 13px;
   color: var(--color-text-primary);
+}
+
+.waitingBar {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--color-primary-bg, rgba(59, 130, 246, 0.08));
+  border: 1px dashed var(--color-primary, #3b82f6);
+  color: var(--color-primary, #2563eb);
+  font-size: 13px;
 }
 
 .errorBar {

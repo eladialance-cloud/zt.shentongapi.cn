@@ -12,7 +12,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { OralWorkshopExecutor, type FfmpegRunner } from '../../src/modules/oral-workshop/oral-workshop.executor';
+import { OralWorkshopExecutor } from '../../src/modules/oral-workshop/oral-workshop.executor';
+import type { FfmpegRunner } from '../../src/modules/oral-workshop/ffmpeg';
 import { OralWorkshopLlmService, type LlmCaller } from '../../src/modules/oral-workshop/llm';
 
 interface FakeServiceCalls {
@@ -41,6 +42,17 @@ function makeOutputDir(): string {
   return dir;
 }
 
+/** 上传文件夹具：写入 <cwd>/uploads/.test-fixtures-*（匹配新安全契约：媒体只允许 /uploads/ 路径或公网 URL） */
+const uploadsFixtures: string[] = [];
+function makeUploadsFixtureFile(name: string, content: string): string {
+  const dir = path.join(process.cwd(), 'uploads', '.test-fixtures-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
+  fs.mkdirSync(dir, { recursive: true });
+  uploadsFixtures.push(dir);
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, content);
+  return '/uploads/' + path.basename(dir) + '/' + name;
+}
+
 afterEach(() => {
   delete process.env.ORAL_WORKSHOP_OUTPUT_DIR;
   delete process.env.ORAL_WORKSHOP_BADGE_IMAGE;
@@ -51,6 +63,9 @@ afterEach(() => {
   delete process.env.VOLCANO_VOICE_MODEL;
   delete process.env.VOLCANO_DIGITAL_HUMAN_ENDPOINT;
   for (const dir of tempDirs.splice(0)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  for (const dir of uploadsFixtures.splice(0)) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -104,10 +119,9 @@ describe('OralWorkshopExecutor', () => {
   it('processJob：voiceClone 采用用户音频作为人声轨（audioUrl 本地文件）', async () => {
     const { service, calls } = makeFakeService();
     service.nextPendingStepOf = async () => 'voiceClone';
-    const audioSrc = path.join(makeOutputDir(), 'user-voice.mp3');
-    fs.writeFileSync(audioSrc, 'fake-mp3');
+    const audioUrl = makeUploadsFixtureFile('user-voice.mp3', 'fake-mp3');
     const exec = new OralWorkshopExecutor(service, null as unknown as OralWorkshopLlmService);
-    const ok = await exec.processJob({ id: 4, audioUrl: audioSrc } as any);
+    const ok = await exec.processJob({ id: 4, audioUrl } as any);
     assert.equal(ok, true);
     assert.equal(calls.running[0], 'voiceClone');
     assert.equal(calls.done[0].step, 'voiceClone');
@@ -134,10 +148,9 @@ describe('OralWorkshopExecutor', () => {
   it('processJob：digitalHuman 采用用户视频（videoUrl 本地文件）', async () => {
     const { service, calls } = makeFakeService();
     service.nextPendingStepOf = async () => 'digitalHuman';
-    const videoSrc = path.join(makeOutputDir(), 'user-human.mp4');
-    fs.writeFileSync(videoSrc, 'fake-mp4');
+    const videoUrl = makeUploadsFixtureFile('user-human.mp4', 'fake-mp4');
     const exec = new OralWorkshopExecutor(service, null as unknown as OralWorkshopLlmService);
-    const ok = await exec.processJob({ id: 4, videoUrl: videoSrc } as any);
+    const ok = await exec.processJob({ id: 4, videoUrl } as any);
     assert.equal(ok, true);
     assert.equal(calls.done[0].step, 'digitalHuman');
     const result = calls.done[0].result!;

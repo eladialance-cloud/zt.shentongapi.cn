@@ -401,3 +401,81 @@ describe('OralWorkshopService', () => {
   });
 });
 
+describe('OralWorkshopService 执行模式（auto/manual/single）', () => {
+  it('create：manual 模式创建后 executionMode=manual 且 waitingStep=extract（暂停等待放行）', async () => {
+    const f = makeFakes();
+    const svc = newService(f);
+    const item = await svc.create(1, { scriptInput: 'x', executionMode: 'manual' });
+    assert.equal(item.executionMode, 'manual');
+    assert.equal(item.waitingStep, 'extract');
+  });
+
+  it('create：auto 模式（默认）无 waitingStep', async () => {
+    const f = makeFakes();
+    const svc = newService(f);
+    const item = await svc.create(1, { scriptInput: 'x' });
+    assert.equal(item.executionMode, 'auto');
+    assert.equal(item.waitingStep, null);
+  });
+
+  it('findExecutableJobs：跳过 manual 模式暂停中（waitingStep 非空）的任务', async () => {
+    const f = makeFakes({
+      jobs: [
+        { id: 1, userId: 1, status: 'pending', executionMode: 'auto' },
+        { id: 2, userId: 1, status: 'pending', executionMode: 'manual', waitingStep: 'extract' },
+        { id: 3, userId: 1, status: 'pending', executionMode: 'manual', waitingStep: null },
+      ],
+    });
+    const svc = newService(f);
+    const rows = await svc.findExecutableJobs(10);
+    assert.deepEqual(rows.map((r) => r.id).sort(), [1, 3]);
+  });
+
+  it('advance：清除 waitingStep 放行；auto 模式任务拒绝推进', async () => {
+    const f = makeFakes({
+      jobs: [{ id: 9, userId: 1, status: 'processing', executionMode: 'manual', waitingStep: 'rewrite' }],
+    });
+    const svc = newService(f);
+    const item = await svc.advance(1, 9);
+    assert.equal(item.waitingStep, null);
+    await assert.rejects(() => svc.advance(1, 99), NotFoundException);
+
+    const f2 = makeFakes({ jobs: [{ id: 10, userId: 1, status: 'processing', executionMode: 'auto' }] });
+    const svc2 = newService(f2);
+    await assert.rejects(() => svc2.advance(1, 10), BadRequestException);
+  });
+
+  it('nextPendingStepOf：manual 暂停中返回 null，放行后返回 pending 步骤', async () => {
+    const f = makeFakes({
+      jobs: [{ id: 11, userId: 1, status: 'pending', executionMode: 'manual', waitingStep: 'extract' }],
+      steps: fullSteps(11, ['pending', 'pending', 'pending', 'pending', 'pending', 'pending', 'pending']),
+    });
+    const svc = newService(f);
+    assert.equal(await svc.nextPendingStepOf(11), null);
+    f.jobs[0].waitingStep = null;
+    assert.equal(await svc.nextPendingStepOf(11), 'extract');
+  });
+
+  it('markStepDone：manual 模式完成一步后暂停到下一步（waitingStep=下一步）', async () => {
+    const f = makeFakes({
+      jobs: [{ id: 12, userId: 1, status: 'processing', executionMode: 'manual', waitingStep: null, frozenTxnId: 100 }],
+      steps: fullSteps(12, ['pending', 'pending', 'pending', 'pending', 'pending', 'pending', 'pending']),
+    });
+    const svc = newService(f);
+    await svc.markStepDone(12, 'extract', { chars: 2 });
+    assert.equal(f.jobs[0].waitingStep, 'rewrite');
+    assert.equal(f.jobs[0].currentStep, 'rewrite');
+  });
+
+  it('markStepDone：manual 模式最后一步完成后任务 done，不暂停', async () => {
+    const f = makeFakes({
+      jobs: [{ id: 13, userId: 1, status: 'processing', executionMode: 'manual', waitingStep: 'publishReady', frozenTxnId: 100 }],
+      steps: fullSteps(13, ['done', 'done', 'done', 'done', 'done', 'done', 'pending']),
+    });
+    const svc = newService(f);
+    await svc.markStepDone(13, 'publishReady', { ready: true });
+    assert.equal(f.jobs[0].status, 'done');
+    assert.equal(f.jobs[0].waitingStep, null);
+  });
+});
+

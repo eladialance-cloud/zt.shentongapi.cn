@@ -58,9 +58,12 @@ function fakeBilling() {
   };
 }
 
-function fakeMembership() {
-  return { ensureFeature: async () => ({ level: 'free', status: 'active', features: {}, expiresAt: null, graceDaysLeft: 0 }) };
-}
+const fakeSystemLlm = {
+  stt: async () => 'x',
+  chat: async () => 'x',
+  embed: async () => [[]],
+  resolveTarget: async () => null,
+} as any;
 
 const fakeLlm = {
   generateTopics: async (keywords: string, opts?: { persona?: string; count?: number }) => [
@@ -83,8 +86,8 @@ function newService(voiceRows: any[] = [], dhRows: any[] = []) {
     voiceRepo as any,
     dhRepo as any,
     fakeBilling() as any,
-    fakeMembership() as any,
     fakeLlm as unknown as OralWorkshopLlmService,
+    fakeSystemLlm as any,
   );
   return { service, voiceRepo, dhRepo };
 }
@@ -227,8 +230,8 @@ function newBatchService() {
     voiceRepo as any,
     dhRepo as any,
     fakeBilling() as any,
-    fakeMembership() as any,
     fakeLlm as unknown as OralWorkshopLlmService,
+    fakeSystemLlm as any,
   );
   return { service, jobRepo };
 }
@@ -284,22 +287,30 @@ describe('OralWorkshopService 批量矩阵化建单', () => {
     assert.equal(r2.created[0].id, r1.created[0].id);
   });
 
-  it('createBatch：某单失败（会员限额）不影响其他单，错误可读', async () => {
-    const { service } = newBatchService();
-    // 让 ensureFeature 在第二单起抛错：模拟免费档月上限
-    const service2 = new OralWorkshopService(
+  it('createBatch：某单预扣失败（余额不足）不影响其他单，错误可读', async () => {
+    let billingCalls = 0;
+    const failingBilling = {
+      estimateAndFreeze: async () => {
+        billingCalls += 1;
+        if (billingCalls === 2) throw new BadRequestException('余额不足，请先充值');
+        return { id: billingCalls };
+      },
+      settleActualCost: async () => undefined,
+      refund: async () => undefined,
+    };
+    const service = new OralWorkshopService(
       fakeJobRepoForBatch() as any,
       fakeStepRepo() as any,
       makeRepo<any>() as any,
       makeRepo<any>() as any,
-      fakeBilling() as any,
-      { ensureFeature: async () => { throw new BadRequestException('本月免费生成次数已用完'); } } as any,
+      failingBilling as any,
       fakeLlm as unknown as OralWorkshopLlmService,
+      fakeSystemLlm as any,
     );
-    const res = await service2.createBatch(7, { topics: ['A', 'B'], templateIds: [1] });
-    assert.equal(res.created.length, 0);
-    assert.equal(res.skipped, 2);
-    assert.ok(res.errors[0].reason.includes('本月免费生成次数已用完'));
+    const res = await service.createBatch(7, { topics: ['A', 'B'], templateIds: [1] });
+    assert.equal(res.created.length, 1);
+    assert.equal(res.skipped, 1);
+    assert.ok(res.errors[0].reason.includes('余额不足'));
     void service;
   });
 });

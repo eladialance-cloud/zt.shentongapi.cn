@@ -12,10 +12,12 @@ import {
   ExternalLink,
   PackageOpen,
   Palette,
+  PlayCircle,
   XCircle,
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
+  advanceOralWorkshopJob,
   cancelOralWorkshopJob,
   exportOralWorkshopPackage,
   getOralWorkshopJob,
@@ -23,7 +25,12 @@ import {
 import { useOralWorkshopStore } from '@/store/oral-workshop'
 import CoverDesigner from './CoverDesigner'
 import { resolveMediaUrl } from '@/utils/media'
-import type { OralWorkshopJob, OralWorkshopStepStatus, PublishPackage } from '@/types/oral-workshop'
+import {
+  subtitleLangLabel,
+  type OralWorkshopJob,
+  type OralWorkshopStepStatus,
+  type PublishPackage,
+} from '@/types/oral-workshop'
 import styles from './styles.module.css'
 
 export const STEP_LABELS: Record<string, string> = {
@@ -62,6 +69,7 @@ export default function OralWorkshopDetail() {
   const [job, setJob] = useState<OralWorkshopJob | null>(null)
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
+  const [advancing, setAdvancing] = useState(false)
   const [pkg, setPkg] = useState<PublishPackage | null>(null)
   const [coverDesignerOpen, setCoverDesignerOpen] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -162,6 +170,20 @@ export default function OralWorkshopDetail() {
   }))
 
   const isRunning = job.status === 'pending' || job.status === 'processing'
+
+  const handleAdvance = async () => {
+    setAdvancing(true)
+    try {
+      await advanceOralWorkshopJob(jobId)
+      message.success('已放行下一步，正在执行…')
+      await load({ silent: true })
+    } catch (err) {
+      const e = err as Error
+      message.error('执行下一步失败: ' + (e?.message ?? e))
+    } finally {
+      setAdvancing(false)
+    }
+  }
   const processIdx = stepsItems.findIndex((i) => i.status === 'process')
   const failedIdx = stepsItems.findIndex((i) => i.status === 'error')
   const firstNotDone = stepsItems.findIndex((i) => i.status === 'wait' || i.status === 'process')
@@ -185,10 +207,24 @@ export default function OralWorkshopDetail() {
             <div className={styles.subtitle}>
               状态：<Tag color={job.status === 'done' ? 'success' : job.status === 'failed' ? 'error' : 'processing'}>{statusText(job.status)}</Tag>
               {job.creditsCost > 0 && <span className={styles.costTag}>实扣 {job.creditsCost} Credits</span>}
+              {job.targetLang && job.targetLang !== 'zh' && (
+                <span className={styles.costTag}>字幕：{subtitleLangLabel(job.targetLang)} 双语</span>
+              )}
             </div>
           </div>
         </div>
         <div className={styles.headActions}>
+          {isRunning && job.executionMode !== 'auto' && job.waitingStep && (
+            <Button
+              type="primary"
+              icon={<PlayCircle size={14} />}
+              loading={advancing}
+              onClick={() => void handleAdvance()}
+              className={styles.primaryBtn}
+            >
+              执行下一步（{STEP_LABELS[job.waitingStep] ?? job.waitingStep}）
+            </Button>
+          )}
           {isRunning && (
             <Popconfirm title="确定取消该任务？预扣 Credits 将退还。" onConfirm={() => void handleCancel()}>
               <Button icon={<XCircle size={14} />}>取消任务</Button>
@@ -215,6 +251,11 @@ export default function OralWorkshopDetail() {
           <Empty description="暂无步骤数据" />
         )}
         {job.error && <div className={styles.errorBar}>错误：{job.error}</div>}
+        {job.executionMode !== 'auto' && job.waitingStep && (
+          <div className={styles.waitingBar}>
+            手动/单步模式：等待执行「{STEP_LABELS[job.waitingStep] ?? job.waitingStep}」，点击右上角「执行下一步」继续
+          </div>
+        )}
       </Card>
 
       <div className={styles.detailGrid}>

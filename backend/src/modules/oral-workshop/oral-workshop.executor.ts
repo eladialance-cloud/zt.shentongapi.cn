@@ -13,7 +13,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -26,9 +25,10 @@ import { sapiTts } from './local-tts';
 import { SystemConfigEntity } from '../admin-system/entities/system-config.entity';
 import { VoiceAssetEntity } from './entities/voice-asset.entity';
 import { DigitalHumanAssetEntity } from './entities/digital-human-asset.entity';
-import type { OralWorkshopService } from './oral-workshop.service';
-import type { OralWorkshopLlmService } from './llm';
+import { OralWorkshopService } from './oral-workshop.service';
+import { OralWorkshopLlmService } from './llm';
 import type { OralWorkshopJobEntity } from './entities/oral-workshop-job.entity';
+import { defaultFfmpegRunner, downloadTo, resolveLocalMediaPath, type FfmpegRunner } from './ffmpeg';
 
 /** 引擎配置（管理后台 system_config.oral_workshop + 环境变量覆盖） */
 export interface OralWorkshopEngineConfig {
@@ -83,65 +83,10 @@ const IMPLEMENTED_STEPS = new Set([
 /** 每轮最多处理的任务数 */
 const BATCH_LIMIT = 5;
 
-/** ffmpeg 命令执行器（测试注入 fake，不真跑 ffmpeg） */
-export type FfmpegRunner = (cmd: string[], cwd?: string) => Promise<void>;
-
-/** 默认 ffmpeg 执行器：逐条 spawn，非 0 退出码抛错（附 stderr 尾部便于排查） */
-export function defaultFfmpegRunner(cmd: string[], cwd?: string): Promise<void> {
-  const argv = [...cmd];
-  if (argv[0] === 'ffmpeg') {
-    argv[0] = process.env.ORAL_WORKSHOP_FFMPEG_PATH || 'ffmpeg';
-  }
-  return new Promise<void>((resolve, reject) => {
-    const child = spawn(argv[0], argv.slice(1), { cwd, stdio: 'ignore', windowsHide: true });
-    let stderrTail = '';
-    const timeoutMs = Number(process.env.ORAL_WORKSHOP_FFMPEG_TIMEOUT_MS || 600000);
-    const timer = setTimeout(() => {
-      try { child.kill('SIGKILL'); } catch { /* 子进程已退出 */ }
-      reject(new Error('ffmpeg 执行超时（' + Math.round(timeoutMs / 60000) + ' 分钟），已强制终止流水线'));
-    }, timeoutMs);
-    child.stderr?.on('data', (d: Buffer) => {
-      stderrTail = (stderrTail + d.toString('utf8')).slice(-800);
-    });
-    child.on('error', (err) => { clearTimeout(timer); reject(err); });
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      if (code === 0) resolve();
-      else reject(new Error('ffmpeg 执行失败（退出码 ' + code + '）：' + stderrTail));
-    });
-  });
-}
-
 /** 引擎名归一化（非法值回退 auto） */
 function normalizeEngine(v: string): OralWorkshopEngineConfig['voiceEngine'] {
   const s = String(v ?? '').toLowerCase();
   return s === 'volcano' || s === 'local' || s === 'auto' ? s : 'auto';
-}
-
-/** 下载/拷贝媒体到产物目录（支持 http(s) URL 与本地路径） */
-export async function downloadTo(urlOrPath: string, dest: string): Promise<string> {
-  if (/^https?:\/\//i.test(urlOrPath)) {
-    const resp = await fetch(urlOrPath, { signal: AbortSignal.timeout(120000) });
-    if (!resp.ok) throw new Error('媒体下载失败: HTTP ' + resp.status + ' ' + urlOrPath.slice(0, 120));
-    const buf = Buffer.from(await resp.arrayBuffer());
-    if (!buf.length) throw new Error('媒体下载为空: ' + urlOrPath.slice(0, 120));
-    fs.writeFileSync(dest, buf);
-  } else {
-    fs.copyFileSync(resolveLocalMediaPath(urlOrPath), dest);
-  }
-  return dest;
-}
-
-/** 限制本地文件路径：仅允许相对路径或以 /uploads 开头的路径，按服务器 CWD 还原；拒绝本地绝对路径（防任意文件读取） */
-export function resolveLocalMediaPath(urlOrPath: string): string {
-  const p = String(urlOrPath);
-  if (/^[a-zA-Z]:[\/]/.test(p) || /^\\/.test(p)) {
-    throw new Error('不允许引用本地绝对路径：' + p.slice(0, 80));
-  }
-  if (p.startsWith('/')) {
-    return path.resolve(p.replace(/^\/+/, ''));
-  }
-  return path.resolve(p);
 }
 
 /** 从 URL/路径推断扩展名（无扩展名返回空串） */
@@ -460,13 +405,25 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
     const engineCfg = await this.readEngineConfig();
     let subtitles = segmentScript(script);
     let bilingual = false;
-    if (job.bilingual) {
+    let subtitleLang = 'zh';
+    const targetLang = job.targetLang ? String(job.targetLang).trim() : '';
+    if (targetLang && targetLang !== 'zh') {
+      // 指定目标语言：zh + 目标语言 双行字幕（zh-xx 方言同理，LLM 翻译）
+      const pairs = await this.llm.translateSubtitles(script, targetLang);
+      if (!pairs || pairs.length === 0) {
+        throw new Error(`双语字幕（${targetLang}）：翻译结果为空，请检查 LLM 供应商配置`);
+      }
+      subtitles = segmentScriptBilingual(pairs.map((p) => ({ zh: p.zh, en: p.translated })));
+      bilingual = true;
+      subtitleLang = targetLang;
+    } else if (job.bilingual) {
       const pairs = await this.llm.translateBilingual(script);
       if (!pairs || pairs.length === 0) {
         throw new Error('双语字幕：翻译结果为空，请检查 LLM 供应商配置');
       }
       subtitles = segmentScriptBilingual(pairs);
       bilingual = true;
+      subtitleLang = 'en';
     }
     const plan = composePlan({
       voicePath: audioPath,
@@ -496,6 +453,7 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       width: template.project_settings.width,
       height: template.project_settings.height,
       bilingual,
+      subtitle_lang: subtitleLang,
       composedAt: new Date().toISOString(),
     };
   }

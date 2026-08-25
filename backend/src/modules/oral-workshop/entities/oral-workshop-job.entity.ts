@@ -31,6 +31,14 @@ export class OralWorkshopJobEntity {
   @Column({ type: 'varchar', length: 16, default: 'pending' })
   status: OralWorkshopJobStatus;
 
+  /** 执行模式：auto=自动流水线（默认）/ manual=手动逐步（每步确认）/ single=单步执行 */
+  @Column({ name: 'execution_mode', type: 'varchar', length: 16, default: 'auto' })
+  executionMode: 'auto' | 'manual' | 'single';
+
+  /** 手动/单步模式下等待用户放行的步骤（null=已放行或自动模式） */
+  @Column({ name: 'waiting_step', length: 32, nullable: true })
+  waitingStep?: string | null;
+
   /** 当前执行到哪一步（step 名） */
   @Column({ name: 'current_step', length: 32, nullable: true })
   currentStep?: string | null;
@@ -86,6 +94,10 @@ export class OralWorkshopJobEntity {
   /** 双语字幕开关（true = videoEdit 渲染中英双行字幕，LLM 翻译） */
   @Column({ type: 'boolean', default: false })
   bilingual: boolean;
+
+  /** 字幕目标语言（空/zh=纯中文；en/ja/vi 等=双语对照字幕；zh-HK/zh-WU 等=方言双语） */
+  @Column({ name: 'target_lang', length: 16, nullable: true })
+  targetLang?: string | null;
 
   /** 预扣流水 id（CreditsBillingService.estimateAndFreeze 返回） */
   @Column({ name: 'frozen_txn_id', type: 'bigint', nullable: true, transformer: bigintTransformer })

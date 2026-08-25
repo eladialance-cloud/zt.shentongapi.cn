@@ -7,8 +7,9 @@ import { SystemLlmService } from '../../src/modules/oral-workshop/system-llm.ser
 
 type AnyRepo = any;
 
-function makeService(providerRepo: AnyRepo, apiKeyPool: AnyRepo, encryption: AnyRepo): SystemLlmService {
-  return new SystemLlmService(providerRepo, apiKeyPool, encryption);
+function makeService(providerRepo: AnyRepo, apiKeyPool: AnyRepo, encryption: AnyRepo, configRepo: AnyRepo = null): SystemLlmService {
+  const cfgRepo = configRepo ?? { findOne: async () => null };
+  return new SystemLlmService(providerRepo, cfgRepo as any, apiKeyPool, encryption);
 }
 
 const decrypt = (c: string) => c.replace('enc-', 'sk-');
@@ -83,4 +84,36 @@ describe('SystemLlmService', () => {
     const svc = makeService({ find: async () => [] }, { getNextAvailableKey: async () => null }, { decryptAes: decrypt });
     await assert.rejects(() => svc.chat([{ role: 'user', content: 'x' }]), /未配置可用的大模型供应商/);
   });
+
+  it('embed：管理后台 embeddingProvider/embeddingModel/embeddingApiKey 配置直连（无供应商行）', async () => {
+    const cfgRepo = { findOne: async () => ({ configValue: { embeddingProvider: 'qwen', embeddingModel: 'my-embed-model', embeddingApiKey: 'sk-cfg', embeddingEndpoint: 'https://embed.example/v1/' } }) };
+    const svc = makeService({ find: async () => [] }, { getNextAvailableKey: async () => null }, { decryptAes: decrypt }, cfgRepo);
+    let captured: { url: string; opts: { headers: Record<string, string>; body: string } } | null = null;
+    (globalThis as any).fetch = async (url: string, opts: any) => {
+      captured = { url, opts };
+      return { ok: true, status: 200, text: async () => '', json: async () => ({ data: [{ embedding: [0.1, 0.2] }] }) };
+    };
+    const out = await svc.embed(['素材文本']);
+    assert.equal(out.length, 1);
+    assert.equal(captured!.url, 'https://embed.example/v1/embeddings');
+    assert.equal(captured!.opts.headers.Authorization, 'Bearer sk-cfg');
+    assert.equal(JSON.parse(captured!.opts.body).model, 'my-embed-model');
+    delete (globalThis as any).fetch;
+  });
+
+  it('embed：doubao 默认端点 + llmApiKey 兜底（未填 embeddingApiKey）', async () => {
+    const cfgRepo = { findOne: async () => ({ configValue: { embeddingProvider: 'doubao', embeddingModel: 'doubao-embedding-text-240715', llmApiKey: 'sk-llm' } }) };
+    const svc = makeService({ find: async () => [] }, { getNextAvailableKey: async () => null }, { decryptAes: decrypt }, cfgRepo);
+    let captured: { url: string; opts: { headers: Record<string, string>; body: string } } | null = null;
+    (globalThis as any).fetch = async (url: string, opts: any) => {
+      captured = { url, opts };
+      return { ok: true, status: 200, text: async () => '', json: async () => ({ data: [{ embedding: [0.1] }] }) };
+    };
+    await svc.embed(['x']);
+    assert.equal(captured!.url, 'https://ark.cn-beijing.volces.com/api/v3/embeddings');
+    assert.equal(captured!.opts.headers.Authorization, 'Bearer sk-llm');
+    assert.equal(JSON.parse(captured!.opts.body).model, 'doubao-embedding-text-240715');
+    delete (globalThis as any).fetch;
+  });
+
 });

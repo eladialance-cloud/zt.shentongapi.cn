@@ -1568,6 +1568,40 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       logger.log('Added column: oral_workshop_jobs.bilingual');
     }
 
+    // 口播工坊：oral_workshop_jobs.target_lang（字幕目标语言）
+    const [owTargetLangCol] = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'oral_workshop_jobs' AND COLUMN_NAME = 'target_lang'`
+    );
+    if (!owTargetLangCol) {
+      await queryRunner.query(
+        `ALTER TABLE oral_workshop_jobs ADD COLUMN target_lang VARCHAR(16) NULL COMMENT '字幕目标语言(空=中文;en/zh-HK=双语)'`
+      );
+      logger.log('Added column: oral_workshop_jobs.target_lang');
+    }
+
+    // 口播工坊：oral_workshop_jobs 执行模式（execution_mode / waiting_step）
+    const [owExecModeCol] = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'oral_workshop_jobs' AND COLUMN_NAME = 'execution_mode'`
+    );
+    if (!owExecModeCol) {
+      await queryRunner.query(
+        `ALTER TABLE oral_workshop_jobs ADD COLUMN execution_mode VARCHAR(16) NOT NULL DEFAULT 'auto' COMMENT '执行模式:auto自动/manual手动/single单步'`
+      );
+      logger.log('Added column: oral_workshop_jobs.execution_mode');
+    }
+    const [owWaitingStepCol] = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'oral_workshop_jobs' AND COLUMN_NAME = 'waiting_step'`
+    );
+    if (!owWaitingStepCol) {
+      await queryRunner.query(
+        `ALTER TABLE oral_workshop_jobs ADD COLUMN waiting_step VARCHAR(32) NULL COMMENT '手动模式等待用户放行的步骤'`
+      );
+      logger.log('Added column: oral_workshop_jobs.waiting_step');
+    }
+
     // 口播工坊：oral_workshop_jobs 封面设计（主/副标题 + 设计配置）
     const owCoverCols = await queryRunner.query(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS

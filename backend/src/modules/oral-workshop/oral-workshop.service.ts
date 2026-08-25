@@ -7,11 +7,11 @@ import { OralWorkshopJobEntity, OralWorkshopJobStatus } from './entities/oral-wo
 import { OralWorkshopStepEntity } from './entities/oral-workshop-step.entity';
 import { VoiceAssetEntity } from './entities/voice-asset.entity';
 import { DigitalHumanAssetEntity } from './entities/digital-human-asset.entity';
-import type { OralWorkshopLlmService } from './llm';
+import { OralWorkshopLlmService } from './llm';
 import type { TopicItem } from './llm';
 import { CreditsBillingService } from '../credits/services/credits-billing.service';
 import { SystemLlmService } from './system-llm.service';
-import { defaultFfmpegRunner, downloadTo } from './oral-workshop.executor';
+import { defaultFfmpegRunner, downloadTo, assertPublicMediaUrl } from './ffmpeg';
 import { BatchCreateOralWorkshopJobsDto, CreateOralWorkshopJobDto, OralWorkshopJobQueryDto } from './dto/oral-workshop.dto';
 import { listTemplates as listTemplatesLoader } from './template-loader';
 import {
@@ -45,6 +45,9 @@ export interface OralWorkshopJobItem {
   coverConfig: string | null;
   creditsCost: number;
   bilingual: boolean;
+  targetLang: string | null;
+  executionMode: 'auto' | 'manual' | 'single';
+  waitingStep: string | null;
   error: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -113,6 +116,11 @@ export class OralWorkshopService implements OnModuleInit {
   async extractScript(userId: number, videoUrl: string): Promise<{ text: string }> {
     if (!/^https?:\/\//i.test(videoUrl)) {
       throw new BadRequestException('请输入有效的视频链接（http/https）');
+    }
+    try {
+      await assertPublicMediaUrl(videoUrl);
+    } catch (err) {
+      throw new BadRequestException('视频链接不可访问: ' + (err as Error).message);
     }
     const dir = path.join(process.env.ORAL_WORKSHOP_UPLOADS_DIR || 'uploads', 'oral-workshop', 'extract', String(userId), String(Date.now()));
     fs.mkdirSync(dir, { recursive: true });
@@ -199,6 +207,9 @@ export class OralWorkshopService implements OnModuleInit {
         audioUrl: dto.audioUrl ?? null,
         videoUrl: dto.videoUrl ?? null,
         bilingual: dto.bilingual ?? false,
+        targetLang: dto.targetLang ?? null,
+        executionMode: dto.executionMode ?? 'auto',
+        waitingStep: dto.executionMode && dto.executionMode !== 'auto' ? 'extract' : null,
         frozenTxnId: frozen.id,
       });
       const saved = await this.jobRepo.save(job);
@@ -262,6 +273,8 @@ export class OralWorkshopService implements OnModuleInit {
                 audioUrl: dto.audioUrl,
                 videoUrl: dto.videoUrl,
                 bilingual: dto.bilingual ?? false,
+                targetLang: dto.targetLang,
+                executionMode: dto.executionMode ?? 'auto',
                 clientTxnId: `${batchKey}-${index}`,
               });
               created.push(job);
@@ -298,6 +311,21 @@ export class OralWorkshopService implements OnModuleInit {
     return this.toItem(job);
   }
 
+  /** 手动/单步模式：用户点击"执行下一步"放行暂停的任务（清除 waitingStep） */
+  async advance(userId: number, id: number): Promise<OralWorkshopJobItem> {
+    const job = await this.jobRepo.findOne({ where: { id, userId } });
+    if (!job) throw new NotFoundException('口播工坊任务不存在');
+    if (job.status === 'done' || job.status === 'failed' || job.status === 'cancelled') {
+      throw new BadRequestException(`任务已结束（${job.status}），无法继续推进`);
+    }
+    if (job.executionMode === 'auto') {
+      throw new BadRequestException('自动模式任务无需手动推进');
+    }
+    job.waitingStep = null;
+    await this.jobRepo.save(job);
+    return this.toItem(job);
+  }
+
   /** 取消任务：仅 pending/processing 可取消；退还预扣 Credits */
   async cancel(userId: number, id: number): Promise<OralWorkshopJobItem> {
     const job = await this.jobRepo.findOne({ where: { id, userId } });
@@ -318,15 +346,21 @@ export class OralWorkshopService implements OnModuleInit {
 
   /** 供执行器轮询：取待执行任务（pending/processing，最早优先，限量） */
   async findExecutableJobs(limit = 5): Promise<OralWorkshopJobEntity[]> {
-    return this.jobRepo.find({
+    const rows = await this.jobRepo.find({
       where: [{ status: 'pending' }, { status: 'processing' }],
       order: { createdAt: 'ASC' },
-      take: limit,
+      take: Math.max(limit * 3, limit),
     });
+    // 手动/单步模式下等待用户放行（waitingStep 非空）的任务不自动执行
+    const executable = rows.filter((j) => j.executionMode === 'auto' || !j.waitingStep);
+    return executable.slice(0, limit);
   }
 
   /** 供执行器取某任务下一个待执行步骤名（无则 null） */
   async nextPendingStepOf(jobId: number): Promise<string | null> {
+    const job = await this.jobRepo.findOne({ where: { id: jobId } });
+    // 手动/单步模式暂停中：不返回待执行步骤，直到用户"执行下一步"放行
+    if (job && job.executionMode !== 'auto' && job.waitingStep) return null;
     const steps = await this.loadSteps(jobId);
     return nextPendingStep(steps)?.step ?? null;
   }
@@ -500,6 +534,16 @@ export class OralWorkshopService implements OnModuleInit {
     await this.stepRepo.save(next.map((s) => this.toStepEntity(s, true)));
     this.applyJobArtifacts(job, resultJson);
     await this.syncJobProgress(job, next);
+    // 手动/单步模式：每完成一步暂停，等待用户"执行下一步"放行；任务结束则清除等待标记
+    if (job.executionMode !== 'auto') {
+      if (job.status !== 'done' && job.status !== 'failed') {
+        const pending = nextPendingStep(next);
+        job.waitingStep = pending ? pending.step : null;
+      } else {
+        job.waitingStep = null;
+      }
+      await this.jobRepo.save(job);
+    }
   }
 
   /** 标记某步 failed：可重试则回 pending，否则任务 failed 并退款 */
@@ -619,6 +663,9 @@ export class OralWorkshopService implements OnModuleInit {
       coverConfig: job.coverConfig ?? null,
       creditsCost: job.creditsCost,
       bilingual: !!job.bilingual,
+      targetLang: job.targetLang ?? null,
+      executionMode: job.executionMode ?? 'auto',
+      waitingStep: job.waitingStep ?? null,
       error: job.error ?? null,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,

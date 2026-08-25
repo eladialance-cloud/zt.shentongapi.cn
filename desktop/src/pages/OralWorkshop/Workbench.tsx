@@ -7,17 +7,17 @@
  * ⑤ 模板（卡片选择）+ 双语字幕
  * ⑥ 预览提交（汇总 → 创建任务 → 进入 7 步流水线）
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Button,
   Card,
   Form,
   Input,
   Modal,
+  Radio,
   Select,
   Spin,
   Steps,
-  Switch,
   Tag,
   Upload,
   message,
@@ -54,7 +54,14 @@ import {
 } from '@/api/oral-workshop-api'
 import { uploadFile } from '@/api/file-api'
 import { useOralWorkshopStore } from '@/store/oral-workshop'
-import type { DigitalHumanAsset, OralWorkshopTemplateMeta, TopicItem, VoiceAsset } from '@/types/oral-workshop'
+import {
+  SUBTITLE_LANG_OPTIONS,
+  subtitleLangLabel,
+  type DigitalHumanAsset,
+  type OralWorkshopTemplateMeta,
+  type TopicItem,
+  type VoiceAsset,
+} from '@/types/oral-workshop'
 import styles from './styles.module.css'
 
 const { TextArea } = Input
@@ -159,8 +166,11 @@ export default function OralWorkshopWorkbench() {
     void listMyDigitalHumans().then(setDhAssets).catch(() => setDhAssets([]))
   }, [])
 
-  // 草稿回填（localStorage 持久化）
+  // 草稿回填（localStorage 持久化，仅在挂载时执行一次，避免与自动保存形成回环）
+  const restoredRef = useRef(false)
   useEffect(() => {
+    if (restoredRef.current) return
+    restoredRef.current = true
     form.setFieldsValue({
       scriptInput: draft.scriptInput,
       goal: draft.goal,
@@ -169,7 +179,24 @@ export default function OralWorkshopWorkbench() {
       persona: draft.persona,
       templateId: draft.templateId,
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, draft])
+
+  // 草稿自动保存：表单变化防抖 800ms 写入 localStorage（对标参考软件 autoSave）
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleDraftChange = (_changed: unknown, allValues: Record<string, unknown>) => {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
+    draftTimerRef.current = setTimeout(() => {
+      setDraft({
+        scriptInput: typeof allValues.scriptInput === 'string' ? allValues.scriptInput : '',
+        goal: typeof allValues.goal === 'string' ? allValues.goal : '',
+        targetAudience: typeof allValues.targetAudience === 'string' ? allValues.targetAudience : '',
+        style: typeof allValues.style === 'string' ? allValues.style : '',
+        persona: typeof allValues.persona === 'string' ? allValues.persona : '',
+        templateId: typeof allValues.templateId === 'number' ? allValues.templateId : null,
+      })
+    }, 800)
+  }
 
   const scriptChars = Form.useWatch('scriptInput', form)?.length ?? 0
 
@@ -297,9 +324,11 @@ export default function OralWorkshopWorkbench() {
     templateId?: number
     voiceId?: number
     digitalHumanId?: number
-    bilingual?: boolean
+    targetLang?: string
+    executionMode?: 'auto' | 'manual' | 'single'
   }) => {
     setSubmitting(true)
+    const targetLang = values.targetLang && values.targetLang !== 'zh' ? values.targetLang : undefined
     try {
       const job = await createOralWorkshopJob({
         scriptInput: values.scriptInput,
@@ -312,7 +341,9 @@ export default function OralWorkshopWorkbench() {
         digitalHumanId: values.digitalHumanId,
         audioUrl,
         videoUrl,
-        bilingual: values.bilingual,
+        bilingual: !!targetLang,
+        targetLang,
+        executionMode: values.executionMode ?? 'auto',
         clientTxnId: 'ow-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
       })
       setDraft({
@@ -595,8 +626,18 @@ export default function OralWorkshopWorkbench() {
                 })}
               </div>
             )}
-            <Form.Item name="bilingual" label="双语字幕（中英对照）" valuePropName="checked" tooltip="开启后字幕渲染中英双行（LLM 翻译），适合出海/国际受众">
-              <Switch checkedChildren="中英双行" unCheckedChildren="仅中文" />
+            <Form.Item
+              name="targetLang"
+              label="字幕语言"
+              tooltip="仅中文=单语字幕；选择英语或其他语言/方言=LLM 翻译渲染双语对照字幕（对标参考软件 30 种语言 + 9 种方言）"
+            >
+              <Select
+                placeholder="仅中文（默认）"
+                options={SUBTITLE_LANG_OPTIONS}
+                allowClear
+                showSearch
+                optionFilterProp="label"
+              />
             </Form.Item>
           </div>
         )}
@@ -638,8 +679,26 @@ export default function OralWorkshopWorkbench() {
               </div>
               <div className={styles.summaryRow}>
                 <span className={styles.summaryLabel}>字幕</span>
-                <span className={styles.summaryValue}>{form.getFieldValue('bilingual') ? '中英双行' : '仅中文'}</span>
+                <span className={styles.summaryValue}>{subtitleLangLabel(form.getFieldValue('targetLang'))}</span>
               </div>
+            </div>
+            <div className={styles.execModeRow}>
+              <Form.Item
+                name="executionMode"
+                label="执行模式"
+                initialValue="auto"
+                tooltip="自动=创建后流水线全自动执行；手动=每步完成后等待您点击「执行下一步」；单步=只执行当前一步"
+              >
+                <Radio.Group
+                  options={[
+                    { value: 'auto', label: '自动执行' },
+                    { value: 'manual', label: '手动逐步' },
+                    { value: 'single', label: '单步执行' },
+                  ]}
+                  optionType="button"
+                  buttonStyle="solid"
+                />
+              </Form.Item>
             </div>
             <div className={styles.submitRow}>
               <div className={styles.estimate}>
@@ -685,7 +744,13 @@ export default function OralWorkshopWorkbench() {
         </div>
       </Card>
 
-      <Form form={form} layout="vertical" onFinish={handleSubmit} style={{ display: 'none' }} />
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={handleSubmit}
+        onValuesChange={handleDraftChange}
+        style={{ display: 'none' }}
+      />
 
       {/* 选题灵感弹窗 */}
       <Modal

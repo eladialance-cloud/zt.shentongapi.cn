@@ -38,6 +38,11 @@ export interface OralWorkshopJob {
   coverConfig: string | null
   creditsCost: number
   bilingual: boolean
+  targetLang: string | null
+  /** 执行模式：auto=自动流水线 / manual=手动逐步 / single=单步执行 */
+  executionMode: 'auto' | 'manual' | 'single'
+  /** 手动/单步模式下等待用户放行的步骤（null=已放行/自动模式） */
+  waitingStep: string | null
   error: string | null
   createdAt: string
   updatedAt: string
@@ -74,6 +79,10 @@ export interface CreateOralWorkshopJobDto {
   videoUrl?: string
   /** 双语字幕：true 时字幕渲染中英双行（LLM 翻译） */
   bilingual?: boolean
+  /** 字幕目标语言：zh/留空=纯中文；en 等国际语言或 zh-xx 方言=双语对照字幕（优先级高于 bilingual） */
+  targetLang?: string
+  /** 执行模式：auto=自动流水线（默认）/ manual=手动逐步 / single=单步执行 */
+  executionMode?: 'auto' | 'manual' | 'single'
   clientTxnId?: string
 }
 
@@ -154,6 +163,10 @@ export interface BatchCreateOralWorkshopJobsDto {
   videoUrl?: string
   /** 双语字幕：true 时每个任务字幕渲染中英双行 */
   bilingual?: boolean
+  /** 字幕目标语言（批量任务统一生效，优先级高于 bilingual） */
+  targetLang?: string
+  /** 执行模式（批量任务统一生效） */
+  executionMode?: 'auto' | 'manual' | 'single'
   batchTxnId?: string
 }
 
@@ -183,4 +196,60 @@ export interface CoverDesignConfig {
   letterSpacing: number
   align: 'left' | 'center' | 'right'
   position: 'top' | 'middle' | 'bottom'
+}
+
+/** 字幕目标语言目录（与后端 TARGET_LANGS 一致：30 种国际语言 + 9 种中文方言） */
+export const SUBTITLE_LANGS: Record<string, string> = {
+  // 中文方言（zh-xx 方言双语字幕）
+  'zh-SC': '四川话',
+  'zh-HK': '粤语',
+  'zh-WU': '吴语',
+  'zh-DB': '东北话',
+  'zh-HA': '河南话',
+  'zh-SX': '陕西话',
+  'zh-SD': '山东话',
+  'zh-TJ': '天津话',
+  'zh-MN': '闽南话',
+  // 国际语言
+  en: '英语',
+  ar: '阿拉伯语',
+  my: '缅甸语',
+  da: '丹麦语',
+  nl: '荷兰语',
+  fi: '芬兰语',
+  fr: '法语',
+  de: '德语',
+  el: '希腊语',
+  he: '希伯来语',
+  hi: '印地语',
+  id: '印尼语',
+  it: '意大利语',
+  ja: '日语',
+  km: '高棉语',
+  ko: '韩语',
+  lo: '老挝语',
+  ms: '马来语',
+  no: '挪威语',
+  pl: '波兰语',
+  pt: '葡萄牙语',
+  ru: '俄语',
+  es: '西班牙语',
+  sw: '斯瓦希里语',
+  sv: '瑞典语',
+  tl: '菲律宾语',
+  th: '泰语',
+  tr: '土耳其语',
+  vi: '越南语',
+}
+
+/** 字幕语言下拉选项（含"仅中文"前置项） */
+export const SUBTITLE_LANG_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'zh', label: '仅中文（默认）' },
+  ...Object.entries(SUBTITLE_LANGS).map(([value, label]) => ({ value, label })),
+]
+
+/** 字幕语言代码 → 展示名（未收录回退代码本身） */
+export function subtitleLangLabel(code: string | null | undefined): string {
+  if (!code || code === 'zh') return '仅中文'
+  return SUBTITLE_LANGS[code] ?? code
 }

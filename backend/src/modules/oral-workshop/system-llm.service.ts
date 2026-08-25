@@ -379,6 +379,22 @@ export class SystemLlmService implements LlmCaller {
 
   /** 解析 embedding 目标：qwen > openai > doubao；环境变量 ORAL_WORKSHOP_EMBEDDING_MODEL 覆盖模型 */
   private async resolveEmbeddingTarget(): Promise<LlmTarget | null> {
+    // 1) 管理后台口播工坊配置直连：embeddingProvider/embeddingModel + embeddingApiKey（llmApiKey/volcanoApiKey 兜底）
+    const cfg = await this.readOralConfig();
+    const cfgProvider = typeof cfg.embeddingProvider === 'string' && cfg.embeddingProvider ? cfg.embeddingProvider : '';
+    const cfgModel = typeof cfg.embeddingModel === 'string' && cfg.embeddingModel ? cfg.embeddingModel.trim() : '';
+    const cfgKey = String(cfg.embeddingApiKey || cfg.llmApiKey || cfg.volcanoApiKey || '').trim();
+    if (cfgProvider && cfgKey) {
+      const cfgEndpoint = typeof cfg.embeddingEndpoint === 'string' && cfg.embeddingEndpoint ? cfg.embeddingEndpoint : '';
+      const endpoint = cfgEndpoint || (cfgProvider === 'doubao' ? DEFAULT_VOLCANO_LLM_ENDPOINT : DEFAULT_ENDPOINTS[cfgProvider]);
+      if (endpoint) {
+        return {
+          endpoint: endpoint.replace(/\/+$/, ''),
+          apiKey: cfgKey,
+          model: cfgModel || process.env.ORAL_WORKSHOP_EMBEDDING_MODEL || EMBEDDING_MODEL_BY_SLUG[cfgProvider] || 'text-embedding-3-small',
+        };
+      }
+    }
     const modelOverride = process.env.ORAL_WORKSHOP_EMBEDDING_MODEL;
     const providers = await this.providerRepo.find({ where: { status: 'active' } });
     for (const slug of EMBEDDING_PROVIDER_PREFERENCE) {

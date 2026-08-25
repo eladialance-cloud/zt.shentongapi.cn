@@ -125,6 +125,14 @@ export interface OralWorkshopConfig {
   sttModel?: string
   /** 向量 embedding 供应商 */
   embeddingProvider?: 'qwen' | 'openai' | 'doubao'
+  /** 语音识别接入端点（volcano ASR 用；openai whisper 留空走默认） */
+  sttEndpoint?: string
+  /** 语音识别 API Key（volcano ASR 专用） */
+  sttApiKey?: string
+  /** 向量 embedding 接入端点（留空=按供应商默认：doubao 火山方舟/qwen 通义/openai） */
+  embeddingEndpoint?: string
+  /** 向量 embedding API Key（留空=用 llmApiKey/volcanoApiKey 兜底） */
+  embeddingApiKey?: string
   /** 向量 embedding 模型（默认 doubao-embedding-text-240715） */
   embeddingModel?: string
 }

@@ -66,6 +66,64 @@ export interface BilingualPair {
   en: string;
 }
 
+/** 指定目标语言字幕行（zh 中文行 + translated 目标语言行） */
+export interface TranslatedSubtitleLine {
+  zh: string;
+  translated: string;
+}
+
+/**
+ * 字幕目标语言目录（对标参考软件：30 种国际语言 + 9 种方言）
+ * 值=翻译提示词中的语言名；zh/zh-xx 为中文及其方言，其余为国际语言
+ */
+export const TARGET_LANGS: Record<string, string> = {
+  // 中文方言（zh-xx 方言双语字幕）
+  'zh-SC': '四川话',
+  'zh-HK': '粤语',
+  'zh-WU': '吴语',
+  'zh-DB': '东北话',
+  'zh-HA': '河南话',
+  'zh-SX': '陕西话',
+  'zh-SD': '山东话',
+  'zh-TJ': '天津话',
+  'zh-MN': '闽南话',
+  // 国际语言
+  en: '英语',
+  ar: '阿拉伯语',
+  my: '缅甸语',
+  da: '丹麦语',
+  nl: '荷兰语',
+  fi: '芬兰语',
+  fr: '法语',
+  de: '德语',
+  el: '希腊语',
+  he: '希伯来语',
+  hi: '印地语',
+  id: '印尼语',
+  it: '意大利语',
+  ja: '日语',
+  km: '高棉语',
+  ko: '韩语',
+  lo: '老挝语',
+  ms: '马来语',
+  no: '挪威语',
+  pl: '波兰语',
+  pt: '葡萄牙语',
+  ru: '俄语',
+  es: '西班牙语',
+  sw: '斯瓦希里语',
+  sv: '瑞典语',
+  tl: '菲律宾语',
+  th: '泰语',
+  tr: '土耳其语',
+  vi: '越南语',
+};
+
+/** 目标语言代码 → 中文名（未收录时回退代码本身，便于提示词可读） */
+export function targetLangName(code: string): string {
+  return TARGET_LANGS[code] ?? code;
+}
+
 export interface KeywordTopicsResult {
   keyword_analysis: string;
   topics: TopicItem[];
@@ -176,6 +234,31 @@ export class OralWorkshopLlmService {
     return lines
       .filter((l) => l && typeof l.zh === 'string' && String(l.zh).trim() && typeof l.en === 'string')
       .map((l) => ({ zh: String(l.zh).trim(), en: String(l.en).trim() }));
+  }
+
+  /** 指定目标语言的双语字幕翻译：中文文案 → zh+目标语言 逐行对照（供 videoEdit 双语字幕渲染） */
+  async translateSubtitles(script: string, targetLang: string): Promise<TranslatedSubtitleLine[]> {
+    const raw = await this.call(
+      'bilingual_subtitle_lang',
+      { script, targetLangName: targetLangName(targetLang) },
+      0.7,
+      'translate',
+    );
+    const parsed = extractJson(raw) as { lines?: Array<{ zh?: unknown; translated?: unknown }> };
+    const lines = Array.isArray(parsed?.lines) ? parsed.lines : null;
+    if (!lines || lines.length === 0) {
+      throw new LlmOutputError('翻译结果缺少 lines 数组');
+    }
+    return lines
+      .filter(
+        (l) =>
+          l &&
+          typeof l.zh === 'string' &&
+          String(l.zh).trim() &&
+          typeof l.translated === 'string' &&
+          String(l.translated).trim(),
+      )
+      .map((l) => ({ zh: String(l.zh).trim(), translated: String(l.translated).trim() }));
   }
 
   async generateTitle(script: string, platform = '抖音'): Promise<string> {

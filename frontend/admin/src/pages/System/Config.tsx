@@ -180,7 +180,11 @@ export default function SystemConfigPage() {
         dhDefaultImageId: cfgv.dhDefaultImageId || '',
         sttProvider: cfgv.sttProvider || 'openai',
         sttModel: cfgv.sttModel || '',
+        sttEndpoint: cfgv.sttEndpoint || '',
+        sttApiKey: cfgv.sttApiKey || '',
         embeddingProvider: cfgv.embeddingProvider || 'doubao',
+        embeddingEndpoint: cfgv.embeddingEndpoint || '',
+        embeddingApiKey: cfgv.embeddingApiKey || '',
         embeddingModel: cfgv.embeddingModel || 'doubao-embedding-text-240715'
       })
     } catch (err) {
@@ -316,7 +320,11 @@ export default function SystemConfigPage() {
         dhDefaultImageId: values.dhDefaultImageId || '',
         sttProvider: values.sttProvider || 'openai',
         sttModel: values.sttModel || '',
+        sttEndpoint: values.sttEndpoint || '',
+        sttApiKey: values.sttApiKey || '',
         embeddingProvider: values.embeddingProvider || 'doubao',
+        embeddingEndpoint: values.embeddingEndpoint || '',
+        embeddingApiKey: values.embeddingApiKey || '',
         embeddingModel: values.embeddingModel || 'doubao-embedding-text-240715'
       }
       await updateOralWorkshopConfig(cfgv)
@@ -766,6 +774,18 @@ export default function SystemConfigPage() {
                 </Form.Item>
                 <Form.Item name="embeddingModel" label="向量 Embedding 模型">
                   <Input placeholder="doubao-embedding-text-240715" allowClear />
+                </Form.Item>
+                <Form.Item name="sttEndpoint" label="语音识别端点" extra="volcano ASR 接入地址；openai 留空走默认">
+                  <Input placeholder="如 https://ark.cn-beijing.volces.com/api/v3" allowClear />
+                </Form.Item>
+                <Form.Item name="sttApiKey" label="语音识别 API Key" extra="火山 ASR 专用密钥">
+                  <Input.Password placeholder="请输入语音识别密钥" allowClear />
+                </Form.Item>
+                <Form.Item name="embeddingEndpoint" label="Embedding 端点" extra="留空=按供应商默认">
+                  <Input placeholder="如 https://ark.cn-beijing.volces.com/api/v3" allowClear />
+                </Form.Item>
+                <Form.Item name="embeddingApiKey" label="Embedding API Key" extra="留空=用上方 LLM/火山 API Key 兜底">
+                  <Input.Password placeholder="请输入向量检索密钥" allowClear />
                 </Form.Item>
                 <Form.Item name="watermarkText" label="水印文案" extra="免费档叠加的品牌水印文字">
                   <Input placeholder="如 深瞳AI" allowClear />

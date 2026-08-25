@@ -10,6 +10,7 @@ import {
   CreateDigitalHumanAssetDto,
   CreateOralWorkshopJobDto,
   CreateVoiceAssetDto,
+  ExtractScriptDto,
   GenerateTopicsDto,
   OralWorkshopJobQueryDto,
 } from './dto/oral-workshop.dto';
@@ -38,7 +39,7 @@ export class OralWorkshopController {
 
   @Post('extract-script')
   @ApiOperation({ summary: '学习对标：从对标视频 URL 提取口播文案（下载+抽音频+STT，不计费）' })
-  extractScript(@CurrentUser() user: ICurrentUser, @Body() body: { videoUrl: string }) {
+  extractScript(@CurrentUser() user: ICurrentUser, @Body() body: ExtractScriptDto) {
     if (!body?.videoUrl) throw new BadRequestException('videoUrl 不能为空');
     return this.oralWorkshopService.extractScript(user.userId, body.videoUrl);
   }
@@ -135,6 +136,14 @@ export class OralWorkshopController {
     const jobId = Number(id);
     if (!Number.isInteger(jobId) || jobId <= 0) throw new BadRequestException('无效的任务 ID');
     return this.publisher.exportPackage(user.userId, jobId);
+  }
+
+  @Post('jobs/:id/advance')
+  @ApiOperation({ summary: '手动/单步模式：执行下一步（放行暂停任务）' })
+  advance(@CurrentUser() user: ICurrentUser, @Param('id') id: string) {
+    const jobId = Number(id);
+    if (!Number.isInteger(jobId) || jobId <= 0) throw new BadRequestException('无效的任务 ID');
+    return this.oralWorkshopService.advance(user.userId, jobId);
   }
 
   @Post('jobs/:id/cancel')
