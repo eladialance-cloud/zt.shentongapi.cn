@@ -55,6 +55,7 @@ import {
   getOralWorkshopMeta,
 } from '@/api/oral-workshop-api'
 import { uploadFile } from '@/api/file-api'
+import { resolveMediaUrl } from '@/utils/media'
 import { useOralWorkshopStore } from '@/store/oral-workshop'
 import {
   SUBTITLE_LANG_OPTIONS,
@@ -688,6 +689,9 @@ export default function OralWorkshopWorkbench() {
                       className={styles.templateCard + (active ? ' ' + styles.templateCardActive : '')}
                       onClick={() => form.setFieldsValue({ templateId: active ? undefined : id })}
                     >
+                      {t.cover_image_url ? (
+                        <img className={styles.templateCardCover} src={resolveMediaUrl(t.cover_image_url)} alt={t.name} />
+                      ) : null}
                       <div className={styles.templateCardName}>{t.name}</div>
                       <div className={styles.templateCardMeta}>
                         {t.width}x{t.height} · {t.duration}s

@@ -14,7 +14,7 @@ import { SystemLlmService } from './system-llm.service';
 import { SystemConfigEntity } from '../admin-system/entities/system-config.entity';
 import { defaultFfmpegRunner, downloadTo, assertPublicMediaUrl, looksLikeHtml, resolveDirectMediaUrl } from './ffmpeg';
 import { BatchCreateOralWorkshopJobsDto, CreateOralWorkshopJobDto, OralWorkshopJobQueryDto } from './dto/oral-workshop.dto';
-import { listTemplates as listTemplatesLoader } from './template-loader';
+import { listTemplates as listTemplatesLoader, toTemplateMeta, type OralWorkshopTemplateMeta } from './template-loader';
 import {
   buildInitialSteps,
   jobStatusAfterSteps,
@@ -598,29 +598,8 @@ export class OralWorkshopService implements OnModuleInit {
   }
 
   /** 可用模板列表（工作台选择用，返回轻量元数据） */
-  async listTemplates(): Promise<Array<{
-    template_id: string;
-    name: string;
-    version: string;
-    description?: string;
-    preview_video_url?: string;
-    cover_image_url?: string;
-    width: number;
-    height: number;
-    duration: number;
-  }>> {
-    const templates = listTemplatesLoader();
-    return templates.map((t) => ({
-      template_id: t.template_id,
-      name: t.name,
-      version: t.version,
-      description: t.description,
-      preview_video_url: t.preview_video_url,
-      cover_image_url: t.cover_image_url,
-      width: t.project_settings.width,
-      height: t.project_settings.height,
-      duration: t.project_settings.duration,
-    }));
+  async listTemplates(): Promise<OralWorkshopTemplateMeta[]> {
+    return listTemplatesLoader().map((t) => toTemplateMeta(t));
   }
 
   /** 取任务全部步骤产物（step → resultJson），供执行器组装视频合成输入 */

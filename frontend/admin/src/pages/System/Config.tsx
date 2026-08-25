@@ -11,9 +11,11 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   Button,
   Card,
+  Empty,
   Form,
   Input,
   InputNumber,
+  Modal,
   Popconfirm,
   Select,
   Spin,
@@ -24,6 +26,8 @@ import {
 import {
   BellOutlined,
   DeleteOutlined,
+  PictureOutlined,
+  PlusOutlined,
   ReloadOutlined,
   RobotOutlined,
   SaveOutlined,
@@ -32,15 +36,19 @@ import {
 } from '@ant-design/icons'
 import {
   clearCache,
+  createOralWorkshopTemplate,
+  deleteOralWorkshopTemplate,
   getCacheConfig,
   getNotificationConfig,
   getOralWorkshopConfig,
   getRateLimitConfig,
   listOralWorkshopModels,
+  listOralWorkshopTemplates,
   testOralWorkshopCapability,
   testOralWorkshopLlm,
   updateOralWorkshopConfig,
-  updateSystemConfig
+  updateSystemConfig,
+  type OralWorkshopTemplateMeta
 } from '@/api/admin-system-api'
 import type {
   CacheConfig,
@@ -53,6 +61,20 @@ import type {
 import styles from './styles.module.css'
 
 const USER_LEVELS = [1, 2, 3, 4, 5]
+
+/** 管理端媒体地址：后端返回 /uploads/... 相对路径，按 API 同源拼成可访问 URL */
+function resolveAdminMediaUrl(url?: string): string | undefined {
+  if (!url) return undefined
+  if (/^https?:\/\//i.test(url)) return url
+  const base = import.meta.env.VITE_API_BASE_URL || '/api'
+  let origin = ''
+  try {
+    origin = base.startsWith('http') ? new URL(base).origin : window.location.origin
+  } catch {
+    origin = window.location.origin
+  }
+  return origin + (url.startsWith('/') ? url : '/' + url)
+}
 
 /** 解析音色池文本：每行 speaker_id|名称|resourceId */
 function parseVoicePool(text?: string): Array<{ speakerId: string; name?: string; resourceId?: string }> {
@@ -115,6 +137,12 @@ export default function SystemConfigPage() {
   const [testingCap, setTestingCap] = useState<Record<string, boolean>>({})
   const [tab, setTab] = useState<SystemConfigSection>('cache')
   const [voiceOptions, setVoiceOptions] = useState<{ value: string; label: string }[]>([])
+  const [templates, setTemplates] = useState<OralWorkshopTemplateMeta[]>([])
+  const [templatesLoading, setTemplatesLoading] = useState(false)
+  const [templateModalOpen, setTemplateModalOpen] = useState(false)
+  const [templateJson, setTemplateJson] = useState('')
+  const [templateCoverUrl, setTemplateCoverUrl] = useState('')
+  const [templateSaving, setTemplateSaving] = useState(false)
 
   const [cacheForm] = Form.useForm<CacheFormValues>()
   const [rateLimitForm] = Form.useForm<RateLimitFormValues>()
@@ -268,6 +296,18 @@ export default function SystemConfigPage() {
     }
   }, [oralForm])
 
+  const loadTemplates = useCallback(async () => {
+    setTemplatesLoading(true)
+    try {
+      setTemplates(await listOralWorkshopTemplates())
+    } catch (err) {
+      console.error('[SystemConfig] load oral templates failed:', err)
+      message.error('模板列表加载失败：' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setTemplatesLoading(false)
+    }
+  }, [])
+
   const loadAll = useCallback(async () => {
     setLoading(true)
     try {
@@ -283,6 +323,10 @@ export default function SystemConfigPage() {
   useEffect(() => {
     void loadAll()
   }, [loadAll])
+
+  useEffect(() => {
+    if (tab === 'oral_workshop') void loadTemplates()
+  }, [tab, loadTemplates])
 
   const handleSaveCache = async () => {
     try {
@@ -510,6 +554,41 @@ export default function SystemConfigPage() {
       message.error('加载模型列表失败：' + (err instanceof Error ? err.message : String(err)))
     } finally {
       setLoadingModels(false)
+    }
+  }
+
+  const handleCreateTemplate = async () => {
+    if (!templateJson.trim()) {
+      message.warning('请先粘贴模板 JSON')
+      return
+    }
+    setTemplateSaving(true)
+    try {
+      await createOralWorkshopTemplate({
+        templateJson,
+        coverImageUrl: templateCoverUrl.trim() || undefined
+      })
+      message.success('自定义模板已上传')
+      setTemplateModalOpen(false)
+      setTemplateJson('')
+      setTemplateCoverUrl('')
+      void loadTemplates()
+    } catch (err) {
+      console.error('[SystemConfig] create oral template failed:', err)
+      message.error('模板上传失败：' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setTemplateSaving(false)
+    }
+  }
+
+  const handleDeleteTemplate = async (id: string) => {
+    try {
+      await deleteOralWorkshopTemplate(id)
+      message.success('模板已删除')
+      void loadTemplates()
+    } catch (err) {
+      console.error('[SystemConfig] delete oral template failed:', err)
+      message.error('模板删除失败：' + (err instanceof Error ? err.message : String(err)))
     }
   }
 
@@ -1133,6 +1212,123 @@ export default function SystemConfigPage() {
                 保存
               </Button>
             </Form>
+
+            <div className={styles.sectionTitle} style={{ marginTop: 24 }}>
+              <PictureOutlined /> 视频模板（样式）管理
+            </div>
+            <div style={{ color: '#8b949e', fontSize: 13, marginBottom: 12 }}>
+              模板 = 视频呈现样式（背景 / 标题 / 字幕样式），与「封面设计」是两回事。内置 t1-t10 自动生成预览图；可粘贴模板 JSON 上传自定义模板，桌面端选择模板时展示预览。
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <Button type="dashed" icon={<PlusOutlined />} onClick={() => setTemplateModalOpen(true)}>
+                上传自定义模板
+              </Button>
+              <Button icon={<ReloadOutlined />} onClick={() => void loadTemplates()} loading={templatesLoading} style={{ marginLeft: 8 }}>
+                刷新模板
+              </Button>
+            </div>
+            {templatesLoading ? (
+              <div style={{ padding: 24, textAlign: 'center' }}>
+                <Spin />
+              </div>
+            ) : templates.length === 0 ? (
+              <Empty description="暂无模板" />
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                {templates.map((t) => {
+                  const builtin = Number(t.template_id.replace(/^t/, '')) <= 10
+                  return (
+                    <div key={t.template_id} style={{ width: 132 }}>
+                      <div style={{ position: 'relative' }}>
+                        {t.cover_image_url ? (
+                          <img
+                            src={resolveAdminMediaUrl(t.cover_image_url)}
+                            alt={t.name}
+                            style={{
+                              width: '100%',
+                              aspectRatio: '9 / 16',
+                              objectFit: 'cover',
+                              borderRadius: 8,
+                              border: '1px solid rgba(0,0,0,0.08)',
+                              display: 'block'
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              width: '100%',
+                              aspectRatio: '9 / 16',
+                              borderRadius: 8,
+                              background: '#f5f6f8',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: '#999',
+                              fontSize: 12
+                            }}
+                          >
+                            无预览
+                          </div>
+                        )}
+                        {!builtin && (
+                          <Popconfirm
+                            title={`确认删除模板「${t.name}」?`}
+                            onConfirm={() => void handleDeleteTemplate(t.template_id)}
+                            okText="删除"
+                            cancelText="取消"
+                            okButtonProps={{ danger: true }}
+                          >
+                            <Button
+                              danger
+                              size="small"
+                              icon={<DeleteOutlined />}
+                              style={{ position: 'absolute', top: 4, right: 4 }}
+                            />
+                          </Popconfirm>
+                        )}
+                      </div>
+                      <div
+                        style={{ fontSize: 13, fontWeight: 600, marginTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={t.name}
+                      >
+                        {t.name}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#8b949e' }}>
+                        {t.template_id} · {t.width}x{t.height} · {t.duration}s{builtin ? ' · 内置' : ' · 自定义'}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            <Modal
+              title="上传自定义视频模板"
+              open={templateModalOpen}
+              onCancel={() => setTemplateModalOpen(false)}
+              onOk={() => void handleCreateTemplate()}
+              okText="上传"
+              cancelText="取消"
+              confirmLoading={templateSaving}
+              width={720}
+            >
+              <p style={{ marginTop: 0, color: '#8b949e', fontSize: 13 }}>
+                粘贴模板 JSON（参考内置模板结构：global_elements.h1/h2、subtitle_config、project_settings 等），可选填封面图片 URL。上传后自动分配 t11 及以上编号。
+              </p>
+              <Input.TextArea
+                value={templateJson}
+                onChange={(e) => setTemplateJson(e.target.value)}
+                placeholder={'{\n  "name": "我的模板",\n  "global_elements": { ... },\n  "subtitle_config": { ... },\n  "project_settings": { "width": 1080, "height": 1920, "duration": 15 }\n}'}
+                autoSize={{ minRows: 12, maxRows: 18 }}
+              />
+              <Input
+                value={templateCoverUrl}
+                onChange={(e) => setTemplateCoverUrl(e.target.value)}
+                placeholder="封面图片 URL（可选）"
+                style={{ marginTop: 12 }}
+                allowClear
+              />
+            </Modal>
           </Card>
         )}
       </Spin>

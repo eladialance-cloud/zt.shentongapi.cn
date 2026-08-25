@@ -71,6 +71,38 @@ export async function getOralWorkshopConfig(): Promise<OralWorkshopConfig> {
   })
 }
 
+/** 口播工坊视频模板元数据（后端 OralWorkshopTemplate 精简） */
+export interface OralWorkshopTemplateMeta {
+  template_id: string
+  name: string
+  version: string
+  description?: string
+  cover_image_url?: string
+  preview_video_url?: string
+  width: number
+  height: number
+  duration: number
+  [key: string]: unknown
+}
+
+/** 口播工坊视频模板列表（内置 + 自定义） */
+export async function listOralWorkshopTemplates(): Promise<OralWorkshopTemplateMeta[]> {
+  return adminRequest<OralWorkshopTemplateMeta[]>('get', '/admin/system/oral-workshop/templates')
+}
+
+/** 上传自定义视频模板（模板 JSON 内容 + 可选封面 URL） */
+export async function createOralWorkshopTemplate(body: {
+  templateJson: string
+  coverImageUrl?: string
+}): Promise<OralWorkshopTemplateMeta> {
+  return adminRequest<OralWorkshopTemplateMeta>('post', '/admin/system/oral-workshop/templates', { data: body })
+}
+
+/** 删除自定义视频模板 */
+export async function deleteOralWorkshopTemplate(id: string): Promise<null> {
+  return adminRequest<null>('delete', '/admin/system/oral-workshop/templates/' + id)
+}
+
 /** 口播工坊 LLM 测试连接（火山方舟/自定义 baseUrl+apiKey+model 三元组） */
 export async function testOralWorkshopLlm(body: {
   baseUrl?: string

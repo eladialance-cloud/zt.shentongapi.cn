@@ -1,17 +1,21 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  Param,
   Post,
   Put,
   Query,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { AdminGuard } from '../admin-auth/admin.guard';
 import { AdminSystemService } from './admin-system.service';
 import { SystemLlmService } from '../oral-workshop/system-llm.service';
+import { listTemplates, saveCustomTemplate, deleteCustomTemplate, toTemplateMeta, TemplateLoadError } from '../oral-workshop/template-loader';
 import { UpdateSystemConfigDto } from './dto/update-system-config.dto';
 import { ClearCacheDto } from './dto/clear-cache.dto';
 
@@ -52,6 +56,36 @@ export class AdminSystemController {
     return null;
   }
 
+
+  @Get('oral-workshop/templates')
+  @ApiOperation({ summary: '口播工坊视频模板列表（内置+自定义，含预览图）' })
+  listOralWorkshopTemplates() {
+    try {
+      return listTemplates().map((t) => toTemplateMeta(t));
+    } catch (err) {
+      throw new BadRequestException('模板列表加载失败: ' + (err as Error).message);
+    }
+  }
+
+  @Post('oral-workshop/templates')
+  @ApiOperation({ summary: '上传自定义视频模板（JSON 内容 + 可选封面 URL）' })
+  createOralWorkshopTemplate(@Body() body: { templateJson?: string; coverImageUrl?: string }) {
+    if (!body?.templateJson?.trim()) throw new BadRequestException('templateJson 不能为空');
+    try {
+      return toTemplateMeta(saveCustomTemplate(body.templateJson, body.coverImageUrl?.trim() || undefined));
+    } catch (err) {
+      if (err instanceof TemplateLoadError) throw new BadRequestException(err.message);
+      throw new BadRequestException('模板保存失败: ' + (err as Error).message);
+    }
+  }
+
+  @Delete('oral-workshop/templates/:id')
+  @ApiOperation({ summary: '删除自定义视频模板（内置模板不可删除）' })
+  deleteOralWorkshopTemplate(@Param('id') id: string) {
+    const ok = deleteCustomTemplate(id);
+    if (!ok) throw new BadRequestException('模板不存在或为内置模板，不可删除: ' + id);
+    return null;
+  }
 
   @Post('oral-workshop/test-llm')
   @ApiOperation({ summary: '口播工坊 LLM 测试连接（火山方舟/自定义 baseUrl+apiKey+model 三元组）' })
