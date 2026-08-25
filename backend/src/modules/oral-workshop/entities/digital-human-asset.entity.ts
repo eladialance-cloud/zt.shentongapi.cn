@@ -26,7 +26,7 @@ export class DigitalHumanAssetEntity {
   cloudId: string;
 
   /** 形象预览图/样片 URL（可选） */
-  @Column({ name: 'preview_url', length: 512, nullable: true })
+  @Column({ name: 'preview_url', type: 'varchar', length: 512, nullable: true })
   previewUrl?: string | null;
 
   /** 形象授权状态（对标参考软件 digital_auth） */

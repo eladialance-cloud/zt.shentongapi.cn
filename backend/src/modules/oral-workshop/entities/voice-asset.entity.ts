@@ -26,7 +26,7 @@ export class VoiceAssetEntity {
   refAudioUrl: string;
 
   /** 火山 speaker_id（预克隆后可回填；任务时若为空则由执行器按参考音频克隆） */
-  @Column({ name: 'speaker_id', length: 128, nullable: true })
+  @Column({ name: 'speaker_id', type: 'varchar', length: 128, nullable: true })
   speakerId?: string | null;
 
   @Column({ length: 16, default: 'ready' })

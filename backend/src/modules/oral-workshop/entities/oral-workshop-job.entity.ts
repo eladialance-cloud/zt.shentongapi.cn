@@ -25,7 +25,7 @@ export class OralWorkshopJobEntity {
   userId: number;
 
   /** 幂等键：重复提交同一 clientTxnId 直接返回已有任务 */
-  @Column({ name: 'client_txn_id', length: 64, nullable: true, unique: true })
+  @Column({ name: 'client_txn_id', type: 'varchar', length: 64, nullable: true, unique: true })
   clientTxnId?: string | null;
 
   @Column({ type: 'varchar', length: 16, default: 'pending' })
@@ -36,11 +36,11 @@ export class OralWorkshopJobEntity {
   executionMode: 'auto' | 'manual' | 'single';
 
   /** 手动/单步模式下等待用户放行的步骤（null=已放行或自动模式） */
-  @Column({ name: 'waiting_step', length: 32, nullable: true })
+  @Column({ name: 'waiting_step', type: 'varchar', length: 32, nullable: true })
   waitingStep?: string | null;
 
   /** 当前执行到哪一步（step 名） */
-  @Column({ name: 'current_step', length: 32, nullable: true })
+  @Column({ name: 'current_step', type: 'varchar', length: 32, nullable: true })
   currentStep?: string | null;
 
   /** 原始文案/选题 */
@@ -51,7 +51,7 @@ export class OralWorkshopJobEntity {
   @Column({ name: 'rewritten_script', type: 'text', nullable: true })
   rewrittenScript?: string | null;
 
-  @Column({ length: 512, nullable: true })
+  @Column({ type: 'varchar', length: 512, nullable: true })
   persona?: string | null;
 
   @Column({ name: 'digital_human_id', type: 'bigint', nullable: true, transformer: bigintTransformer })
@@ -63,21 +63,21 @@ export class OralWorkshopJobEntity {
   @Column({ name: 'template_id', type: 'bigint', nullable: true, transformer: bigintTransformer })
   templateId?: number | null;
 
-  @Column({ name: 'video_url', length: 512, nullable: true })
+  @Column({ name: 'video_url', type: 'varchar', length: 512, nullable: true })
   videoUrl?: string | null;
 
-  @Column({ name: 'audio_url', length: 512, nullable: true })
+  @Column({ name: 'audio_url', type: 'varchar', length: 512, nullable: true })
   audioUrl?: string | null;
 
-  @Column({ name: 'cover_url', length: 512, nullable: true })
+  @Column({ name: 'cover_url', type: 'varchar', length: 512, nullable: true })
   coverUrl?: string | null;
 
     /** 封面主标题（封面设计器 / AI 生成） */
-  @Column({ name: 'cover_h1', length: 64, nullable: true })
+  @Column({ name: 'cover_h1', type: 'varchar', length: 64, nullable: true })
   coverH1?: string | null;
 
   /** 封面副标题 */
-  @Column({ name: 'cover_h2', length: 64, nullable: true })
+  @Column({ name: 'cover_h2', type: 'varchar', length: 64, nullable: true })
   coverH2?: string | null;
 
   /** 封面设计配置（模板/背景/字体/颜色，JSON 字符串） */
@@ -96,7 +96,7 @@ export class OralWorkshopJobEntity {
   bilingual: boolean;
 
   /** 字幕目标语言（空/zh=纯中文；en/ja/vi 等=双语对照字幕；zh-HK/zh-WU 等=方言双语） */
-  @Column({ name: 'target_lang', length: 16, nullable: true })
+  @Column({ name: 'target_lang', type: 'varchar', length: 16, nullable: true })
   targetLang?: string | null;
 
   /** 预扣流水 id（CreditsBillingService.estimateAndFreeze 返回） */
