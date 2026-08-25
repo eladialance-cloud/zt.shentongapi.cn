@@ -360,7 +360,7 @@ export default function SystemConfigPage() {
 
   const handleTestCapability = async (type: 'tts' | 'clone' | 'dh' | 'stt' | 'embedding') => {
     try {
-      const cfg = oralForm.getFieldsValue() as Record<string, unknown>
+      const cfg = oralForm.getFieldsValue() as unknown as Record<string, unknown>
       setTestingCap((p) => ({ ...p, [type]: true }))
       const res = await testOralWorkshopCapability({ type, config: cfg })
       if (res.success) message.success(res.message)
