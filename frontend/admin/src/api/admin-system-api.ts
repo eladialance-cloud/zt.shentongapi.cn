@@ -71,6 +71,17 @@ export async function getOralWorkshopConfig(): Promise<OralWorkshopConfig> {
   })
 }
 
+/** 口播工坊 LLM 测试连接（火山方舟/自定义 baseUrl+apiKey+model 三元组） */
+export async function testOralWorkshopLlm(body: {
+  baseUrl?: string
+  apiKey?: string
+  model?: string
+}): Promise<{ success: boolean; message: string }> {
+  return adminRequest<{ success: boolean; message: string }>('post', '/admin/system/oral-workshop/test-llm', {
+    data: body
+  })
+}
+
 /** 更新口播工坊引擎配置 */
 export async function updateOralWorkshopConfig(cfg: OralWorkshopConfig): Promise<void> {
   await updateSystemConfig({ section: 'oral_workshop', config: cfg as unknown as Record<string, unknown> })

@@ -42,6 +42,31 @@ export interface OralWorkshopEngineConfig {
   watermarkText: string;
   /** 单轮并发任务上限（管理后台可配） */
   maxConcurrentJobs: number;
+  /** 火山方舟（云端）配置组：管理后台口播工坊-火山方舟配置，环境变量兜底 */
+  volcano: {
+    /** 火山方舟 API Key（LLM/声音克隆/数字人共用） */
+    apiKey: string;
+    /** 声音克隆 TTS 端点（默认 ark.cn-beijing.volces.com/api/v3） */
+    voiceEndpoint: string;
+    /** TTS 模型 ID（如 doubao-tts 系列） */
+    voiceModel: string;
+    /** 声音克隆模型版本：V1=标准 / V2=高清增强 */
+    voiceModelVersion?: 'V1' | 'V2';
+    /** 默认参考音频 URL（用户未选"我的声音"时兜底） */
+    voiceRefAudio: string;
+    /** 已训练 speaker_id（优先复用，跳过克隆） */
+    voiceSpeakerId: string;
+    /** 数字人服务端点 */
+    dhEndpoint: string;
+    /** 数字人提交任务路径（默认 /digital-human/submit） */
+    dhSubmitPath: string;
+    /** 数字人查询任务路径（默认 /digital-human/query） */
+    dhQueryPath: string;
+    /** 数字人模型版本：V1=标准 / V2=高清 */
+    dhModelVersion?: 'V1' | 'V2';
+    /** 默认数字人形象 ID（用户未选"我的形象"时兜底） */
+    dhDefaultImageId: string;
+  };
 }
 
 /** 当前已接入执行的步骤集合（其余步骤由对应里程碑落地后加入） */
@@ -256,7 +281,8 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
     const outputDir = this.outputDirFor(job);
     fs.mkdirSync(outputDir, { recursive: true });
     const script = job.rewrittenScript || job.scriptInput || '';
-    const engine = (await this.readEngineConfig()).voiceEngine;
+    const config = await this.readEngineConfig();
+    const engine = config.voiceEngine;
 
     // 1) 用户提供成音：直接采用（不调 TTS）
     if (job.audioUrl) {
@@ -267,15 +293,15 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
     }
 
     // 2) 火山方舟：声音复刻（参考音频）→ TTS
-    const useVolcano = engine === 'volcano' || (engine === 'auto' && this.hasVolcanoVoice());
+    const useVolcano = engine === 'volcano' || (engine === 'auto' && this.hasVolcanoVoice(config));
     if (useVolcano) {
-      if (!this.hasVolcanoVoice()) {
-        throw new Error('声音引擎配置为 volcano，但缺少 VOLCANO_ARK_API_KEY / VOLCANO_VOICE_MODEL');
+      if (!this.hasVolcanoVoice(config)) {
+        throw new Error('声音引擎配置为 volcano，但缺少火山方舟密钥 / TTS 模型（请在管理后台-口播工坊-火山方舟配置 填写）');
       }
       if (!script) throw new Error('voiceClone 缺少文案（rewrittenScript/scriptInput 为空）');
       // 我的声音资产（voiceId）优先；其次环境变量参考音频/音色
-      let refAudioUrl = process.env.ORAL_WORKSHOP_VOICE_REF_AUDIO || '';
-      let speakerId = process.env.ORAL_WORKSHOP_VOICE_SPEAKER_ID || undefined;
+      let refAudioUrl = config.volcano.voiceRefAudio || process.env.ORAL_WORKSHOP_VOICE_REF_AUDIO || '';
+      let speakerId = config.volcano.voiceSpeakerId || process.env.ORAL_WORKSHOP_VOICE_SPEAKER_ID || undefined;
       if (job.voiceId && this.voiceAssetRepo) {
         const asset = await this.voiceAssetRepo.findOne({ where: { id: job.voiceId, userId: job.userId } });
         if (asset) {
@@ -288,7 +314,13 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       if (!refAudioUrl && !speakerId) {
         throw new Error('火山声音克隆未配置参考音频（请先在"我的声音"添加参考音频或设置 ORAL_WORKSHOP_VOICE_REF_AUDIO）');
       }
-      const adapter = new VoiceCloneAdapter();
+      const adapter = new VoiceCloneAdapter({
+        endpoint: config.volcano.voiceEndpoint || undefined,
+        apiKey: config.volcano.apiKey,
+        model: config.volcano.voiceModel,
+        modelVersion: config.volcano.voiceModelVersion,
+        timeoutMs: Number(process.env.VOLCANO_REQUEST_TIMEOUT_MS || 60000),
+      });
       const res = await adapter.generateVoice({
         refAudioUrl,
         refAudioText: script,
@@ -306,7 +338,7 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
     }
 
     // 3) 本地降级：Windows SAPI TTS（零依赖；Linux 需配置火山或提供音频）
-    const useLocal = engine === 'local' || (engine === 'auto' && !this.hasVolcanoVoice());
+    const useLocal = engine === 'local' || (engine === 'auto' && !this.hasVolcanoVoice(config));
     if (useLocal) {
       if (!script) throw new Error('voiceClone 缺少文案（rewrittenScript/scriptInput 为空）');
       const dest = path.join(outputDir, 'voice.wav');
@@ -325,7 +357,8 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
   private async runDigitalHuman(job: OralWorkshopJobEntity): Promise<Record<string, unknown>> {
     const outputDir = this.outputDirFor(job);
     fs.mkdirSync(outputDir, { recursive: true });
-    const engine = (await this.readEngineConfig()).digitalHumanEngine;
+    const config = await this.readEngineConfig();
+    const engine = config.digitalHumanEngine;
 
     // 1) 用户提供数字人/绿幕视频
     if (job.videoUrl) {
@@ -341,10 +374,10 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
 
     // 2) 火山数字人：提交 + 轮询 → 下载成片
     let volcanoSkipped = false;
-    const useVolcano = engine === 'volcano' || (engine === 'auto' && this.hasVolcanoDigitalHuman());
+    const useVolcano = engine === 'volcano' || (engine === 'auto' && this.hasVolcanoDigitalHuman(config));
     if (useVolcano) {
-      if (!this.hasVolcanoDigitalHuman()) {
-        throw new Error('数字人引擎配置为 volcano，但缺少 VOLCANO_ARK_API_KEY / VOLCANO_DIGITAL_HUMAN_ENDPOINT');
+      if (!this.hasVolcanoDigitalHuman(config)) {
+        throw new Error('数字人引擎配置为 volcano，但缺少火山方舟密钥 / 数字人 endpoint（请在管理后台-口播工坊-火山方舟配置 填写）');
       }
       if (!audioPath) throw new Error('数字人合成需要语音（voiceClone 产物 audio_path）');
       if (!/^https?:\/\//.test(audioPath)) {
@@ -356,7 +389,7 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
         volcanoSkipped = true;
       } else {
       // 我的形象资产（digitalHumanId）优先；其次环境变量形象 ID
-      let digitalHumanId = String(process.env.ORAL_WORKSHOP_DIGITAL_HUMAN_ID || '');
+      let digitalHumanId = String(config.volcano.dhDefaultImageId || process.env.ORAL_WORKSHOP_DIGITAL_HUMAN_ID || '');
       if (job.digitalHumanId && this.dhAssetRepo) {
         const asset = await this.dhAssetRepo.findOne({ where: { id: job.digitalHumanId, userId: job.userId } });
         if (asset) {
@@ -366,7 +399,16 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
         }
       }
       if (!digitalHumanId) throw new Error('未配置数字人形象（请先在"我的形象"添加或设置 ORAL_WORKSHOP_DIGITAL_HUMAN_ID）');
-      const adapter = new DigitalHumanAdapter();
+      const adapter = new DigitalHumanAdapter({
+        endpoint: config.volcano.dhEndpoint,
+        apiKey: config.volcano.apiKey,
+        submitPath: config.volcano.dhSubmitPath,
+        queryPath: config.volcano.dhQueryPath,
+        modelVersion: config.volcano.dhModelVersion,
+        pollIntervalMs: Number(process.env.VOLCANO_DH_POLL_INTERVAL_MS || 3000),
+        maxAttempts: Number(process.env.VOLCANO_DH_MAX_ATTEMPTS || 120),
+        timeoutMs: Number(process.env.VOLCANO_REQUEST_TIMEOUT_MS || 60000),
+      });
       const { videoUrl } = await adapter.generate({ audioUrl: audioPath, digitalHumanId });
       const dest = path.join(outputDir, 'human.mp4');
       await downloadTo(videoUrl, dest);
@@ -376,7 +418,7 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
     }
 
     // 3) 本地兜底：纯字幕卡片视频（模板背景色 + 语音轨）
-    const useLocal = engine === 'local' || (engine === 'auto' && !this.hasVolcanoDigitalHuman()) || volcanoSkipped;
+    const useLocal = engine === 'local' || (engine === 'auto' && !this.hasVolcanoDigitalHuman(config)) || volcanoSkipped;
     if (useLocal) {
       if (!audioPath) throw new Error('本地数字人模式需要语音（voiceClone 产物 audio_path）');
       const template = loadTemplate(this.templateIdOf(job));
@@ -532,21 +574,40 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       const v = db[dbKey];
       return typeof v === 'boolean' ? v : fallback;
     };
+    const version = (envKey: string, dbKey: string): 'V1' | 'V2' | undefined => {
+      const env = process.env[envKey];
+      if (env === 'V1' || env === 'V2') return env;
+      const v = db[dbKey];
+      return v === 'V1' || v === 'V2' ? v : undefined;
+    };
     return {
       voiceEngine: normalizeEngine(str('ORAL_WORKSHOP_VOICE_ENGINE', 'voiceEngine', 'auto')),
       digitalHumanEngine: normalizeEngine(str('ORAL_WORKSHOP_DIGITAL_HUMAN_ENGINE', 'digitalHumanEngine', 'auto')),
       watermarkEnabled: bool('ORAL_WORKSHOP_WATERMARK_ENABLED', 'watermarkEnabled', true),
       watermarkText: str('ORAL_WORKSHOP_WATERMARK_TEXT', 'watermarkText', '深瞳AI'),
       maxConcurrentJobs: num('ORAL_WORKSHOP_MAX_CONCURRENT_JOBS', 'maxConcurrentJobs', 5),
+      volcano: {
+        apiKey: str('VOLCANO_ARK_API_KEY', 'volcanoApiKey', ''),
+        voiceEndpoint: str('VOLCANO_ARK_ENDPOINT', 'voiceEndpoint', 'https://ark.cn-beijing.volces.com/api/v3'),
+        voiceModel: str('VOLCANO_VOICE_MODEL', 'voiceModel', ''),
+        voiceModelVersion: version('VOLCANO_VOICE_MODEL_VERSION', 'voiceModelVersion'),
+        voiceRefAudio: str('ORAL_WORKSHOP_VOICE_REF_AUDIO', 'voiceRefAudioUrl', ''),
+        voiceSpeakerId: str('ORAL_WORKSHOP_VOICE_SPEAKER_ID', 'voiceSpeakerId', ''),
+        dhEndpoint: str('VOLCANO_DIGITAL_HUMAN_ENDPOINT', 'dhEndpoint', ''),
+        dhSubmitPath: str('VOLCANO_DH_SUBMIT_PATH', 'dhSubmitPath', '/digital-human/submit'),
+        dhQueryPath: str('VOLCANO_DH_QUERY_PATH', 'dhQueryPath', '/digital-human/query'),
+        dhModelVersion: version('VOLCANO_DH_MODEL_VERSION', 'dhModelVersion'),
+        dhDefaultImageId: str('ORAL_WORKSHOP_DIGITAL_HUMAN_ID', 'dhDefaultImageId', ''),
+      },
     };
   }
 
-  private hasVolcanoVoice(): boolean {
-    return Boolean(process.env.VOLCANO_ARK_API_KEY && process.env.VOLCANO_VOICE_MODEL);
+  private hasVolcanoVoice(cfg: OralWorkshopEngineConfig): boolean {
+    return Boolean(cfg.volcano.apiKey && cfg.volcano.voiceModel);
   }
 
-  private hasVolcanoDigitalHuman(): boolean {
-    return Boolean(process.env.VOLCANO_ARK_API_KEY && process.env.VOLCANO_DIGITAL_HUMAN_ENDPOINT);
+  private hasVolcanoDigitalHuman(cfg: OralWorkshopEngineConfig): boolean {
+    return Boolean(cfg.volcano.apiKey && cfg.volcano.dhEndpoint);
   }
 
   /** 将 composePlan 生成的 ASS 内容写入临时文件（供 subtitles 滤镜引用） */

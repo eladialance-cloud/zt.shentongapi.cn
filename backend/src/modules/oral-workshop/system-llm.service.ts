@@ -41,6 +41,30 @@ const EMBEDDING_MODEL_BY_SLUG: Record<string, string> = {
   doubao: 'doubao-embedding',
 };
 
+/** 口播工坊 LLM 用途（对应管理后台各用途模型配置） */
+export type OralLlmPurpose =
+  | 'topic'      // 爆款选题
+  | 'script'     // IP口播文案 / 营销文案
+  | 'rewrite'    // 文案改写
+  | 'title'      // 标题 / 封面 H1/H2
+  | 'translate'  // 翻译 / 双语字幕
+  | 'review'     // 法务审核
+  | 'default';   // 兜底
+
+/** 用途 -> 管理后台 oral_workshop 配置键 */
+const PURPOSE_MODEL_KEYS: Record<Exclude<OralLlmPurpose, 'default'>, string> = {
+  topic: 'topicModel',
+  script: 'scriptModel',
+  rewrite: 'rewriteModel',
+  title: 'titleModel',
+  translate: 'translateModel',
+  review: 'reviewModel',
+};
+
+/** 火山方舟默认 LLM 端点 / 模型（管理后台可覆盖） */
+const DEFAULT_VOLCANO_LLM_ENDPOINT = 'https://ark.cn-beijing.volces.com/api/v3';
+const DEFAULT_VOLCANO_LLM_MODEL = 'doubao-seed-1-6-250615';
+
 /** LLM 上游目标（endpoint + key + model） */
 export interface LlmTarget {
   endpoint: string;
@@ -78,14 +102,22 @@ export class SystemLlmService implements LlmCaller {
   }
 
   /** 解析可用供应商（与 agent-translate 一致：优先配置供应商，再走 API Key 池） */
-  async resolveTarget(preferredModel?: string): Promise<LlmTarget | null> {
+  /** 解析可用供应商（云端直连优先，其次配置供应商，最后 API Key 池） */
+  async resolveTarget(preferredModel?: string, purpose?: OralLlmPurpose): Promise<LlmTarget | null> {
     const cfg = await this.readOralConfig();
     const cfgModel =
       typeof cfg.llmModel === 'string' && cfg.llmModel ? cfg.llmModel : process.env.ORAL_WORKSHOP_LLM_MODEL || '';
+    const purposeModel = purpose ? this.purposeModelFrom(cfg, purpose) : '';
+    const model = preferredModel || purposeModel || cfgModel || '';
+    // 1) 云端直连（管理后台 llmSource=volcano/custom + llmApiKey）
+    const direct = this.directLlmTarget(cfg, model);
+    if (direct) return direct;
+    // 2) 首选模型走配置供应商
     if (preferredModel) {
       const resolved = await this.resolvePreferredModel(preferredModel);
       if (resolved) return resolved;
     }
+    // 3) 供应商池（model_providers）
     const providers = await this.providerRepo.find({ where: { status: 'active' } });
     providers.sort((a, b) => {
       const ia = PROVIDER_PREFERENCE.indexOf(a.slug);
@@ -98,13 +130,13 @@ export class SystemLlmService implements LlmCaller {
         return {
           endpoint: p.baseUrl.replace(/\/+$/, ''),
           apiKey: this.encryptionService.decryptAes(p.apiKey),
-          model: cfgModel || DEFAULT_MODEL_BY_SLUG[p.slug] || 'deepseek-chat',
+          model: model || DEFAULT_MODEL_BY_SLUG[p.slug] || 'deepseek-chat',
         };
       } catch (e) {
         this.logger.warn(`[oral-workshop] 解密供应商 ${p.slug} 的 API Key 失败: ${(e as Error).message}`);
       }
     }
-    // 兜底：API Key 池（与 llm-proxy 同一套 key）
+    // 4) 兜底：API Key 池（与 llm-proxy 同一套 key）
     for (const slug of PROVIDER_PREFERENCE) {
       const poolKey = await this.apiKeyPool.getNextAvailableKey(slug);
       if (!poolKey) continue;
@@ -115,13 +147,59 @@ export class SystemLlmService implements LlmCaller {
         return {
           endpoint: endpoint.replace(/\/+$/, ''),
           apiKey: this.encryptionService.decryptAes(poolKey.apiKey),
-          model: cfgModel || DEFAULT_MODEL_BY_SLUG[slug] || 'deepseek-chat',
+          model: model || DEFAULT_MODEL_BY_SLUG[slug] || 'deepseek-chat',
         };
       } catch (e) {
         this.logger.warn(`[oral-workshop] 解密 API Key 池 ${slug} 的 Key 失败: ${(e as Error).message}`);
       }
     }
     return null;
+  }
+
+  /** 管理后台直连配置（llmSource=volcano/custom 且已填 llmApiKey 时优先） */
+  private directLlmTarget(cfg: Record<string, unknown>, model: string): LlmTarget | null {
+    const source = cfg.llmSource;
+    if (source !== 'volcano' && source !== 'custom') return null;
+    const apiKey = typeof cfg.llmApiKey === 'string' && cfg.llmApiKey ? cfg.llmApiKey.trim() : '';
+    if (!apiKey) return null;
+    const base = typeof cfg.llmBaseUrl === 'string' && cfg.llmBaseUrl ? cfg.llmBaseUrl : DEFAULT_VOLCANO_LLM_ENDPOINT;
+    return {
+      endpoint: base.replace(/\/+$/, ''),
+      apiKey,
+      model: model || DEFAULT_VOLCANO_LLM_MODEL,
+    };
+  }
+
+  /** 按用途取模型名（topicModel/scriptModel/...） */
+  private purposeModelFrom(cfg: Record<string, unknown>, purpose: OralLlmPurpose): string {
+    if (purpose === 'default') return '';
+    const key = PURPOSE_MODEL_KEYS[purpose];
+    if (!key) return '';
+    const v = cfg[key];
+    return typeof v === 'string' && v ? v.trim() : '';
+  }
+
+  /** 管理后台测试连接：用给定三元组调一次 /chat/completions */
+  async testConnection(input: { baseUrl?: string; apiKey?: string; model?: string }): Promise<{ success: boolean; message: string }> {
+    const base = (input.baseUrl || DEFAULT_VOLCANO_LLM_ENDPOINT).replace(/\/+$/, '');
+    const apiKey = (input.apiKey || '').trim();
+    if (!apiKey) return { success: false, message: 'API Key 不能为空' };
+    const model = (input.model || '').trim() || DEFAULT_VOLCANO_LLM_MODEL;
+    try {
+      const resp = await fetch(base + '/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: 'ping' }], max_tokens: 8 }),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '');
+        return { success: false, message: 'HTTP ' + resp.status + ': ' + text.slice(0, 200) };
+      }
+      return { success: true, message: '连接成功（' + model + '）' };
+    } catch (e) {
+      return { success: false, message: (e as Error).message };
+    }
   }
 
   /** 按首选模型解析目标（模型属于哪个供应商走哪个） */
@@ -149,7 +227,7 @@ export class SystemLlmService implements LlmCaller {
       (typeof cfg.sttModel === 'string' && cfg.sttModel) ||
       process.env.ORAL_WORKSHOP_STT_MODEL ||
       'whisper-1';
-    const target = await this.resolveTarget(sttModel);
+    const target = await this.resolveSttTarget(cfg, sttModel);
     if (!target) {
       throw new ServiceUnavailableException('未配置可用的大模型供应商（STT 识别）');
     }
@@ -178,8 +256,8 @@ export class SystemLlmService implements LlmCaller {
     return out;
   }
   /** 非流式调用 OpenAI 兼容 /chat/completions，返回完整文本 */
-  async chat(messages: LlmMessage[], opts?: { temperature?: number }): Promise<string> {
-    const target = await this.resolveTarget();
+  async chat(messages: LlmMessage[], opts?: { temperature?: number; purpose?: OralLlmPurpose }): Promise<string> {
+    const target = await this.resolveTarget(undefined, opts?.purpose);
     if (!target) {
       throw new ServiceUnavailableException('未配置可用的大模型供应商（请在管理后台配置 model_providers 或 API Key 池）');
     }
@@ -250,6 +328,53 @@ export class SystemLlmService implements LlmCaller {
       throw new ServiceUnavailableException('Embedding 上游返回维度不完整');
     }
     return out;
+  }
+
+  /** 解析 STT 目标（独立接入点，不随 LLM 直连；sttProvider=volcano 走火山密钥/端点，否则供应商池） */
+  private async resolveSttTarget(cfg: Record<string, unknown>, sttModel: string): Promise<LlmTarget | null> {
+    const provider = cfg.sttProvider === 'volcano' ? 'volcano' : 'openai';
+    if (provider === 'volcano') {
+      const apiKey = String(cfg.volcanoApiKey || cfg.llmApiKey || '').trim();
+      if (!apiKey) return null;
+      const base = typeof cfg.sttEndpoint === 'string' && cfg.sttEndpoint ? cfg.sttEndpoint : DEFAULT_VOLCANO_LLM_ENDPOINT;
+      return { endpoint: base.replace(/\/+$/, ''), apiKey, model: sttModel };
+    }
+    // openai whisper：优先独立 sttEndpoint/sttApiKey；否则走供应商池（跳过 LLM 直连）
+    const sttApiKey = typeof cfg.sttApiKey === 'string' && cfg.sttApiKey ? cfg.sttApiKey.trim() : '';
+    const sttEndpoint = typeof cfg.sttEndpoint === 'string' && cfg.sttEndpoint ? cfg.sttEndpoint.trim() : '';
+    if (sttApiKey && sttEndpoint) {
+      return { endpoint: sttEndpoint.replace(/\/+$/, ''), apiKey: sttApiKey, model: sttModel };
+    }
+    const providers = await this.providerRepo.find({ where: { status: 'active' } });
+    for (const p of providers) {
+      if (!p.apiKey || !p.baseUrl) continue;
+      try {
+        return {
+          endpoint: p.baseUrl.replace(/\/+$/, ''),
+          apiKey: this.encryptionService.decryptAes(p.apiKey),
+          model: sttModel,
+        };
+      } catch (e) {
+        this.logger.warn(`[oral-workshop] 解密 STT 供应商 ${p.slug} Key 失败: ${(e as Error).message}`);
+      }
+    }
+    for (const slug of PROVIDER_PREFERENCE) {
+      const poolKey = await this.apiKeyPool.getNextAvailableKey(slug);
+      if (!poolKey) continue;
+      const providerRow = providers.find((p) => p.slug === slug);
+      const endpoint = providerRow?.baseUrl || DEFAULT_ENDPOINTS[slug];
+      if (!endpoint) continue;
+      try {
+        return {
+          endpoint: endpoint.replace(/\/+$/, ''),
+          apiKey: this.encryptionService.decryptAes(poolKey.apiKey),
+          model: sttModel,
+        };
+      } catch (e) {
+        this.logger.warn(`[oral-workshop] 解密 STT Key 池 ${slug} 失败: ${(e as Error).message}`);
+      }
+    }
+    return null;
   }
 
   /** 解析 embedding 目标：qwen > openai > doubao；环境变量 ORAL_WORKSHOP_EMBEDDING_MODEL 覆盖模型 */

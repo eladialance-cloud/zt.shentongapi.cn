@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminAuthModule } from '../admin-auth/admin-auth.module';
+import { OralWorkshopModule } from '../oral-workshop/oral-workshop.module';
 import { SystemConfigEntity } from './entities/system-config.entity';
 import { AnnouncementEntity } from './entities/announcement.entity';
 import { TenantEntity } from './entities/tenant.entity';
@@ -29,6 +30,7 @@ import { AdminSystemService } from './admin-system.service';
       TenantEntity,
     ]),
     AdminAuthModule,
+    OralWorkshopModule,
   ],
   controllers: [
     AdminSystemController,

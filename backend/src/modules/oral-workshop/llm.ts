@@ -5,6 +5,7 @@
  * JSON 容错：strip 前后缀与代码块包裹 → JSON.parse → 提取首个 JSON 对象 → 失败抛 LlmOutputError（由步骤重试机制接管）。
  */
 import { renderPrompt } from './prompts';
+import type { OralLlmPurpose } from './system-llm.service';
 
 /** LLM 输出解析失败（可重试） */
 export class LlmOutputError extends Error {
@@ -21,7 +22,7 @@ export interface LlmMessage {
 
 /** LLM 调用器抽象：由 M0-2 确认的通道实现（llm-proxy 网关 / 现有 LLM 服务） */
 export interface LlmCaller {
-  chat(messages: LlmMessage[], opts?: { temperature?: number }): Promise<string>;
+  chat(messages: LlmMessage[], opts?: { temperature?: number; purpose?: OralLlmPurpose }): Promise<string>;
 }
 
 /**
@@ -93,9 +94,9 @@ export interface LegalReviewResult {
 export class OralWorkshopLlmService {
   constructor(private readonly caller: LlmCaller) {}
 
-  private async call(templateId: string, values: Record<string, string>, temperature = 0.7): Promise<string> {
+  private async call(templateId: string, values: Record<string, string>, temperature = 0.7, purpose?: OralLlmPurpose): Promise<string> {
     const prompt = renderPrompt(templateId, values);
-    return this.caller.chat([{ role: 'user', content: prompt }], { temperature });
+    return this.caller.chat([{ role: 'user', content: prompt }], { temperature, purpose });
   }
 
   /** 文案改写（信息保全，260 字左右） */
@@ -104,7 +105,7 @@ export class OralWorkshopLlmService {
       script,
       persona: persona ?? '',
       style: style ?? '口语化、有网感',
-    });
+    }, 0.7, 'rewrite');
   }
 
   /** 选题 → 口播文案创作 */
@@ -113,7 +114,7 @@ export class OralWorkshopLlmService {
       topic,
       reference: reference ?? '',
       persona: persona ?? '',
-    });
+    }, 0.7, 'script');
   }
 
   /** 选题生成：关键词 + 人设 → topics 数组 */
@@ -126,7 +127,7 @@ export class OralWorkshopLlmService {
       persona: opts.persona ?? '',
       count: String(opts.count ?? 5),
       excludedTopics: opts.excludedTopics?.length ? opts.excludedTopics.join('、') : '',
-    });
+    }, 0.7, 'topic');
     const data = extractJson(text) as { topics?: TopicItem[] };
     if (!Array.isArray(data.topics)) throw new LlmOutputError('选题输出缺少 topics 数组');
     return data.topics;
@@ -142,7 +143,7 @@ export class OralWorkshopLlmService {
       persona: opts.persona ?? '',
       count: String(opts.count ?? 5),
       excludedTopics: opts.excludedTopics?.length ? opts.excludedTopics.join('、') : '',
-    });
+    }, 0.7, 'topic');
     const data = extractJson(text) as Partial<KeywordTopicsResult>;
     if (typeof data.keyword_analysis !== 'string' || !Array.isArray(data.topics)) {
       throw new LlmOutputError('关键词选题输出结构不完整');
@@ -155,7 +156,7 @@ export class OralWorkshopLlmService {
     const text = await this.call('style_analysis', {
       referenceContent,
       excludedTopics: excludedTopics.join('、'),
-    });
+    }, 0.7, 'topic');
     const data = extractJson(text) as Partial<StyleAnalysisResult>;
     if (typeof data.style_analysis !== 'string' || !Array.isArray(data.topics)) {
       throw new LlmOutputError('风格分析输出结构不完整');
@@ -166,7 +167,7 @@ export class OralWorkshopLlmService {
   /** 标题 + 发布描述（文本返回，后续由导出步骤整理） */
   /** 双语字幕翻译：中文文案 → 中英逐行对照（供 videoEdit 双语字幕渲染） */
   async translateBilingual(script: string): Promise<BilingualPair[]> {
-    const raw = await this.call('bilingual_subtitle', { script });
+    const raw = await this.call('bilingual_subtitle', { script }, 0.7, 'translate');
     const parsed = extractJson(raw) as { lines?: Array<{ zh?: unknown; en?: unknown }> };
     const lines = Array.isArray(parsed?.lines) ? parsed.lines : null;
     if (!lines || lines.length === 0) {
@@ -178,11 +179,11 @@ export class OralWorkshopLlmService {
   }
 
   async generateTitle(script: string, platform = '抖音'): Promise<string> {
-    return this.call('title_publish', { script, platform });
+    return this.call('title_publish', { script, platform }, 0.7, 'title');
   }
   /** 封面标题（结构化 h1/h2，供封面设计器） */
   async generateCoverTitle(script: string): Promise<{ h1: string; h2: string }> {
-    const text = await this.call('cover_title', { script }, 0.5);
+    const text = await this.call('cover_title', { script }, 0.5, 'title');
     const data = extractJson(text) as Partial<{ h1: unknown; h2: unknown }>;
     const h1 = typeof data.h1 === 'string' ? data.h1.trim() : '';
     const h2 = typeof data.h2 === 'string' ? data.h2.trim() : '';
@@ -192,7 +193,7 @@ export class OralWorkshopLlmService {
 
   /** 法务审核：低温度，返回结构化结果 */
   async legalReview(script: string): Promise<LegalReviewResult> {
-    const text = await this.call('legal_review', { script }, 0.2);
+    const text = await this.call('legal_review', { script }, 0.2, 'review');
     const data = extractJson(text) as Partial<LegalReviewResult>;
     if (typeof data.risk_level !== 'string' || !Array.isArray(data.issues) || typeof data.safe_script !== 'string') {
       throw new LlmOutputError('法务审核输出结构不完整');

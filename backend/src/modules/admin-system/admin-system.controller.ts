@@ -11,6 +11,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { AdminGuard } from '../admin-auth/admin.guard';
 import { AdminSystemService } from './admin-system.service';
+import { SystemLlmService } from '../oral-workshop/system-llm.service';
 import { UpdateSystemConfigDto } from './dto/update-system-config.dto';
 import { ClearCacheDto } from './dto/clear-cache.dto';
 
@@ -31,7 +32,10 @@ import { ClearCacheDto } from './dto/clear-cache.dto';
 @Controller('admin/system')
 @UseGuards(AdminGuard)
 export class AdminSystemController {
-  constructor(private readonly service: AdminSystemService) {}
+  constructor(
+    private readonly service: AdminSystemService,
+    private readonly systemLlm: SystemLlmService,
+  ) {}
 
   @Get('config')
   @ApiOperation({ summary: '获取系统配置（按 section）' })
@@ -48,6 +52,16 @@ export class AdminSystemController {
     return null;
   }
 
+
+  @Post('oral-workshop/test-llm')
+  @ApiOperation({ summary: '口播工坊 LLM 测试连接（火山方舟/自定义 baseUrl+apiKey+model 三元组）' })
+  async testOralWorkshopLlm(@Body() body: { baseUrl?: string; apiKey?: string; model?: string }) {
+    return this.systemLlm.testConnection({
+      baseUrl: body?.baseUrl,
+      apiKey: body?.apiKey,
+      model: body?.model,
+    });
+  }
   @Post('cache/clear')
   @ApiOperation({ summary: '清空缓存' })
   async clearCache(@Body() dto: ClearCacheDto) {

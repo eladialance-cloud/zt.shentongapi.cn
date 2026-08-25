@@ -57,7 +57,7 @@ export interface NotificationConfig {
   }
 }
 
-/** 口播工坊引擎配置（M8-4）：volcano=火山方舟（默认）/ local=本地 IndexTTS2 v2.0（预留） */
+/** 口播工坊引擎配置 + 火山方舟（云端）模型配置（M8-4/M8-5） */
 export interface OralWorkshopConfig {
   /** 声音克隆引擎 */
   voiceEngine: 'volcano' | 'local'
@@ -67,12 +67,66 @@ export interface OralWorkshopConfig {
   watermarkEnabled: boolean
   /** 并发任务上限 */
   maxConcurrentJobs: number
-  /** 口播工坊 LLM 模型（选题/文案/改写/标题/翻译等 AI 提示词用；留空=deepseek-chat 或供应商默认） */
-  llmModel?: string
-  /** 语音识别模型（学习对标-提取文案用；留空=whisper-1） */
-  sttModel?: string
   /** 免费档水印文案 */
   watermarkText?: string
+
+  // ===== LLM 云端 AI 算力（火山方舟为主）=====
+  /** LLM 算力来源：volcano=火山方舟（默认，云端）/ custom=自定义 OpenAI 兼容端点 / pool=服务端供应商池 */
+  llmSource?: 'volcano' | 'custom' | 'pool'
+  /** LLM 接入端点（默认火山方舟 https://ark.cn-beijing.volces.com/api/v3） */
+  llmBaseUrl?: string
+  /** LLM API Key（火山方舟/自定义端点密钥） */
+  llmApiKey?: string
+  /** 默认兜底模型（各用途未单独配置时使用） */
+  llmModel?: string
+  /** 爆款选题模型 */
+  topicModel?: string
+  /** IP口播文案/营销文案模型 */
+  scriptModel?: string
+  /** 文案改写模型 */
+  rewriteModel?: string
+  /** 标题/封面 H1/H2 模型 */
+  titleModel?: string
+  /** 翻译/双语字幕模型 */
+  translateModel?: string
+  /** 法务审核模型 */
+  reviewModel?: string
+
+  // ===== 火山声音克隆 / TTS（云端）=====
+  /** 火山方舟统一 API Key（LLM/声音/数字人共用） */
+  volcanoApiKey?: string
+  /** 声音克隆 TTS 接入端点 */
+  voiceEndpoint?: string
+  /** TTS 模型 ID */
+  voiceModel?: string
+  /** 声音克隆模型版本：V1=标准 / V2=高清增强 */
+  voiceModelVersion?: 'V1' | 'V2'
+  /** 默认参考音频 URL（用户未选"我的声音"时兜底） */
+  voiceRefAudioUrl?: string
+  /** 已训练 speaker_id（优先复用） */
+  voiceSpeakerId?: string
+
+  // ===== 火山数字人（云端）=====
+  /** 数字人服务端点 */
+  dhEndpoint?: string
+  /** 数字人提交任务路径 */
+  dhSubmitPath?: string
+  /** 数字人查询任务路径 */
+  dhQueryPath?: string
+  /** 数字人模型版本：V1=标准 / V2=高清 */
+  dhModelVersion?: 'V1' | 'V2'
+  /** 默认数字人形象 ID */
+  dhDefaultImageId?: string
+
+  // ===== 语音识别 / 向量检索 =====
+  /** 语音识别引擎：openai=whisper（默认）/ volcano=火山 ASR */
+  sttProvider?: 'openai' | 'volcano'
+  /** 语音识别模型（默认 whisper-1） */
+  sttModel?: string
+  /** 向量 embedding 供应商 */
+  embeddingProvider?: 'qwen' | 'openai' | 'doubao'
+  /** 向量 embedding 模型（默认 doubao-embedding-text-240715） */
+  embeddingModel?: string
 }
 
 /** 系统配置(联合) */

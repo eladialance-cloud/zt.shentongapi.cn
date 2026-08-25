@@ -36,6 +36,7 @@ import {
   getNotificationConfig,
   getOralWorkshopConfig,
   getRateLimitConfig,
+  testOralWorkshopLlm,
   updateOralWorkshopConfig,
   updateSystemConfig
 } from '@/api/admin-system-api'
@@ -89,6 +90,7 @@ const CACHE_LAYERS: Array<{ layer: CacheLayer; label: string; desc: string }> = 
 export default function SystemConfigPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [testingLlm, setTestingLlm] = useState(false)
   const [tab, setTab] = useState<SystemConfigSection>('cache')
 
   const [cacheForm] = Form.useForm<CacheFormValues>()
@@ -154,9 +156,32 @@ export default function SystemConfigPage() {
         digitalHumanEngine: cfgv.digitalHumanEngine || 'volcano',
         watermarkEnabled: cfgv.watermarkEnabled !== false,
         maxConcurrentJobs: cfgv.maxConcurrentJobs || 2,
+        watermarkText: cfgv.watermarkText || '',
+        llmSource: cfgv.llmSource || 'volcano',
+        llmBaseUrl: cfgv.llmBaseUrl || 'https://ark.cn-beijing.volces.com/api/v3',
+        llmApiKey: cfgv.llmApiKey || '',
         llmModel: cfgv.llmModel || '',
+        topicModel: cfgv.topicModel || '',
+        scriptModel: cfgv.scriptModel || '',
+        rewriteModel: cfgv.rewriteModel || '',
+        titleModel: cfgv.titleModel || '',
+        translateModel: cfgv.translateModel || '',
+        reviewModel: cfgv.reviewModel || '',
+        volcanoApiKey: cfgv.volcanoApiKey || '',
+        voiceEndpoint: cfgv.voiceEndpoint || 'https://ark.cn-beijing.volces.com/api/v3',
+        voiceModel: cfgv.voiceModel || '',
+        voiceModelVersion: cfgv.voiceModelVersion || 'V1',
+        voiceRefAudioUrl: cfgv.voiceRefAudioUrl || '',
+        voiceSpeakerId: cfgv.voiceSpeakerId || '',
+        dhEndpoint: cfgv.dhEndpoint || '',
+        dhSubmitPath: cfgv.dhSubmitPath || '/digital-human/submit',
+        dhQueryPath: cfgv.dhQueryPath || '/digital-human/query',
+        dhModelVersion: cfgv.dhModelVersion || 'V1',
+        dhDefaultImageId: cfgv.dhDefaultImageId || '',
+        sttProvider: cfgv.sttProvider || 'openai',
         sttModel: cfgv.sttModel || '',
-        watermarkText: cfgv.watermarkText || ''
+        embeddingProvider: cfgv.embeddingProvider || 'doubao',
+        embeddingModel: cfgv.embeddingModel || 'doubao-embedding-text-240715'
       })
     } catch (err) {
       console.error('[SystemConfig] load oral_workshop failed:', err)
@@ -267,18 +292,61 @@ export default function SystemConfigPage() {
         digitalHumanEngine: values.digitalHumanEngine,
         watermarkEnabled: values.watermarkEnabled,
         maxConcurrentJobs: values.maxConcurrentJobs,
+        watermarkText: values.watermarkText || '',
+        llmSource: values.llmSource || 'volcano',
+        llmBaseUrl: values.llmBaseUrl || '',
+        llmApiKey: values.llmApiKey || '',
         llmModel: values.llmModel || '',
+        topicModel: values.topicModel || '',
+        scriptModel: values.scriptModel || '',
+        rewriteModel: values.rewriteModel || '',
+        titleModel: values.titleModel || '',
+        translateModel: values.translateModel || '',
+        reviewModel: values.reviewModel || '',
+        volcanoApiKey: values.volcanoApiKey || '',
+        voiceEndpoint: values.voiceEndpoint || '',
+        voiceModel: values.voiceModel || '',
+        voiceModelVersion: values.voiceModelVersion || 'V1',
+        voiceRefAudioUrl: values.voiceRefAudioUrl || '',
+        voiceSpeakerId: values.voiceSpeakerId || '',
+        dhEndpoint: values.dhEndpoint || '',
+        dhSubmitPath: values.dhSubmitPath || '/digital-human/submit',
+        dhQueryPath: values.dhQueryPath || '/digital-human/query',
+        dhModelVersion: values.dhModelVersion || 'V1',
+        dhDefaultImageId: values.dhDefaultImageId || '',
+        sttProvider: values.sttProvider || 'openai',
         sttModel: values.sttModel || '',
-        watermarkText: values.watermarkText || ''
+        embeddingProvider: values.embeddingProvider || 'doubao',
+        embeddingModel: values.embeddingModel || 'doubao-embedding-text-240715'
       }
       await updateOralWorkshopConfig(cfgv)
-      message.success('口播工坊引擎配置已保存')
+      message.success('口播工坊配置已保存（含火山方舟云端配置）')
     } catch (err) {
       if (err && typeof err === 'object' && 'errorFields' in err) return
       console.error('[SystemConfig] save oral_workshop failed:', err)
       message.error('保存失败')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleTestLlm = async () => {
+    try {
+      const v = await oralForm.validateFields(['llmBaseUrl', 'llmApiKey', 'llmModel'])
+      setTestingLlm(true)
+      const res = await testOralWorkshopLlm({
+        baseUrl: v.llmBaseUrl,
+        apiKey: v.llmApiKey,
+        model: v.llmModel
+      })
+      if (res.success) message.success(res.message)
+      else message.error(res.message)
+    } catch (err) {
+      if (err && typeof err === 'object' && 'errorFields' in err) return
+      console.error('[SystemConfig] test llm failed:', err)
+      message.error('测试失败：' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setTestingLlm(false)
     }
   }
 
@@ -511,7 +579,7 @@ export default function SystemConfigPage() {
         {tab === 'oral_workshop' && (
           <Card className={styles.card} bordered={false}>
             <div className={styles.sectionTitle}>
-              <ThunderboltOutlined /> 口播工坊引擎开关（M8-4）
+              <ThunderboltOutlined /> 口播工坊引擎开关
             </div>
             <Form<OralWorkshopConfig> form={oralForm} layout="vertical">
               <div className={styles.levelGrid} style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
@@ -519,11 +587,11 @@ export default function SystemConfigPage() {
                   name="voiceEngine"
                   label="声音克隆引擎"
                   rules={[{ required: true, message: '请选择' }]}
-                  extra="volcano=火山方舟（默认）；local=本地 IndexTTS2 v2.0（预留，未接入）"
+                  extra="volcano=火山方舟（云端，默认）；local=本地引擎（预留）"
                 >
                   <Select
                     options={[
-                      { value: 'volcano', label: '火山方舟（volcano）' },
+                      { value: 'volcano', label: '火山方舟（volcano，云端）' },
                       { value: 'local', label: '本地引擎（local，预留）' }
                     ]}
                   />
@@ -532,11 +600,11 @@ export default function SystemConfigPage() {
                   name="digitalHumanEngine"
                   label="数字人合成引擎"
                   rules={[{ required: true, message: '请选择' }]}
-                  extra="volcano=火山方舟（默认）；local=本地引擎（预留）"
+                  extra="volcano=火山方舟（云端，默认）；local=本地引擎（预留）"
                 >
                   <Select
                     options={[
-                      { value: 'volcano', label: '火山方舟（volcano）' },
+                      { value: 'volcano', label: '火山方舟（volcano，云端）' },
                       { value: 'local', label: '本地引擎（local，预留）' }
                     ]}
                   />
@@ -553,28 +621,157 @@ export default function SystemConfigPage() {
                   <InputNumber min={1} max={20} style={{ width: '100%' }} />
                 </Form.Item>
               </div>
+
               <div className={styles.sectionTitle} style={{ marginTop: 16 }}>
-                <RobotOutlined /> 口播工坊模型设置
+                <RobotOutlined /> LLM AI 算力（云端为主）
               </div>
               <div className={styles.levelGrid} style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
                 <Form.Item
-                  name="llmModel"
-                  label="LLM 模型"
-                  extra="口播工坊所有 AI 提示词（选题/文案/改写/标题/翻译）使用的模型；留空=deepseek-chat 或供应商默认模型"
+                  name="llmSource"
+                  label="LLM 算力来源"
+                  rules={[{ required: true, message: '请选择' }]}
+                  extra="火山方舟=云端（默认）；自定义=任意 OpenAI 兼容端点；供应商池=服务端已配 model_providers"
                 >
-                  <Input placeholder="如 deepseek-chat / gpt-4o-mini / qwen-plus" allowClear />
+                  <Select
+                    options={[
+                      { value: 'volcano', label: '火山方舟（volcano，云端，默认）' },
+                      { value: 'custom', label: '自定义 OpenAI 兼容端点（custom）' },
+                      { value: 'pool', label: '服务端供应商池（pool）' }
+                    ]}
+                  />
                 </Form.Item>
-                <Form.Item
-                  name="sttModel"
-                  label="语音识别模型（提取文案）"
-                  extra="学习对标-提取文案的 ASR 模型；留空=whisper-1"
+                <Form.Item name="llmModel" label="默认模型（兜底）" extra="各用途未单独配置时使用；如 doubao-seed-1-6-250615 / deepseek-v3.2">
+                  <Input placeholder="如 doubao-seed-1-6-250615" allowClear />
+                </Form.Item>
+                <Form.Item name="llmBaseUrl" label="LLM 接入端点（baseUrl）" extra="火山方舟默认 https://ark.cn-beijing.volces.com/api/v3；不同模型可换不同接入点">
+                  <Input placeholder="https://ark.cn-beijing.volces.com/api/v3" allowClear />
+                </Form.Item>
+                <Form.Item name="llmApiKey" label="LLM API Key" extra="火山方舟密钥（可选填，也可用下方统一火山密钥）">
+                  <Input.Password placeholder="sk-..." autoComplete="new-password" allowClear />
+                </Form.Item>
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <Button
+                  type="dashed"
+                  icon={<ReloadOutlined />}
+                  onClick={handleTestLlm}
+                  loading={testingLlm}
                 >
+                  测试 LLM 连接（baseUrl + apiKey + 模型）
+                </Button>
+              </div>
+
+              <div className={styles.sectionTitle} style={{ marginTop: 16 }}>
+                <RobotOutlined /> 用途模型（不同接入口，留空=用默认模型）
+              </div>
+              <div className={styles.levelGrid} style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                <Form.Item name="topicModel" label="爆款选题模型">
+                  <Input placeholder="如 doubao-seed-2-0-lite" allowClear />
+                </Form.Item>
+                <Form.Item name="scriptModel" label="口播/营销文案模型">
+                  <Input placeholder="留空=默认" allowClear />
+                </Form.Item>
+                <Form.Item name="rewriteModel" label="文案改写模型">
+                  <Input placeholder="留空=默认" allowClear />
+                </Form.Item>
+                <Form.Item name="titleModel" label="标题/封面模型">
+                  <Input placeholder="如 Qwen2.5-7B-Instruct" allowClear />
+                </Form.Item>
+                <Form.Item name="translateModel" label="翻译/双语字幕模型">
+                  <Input placeholder="如 meta-llama/Llama-3.3-70B-Instruct" allowClear />
+                </Form.Item>
+                <Form.Item name="reviewModel" label="法务审核模型">
+                  <Input placeholder="留空=默认" allowClear />
+                </Form.Item>
+              </div>
+
+              <div className={styles.sectionTitle} style={{ marginTop: 16 }}>
+                <RobotOutlined /> 火山声音克隆 / TTS（云端）
+              </div>
+              <div className={styles.levelGrid} style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                <Form.Item name="volcanoApiKey" label="火山方舟统一 API Key" extra="声音克隆/数字人共用；若已填上方 LLM Key 可留空">
+                  <Input.Password placeholder="火山方舟 API Key" autoComplete="new-password" allowClear />
+                </Form.Item>
+                <Form.Item name="voiceEndpoint" label="声音克隆 TTS 接入端点">
+                  <Input placeholder="https://ark.cn-beijing.volces.com/api/v3" allowClear />
+                </Form.Item>
+                <Form.Item name="voiceModel" label="TTS 模型 ID" extra="如火山方舟 doubao-tts 系列模型">
+                  <Input placeholder="如 doubao-tts" allowClear />
+                </Form.Item>
+                <Form.Item name="voiceModelVersion" label="声音克隆模型版本">
+                  <Select
+                    options={[
+                      { value: 'V1', label: 'V1（标准版，快）' },
+                      { value: 'V2', label: 'V2（高清增强版，更自然）' }
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item name="voiceRefAudioUrl" label="默认参考音频 URL" extra={'用户未选“我的声音”时的兜底参考音频（克隆音色用）'}>
+                  <Input placeholder="https://.../ref.mp3" allowClear />
+                </Form.Item>
+                <Form.Item name="voiceSpeakerId" label="已训练 speaker_id" extra="优先复用，跳过克隆直接合成">
+                  <Input placeholder="留空=每次克隆" allowClear />
+                </Form.Item>
+              </div>
+
+              <div className={styles.sectionTitle} style={{ marginTop: 16 }}>
+                <RobotOutlined /> 火山数字人（云端）
+              </div>
+              <div className={styles.levelGrid} style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                <Form.Item name="dhEndpoint" label="数字人服务端点" rules={[{ required: false }]} extra="火山数字人服务地址（必填才能启用云端数字人）">
+                  <Input placeholder="https://..." allowClear />
+                </Form.Item>
+                <Form.Item name="dhDefaultImageId" label="默认数字人形象 ID" extra={'用户未选“我的形象”时的兜底形象'}>
+                  <Input placeholder="形象 ID" allowClear />
+                </Form.Item>
+                <Form.Item name="dhSubmitPath" label="提交任务路径">
+                  <Input placeholder="/digital-human/submit" allowClear />
+                </Form.Item>
+                <Form.Item name="dhQueryPath" label="查询任务路径">
+                  <Input placeholder="/digital-human/query" allowClear />
+                </Form.Item>
+                <Form.Item name="dhModelVersion" label="数字人模型版本">
+                  <Select
+                    options={[
+                      { value: 'V1', label: 'V1（标准版，快）' },
+                      { value: 'V2', label: 'V2（高清版，更清晰）' }
+                    ]}
+                  />
+                </Form.Item>
+              </div>
+
+              <div className={styles.sectionTitle} style={{ marginTop: 16 }}>
+                <RobotOutlined /> 语音识别 / 向量检索
+              </div>
+              <div className={styles.levelGrid} style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                <Form.Item name="sttProvider" label="语音识别引擎" extra="openai=whisper（默认）；volcano=火山 ASR">
+                  <Select
+                    options={[
+                      { value: 'openai', label: 'OpenAI whisper' },
+                      { value: 'volcano', label: '火山方舟 ASR' }
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item name="sttModel" label="语音识别模型" extra="提取文案/字幕用；留空=whisper-1">
                   <Input placeholder="如 whisper-1" allowClear />
+                </Form.Item>
+                <Form.Item name="embeddingProvider" label="向量 Embedding 供应商">
+                  <Select
+                    options={[
+                      { value: 'doubao', label: '火山方舟（Doubao-embedding）' },
+                      { value: 'qwen', label: '阿里通义（text-embedding-v3）' },
+                      { value: 'openai', label: 'OpenAI（text-embedding-3-small）' }
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item name="embeddingModel" label="向量 Embedding 模型">
+                  <Input placeholder="doubao-embedding-text-240715" allowClear />
                 </Form.Item>
                 <Form.Item name="watermarkText" label="水印文案" extra="免费档叠加的品牌水印文字">
                   <Input placeholder="如 深瞳AI" allowClear />
                 </Form.Item>
               </div>
+
               <Button
                 type="primary"
                 icon={<SaveOutlined />}

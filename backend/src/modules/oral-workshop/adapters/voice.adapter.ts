@@ -16,6 +16,8 @@ export interface VolcanoVoiceConfig {
   apiKey: string;
   /** TTS 模型 ID（管理后台配置） */
   model: string;
+  /** 模型版本：V1=标准版 / V2=高清增强版（云端服务端算法版本，可留空） */
+  modelVersion?: 'V1' | 'V2';
   /** 声音复刻路径（默认 /audio/voice/clone） */
   clonePath?: string;
   /** TTS 路径（默认 /tts） */
@@ -68,6 +70,7 @@ export function defaultVoiceConfig(): VolcanoVoiceConfig {
     endpoint: process.env.VOLCANO_ARK_ENDPOINT || 'https://ark.cn-beijing.volces.com/api/v3',
     apiKey,
     model: process.env.VOLCANO_VOICE_MODEL || '',
+    modelVersion: (process.env.VOLCANO_VOICE_MODEL_VERSION as 'V1' | 'V2') || undefined,
     clonePath: process.env.VOLCANO_VOICE_CLONE_PATH || '/audio/voice/clone',
     ttsPath: process.env.VOLCANO_VOICE_TTS_PATH || '/tts',
     timeoutMs: Number(process.env.VOLCANO_REQUEST_TIMEOUT_MS || 60000),
@@ -142,6 +145,7 @@ export class VoiceCloneAdapter {
       speed_ratio: opts.speedRatio ?? 0.9,
       response_format: 'mp3',
     };
+    if (cfg.modelVersion) body.model_version = cfg.modelVersion;
     if (opts.emotionWeight !== undefined) body.emotion_weight = opts.emotionWeight;
     if (opts.emotionText) body.emotion_text = opts.emotionText;
     const resp = await fetch(this.url(cfg.endpoint!, cfg.ttsPath!), {
