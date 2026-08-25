@@ -428,4 +428,53 @@ export class SystemLlmService implements LlmCaller {
     }
     return null;
   }
+  /** 拉取 LLM 端点可用模型列表（OpenAI 兼容 /models，兼容火山方舟 ListModels） */
+  async listModels(input: { baseUrl?: string; apiKey?: string; source?: string }): Promise<{ success: boolean; models: string[]; message?: string }> {
+    const apiKey = String(input?.apiKey || '').trim();
+    if (!apiKey) return { success: false, models: [], message: 'API Key 不能为空' };
+    const rawBase = String(input?.baseUrl || '').trim();
+    const base = (rawBase || (input?.source === 'custom' ? '' : DEFAULT_VOLCANO_LLM_ENDPOINT)).replace(/\/+$/, '');
+    if (!base) return { success: false, models: [], message: '请填写 LLM 接入端点（baseUrl）' };
+    try {
+      const resp = await fetch(base + '/models', {
+        headers: { Authorization: 'Bearer ' + apiKey },
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!resp.ok) {
+        const text = (await resp.text()).slice(0, 300);
+        return { success: false, models: [], message: 'HTTP ' + resp.status + '：' + text };
+      }
+      const data = await resp.json();
+      const models = extractModelIds(data);
+      if (!models.length) return { success: false, models: [], message: '接口未返回可用模型：' + base + '/models' };
+      return { success: true, models };
+    } catch (err) {
+      return { success: false, models: [], message: '请求失败：' + ((err as Error).message || String(err)) };
+    }
+  }
+}
+
+/** 从模型列表接口响应中提取模型 ID（兼容 OpenAI-compatible data[].id / 火山方舟 data[].model_name / models[] 等形态） */
+export function extractModelIds(data: unknown): string[] {
+  if (!data || typeof data !== 'object') return [];
+  const rec = data as Record<string, unknown>;
+  const arr = Array.isArray(rec.data) ? rec.data : Array.isArray(rec.models) ? rec.models : Array.isArray(rec.model_list) ? rec.model_list : null;
+  if (!arr) return [];
+  const out = new Set<string>();
+  for (const item of arr) {
+    if (typeof item === 'string') {
+      if (item.trim()) out.add(item.trim());
+      continue;
+    }
+    if (!item || typeof item !== 'object') continue;
+    const r = item as Record<string, unknown>;
+    for (const key of ['id', 'model_name', 'name', 'model']) {
+      const v = r[key];
+      if (typeof v === 'string' && v.trim()) {
+        out.add(v.trim());
+        break;
+      }
+    }
+  }
+  return [...out].sort();
 }

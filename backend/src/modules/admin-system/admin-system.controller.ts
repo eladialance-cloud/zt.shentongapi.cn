@@ -62,6 +62,15 @@ export class AdminSystemController {
       model: body?.model,
     });
   }
+  @Post('oral-workshop/list-models')
+  @ApiOperation({ summary: '口播工坊 LLM 模型列表（baseUrl+apiKey 拉取可用模型）' })
+  async listOralWorkshopModels(@Body() body: { baseUrl?: string; apiKey?: string; source?: string }) {
+    return this.systemLlm.listModels({
+      baseUrl: body?.baseUrl,
+      apiKey: body?.apiKey,
+      source: body?.source,
+    });
+  }
   @Post('cache/clear')
   @ApiOperation({ summary: '清空缓存' })
   async clearCache(@Body() dto: ClearCacheDto) {

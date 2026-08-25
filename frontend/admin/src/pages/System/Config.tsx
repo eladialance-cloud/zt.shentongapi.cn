@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import {
+  AutoComplete,
   Button,
   Card,
   Form,
@@ -36,6 +37,7 @@ import {
   getNotificationConfig,
   getOralWorkshopConfig,
   getRateLimitConfig,
+  listOralWorkshopModels,
   testOralWorkshopLlm,
   updateOralWorkshopConfig,
   updateSystemConfig
@@ -91,6 +93,8 @@ export default function SystemConfigPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [testingLlm, setTestingLlm] = useState(false)
+  const [modelOptions, setModelOptions] = useState<{ value: string }[]>([])
+  const [loadingModels, setLoadingModels] = useState(false)
   const [tab, setTab] = useState<SystemConfigSection>('cache')
 
   const [cacheForm] = Form.useForm<CacheFormValues>()
@@ -355,6 +359,31 @@ export default function SystemConfigPage() {
       message.error('测试失败：' + (err instanceof Error ? err.message : String(err)))
     } finally {
       setTestingLlm(false)
+    }
+  }
+
+  const handleLoadModels = async () => {
+    try {
+      const v = await oralForm.validateFields(['llmBaseUrl', 'llmApiKey', 'llmSource'])
+      setLoadingModels(true)
+      const res = await listOralWorkshopModels({
+        baseUrl: v.llmBaseUrl,
+        apiKey: v.llmApiKey,
+        source: v.llmSource
+      })
+      if (res.success && res.models?.length) {
+        setModelOptions(res.models.map((m) => ({ value: m })))
+        message.success('已加载 ' + res.models.length + ' 个模型，可在下方下拉中选择')
+      } else {
+        setModelOptions([])
+        message.error(res.message || '未获取到模型列表')
+      }
+    } catch (err) {
+      if (err && typeof err === 'object' && 'errorFields' in err) return
+      console.error('[SystemConfig] load models failed:', err)
+      message.error('加载模型列表失败：' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setLoadingModels(false)
     }
   }
 
@@ -649,7 +678,7 @@ export default function SystemConfigPage() {
                   />
                 </Form.Item>
                 <Form.Item name="llmModel" label="默认模型（兜底）" extra="各用途未单独配置时使用；如 doubao-seed-1-6-250615 / deepseek-v3.2">
-                  <Input placeholder="如 doubao-seed-1-6-250615" allowClear />
+                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="如 doubao-seed-1-6-250615" allowClear />
                 </Form.Item>
                 <Form.Item name="llmBaseUrl" label="LLM 接入端点（baseUrl）" extra="火山方舟默认 https://ark.cn-beijing.volces.com/api/v3；不同模型可换不同接入点">
                   <Input placeholder="https://ark.cn-beijing.volces.com/api/v3" allowClear />
@@ -659,6 +688,15 @@ export default function SystemConfigPage() {
                 </Form.Item>
               </div>
               <div style={{ marginBottom: 12 }}>
+                <Button
+                  type="dashed"
+                  icon={<ReloadOutlined />}
+                  onClick={handleLoadModels}
+                  loading={loadingModels}
+                  style={{ marginRight: 12 }}
+                >
+                  加载模型列表（baseUrl + apiKey）
+                </Button>
                 <Button
                   type="dashed"
                   icon={<ReloadOutlined />}
@@ -674,22 +712,22 @@ export default function SystemConfigPage() {
               </div>
               <div className={styles.levelGrid} style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
                 <Form.Item name="topicModel" label="爆款选题模型">
-                  <Input placeholder="如 doubao-seed-2-0-lite" allowClear />
+                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="如 doubao-seed-2-0-lite" allowClear />
                 </Form.Item>
                 <Form.Item name="scriptModel" label="口播/营销文案模型">
-                  <Input placeholder="留空=默认" allowClear />
+                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="留空=默认" allowClear />
                 </Form.Item>
                 <Form.Item name="rewriteModel" label="文案改写模型">
-                  <Input placeholder="留空=默认" allowClear />
+                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="留空=默认" allowClear />
                 </Form.Item>
                 <Form.Item name="titleModel" label="标题/封面模型">
-                  <Input placeholder="如 Qwen2.5-7B-Instruct" allowClear />
+                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="如 Qwen2.5-7B-Instruct" allowClear />
                 </Form.Item>
                 <Form.Item name="translateModel" label="翻译/双语字幕模型">
-                  <Input placeholder="如 meta-llama/Llama-3.3-70B-Instruct" allowClear />
+                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="如 meta-llama/Llama-3.3-70B-Instruct" allowClear />
                 </Form.Item>
                 <Form.Item name="reviewModel" label="法务审核模型">
-                  <Input placeholder="留空=默认" allowClear />
+                  <AutoComplete options={modelOptions} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())} placeholder="留空=默认" allowClear />
                 </Form.Item>
               </div>
 

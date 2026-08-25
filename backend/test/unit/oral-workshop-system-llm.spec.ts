@@ -3,7 +3,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { SystemLlmService } from '../../src/modules/oral-workshop/system-llm.service';
+import { SystemLlmService, extractModelIds } from '../../src/modules/oral-workshop/system-llm.service';
 
 type AnyRepo = any;
 
@@ -117,3 +117,55 @@ describe('SystemLlmService', () => {
   });
 
 });
+describe('extractModelIds', () => {
+  it('OpenAI 兼容 data[].id 形态', () => {
+    assert.deepEqual(extractModelIds({ data: [{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }, { id: '' }] }), ['gpt-4o', 'gpt-4o-mini']);
+  });
+  it('火山方舟 ListModels 形态（data[].id + model_name）', () => {
+    assert.deepEqual(extractModelIds({ data: [{ id: 'ep-20240815-abc', model_name: 'doubao-pro-32k' }] }), ['ep-20240815-abc']);
+  });
+  it('models[] 与 model_list[] 形态兜底', () => {
+    assert.deepEqual(extractModelIds({ models: ['a', 'b'] }), ['a', 'b']);
+    assert.deepEqual(extractModelIds({ model_list: [{ model: 'c' }] }), ['c']);
+  });
+  it('非法输入返回空数组', () => {
+    assert.deepEqual(extractModelIds(null), []);
+    assert.deepEqual(extractModelIds('nope'), []);
+    assert.deepEqual(extractModelIds({}), []);
+  });
+  it('去重并排序', () => {
+    assert.deepEqual(extractModelIds({ data: [{ id: 'b' }, { id: 'a' }, { id: 'b' }] }), ['a', 'b']);
+  });
+});
+
+describe('SystemLlmService.listModels', () => {
+  it('无 Key 时直接失败', async () => {
+    const svc = makeService({ find: async () => [] }, { getNextAvailableKey: async () => null }, { decryptAes: decrypt });
+    const out = await svc.listModels({ baseUrl: 'https://x/v1', apiKey: '' });
+    assert.equal(out.success, false);
+    assert.match(out.message || '', /API Key/);
+  });
+  it('默认火山端点 + Bearer 鉴权拉取模型', async () => {
+    const svc = makeService({ find: async () => [] }, { getNextAvailableKey: async () => null }, { decryptAes: decrypt });
+    let captured: { url: string; opts: { headers: Record<string, string> } } | null = null;
+    (globalThis as any).fetch = async (url: string, opts: any) => {
+      captured = { url, opts };
+      return { ok: true, status: 200, text: async () => '', json: async () => ({ data: [{ id: 'doubao-seed-1-6-250615' }, { id: 'doubao-pro-32k' }] }) };
+    };
+    const out = await svc.listModels({ apiKey: 'sk-ark' });
+    assert.equal(out.success, true);
+    assert.deepEqual(out.models, ['doubao-pro-32k', 'doubao-seed-1-6-250615']);
+    assert.equal(captured!.url, 'https://ark.cn-beijing.volces.com/api/v3/models');
+    assert.equal(captured!.opts.headers.Authorization, 'Bearer sk-ark');
+    delete (globalThis as any).fetch;
+  });
+  it('HTTP 非 200 返回错误信息', async () => {
+    const svc = makeService({ find: async () => [] }, { getNextAvailableKey: async () => null }, { decryptAes: decrypt });
+    (globalThis as any).fetch = async () => ({ ok: false, status: 401, text: async () => 'unauthorized' });
+    const out = await svc.listModels({ baseUrl: 'https://x/v1', apiKey: 'bad' });
+    assert.equal(out.success, false);
+    assert.match(out.message || '', /401/);
+    delete (globalThis as any).fetch;
+  });
+});
+

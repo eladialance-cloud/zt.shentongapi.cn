@@ -82,6 +82,17 @@ export async function testOralWorkshopLlm(body: {
   })
 }
 
+
+/** 口播工坊 LLM 模型列表（baseUrl+apiKey 拉取可用模型，兼容火山方舟/OpenAI 兼容端点） */
+export async function listOralWorkshopModels(body: {
+  baseUrl?: string
+  apiKey?: string
+  source?: string
+}): Promise<{ success: boolean; models: string[]; message?: string }> {
+  return adminRequest<{ success: boolean; models: string[]; message?: string }>('post', '/admin/system/oral-workshop/list-models', {
+    data: body
+  })
+}
 /** 更新口播工坊引擎配置 */
 export async function updateOralWorkshopConfig(cfg: OralWorkshopConfig): Promise<void> {
   await updateSystemConfig({ section: 'oral_workshop', config: cfg as unknown as Record<string, unknown> })
@@ -173,6 +184,7 @@ export default {
   getRateLimitConfig,
   getNotificationConfig,
   getOralWorkshopConfig,
+  listOralWorkshopModels,
   updateOralWorkshopConfig,
   updateSystemConfig,
   clearCache,
