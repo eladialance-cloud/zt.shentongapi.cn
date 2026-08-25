@@ -11,6 +11,7 @@ import {
   CreateOralWorkshopJobDto,
   CreateVoiceAssetDto,
   ExtractScriptDto,
+  GenerateScriptDto,
   GenerateTopicsDto,
   OralWorkshopJobQueryDto,
 } from './dto/oral-workshop.dto';
@@ -135,6 +136,13 @@ export class OralWorkshopController {
   @ApiOperation({ summary: '选题灵感：关键词 + 人设 → 5 个选题' })
   generateTopics(@CurrentUser() user: ICurrentUser, @Body() dto: GenerateTopicsDto) {
     return this.oralWorkshopService.generateTopics(user.userId, dto);
+  }
+
+  @Post('script')
+  @ApiOperation({ summary: '选题 → 口播文案生成（选题灵感选中后 AI 扩写完整文案，不计费）' })
+  generateScript(@CurrentUser() user: ICurrentUser, @Body() dto: GenerateScriptDto) {
+    if (!dto?.topic) throw new BadRequestException('topic 不能为空');
+    return this.oralWorkshopService.generateScript(user.userId, dto);
   }
 
   @Get('templates')

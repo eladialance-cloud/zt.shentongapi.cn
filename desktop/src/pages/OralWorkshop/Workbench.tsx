@@ -47,6 +47,7 @@ import {
   deleteMyDigitalHuman,
   deleteMyVoice,
   extractScriptFromVideo,
+  generateScript,
   generateTopics,
   listMyDigitalHumans,
   listMyVoices,
@@ -145,6 +146,7 @@ export default function OralWorkshopWorkbench() {
   const [topicsKeywords, setTopicsKeywords] = useState('')
   const [topicsLoading, setTopicsLoading] = useState(false)
   const [topics, setTopics] = useState<TopicItem[]>([])
+  const [topicGenerating, setTopicGenerating] = useState<number | null>(null)
   const [dhModalOpen, setDhModalOpen] = useState(false)
   const [dhForm] = Form.useForm()
   const [refAudioOpen, setRefAudioOpen] = useState(false)
@@ -235,11 +237,26 @@ export default function OralWorkshopWorkbench() {
     }
   }
 
-  const applyTopic = (topic: TopicItem) => {
-    form.setFieldsValue({ scriptInput: topic.title })
-    setTopicsOpen(false)
-    setTopics([])
-    setTopicsKeywords('')
+  const applyTopic = async (topic: TopicItem, index: number) => {
+    if (topicGenerating !== null) return
+    setTopicGenerating(index)
+    const persona = form.getFieldValue('persona') as string | undefined
+    try {
+      const res = await generateScript({ topic: topic.title, persona })
+      form.setFieldsValue({ scriptInput: res.text })
+      message.success('口播文案已生成并填入，可继续编辑')
+      setTopicsOpen(false)
+      setTopics([])
+      setTopicsKeywords('')
+    } catch (err) {
+      form.setFieldsValue({ scriptInput: topic.title })
+      message.warning('文案生成失败，已先填入选题标题：' + (err as Error).message)
+      setTopicsOpen(false)
+      setTopics([])
+      setTopicsKeywords('')
+    } finally {
+      setTopicGenerating(null)
+    }
   }
 
   /** 学习对标：从对标视频 URL 提取文案并回填 */
@@ -823,8 +840,16 @@ export default function OralWorkshopWorkbench() {
         </div>
         <div className={styles.topicList}>
           {topics.map((t, i) => (
-            <div key={i} className={styles.topicItem} onClick={() => applyTopic(t)}>
-              <div className={styles.topicTitle}>{t.title}</div>
+            <div
+              key={i}
+              className={styles.topicItem}
+              style={topicGenerating === i ? { opacity: 0.6, pointerEvents: 'none' } : undefined}
+              onClick={() => void applyTopic(t, i)}
+            >
+              <div className={styles.topicTitle}>
+                {t.title}
+                {topicGenerating === i ? <span className={styles.topicGenerating}>　正在生成口播文案…</span> : null}
+              </div>
               <div className={styles.topicMeta}>
                 {t.persona_angle ? <Tag>人设角度：{t.persona_angle}</Tag> : null}
                 {t.hook ? <Tag color="blue">钩子：{t.hook}</Tag> : null}
@@ -833,7 +858,7 @@ export default function OralWorkshopWorkbench() {
             </div>
           ))}
           {!topicsLoading && topics.length === 0 && (
-            <div className={styles.topicEmpty}>输入关键词后点击「生成选题」，点击选题自动填入文案</div>
+            <div className={styles.topicEmpty}>输入关键词后点击「生成选题」，点击选题自动生成完整口播文案</div>
           )}
         </div>
       </Modal>

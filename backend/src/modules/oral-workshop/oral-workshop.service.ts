@@ -584,6 +584,19 @@ export class OralWorkshopService implements OnModuleInit {
     }
   }
 
+  /** 选题 → 口播文案生成（对标参考软件：选题灵感选中后自动扩写完整口播文案，AI 生成，不计费） */
+  async generateScript(userId: number, dto: { topic: string; persona?: string; reference?: string }): Promise<{ text: string }> {
+    if (!dto.topic?.trim()) throw new BadRequestException('缺少选题');
+    if (!this.llm) throw new BadRequestException('AI 服务未配置');
+    try {
+      const text = await this.llm.createScript(dto.topic.trim(), dto.reference?.trim() || undefined, dto.persona?.trim() || undefined);
+      if (!text?.trim()) throw new Error('生成内容为空');
+      return { text };
+    } catch (err) {
+      throw new BadRequestException('文案生成失败: ' + (err as Error).message);
+    }
+  }
+
   /** 可用模板列表（工作台选择用，返回轻量元数据） */
   async listTemplates(): Promise<Array<{
     template_id: string;

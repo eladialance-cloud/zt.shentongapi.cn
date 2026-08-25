@@ -475,6 +475,11 @@
   transition: background 0.15s;
 }
 
+.topicGenerating {
+  color: var(--primary-color, #1677ff);
+  font-size: 12px;
+}
+
 .topicItem:hover {
   background: var(--color-bg-hover);
 }

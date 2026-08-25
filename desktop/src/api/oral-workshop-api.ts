@@ -194,6 +194,14 @@ export async function generateTopics(payload: { keywords: string; persona?: stri
 }
 
 /**
+ * 选题 → 口播文案生成：选题灵感选中后自动扩写完整口播文案
+ * POST /oral-workshop/script  body: { topic, persona?, reference? }
+ */
+export async function generateScript(payload: { topic: string; persona?: string; reference?: string }): Promise<{ text: string }> {
+  return httpClient.post<{ text: string }>('/oral-workshop/script', payload)
+}
+
+/**
  * 批量矩阵化建单（文案 × 模板 × 声音 × 形象，逐单预扣 Credits）
  * POST /oral-workshop/jobs/batch  body: BatchCreateOralWorkshopJobsDto
  */
@@ -216,4 +224,5 @@ export default {
   createMyDigitalHuman,
   deleteMyDigitalHuman,
   generateTopics,
+  generateScript,
 }

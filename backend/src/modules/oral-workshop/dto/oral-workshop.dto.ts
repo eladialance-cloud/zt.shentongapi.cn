@@ -288,6 +288,25 @@ export class GenerateTopicsDto {
   count?: number;
 }
 
+/** 选题 → 口播文案生成 DTO（选题灵感选中后，AI 扩写完整口播文案） */
+export class GenerateScriptDto {
+  @IsNotEmpty({ message: 'topic 不能为空' })
+  @IsString()
+  @MaxLength(500)
+  topic: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  persona?: string;
+
+  /** 参考范文/对标文案（可选，增强模仿语感节奏） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  reference?: string;
+}
+
 /** 学习对标：提取文案 DTO（videoUrl 必须是公网视频链接，下载时再做 SSRF 校验） */
 export class ExtractScriptDto {
   @IsNotEmpty({ message: 'videoUrl 不能为空' })
