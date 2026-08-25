@@ -120,6 +120,7 @@ export default function SystemConfigPage() {
   const [rateLimitForm] = Form.useForm<RateLimitFormValues>()
   const [notificationForm] = Form.useForm<NotificationFormValues>()
   const [oralForm] = Form.useForm<OralWorkshopConfig>()
+  const defaultLlmModel = Form.useWatch('llmModel', oralForm)
 
   const loadCache = useCallback(async () => {
     try {
@@ -440,6 +441,18 @@ export default function SystemConfigPage() {
     }
   }
 
+  const handleClearPurposeModels = () => {
+    oralForm.setFieldsValue({
+      topicModel: '',
+      scriptModel: '',
+      rewriteModel: '',
+      titleModel: '',
+      translateModel: '',
+      reviewModel: ''
+    })
+    message.info('用途模型已清空，保存后各用途将自动使用默认模型')
+  }
+
   const handleTestCapability = async (type: 'tts' | 'clone' | 'dh' | 'stt' | 'embedding') => {
     try {
       const cfg = oralForm.getFieldsValue() as unknown as Record<string, unknown>
@@ -486,7 +499,7 @@ export default function SystemConfigPage() {
       })
       if (res.success && res.models?.length) {
         setModelOptions(res.models.map((m) => ({ value: m, label: m })))
-        message.success('已加载 ' + res.models.length + ' 个模型，可在下方下拉中选择')
+        message.success('已加载 ' + res.models.length + ' 个模型（注意：列表含平台全部模型，未开通的调用会 404，请用「测试 LLM 连接」验证）')
       } else {
         setModelOptions([])
         message.error(res.message || '未获取到模型列表')
@@ -820,27 +833,35 @@ export default function SystemConfigPage() {
                 </Button>
               </div>
 
-              <div className={styles.sectionTitle} style={{ marginTop: 16 }}>
-                <RobotOutlined /> 用途模型（不同接入口，留空=用默认模型）
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
+                <div className={styles.sectionTitle} style={{ margin: 0 }}>
+                  <RobotOutlined /> 用途模型（不同接入口，留空=用默认模型）
+                </div>
+                <Button size="small" icon={<DeleteOutlined />} onClick={handleClearPurposeModels}>
+                  一键清空用途模型
+                </Button>
+              </div>
+              <div style={{ marginTop: 8, color: '#999', fontSize: 13 }}>
+                优先级：用途模型 &gt; 默认模型（当前默认：{defaultLlmModel || '未配置'}）。下拉列表来自平台 /models，包含未开通的模型，调用会 404，请用「测试 LLM 连接」验证后再保存。
               </div>
               <div className={styles.levelGrid} style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
                 <Form.Item name="topicModel" label="爆款选题模型">
-                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder="如 doubao-seed-2-0-lite" />
+                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder={'留空=使用默认模型 ' + (defaultLlmModel || '(未配置)')} />
                 </Form.Item>
                 <Form.Item name="scriptModel" label="口播/营销文案模型">
-                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder="留空=默认" />
+                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder={'留空=使用默认模型 ' + (defaultLlmModel || '(未配置)')} />
                 </Form.Item>
                 <Form.Item name="rewriteModel" label="文案改写模型">
-                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder="留空=默认" />
+                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder={'留空=使用默认模型 ' + (defaultLlmModel || '(未配置)')} />
                 </Form.Item>
                 <Form.Item name="titleModel" label="标题/封面模型">
-                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder="如 Qwen2.5-7B-Instruct" />
+                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder={'留空=使用默认模型 ' + (defaultLlmModel || '(未配置)')} />
                 </Form.Item>
                 <Form.Item name="translateModel" label="翻译/双语字幕模型">
-                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder="如 meta-llama/Llama-3.3-70B-Instruct" />
+                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder={'留空=使用默认模型 ' + (defaultLlmModel || '(未配置)')} />
                 </Form.Item>
                 <Form.Item name="reviewModel" label="法务审核模型">
-                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder="留空=默认" />
+                  <Select showSearch allowClear optionFilterProp="label" options={modelOptions} placeholder={'留空=使用默认模型 ' + (defaultLlmModel || '(未配置)')} />
                 </Form.Item>
               </div>
 

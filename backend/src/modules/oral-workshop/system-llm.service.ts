@@ -62,6 +62,16 @@ const PURPOSE_MODEL_KEYS: Record<Exclude<OralLlmPurpose, 'default'>, string> = {
   review: 'reviewModel',
 };
 
+/** 用途展示名（错误提示用，便于用户定位是哪个配置项生效） */
+const PURPOSE_LABELS: Partial<Record<OralLlmPurpose, string>> = {
+  topic: '爆款选题',
+  script: '口播/营销文案',
+  rewrite: '文案改写',
+  title: '标题/封面',
+  translate: '翻译/双语字幕',
+  review: '法务审核',
+};
+
 /** 火山方舟默认 LLM 端点 / 模型（管理后台可覆盖） */
 const DEFAULT_VOLCANO_LLM_ENDPOINT = 'https://ark.cn-beijing.volces.com/api/v3';
 const DEFAULT_VOLCANO_LLM_MODEL = 'doubao-seed-1-6-250615';
@@ -284,7 +294,10 @@ export class SystemLlmService implements LlmCaller {
     }
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
-      throw new ServiceUnavailableException(`LLM 上游 HTTP ${resp.status}: ${text.slice(0, 200)}`);
+      const purposeLabel = opts?.purpose ? PURPOSE_LABELS[opts.purpose] || opts.purpose : 'LLM';
+      throw new ServiceUnavailableException(
+        `LLM 上游 HTTP ${resp.status}（${purposeLabel}，当前使用模型=${target.model}）: ${text.slice(0, 200)}`,
+      );
     }
     const data = (await resp.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
