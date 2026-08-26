@@ -23,9 +23,12 @@ export const ORAL_WORKSHOP_PROMPTS: PromptTemplate[] = [
       "keywords",
       "persona",
       "count",
-      "excludedTopics"
+      "excludedTopics",
+      "styleAnalysis",
+      "industryOrProduct",
+      "productSellingPoints"
     ],
-    "template": "你是短视频爆款选题策划专家，擅长为个人IP设计真人出镜口播短视频选题。\n用户输入：\n关键词：{keywords}\n【我的人设】：{persona}\n要求：\n1. 选题必须适合口播，不要做成图文、剧情或泛泛的知识科普\n2. 选题要利于打造个人IP，能体现观点、经验、专业度、真实经历或方法论\n3. 每个选题都要符合爆款逻辑，例如痛点、反常识、避坑、误区、清单、对比、故事、争议观点\n4. 标题要像短视频标题，不要像文章标题\n5. 不要使用绝对化、夸大承诺、违规引导表达\n6. 如果提供了【我的人设】，请优先围绕该人设的身份、经验、表达风格和内容边界设计选题\n7. 只返回 JSON，不要返回 Markdown\n8. topics 数组必须刚好返回 {count} 条\n9. 不要返回开头钩子或 hook 字段，开头钩子会在生成文案时再设计\n10. JSON 必须能被 JSON.parse 直接解析，不要尾逗号，不要注释，不要在 JSON 前后添加任何解释\n11. 输出 JSON 结构必须是：{\"topics\": [{\"title\": \"选题标题\", \"persona_angle\": \"如何强化个人IP\", \"viral_logic\": \"爆款逻辑\"}]}，每个选题元素必须是对象且必须包含 title 字符串字段\n【排除选题】：{excludedTopics}\n（若排除选题非空，请提供差异化的全新选题）"
+    "template": "你是短视频爆款选题策划专家，擅长为个人IP设计真人出镜口播短视频选题。\n用户输入：\n关键词：{keywords}\n【行业或产品】：{industryOrProduct}\n【产品卖点】：{productSellingPoints}\n【我的人设】：{persona}\n【对标风格分析】：{styleAnalysis}\n要求：\n1. 选题必须适合口播，不要做成图文、剧情或泛泛的知识科普\n2. 选题要利于打造个人IP，能体现观点、经验、专业度、真实经历或方法论\n3. 每个选题都要符合爆款逻辑，例如痛点、反常识、避坑、误区、清单、对比、故事、争议观点\n4. 标题要像短视频标题，不要像文章标题\n5. 不要使用绝对化、夸大承诺、违规引导表达\n6. 如果提供了【我的人设】，请优先围绕该人设的身份、经验、表达风格和内容边界设计选题\n6.5 如果提供了【对标风格分析】，请贴合该风格的选题思路、表达方式和内容边界设计选题\n7. 只返回 JSON，不要返回 Markdown\n8. topics 数组必须刚好返回 {count} 条\n9. 不要返回开头钩子或 hook 字段，开头钩子会在生成文案时再设计\n10. JSON 必须能被 JSON.parse 直接解析，不要尾逗号，不要注释，不要在 JSON 前后添加任何解释\n11. 输出 JSON 结构必须是：{\"topics\": [{\"title\": \"选题标题\", \"persona_angle\": \"如何强化个人IP\", \"viral_logic\": \"爆款逻辑\"}]}，每个选题元素必须是对象且必须包含 title 字符串字段\n【排除选题】：{excludedTopics}\n（若排除选题非空，请提供差异化的全新选题）"
   },
   {
     "id": "keyword_topics",
@@ -34,9 +37,11 @@ export const ORAL_WORKSHOP_PROMPTS: PromptTemplate[] = [
       "keywords",
       "persona",
       "count",
-      "excludedTopics"
+      "excludedTopics",
+      "industryOrProduct",
+      "productSellingPoints"
     ],
-    "template": "你是短视频选题策划专家。请基于关键词为个人IP设计口播选题，并做内容机会分析。\nJSON 格式：\n{\n  \"keyword_analysis\": \"这个关键词适合做个人IP的内容机会分析，100字以内\",\n  \"topics\": [\n    {\n      \"title\": \"选题标题\",\n      \"hook\": \"开头3秒口播钩子\",\n      \"persona_angle\": \"这个选题如何强化个人IP\",\n      \"viral_logic\": \"爆款逻辑\"\n    }\n  ]\n}\n关键词：{keywords}\n【我的人设】：{persona}\n要求：\n1. topics 数组必须刚好返回 {count} 条\n2. 标题要像短视频标题，避免绝对化、夸大承诺、违规引导表达\n3. 只返回 JSON，不要 Markdown，不要尾逗号，不要注释\n4. JSON 必须能被 JSON.parse 直接解析\n5. 若提供了【排除选题】，请换一批全新视角的选题\n【排除选题】：{excludedTopics}"
+    "template": "你是短视频选题策划专家。请基于关键词为个人IP设计口播选题，并做内容机会分析。\nJSON 格式：\n{\n  \"keyword_analysis\": \"这个关键词适合做个人IP的内容机会分析，100字以内\",\n  \"topics\": [\n    {\n      \"title\": \"选题标题\",\n      \"hook\": \"开头3秒口播钩子\",\n      \"persona_angle\": \"这个选题如何强化个人IP\",\n      \"viral_logic\": \"爆款逻辑\"\n    }\n  ]\n}\n关键词：{keywords}\n【行业或产品】：{industryOrProduct}\n【产品卖点】：{productSellingPoints}\n【我的人设】：{persona}\n要求：\n1. topics 数组必须刚好返回 {count} 条\n2. 标题要像短视频标题，避免绝对化、夸大承诺、违规引导表达\n3. 只返回 JSON，不要 Markdown，不要尾逗号，不要注释\n4. JSON 必须能被 JSON.parse 直接解析\n5. 若提供了【排除选题】，请换一批全新视角的选题\n【排除选题】：{excludedTopics}"
   },
   {
     "id": "style_analysis",
@@ -53,9 +58,44 @@ export const ORAL_WORKSHOP_PROMPTS: PromptTemplate[] = [
     "params": [
       "script",
       "persona",
-      "style"
+      "style",
+      "wordCount"
     ],
-    "template": "你是专业的短视频口播文案改写专家。请把以下文案改写为适合真人口播的版本。\n原文案：\n{script}\n\n【我的人设】：{persona}\n【改写风格】：{style}\n\n要求：\n1. 改写后文案与原文信息量保持一致，重要细节不能丢失\n2. 具体叙述具体行为，每一个具体动作都不能跳过；可从不同角度切入叙述，确保内容完整，可以使用同义字替换、重组结构\n3. 语言口语化，有短视频节奏，适合真人直接照着拍\n4. 不要夸大承诺，不使用绝对化、违规或高风险表达\n5. 篇幅控制在260字左右\n请直接输出改写后的文案内容，不要包含任何解释或额外信息"
+    "template": "你是专业的短视频口播文案改写专家。请把以下文案改写为适合真人口播的版本。\n原文案：\n{script}\n\n【我的人设】：{persona}\n【改写风格】：{style}\n\n要求：\n1. 改写后文案与原文信息量保持一致，重要细节不能丢失\n2. 具体叙述具体行为，每一个具体动作都不能跳过；可从不同角度切入叙述，确保内容完整，可以使用同义字替换、重组结构\n3. 语言口语化，有短视频节奏，适合真人直接照着拍\n4. 不要夸大承诺，不使用绝对化、违规或高风险表达\n5. 篇幅控制在{wordCount}字左右\n请直接输出改写后的文案内容，不要包含任何解释或额外信息"
+  },
+  {
+    "id": "generic_rewrite",
+    "name": "通用改写（精简口语化）",
+    "params": [
+      "script",
+      "persona",
+      "style",
+      "wordCount"
+    ],
+    "template": "你是短视频口播文案改写专家。请把以下文案改写为口语化、适合真人出镜朗读的版本。\n原文案：\n{script}\n\n【我的人设】：{persona}\n【改写风格】：{style}\n\n要求：\n1. 保留核心信息与观点，删减冗余，语句通顺口语化\n2. 有短视频节奏，开头直接抓人，段落短促\n3. 不要夸大承诺，不使用绝对化、违规或高风险表达\n4. 篇幅控制在{wordCount}字左右\n请直接输出改写后的文案内容，不要包含任何解释或额外信息"
+  },
+  {
+    "id": "rewrite_detailed",
+    "name": "爆款视频详细文案风格",
+    "params": [
+      "script",
+      "persona",
+      "style",
+      "wordCount"
+    ],
+    "template": "你是爆款短视频文案专家。请把以下文案扩写为信息密度高、细节丰富的详细口播稿。\n原文案：\n{script}\n\n【我的人设】：{persona}\n【改写风格】：{style}\n\n要求：\n1. 每个观点都展开到具体行为、数据、案例或场景，细节不省略\n2. 逻辑递进：钩子→痛点→方法论→例子→总结行动\n3. 语言口语化但有信息量，适合真人照着拍\n4. 不要夸大承诺，不使用绝对化、违规或高风险表达\n5. 篇幅控制在{wordCount}字左右\n请直接输出改写后的文案内容，不要包含任何解释或额外信息"
+  },
+  {
+    "id": "rewrite_deep_learn",
+    "name": "深度学习爆款文案风格",
+    "params": [
+      "script",
+      "persona",
+      "style",
+      "reference",
+      "wordCount"
+    ],
+    "template": "你是爆款文案风格分析师与改写专家（B6 深度模仿）。第一步：先提炼参考范文的文风特征——典型句式（长短句搭配/设问/排比）、高频用词、语气（口语化程度/感叹/自嘲/笃定）、标点习惯（短句断句/省略号/破折号）；第二步：用提炼出的文风特征改写原文案，让输出读起来像范文作者写的。\n原文案：\n{script}\n\n参考范文（深度模仿对象）：\n{reference}\n\n【我的人设】：{persona}\n【改写风格】：{style}\n\n要求：\n1. 开头句式、转折节奏、收尾方式贴近参考范文\n2. 词汇选择、语气、断句习惯模仿范文，但内容为原文信息\n3. 保留原文核心信息，细节不丢失\n4. 语言口语化，有短视频节奏\n5. 不要夸大承诺，不使用绝对化、违规或高风险表达\n6. 篇幅控制在{wordCount}字左右\n请直接输出改写后的文案内容，不要包含任何解释或额外信息"
   },
   {
     "id": "script_creation",
@@ -63,9 +103,10 @@ export const ORAL_WORKSHOP_PROMPTS: PromptTemplate[] = [
     "params": [
       "topic",
       "reference",
-      "persona"
+      "persona",
+      "style"
     ],
-    "template": "你是一个专业的短视频口播文案创作者。请根据以下选题创作一篇适合真人出镜的口播短视频文案。\n选题：{topic}\n【参考范文（请严格模仿以下文案的语感、节奏和结构）】：{reference}\n【我的人设】：{persona}\n创作要求：\n1. 基于选题标题设计一个爆款开头钩子，开头3秒必须抓人，直接戳痛点或抛出反常识观点\n2. 中段要有个人IP表达，体现经验、观点、专业判断或方法论\n3. 语言口语化，有短视频节奏，适合真人直接照着拍\n4. 不要夸大承诺，不使用绝对化、违规或高风险表达\n5. 如果提供了【我的人设】，请优先贴合该人设的身份、经历和表达风格\n6. 篇幅控制在260字左右\n请直接输出文案内容，不要包含任何解释或额外信息"
+    "template": "你是一个专业的短视频口播文案创作者。请根据以下选题创作一篇适合真人出镜的口播短视频文案。\n选题：{topic}\n【参考范文（请严格模仿以下文案的语感、节奏和结构）】：{reference}\n【我的人设】：{persona}\n【口播风格】：{style}\n创作要求：\n1. 基于选题标题设计一个爆款开头钩子，开头3秒必须抓人，直接戳痛点或抛出反常识观点\n2. 中段要有个人IP表达，体现经验、观点、专业判断或方法论\n3. 语言口语化，有短视频节奏，适合真人直接照着拍\n4. 不要夸大承诺，不使用绝对化、违规或高风险表达\n5. 如果提供了【我的人设】，请优先贴合该人设的身份、经历和表达风格\n6. 输出 200-300 字的完整口播稿，至少 3 个自然段，字数不得少于 150 字\n7. 必须是完整可朗读的整篇口播稿，不要只输出一句话、标题或提纲\n请直接输出文案内容，不要包含任何解释或额外信息"
   },
   {
     "id": "generic_rewrite",
@@ -83,6 +124,15 @@ export const ORAL_WORKSHOP_PROMPTS: PromptTemplate[] = [
       "platform"
     ],
     "template": "请基于以下文案生成一个吸引人的视频标题与适配短视频平台的发布描述。\n平台：{platform}\n视频文案：{script}\n主标题：4-8 个字，强钩子，适合画面大标题\n副标题：4-8 个字，补充信息、悬念、收益点\n标题要短促，适合视频顶部单行展示\n不要使用书名号、引号、句号，不要解释\n发布描述需包含话题标签建议（3-5 个），口语化、有网感。\n请直接输出，不要解释。"
+  },
+  {
+    "id": "publish_package",
+    "name": "发布包（标题+发布描述+话题标签）",
+    "params": [
+      "script",
+      "platform"
+    ],
+    "template": "你是短视频发布文案专家。请根据以下口播文案，生成适合发布的标题、发布描述和话题标签。\n平台：{platform}\n视频文案：{script}\n要求：\n1. 主标题 4-8 个字，强钩子，适合画面大标题，不要书名号/引号/句号\n2. 副标题 4-8 个字，补充信息、悬念、收益点\n3. 发布描述 60-120 字，口语化、有网感，提炼视频核心观点，直接可用\n4. 话题标签 3-5 个，贴合内容且利于搜索\n5. 只返回 JSON，不要 Markdown：\n{\n  \"title\": \"主标题\",\n  \"subtitle\": \"副标题\",\n  \"description\": \"发布描述\",\n  \"topic_tags\": [\"标签1\", \"标签2\"]\n}\n6. JSON 必须能被 JSON.parse 直接解析，不要尾逗号，不要注释"
   },
   {
     "id": "double_line_title",

@@ -8,7 +8,7 @@
  * 命令断言可单测（不真跑 ffmpeg）。
  */
 import { buildAss, type SubtitleSegment } from './ass';
-import type { OralWorkshopTemplate } from './template-loader';
+import type { OralWorkshopTemplate, TemplateTextStyle } from './template-loader';
 
 /** 合成输入（M5-5 由流水线步骤产物组装） */
 export interface ComposeJobOptions {
@@ -26,6 +26,16 @@ export interface ComposeJobOptions {
   subtitles?: SubtitleSegment[];
   /** 关键词高亮（来自模板 content_prompts 提取） */
   highlightKeywords?: string[];
+  /** 画中画素材（P3 D4/E6：下载到本地的图片/视频 + 位置/缩放/时间） */
+  pipAssets?: Array<{
+    path: string;
+    /** 是否为图片（视频需保持动画面面，图片需 -loop 1） */
+    isImage?: boolean;
+    position?: 'tl' | 'tr' | 'bl' | 'br' | 'center';
+    scale?: number;
+    startSec?: number;
+    endSec?: number;
+  }>;
   /** 双语字幕：字幕内容为中英双行（zh\nen），字号按比例缩小 */
   bilingual?: boolean;
   /** 模板（决定分辨率/字幕配置/角标样式） */
@@ -117,6 +127,15 @@ export function buildFinalVideoCommand(opts: {
   fps: number;
   fontDir?: string;
   outputPath: string;
+  /** 画中画素材（P3 D4/E6） */
+  pipAssets?: Array<{
+    path: string;
+    isImage?: boolean;
+    position?: 'tl' | 'tr' | 'bl' | 'br' | 'center';
+    scale?: number;
+    startSec?: number;
+    endSec?: number;
+  }>;
 }): string[] {
   if (!opts.badgeImagePath) {
     throw new ComposerError('AI 角标为合规强制项，badgeImagePath 不能为空');
@@ -136,12 +155,44 @@ export function buildFinalVideoCommand(opts: {
   }
   // AI 角标叠加（右下角，40px 边距；enable 覆盖全片）
   videoFilter += 'overlay=W-w-40:H-h-40:enable=1[badged]';
+  // 画中画叠加（P3 D4/E6：素材依次叠在角标之上；图片加 -loop 1 输入）
+  const pipInputArgs: string[] = [];
+  const pipAssets = (opts.pipAssets ?? []).slice(0, 4);
+  let lastLabel = 'badged';
+  pipAssets.forEach((pip, i) => {
+    const inputIdx = 2 + i;
+    if (pip.isImage) pipInputArgs.push('-loop', '1');
+    pipInputArgs.push('-i', pip.path);
+    // 缩放：相对主视频宽度（保持偶数宽）
+    const scale = Math.min(Math.max(pip.scale ?? 0.25, 0.05), 1);
+    const pipWidth = Math.max(2, Math.round((opts.width * scale) / 2) * 2);
+    const scaledLabel = '[p' + i + ']';
+    videoFilter += ';[' + inputIdx + ':v]scale=' + pipWidth + ':-2' + scaledLabel;
+    // 位置
+    const pos = pip.position || 'br';
+    const margin = 40;
+    let x = '';
+    let y = '';
+    if (pos === 'tl') { x = String(margin); y = String(margin); }
+    else if (pos === 'tr') { x = 'W-w-' + margin; y = String(margin); }
+    else if (pos === 'bl') { x = String(margin); y = 'H-h-' + margin; }
+    else if (pos === 'center') { x = '(W-w)/2'; y = '(H-h)/2'; }
+    else { x = 'W-w-' + margin; y = 'H-h-' + margin; }
+    let enable = 'enable=1';
+    if (typeof pip.startSec === 'number' && typeof pip.endSec === 'number' && pip.endSec > pip.startSec) {
+      enable = "enable='between(t," + pip.startSec + ',' + pip.endSec + ")'";
+    }
+    const outLabel = i === pipAssets.length - 1 ? '[pipfinal]' : '[o' + i + ']';
+    videoFilter += ';[' + lastLabel + ']' + scaledLabel + 'overlay=x=' + x + ':y=' + y + ':' + enable + outLabel;
+    lastLabel = i === pipAssets.length - 1 ? 'pipfinal' : 'o' + i;
+  });
   const args = [
     'ffmpeg', '-y',
     '-i', opts.humanVideoPath,
     '-i', opts.audioPath,
+    ...pipInputArgs,
     '-filter_complex', videoFilter,
-    '-map', '[badged]',
+    '-map', '[' + lastLabel + ']',
     '-map', '1:a',
     '-r', String(opts.fps),
     '-c:v', 'libx264', '-crf', '20', '-preset', 'medium',
@@ -167,23 +218,24 @@ export function buildCoverCommand(opts: {
   const h1Style = els.h1?.style;
   const h2Style = els.h2?.style;
   const vfParts: string[] = [];
+  const drawTextOpts = (style: TemplateTextStyle | undefined, fallbackPos: [number, number]): string => {
+    if (!style) return '';
+    let opts =
+      ':fontsize=' + Math.round(style.fontSize) +
+      ':fontcolor=' + (style.color || '#FFFFFF').replace('#', '0x') +
+      ':x=' + Math.round(style.position?.[0] ?? fallbackPos[0]) + ':y=' + Math.round(style.position?.[1] ?? fallbackPos[1]);
+    if (style.bold) opts += ':shadowcolor=0x00000000';
+    if (style.italic) opts += ':italic=1';
+    if (style.stroke && style.stroke.width > 0) {
+      opts += ':borderw=' + Math.round(style.stroke.width) + ':bordercolor=' + (style.stroke.color || '#000000').replace('#', '0x');
+    }
+    return opts;
+  };
   if (h1 && h1Style && opts.fontPath) {
-    vfParts.push(
-      'drawtext=fontfile=' + escapeFilterPath(opts.fontPath) +
-      ':text=' + escapeDrawText(h1) +
-      ':fontsize=' + Math.round(h1Style.fontSize) +
-      ':fontcolor=' + (h1Style.color || '#FFFFFF').replace('#', '0x') +
-      ':x=' + Math.round(h1Style.position?.[0] ?? 540) + ':y=' + Math.round(h1Style.position?.[1] ?? 120)
-    );
+    vfParts.push('drawtext=fontfile=' + escapeFilterPath(opts.fontPath) + ':text=' + escapeDrawText(h1) + drawTextOpts(h1Style, [540, 120]));
   }
   if (h2 && h2Style && opts.fontPath) {
-    vfParts.push(
-      'drawtext=fontfile=' + escapeFilterPath(opts.fontPath) +
-      ':text=' + escapeDrawText(h2) +
-      ':fontsize=' + Math.round(h2Style.fontSize) +
-      ':fontcolor=' + (h2Style.color || '#FFFFFF').replace('#', '0x') +
-      ':x=' + Math.round(h2Style.position?.[0] ?? 540) + ':y=' + Math.round(h2Style.position?.[1] ?? 260)
-    );
+    vfParts.push('drawtext=fontfile=' + escapeFilterPath(opts.fontPath) + ':text=' + escapeDrawText(h2) + drawTextOpts(h2Style, [540, 260]));
   }
   const vf = vfParts.length ? vfParts.join(',') : 'null';
   return [
@@ -218,6 +270,58 @@ export function buildCardVideoCommand(opts: {
     '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-b:a', '192k',
     '-r', String(fps),
+    opts.outputPath,
+  ];
+}
+
+/**
+ * D3：多镜头拼接命令——concat 各镜头视频（只取视频轨）+ 整条语音轨。
+ * segments：已生成的镜头视频文件（各自带音频，concat 时丢弃，用 master 语音轨）。
+ */
+export function buildShotConcatCommand(opts: {
+  segments: string[];
+  listPath: string;
+  audioPath: string;
+  outputPath: string;
+  width?: number;
+  height?: number;
+  fps?: number;
+}): string[] {
+  const width = opts.width ?? 1080;
+  const height = opts.height ?? 1920;
+  return [
+    'ffmpeg', '-y',
+    '-f', 'concat', '-safe', '0',
+    '-i', opts.listPath,
+    '-i', opts.audioPath,
+    '-filter_complex',
+    '[0:v:0]scale=' + width + ':' + height + ':force_original_aspect_ratio=decrease,pad=' + width + ':' + height + ':(ow-iw)/2:(oh-ih)/2,setsar=1,fps=' + String(opts.fps ?? 30) + '[v]',
+    '-map', '[v]',
+    '-map', '1:a:0',
+    '-c:v', 'libx264', '-crf', '20', '-preset', 'medium',
+    '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac', '-b:a', '192k',
+    '-shortest',
+    opts.outputPath,
+  ];
+}
+
+/** D3：把素材视频裁剪/循环到指定时长（供多镜头分段使用，去音频只留画面） */
+export function buildShotTrimCommand(opts: {
+  inputPath: string;
+  seconds: number;
+  outputPath: string;
+}): string[] {
+  // 循环播放素材直到达到 duration（不足时 -stream_loop 兜底，够长时 -t 截断）
+  return [
+    'ffmpeg', '-y',
+    '-stream_loop', '-1',
+    '-i', opts.inputPath,
+    '-t', String(Math.max(1, Math.round(opts.seconds))),
+    '-an',
+    '-c:v', 'libx264', '-crf', '20', '-preset', 'medium',
+    '-pix_fmt', 'yuv420p',
+    '-r', '30',
     opts.outputPath,
   ];
 }
@@ -282,6 +386,7 @@ export function composePlan(opts: ComposeJobOptions): FfmpegPlan {
       fps,
       fontDir: opts.fontDir,
       outputPath: finalVideoPath,
+      pipAssets: opts.pipAssets,
     }),
   );
 

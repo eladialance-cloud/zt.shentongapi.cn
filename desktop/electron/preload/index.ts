@@ -29,7 +29,9 @@ import type {
   OrchestrateSubmitResult,
   OrchestrateInput,
   TeamMemberProfileItem,
-  OrchestrateStepActionPayload
+  OrchestrateStepActionPayload,
+  PlatformAccountApi,
+  PlatformInfo
 } from '../shared/types'
 
 const electronAPI: ElectronAPI = {
@@ -101,6 +103,23 @@ const electronAPI: ElectronAPI = {
   media: {
     fetchBuffer: (url: string) =>
       ipcRenderer.invoke('media:fetch-buffer', url) as Promise<{ data: string; mime: string }>,
+  },
+
+  platformAccount: {
+    getSupportedPlatforms: () =>
+      ipcRenderer.invoke('platform-account:get-platforms') as Promise<PlatformInfo[]>,
+    setupLogin: (platform: string) =>
+      ipcRenderer.invoke('platform-account:setup-login', platform),
+    testLogin: (platform: string) =>
+      ipcRenderer.invoke('platform-account:test-login', platform),
+    openAccount: (platform: string) =>
+      ipcRenderer.invoke('platform-account:open-account', platform),
+    openPublish: (platform: string, payload?: { title?: string; description?: string; tags?: string }) =>
+      ipcRenderer.invoke('platform-account:open-publish', platform, payload),
+    saveSession: (platform: string, cookiesJson: string, displayName?: string) =>
+      ipcRenderer.invoke('platform-account:save-session', platform, cookiesJson, displayName),
+    removeSession: (platform: string) =>
+      ipcRenderer.invoke('platform-account:remove-session', platform),
   },
   modelDefaultsSync: (dto) => ipcRenderer.send('model-defaults:sync', dto),
   hermesSkills: {

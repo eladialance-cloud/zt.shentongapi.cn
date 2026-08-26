@@ -20,6 +20,7 @@ import {
   Select,
   Spin,
   Switch,
+  Table,
   Tabs,
   message
 } from 'antd'
@@ -32,7 +33,9 @@ import {
   RobotOutlined,
   SaveOutlined,
   SettingOutlined,
-  ThunderboltOutlined
+  SoundOutlined,
+  ThunderboltOutlined,
+  UserOutlined
 } from '@ant-design/icons'
 import {
   clearCache,
@@ -41,9 +44,11 @@ import {
   getCacheConfig,
   getNotificationConfig,
   getOralWorkshopConfig,
+  getOralWorkshopPublishPlatforms,
   getRateLimitConfig,
   listOralWorkshopModels,
   listOralWorkshopTemplates,
+  saveOralWorkshopPublishPlatforms,
   testOralWorkshopCapability,
   testOralWorkshopLlm,
   updateOralWorkshopConfig,
@@ -55,6 +60,7 @@ import type {
   CacheLayer,
   NotificationConfig,
   OralWorkshopConfig,
+  PublishPlatformItem,
   RateLimitConfig,
   SystemConfigSection
 } from '@/types/admin-system'
@@ -93,6 +99,34 @@ function parseVoicePool(text?: string): Array<{ speakerId: string; name?: string
   return pool
 }
 
+/** 解析人设预设文本：每行 label|value（B1） */
+function parsePersonaPresets(text?: string): Array<{ label: string; value: string }> {
+  if (!text) return []
+  const list: Array<{ label: string; value: string }> = []
+  for (const line of String(text).split(/[\n\r]+/)) {
+    const parts = line.split('|').map((v) => v.trim())
+    const label = parts[0] || ''
+    const value = parts[1] || parts[0] || ''
+    if (!label) continue
+    list.push({ label, value })
+  }
+  return list
+}
+
+/** 解析 BGM 库文本：每行 name|url|category（E3） */
+function parseBgmLibrary(text?: string): Array<{ id: string; name: string; url: string; category?: string }> {
+  if (!text) return []
+  const list: Array<{ id: string; name: string; url: string; category?: string }> = []
+  for (const line of String(text).split(/[\n\r]+/)) {
+    const parts = line.split('|').map((v) => v.trim())
+    const name = parts[0] || ''
+    const url = parts[1] || ''
+    if (!name || !url) continue
+    list.push({ id: 'bgm-' + list.length + 1, name, url, category: parts[2] || undefined })
+  }
+  return list
+}
+
 interface CacheFormValues {
   l1Ttl: number
   l2Ttl: number
@@ -128,6 +162,16 @@ const CACHE_LAYERS: Array<{ layer: CacheLayer; label: string; desc: string }> = 
   { layer: 'L3', label: 'L3 Qdrant', desc: '向量缓存' }
 ]
 
+/** 口播工坊发布平台默认兜底（后端返回为空/接口失败时使用） */
+const DEFAULT_PUBLISH_PLATFORMS: PublishPlatformItem[] = [
+  { platform: 'douyin', displayName: '抖音', enabled: true, sortOrder: 1, remark: null },
+  { platform: 'kuaishou', displayName: '快手', enabled: true, sortOrder: 2, remark: null },
+  { platform: 'xiaohongshu', displayName: '小红书', enabled: true, sortOrder: 3, remark: null },
+  { platform: 'bilibili', displayName: 'B站', enabled: true, sortOrder: 4, remark: null },
+  { platform: 'xigua', displayName: '西瓜视频', enabled: true, sortOrder: 5, remark: null },
+  { platform: 'wx_channels', displayName: '蝴蝶号', enabled: true, sortOrder: 6, remark: null }
+]
+
 export default function SystemConfigPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -143,6 +187,8 @@ export default function SystemConfigPage() {
   const [templateJson, setTemplateJson] = useState('')
   const [templateCoverUrl, setTemplateCoverUrl] = useState('')
   const [templateSaving, setTemplateSaving] = useState(false)
+  const [publishPlatforms, setPublishPlatforms] = useState<PublishPlatformItem[]>(DEFAULT_PUBLISH_PLATFORMS)
+  const [publishSaving, setPublishSaving] = useState(false)
 
   const [cacheForm] = Form.useForm<CacheFormValues>()
   const [rateLimitForm] = Form.useForm<RateLimitFormValues>()
@@ -267,7 +313,9 @@ export default function SystemConfigPage() {
         embeddingModel: cfgv.embeddingModel || 'doubao-embedding-text-240715',
         voicePoolText: (cfgv.voicePool || [])
           .map((v) => [v.speakerId, v.name || '', v.resourceId || 'seed-tts-2.0'].join('|'))
-          .join('\n')
+          .join('\n'),
+        personaPresetsText: (cfgv.personaPresets || []).map((p) => [p.label, p.value].join('|')).join('\n'),
+        bgmLibraryText: (cfgv.bgmLibrary || []).map((b) => [b.name, b.url, b.category || ''].join('|')).join('\n')
       })
       setVoiceOptions(
         (cfgv.voicePool || []).map((v) => ({
@@ -460,6 +508,8 @@ export default function SystemConfigPage() {
         dhTierV1: { creditsCost: values.dhTierV1?.creditsCost ?? 0 },
         dhTierV2: { creditsCost: values.dhTierV2?.creditsCost ?? 0 },
         voicePool: parseVoicePool(values.voicePoolText),
+        personaPresets: parsePersonaPresets(values.personaPresetsText),
+        bgmLibrary: parseBgmLibrary(values.bgmLibraryText),
         dhEndpoint: values.dhEndpoint || '',
         dhSubmitPath: values.dhSubmitPath || '/digital-human/submit',
         dhQueryPath: values.dhQueryPath || '/digital-human/query',
@@ -482,6 +532,38 @@ export default function SystemConfigPage() {
       message.error('保存失败')
     } finally {
       setSaving(false)
+    }
+  }
+
+  /** 加载口播工坊发布平台开关（接口失败用默认 6 平台兜底，不阻塞页面） */
+  const loadPublishPlatforms = useCallback(async () => {
+    try {
+      const list = await getOralWorkshopPublishPlatforms()
+      if (Array.isArray(list) && list.length > 0) setPublishPlatforms(list)
+    } catch (err) {
+      console.error('[SystemConfig] load publish platforms failed:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadPublishPlatforms()
+  }, [loadPublishPlatforms])
+
+  const updatePublishPlatform = (platform: string, patch: Partial<PublishPlatformItem>) => {
+    setPublishPlatforms((prev) => prev.map((p) => (p.platform === platform ? { ...p, ...patch } : p)))
+  }
+
+  /** 保存口播工坊发布平台开关（独立保存，不触碰口播工坊表单） */
+  const handleSavePublishPlatforms = async () => {
+    setPublishSaving(true)
+    try {
+      await saveOralWorkshopPublishPlatforms(publishPlatforms)
+      message.success('发布平台开关已保存')
+    } catch (err) {
+      console.error('[SystemConfig] save publish platforms failed:', err)
+      message.error('保存失败：' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setPublishSaving(false)
     }
   }
 
@@ -819,6 +901,7 @@ export default function SystemConfigPage() {
           </Card>
         )}
         {tab === 'oral_workshop' && (
+          <>
           <Card className={styles.card} bordered={false}>
             <div className={styles.sectionTitle}>
               <ThunderboltOutlined /> 口播工坊引擎开关
@@ -1101,6 +1184,28 @@ export default function SystemConfigPage() {
               </div>
 
               <div className={styles.sectionTitle} style={{ marginTop: 16 }}>
+                <UserOutlined /> 人设预设（IP 大脑 · 桌面端可点选）
+              </div>
+              <Form.Item
+                name="personaPresetsText"
+                label="人设预设批量编辑"
+                extra="每行一条：label|value。label=展示名（如 老板型 IP），value=完整人设描述（点击后填入人设输入框）。留空=使用系统默认 5 组预设。"
+              >
+                <Input.TextArea rows={5} placeholder={'老板型 IP|老板型IP：有格局、敢说真话，讲经营/行业真相\n知识干货型|知识干货型IP：严谨专业，输出方法论与清单'} />
+              </Form.Item>
+
+              <div className={styles.sectionTitle} style={{ marginTop: 16 }}>
+                <SoundOutlined /> BGM 库（背景音乐 · 桌面端创建任务可选）
+              </div>
+              <Form.Item
+                name="bgmLibraryText"
+                label="BGM 库批量编辑"
+                extra="每行一条：name|url|category（可选）。url 为可直接下载的 mp3 公网地址或 /uploads/ 路径；桌面端选曲后叠加到成片。留空=无 BGM 库。"
+              >
+                <Input.TextArea rows={5} placeholder={'轻快卡点|https://example.com/bgm1.mp3|卡点\n温柔钢琴|https://example.com/bgm2.mp3|舒缓'} />
+              </Form.Item>
+
+              <div className={styles.sectionTitle} style={{ marginTop: 16 }}>
                 <RobotOutlined /> 火山数字人（云端）
               </div>
               <div className={styles.levelGrid} style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
@@ -1330,6 +1435,84 @@ export default function SystemConfigPage() {
               />
             </Modal>
           </Card>
+
+          <Card className={styles.card} bordered={false} style={{ marginTop: 16 }}>
+            <div className={styles.sectionTitle}>
+              <ThunderboltOutlined /> 发布平台开关
+            </div>
+            <div style={{ color: '#8b949e', fontSize: 13, marginBottom: 12 }}>
+              只控制平台是否开放给用户扫码绑定；账号绑定在桌面端完成。
+            </div>
+            <Table<PublishPlatformItem>
+              rowKey="platform"
+              dataSource={publishPlatforms}
+              pagination={false}
+              size="middle"
+              columns={[
+                {
+                  title: '平台',
+                  dataIndex: 'platform',
+                  width: 150,
+                  render: (v: string) => <span style={{ fontWeight: 600 }}>{v}</span>
+                },
+                {
+                  title: '显示名',
+                  dataIndex: 'displayName',
+                  render: (v: string, record: PublishPlatformItem) => (
+                    <Input
+                      value={v}
+                      maxLength={32}
+                      onChange={(e) => updatePublishPlatform(record.platform, { displayName: e.target.value })}
+                    />
+                  )
+                },
+                {
+                  title: '排序',
+                  dataIndex: 'sortOrder',
+                  width: 110,
+                  render: (v: number, record: PublishPlatformItem) => (
+                    <InputNumber
+                      min={1}
+                      max={99}
+                      value={v}
+                      onChange={(val) => updatePublishPlatform(record.platform, { sortOrder: val ?? 1 })}
+                      style={{ width: '100%' }}
+                    />
+                  )
+                },
+                {
+                  title: '启用',
+                  dataIndex: 'enabled',
+                  width: 100,
+                  render: (v: boolean, record: PublishPlatformItem) => (
+                    <Switch
+                      checked={v}
+                      checkedChildren="开"
+                      unCheckedChildren="关"
+                      onChange={(checked) => updatePublishPlatform(record.platform, { enabled: checked })}
+                    />
+                  )
+                },
+                {
+                  title: '备注',
+                  dataIndex: 'remark',
+                  render: (v?: string | null) => v || '—'
+                }
+              ]}
+            />
+            <div style={{ marginTop: 16 }}>
+              <Button
+                type="primary"
+                icon={<SaveOutlined />}
+                onClick={() => void handleSavePublishPlatforms()}
+                loading={publishSaving}
+                className={styles.primaryBtn}
+              >
+                保存发布平台开关
+              </Button>
+            </div>
+          </Card>
+          </>
         )}
       </Spin>
     </div>

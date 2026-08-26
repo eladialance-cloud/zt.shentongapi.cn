@@ -12,6 +12,7 @@ import { Repository } from 'typeorm';
 import { OralWorkshopJobEntity } from './entities/oral-workshop-job.entity';
 import { OralWorkshopStepEntity } from './entities/oral-workshop-step.entity';
 import { PublishService } from '../channel/services/publish.service';
+import { OralWorkshopLlmService } from './llm';
 import { deriveTitle } from './compose-inputs';
 
 export interface PublishPackage {
@@ -62,6 +63,7 @@ export class OralWorkshopPublisher {
     @InjectRepository(OralWorkshopStepEntity)
     private readonly stepRepo: Repository<OralWorkshopStepEntity>,
     private readonly publishService: PublishService,
+    private readonly llm: OralWorkshopLlmService,
   ) {}
 
   /** 导出发布包（幂等） */
@@ -99,16 +101,27 @@ export class OralWorkshopPublisher {
     const step = await this.stepRepo.findOne({ where: { jobId: job.id, step: 'titleCover' } });
     const titleArtifact = (step?.resultJson ?? {}) as { title_h1?: string; title_h2?: string };
     const fallback = deriveTitle(script);
-    const h1 = titleArtifact.title_h1 || fallback.h1;
-    const h2 = titleArtifact.title_h2 || fallback.h2;
-    const description = [h1, h2].filter(Boolean).concat([script.slice(0, 200)]).filter(Boolean).join('\n');
+    // P0-F1：AI 生成发布包（标题/副标题/发布描述/话题标签），失败降级现有拼接
+    let ai: { title: string; subtitle: string; description: string; topic_tags: string[] } | null = null;
+    if (this.llm && script.trim()) {
+      try {
+        ai = await this.llm.generatePublishPackage(script);
+      } catch (err) {
+        this.logger.warn('[oral-workshop] AI 发布包生成失败，降级拼接: ' + (err as Error).message);
+      }
+    }
+    const h1 = ai?.title || titleArtifact.title_h1 || fallback.h1;
+    const h2 = ai?.subtitle || titleArtifact.title_h2 || fallback.h2;
+    const description =
+      ai?.description || [h1, h2].filter(Boolean).concat([script.slice(0, 200)]).filter(Boolean).join('\n');
+    const topic_tags = ai?.topic_tags?.length ? ai.topic_tags : deriveTopicTags(script);
     return {
       job_id: job.id,
       video_url: job.videoUrl ?? '',
       title: h1,
       subtitle: h2,
       description,
-      topic_tags: deriveTopicTags(script),
+      topic_tags,
       cover_url: job.coverUrl ?? undefined,
       suggested_time: suggestedPublishTime(),
       target_platforms: ['douyin'],

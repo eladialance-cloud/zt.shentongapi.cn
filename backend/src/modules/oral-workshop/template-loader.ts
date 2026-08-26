@@ -24,6 +24,10 @@ export interface TemplateTextStyle {
   /** 元素锚点（相对画布中心/左上，按模板语义） */
   position: [number, number];
   bold?: boolean;
+  /** E5：斜体渲染（drawtext italic=1 / ASS i1） */
+  italic?: boolean;
+  /** E5：描边（drawtext borderw/bordercolor / ASS Outline） */
+  stroke?: { color: string; width: number };
   shadow?: TemplateShadow;
 }
 
@@ -62,6 +66,8 @@ export interface OralWorkshopTemplate {
     style: TemplateTextStyle;
     animation_options?: string[];
     highlight_style?: { color: string; bold?: boolean };
+    /** 高亮关键词（成片字幕中按 highlight_style 高亮；模板 JSON 可配） */
+    highlight_keywords?: string[];
   };
   pip_config?: { position: string; scale: number };
   content_prompts?: { h1?: string; h2?: string; subtitles?: string };

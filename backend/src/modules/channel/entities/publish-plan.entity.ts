@@ -31,6 +31,18 @@ export class PublishPlanEntity extends BaseEntity {
   })
   status: "draft" | "pending_review" | "approved" | "rejected" | "published" | "failed";
 
+  /** 发布状态跟踪（F5：unpublish/publishing/success/failed/partial） */
+  @Column({ name: "publish_status", type: "varchar", length: 16, default: "unpublish" })
+  publishStatus: "unpublish" | "draft" | "publishing" | "success" | "failed" | "partial";
+
+  /** 发布账号（F4a：publish_accounts.id，发布到该平台账号） */
+  @Column({ name: "account_id", type: "bigint", nullable: true })
+  accountId?: number | null;
+
+  /** 批量发布账号（P4：publish_accounts.id 数组，多选批量发布） */
+  @Column({ name: "account_ids", type: "json", nullable: true })
+  accountIds?: number[] | null;
+
   @Column({ name: "review_status", type: "enum",
     enum: ["pending", "approved", "rejected"],
     default: "pending",

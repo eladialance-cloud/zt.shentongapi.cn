@@ -22,6 +22,12 @@ function makeStepRepo(rows: any[]) {
   return { findOne: async ({ where }: any) => rows.find((r) => r.step === where.step) ?? null };
 }
 
+function fakeLlm() {
+  return {
+    generatePublishPackage: async () => null,
+  };
+}
+
 function makePublishService() {
   const created: any[] = [];
   return {
@@ -49,7 +55,7 @@ describe('OralWorkshopPublisher', () => {
     const { repo: jobRepo, saved } = makeJobRepo(job);
     const stepRepo = makeStepRepo([{ step: 'titleCover', resultJson: { title_h1: '主标题', title_h2: '副标题' } }]);
     const { service: publishService, created } = makePublishService();
-    const pub = new OralWorkshopPublisher(jobRepo as any, stepRepo as any, publishService as any);
+    const pub = new OralWorkshopPublisher(jobRepo as any, stepRepo as any, publishService as any, fakeLlm() as any);
     const pkg = await pub.exportPackage(7, 1);
     assert.equal(pkg.job_id, 1);
     assert.equal(pkg.title, '主标题');
@@ -74,7 +80,7 @@ describe('OralWorkshopPublisher', () => {
     const { repo: jobRepo, saved } = makeJobRepo(job);
     const stepRepo = makeStepRepo([]);
     const { service: publishService, created } = makePublishService();
-    const pub = new OralWorkshopPublisher(jobRepo as any, stepRepo as any, publishService as any);
+    const pub = new OralWorkshopPublisher(jobRepo as any, stepRepo as any, publishService as any, fakeLlm() as any);
     const pkg = await pub.exportPackage(7, 1);
     assert.equal(pkg.plan_id, 42);
     assert.equal(created.length, 0);
@@ -86,7 +92,7 @@ describe('OralWorkshopPublisher', () => {
     const { repo: jobRepo } = makeJobRepo(job);
     const stepRepo = makeStepRepo([]);
     const { service: publishService } = makePublishService();
-    const pub = new OralWorkshopPublisher(jobRepo as any, stepRepo as any, publishService as any);
+    const pub = new OralWorkshopPublisher(jobRepo as any, stepRepo as any, publishService as any, fakeLlm() as any);
     await assert.rejects(() => pub.exportPackage(7, 1), /任务未完成/);
   });
 
@@ -95,7 +101,7 @@ describe('OralWorkshopPublisher', () => {
     const { repo: jobRepo } = makeJobRepo(job);
     const stepRepo = makeStepRepo([]);
     const { service: publishService } = makePublishService();
-    const pub = new OralWorkshopPublisher(jobRepo as any, stepRepo as any, publishService as any);
+    const pub = new OralWorkshopPublisher(jobRepo as any, stepRepo as any, publishService as any, fakeLlm() as any);
     await assert.rejects(() => pub.exportPackage(7, 1), /缺少成片/);
   });
 
@@ -103,7 +109,7 @@ describe('OralWorkshopPublisher', () => {
     const { repo: jobRepo } = makeJobRepo(null);
     const stepRepo = makeStepRepo([]);
     const { service: publishService } = makePublishService();
-    const pub = new OralWorkshopPublisher(jobRepo as any, stepRepo as any, publishService as any);
+    const pub = new OralWorkshopPublisher(jobRepo as any, stepRepo as any, publishService as any, fakeLlm() as any);
     await assert.rejects(() => pub.exportPackage(7, 999), /任务不存在/);
   });
 
@@ -112,7 +118,7 @@ describe('OralWorkshopPublisher', () => {
     const { repo: jobRepo } = makeJobRepo(job);
     const stepRepo = makeStepRepo([]);
     const { service: publishService } = makePublishService();
-    const pub = new OralWorkshopPublisher(jobRepo as any, stepRepo as any, publishService as any);
+    const pub = new OralWorkshopPublisher(jobRepo as any, stepRepo as any, publishService as any, fakeLlm() as any);
     const pkg = await pub.exportPackage(7, 1);
     assert.ok(pkg.title.length > 0);
     assert.ok(pkg.topic_tags.length > 0);

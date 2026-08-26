@@ -29,6 +29,8 @@ function makeFakeService() {
     nextPendingStepOf: async () => null,
     getStepResults: async () => ({}),
     markStepRunning: async (_jobId: number, step: string) => { calls.running.push(step); },
+    parseShots: () => null,
+    parsePipAssets: () => null,
     markStepDone: async (_jobId: number, step: string, result?: Record<string, unknown>) => { calls.done.push({ step, result }); },
     markStepFailed: async (_jobId: number, step: string, error: string) => { calls.failed.push({ step, error }); },
   };

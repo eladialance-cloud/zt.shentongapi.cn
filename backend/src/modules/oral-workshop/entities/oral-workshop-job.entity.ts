@@ -54,6 +54,46 @@ export class OralWorkshopJobEntity {
   @Column({ type: 'varchar', length: 512, nullable: true })
   persona?: string | null;
 
+  /** 口播风格（B4：人设多维度字段落库） */
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  style?: string | null;
+
+  /** 目标受众 */
+  @Column({ name: 'target_audience', type: 'varchar', length: 255, nullable: true })
+  targetAudience?: string | null;
+
+  /** 创作目标（涨粉/带货/科普…） */
+  @Column({ type: 'varchar', length: 2000, nullable: true })
+  goal?: string | null;
+
+  /** 语速（0.5-1.5，用户级，默认 0.9） */
+  @Column({ name: 'voice_speech_rate', type: 'decimal', precision: 4, scale: 2, nullable: true })
+  voiceSpeechRate?: string | null;
+
+  /** 人声音量增益（-20~20） */
+  @Column({ name: 'voice_loudness_rate', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  voiceLoudnessRate?: string | null;
+
+  /** 情感（高兴/愤怒/悲伤/害怕/平静/无） */
+  @Column({ name: 'voice_emotion', type: 'varchar', length: 16, nullable: true })
+  voiceEmotion?: string | null;
+
+  /** BGM（E3：后台音乐库条目或用户选择 URL） */
+  @Column({ name: 'bgm_url', type: 'varchar', length: 512, nullable: true })
+  bgmUrl?: string | null;
+
+  /** BGM 音量（0-1，默认 0.2） */
+  @Column({ name: 'bgm_volume', type: 'decimal', precision: 3, scale: 2, nullable: true })
+  bgmVolume?: string | null;
+
+  /** 画中画素材（P3 D4/E6：JSON 数组 [{url, position, scale, startSec?, endSec?}]） */
+  @Column({ name: 'pip_assets', type: 'text', nullable: true })
+  pipAssets?: string | null;
+
+  /** 删除时间（F3：软删除任务） */
+  @Column({ name: 'deleted_at', type: 'datetime', nullable: true })
+  deletedAt?: Date | null;
+
   @Column({ name: 'digital_human_id', type: 'bigint', nullable: true, transformer: bigintTransformer })
   digitalHumanId?: number | null;
 
@@ -70,6 +110,14 @@ export class OralWorkshopJobEntity {
   /** 数字人清晰度档位：V1=标准 / V2=高清（用户任务级选择，留空=后台默认） */
   @Column({ name: 'dh_model_version', type: 'varchar', length: 8, nullable: true })
   dhModelVersion?: 'V1' | 'V2' | null;
+
+  /** 数字人生成方式（D6）：auto=自动降级（默认）/ cloud=强制云端火山 / local=强制本地卡片视频 */
+  @Column({ name: 'dh_generation_mode', type: 'varchar', length: 8, default: 'auto' })
+  dhGenerationMode: 'auto' | 'cloud' | 'local';
+
+  /** 多镜头拼接（D3：JSON 数组 [{digitalHumanId, seconds}]，列表从上到下即拼接顺序） */
+  @Column({ type: 'text', nullable: true })
+  shots?: string | null;
 
   @Column({ name: 'template_id', type: 'bigint', nullable: true, transformer: bigintTransformer })
   templateId?: number | null;
@@ -105,6 +153,17 @@ export class OralWorkshopJobEntity {
   /** 双语字幕开关（true = videoEdit 渲染中英双行字幕，LLM 翻译） */
   @Column({ type: 'boolean', default: false })
   bilingual: boolean;
+
+  /** 字幕轨开关（E7：false = 成片不烧录字幕） */
+  @Column({ name: 'subtitles_enabled', type: 'boolean', default: true })
+  subtitlesEnabled: boolean;
+  /** E4：字幕文本覆盖（多行文本，每行一条字幕；留空=自动分段） */
+  @Column({ name: 'subtitles_override', type: 'text', nullable: true })
+  subtitlesOverride?: string | null;
+
+  /** BGM 轨开关（E7：false = 即使配置了 BGM 也不混入） */
+  @Column({ name: 'bgm_enabled', type: 'boolean', default: true })
+  bgmEnabled: boolean;
 
   /** 字幕目标语言（空/zh=纯中文；en/ja/vi 等=双语对照字幕；zh-HK/zh-WU 等=方言双语） */
   @Column({ name: 'target_lang', type: 'varchar', length: 16, nullable: true })

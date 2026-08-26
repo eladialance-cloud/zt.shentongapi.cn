@@ -153,6 +153,14 @@ export interface OralWorkshopConfig {
   voicePool?: Array<{ speakerId: string; name?: string; resourceId?: string }>
   /** 音色池批量编辑文本（仅表单用：每行 speaker_id|名称|resourceId，保存时解析为 voicePool） */
   voicePoolText?: string
+  /** 人设预设（B1：桌面端 IP 大脑可点选；每项 label=展示名 value=人设描述） */
+  personaPresets?: Array<{ label: string; value: string }>
+  /** 人设预设批量编辑文本（仅表单用：每行 label|value，保存时解析为 personaPresets） */
+  personaPresetsText?: string
+  /** BGM 库（E3：桌面端创建任务可选背景音乐） */
+  bgmLibrary?: Array<{ id: string; name: string; url: string; category?: string }>
+  /** BGM 库批量编辑文本（仅表单用：每行 name|url|category，保存时解析为 bgmLibrary） */
+  bgmLibraryText?: string
 
   // ===== 火山数字人（云端）=====
   /** 数字人服务端点 */
@@ -296,4 +304,17 @@ export interface AnnouncementQuery {
 }
 
 /** 复用通用分页结果 */
+/** 口播工坊发布平台开关项（GET/PUT /admin/system/oral-workshop/publish-platforms） */
+export interface PublishPlatformItem {
+  /** 平台标识（douyin/kuaishou/xiaohongshu/bilibili/xigua/wx_channels） */
+  platform: string
+  /** 平台显示名 */
+  displayName: string
+  /** 是否开放给用户扫码绑定 */
+  enabled: boolean
+  /** 排序（小在前） */
+  sortOrder: number
+  /** 备注（只读展示） */
+  remark?: string | null
+}
 export type { AdminPaginatedResult }

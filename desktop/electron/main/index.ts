@@ -59,6 +59,15 @@ import { buildMemberProfiles, type MemberRow } from './hermes-member-profile'
 import { listSkills, searchSkills, installSkill, updateSkills, uninstallSkill, checkSkills, installSkillLocal } from './hermes-skills'
 import { getEvolution } from './hermes-evolution'
 import { handleMemoryOp } from './hermes-memory'
+import {
+  getSupportedPlatforms,
+  openAccount,
+  openPublish,
+  removeSession,
+  saveSession,
+  setupLogin,
+  testLogin,
+} from './platform-login'
 
 // ===== Hermes 编排依赖（团队驱动执行） =====
 
@@ -794,6 +803,36 @@ ipcMain.handle(
     }
     return result
   })
+
+  // 发布平台账号（桌面端扫码绑定登录态；管理后台只控制平台开关）
+  ipcMain.handle('platform-account:get-platforms', () => getSupportedPlatforms())
+  ipcMain.handle('platform-account:setup-login', (_e, platform: string) =>
+    setupLogin(typeof platform === 'string' ? platform : ''),
+  )
+  ipcMain.handle('platform-account:test-login', (_e, platform: string) =>
+    testLogin(typeof platform === 'string' ? platform : ''),
+  )
+  ipcMain.handle('platform-account:open-account', (_e, platform: string) =>
+    openAccount(typeof platform === 'string' ? platform : ''),
+  )
+  ipcMain.handle(
+    'platform-account:open-publish',
+    (_e, platform: string, payload?: { title?: string; description?: string; tags?: string }) =>
+      openPublish(typeof platform === 'string' ? platform : '', payload),
+  )
+  ipcMain.handle(
+    'platform-account:save-session',
+    (_e, platform: string, cookiesJson: string, displayName?: string) =>
+      saveSession(
+        typeof platform === 'string' ? platform : '',
+        typeof cookiesJson === 'string' ? cookiesJson : '',
+        typeof displayName === 'string' ? displayName : undefined,
+      ),
+  )
+  ipcMain.handle('platform-account:remove-session', (_e, platform: string) =>
+    removeSession(typeof platform === 'string' ? platform : ''),
+  )
+
   ipcMain.handle('service:getStatus', () => serviceManager.getAllStatus())
   ipcMain.handle('service:status', (_event, name: ServiceName) =>
     serviceManager.getInfo(name)

@@ -181,9 +181,32 @@ function makeFakes(init: { jobs?: any[]; steps?: any[] } = {}): FakeRepos {
   return { jobs, steps, calls, billing, jobRepo, stepRepo };
 }
 
-function fakeMembership() {
+function fakeAccountRepo() {
   return {
-    ensureFeature: async () => ({ level: 'free', status: 'active', features: {}, expiresAt: null, graceDaysLeft: 0 }),
+    find: async () => [],
+    findOne: async () => null,
+    create: (d: any) => d,
+    save: async (e: any) => e,
+    remove: async () => undefined,
+  };
+}
+
+function fakeMediaRepo() {
+  return {
+    find: async () => [],
+    findOne: async () => null,
+    create: (d: any) => d,
+    save: async (e: any) => e,
+    remove: async () => undefined,
+  };
+}
+
+function fakeSystemLlm() {
+  return {
+    stt: async () => 'x',
+    chat: async () => 'x',
+    embed: async () => [[]],
+    resolveTarget: async () => null,
   };
 }
 
@@ -219,9 +242,11 @@ function newService(f: FakeRepos): OralWorkshopService {
     f.stepRepo,
     fakeVoiceRepo() as any,
     fakeDhRepo() as any,
+    fakeAccountRepo() as any,
+    fakeMediaRepo() as any,
     f.billing,
-    fakeMembership() as any,
     fakeLlm() as any,
+    fakeSystemLlm() as any,
   );
 }
 

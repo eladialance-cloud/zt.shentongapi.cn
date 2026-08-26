@@ -57,6 +57,8 @@ export interface VoiceCloneOptions {
   speedRatio?: number;
   /** 情绪文本 → context_texts 语音指令（仅标准音色支持） */
   emotionText?: string;
+  /** 情感参考音频 URL（C6：复刻时附带的情绪素材，可选，透传 extra_params.emotion_audio） */
+  emotionRefAudio?: string;
   /** 用户标识（用于生成自定义音色代号） */
   userId?: number;
 }
@@ -65,6 +67,8 @@ export interface VoiceCloneResult {
   speakerId?: string;
   /** 训练状态：1=训练中 2=成功 4=可用（未复刻时 undefined） */
   cloneStatus?: number;
+  /** 复刻试听音频（上游 demo_audio，可能是 URL；非 URL 时为空） */
+  demoAudio?: string;
   /** TTS 合成音频 buffer（调用方落盘/上传 OSS） */
   audioBuffer: Buffer;
   mimeType: string;
@@ -136,7 +140,7 @@ export class VoiceCloneAdapter {
   }
 
   /** 声音复刻：JSON 提交 base64 参考音频 → speaker_id + 训练状态 */
-  async cloneSpeaker(opts: VoiceCloneOptions): Promise<{ speakerId: string; status?: number }> {
+  async cloneSpeaker(opts: VoiceCloneOptions): Promise<{ speakerId?: string; status?: number; demoAudio?: string }> {
     if (opts.speakerId) return { speakerId: opts.speakerId };
     const cfg = this.cfg();
     const audio = await this.loadRefAudio(opts.refAudioUrl);
@@ -154,6 +158,7 @@ export class VoiceCloneAdapter {
         demo_text: (opts.refAudioText || '你好').slice(0, 300),
         enable_audio_denoise: true,
         disable_volume_normalization: false,
+        ...(opts.emotionRefAudio ? { emotion_audio: opts.emotionRefAudio } : {}),
       },
     };
     const resp = await fetch((cfg.cloneEndpoint || DEFAULT_VOICE_CLONE_ENDPOINT).replace(/\/+$/, ''), {
@@ -185,7 +190,9 @@ export class VoiceCloneAdapter {
     if (status === 1) {
       this.logger.warn('[oral-workshop] 声音复刻训练中（status=Training），音色 ' + speakerId + ' 完成后可合成');
     }
-    return { speakerId, status };
+    const rawDemo = typeof data.demo_audio === 'string' ? data.demo_audio : '';
+    const demoAudio = /^https?:\/\//.test(rawDemo) ? rawDemo : undefined;
+    return { speakerId, status, demoAudio };
   }
 
   /** TTS 合成：HTTP Chunked 流式收集 base64 音频 → Buffer（一次性输入完整文本） */

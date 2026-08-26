@@ -15,6 +15,7 @@ import { Public } from '../../common/decorators/public.decorator';
 import { AdminGuard } from '../admin-auth/admin.guard';
 import { AdminSystemService } from './admin-system.service';
 import { SystemLlmService } from '../oral-workshop/system-llm.service';
+import { OralWorkshopService } from '../oral-workshop/oral-workshop.service';
 import { listTemplates, saveCustomTemplate, deleteCustomTemplate, toTemplateMeta, TemplateLoadError } from '../oral-workshop/template-loader';
 import { UpdateSystemConfigDto } from './dto/update-system-config.dto';
 import { ClearCacheDto } from './dto/clear-cache.dto';
@@ -39,6 +40,7 @@ export class AdminSystemController {
   constructor(
     private readonly service: AdminSystemService,
     private readonly systemLlm: SystemLlmService,
+    private readonly oralWorkshopService: OralWorkshopService,
   ) {}
 
   @Get('config')
@@ -110,6 +112,20 @@ export class AdminSystemController {
       source: body?.source,
     });
   }
+  @Get('oral-workshop/publish-platforms')
+  @ApiOperation({ summary: '口播工坊发布平台开关列表（管理后台）' })
+  listPublishPlatforms() {
+    return this.oralWorkshopService.listPublishPlatforms();
+  }
+
+  @Put('oral-workshop/publish-platforms')
+  @ApiOperation({ summary: '保存口播工坊发布平台开关（管理后台）' })
+  savePublishPlatforms(
+    @Body() body: { items: Array<{ platform: string; displayName: string; enabled: boolean; sortOrder: number; remark?: string }> },
+  ) {
+    return this.oralWorkshopService.savePublishPlatforms(body?.items ?? []);
+  }
+
   @Post('cache/clear')
   @ApiOperation({ summary: '清空缓存' })
   async clearCache(@Body() dto: ClearCacheDto) {

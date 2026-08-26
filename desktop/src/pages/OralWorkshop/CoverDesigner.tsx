@@ -94,11 +94,13 @@ export default function CoverDesigner(props: {
   coverUrl?: string | null
   coverH1?: string | null
   coverH2?: string | null
+  /** 上次保存的设计配置 JSON（打开时恢复模板/字号/颜色/位置） */
+  coverConfig?: string | null
   open: boolean
   onClose: () => void
   onSaved: (job: OralWorkshopJob) => void
 }) {
-  const { jobId, videoUrl, coverUrl, coverH1, coverH2, open, onClose, onSaved } = props
+  const { jobId, videoUrl, coverUrl, coverH1, coverH2, coverConfig, open, onClose, onSaved } = props
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [config, setConfig] = useState<CoverDesignConfig>({
     templateId: 't1',
@@ -117,6 +119,7 @@ export default function CoverDesigner(props: {
     letterSpacing: 4,
     align: 'center',
     position: 'middle',
+    titleOffset: 0,
   })
   const [bgMedia, setBgMedia] = useState<{ url: string; mime: string } | null>(null)
   const [bgError, setBgError] = useState('')
@@ -125,16 +128,46 @@ export default function CoverDesigner(props: {
   const [uploadPercent, setUploadPercent] = useState(0)
   const [exporting, setExporting] = useState(false)
 
-  /** 打开时初始化：标题回填 + 背景（优先任务封面=视频首帧） */
+  /** 打开时初始化：恢复上次设计配置（coverConfig）→ 标题回填 + 背景（优先任务封面=视频首帧） */
   useEffect(() => {
     if (!open) return
-    setConfig((c) => ({
-      ...c,
-      h1: coverH1 || c.h1,
-      h2: coverH2 || c.h2,
-      background: coverUrl || videoUrl ? 'video-frame' : 'color',
-    }))
-  }, [open, coverH1, coverH2, coverUrl, videoUrl])
+    setConfig(() => {
+      const base: CoverDesignConfig = {
+        templateId: 't1',
+        background: 'video-frame',
+        backgroundValue: '',
+        bgColor: '#0A1628',
+        h1: '',
+        h2: '',
+        tag: '',
+        fontSizeH1: 96,
+        fontSizeH2: 52,
+        h1Color: '#FFE466',
+        h2Color: '#FFFFFF',
+        strokeColor: '#000000',
+        strokeWidth: 0,
+        letterSpacing: 4,
+        align: 'center',
+        position: 'middle',
+        titleOffset: 0,
+      }
+      let restored = base
+      if (coverConfig) {
+        try {
+          const parsed = JSON.parse(coverConfig) as Partial<CoverDesignConfig>
+          if (parsed && typeof parsed === 'object') restored = { ...base, ...parsed }
+        } catch {
+          // 忽略损坏的设计配置，使用默认值
+        }
+      }
+      return {
+        ...restored,
+        h1: coverH1 || restored.h1 || '',
+        h2: coverH2 || restored.h2 || '',
+        background: coverUrl || videoUrl ? 'video-frame' : 'color',
+      }
+    })
+  }, [open, coverH1, coverH2, coverUrl, videoUrl, coverConfig])
 
   /** 背景图拉取：video-frame 用 coverUrl（首帧）→ videoUrl 兜底；image 用上传图 */
   useEffect(() => {
@@ -227,9 +260,10 @@ export default function CoverDesigner(props: {
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
     }
 
-    // 3. 文本
+    // 3. 文本（D5：支持标题垂直偏移微调）
     const yBase =
-      config.position === 'top' ? 300 : config.position === 'bottom' ? CANVAS_H - 420 : CANVAS_H * 0.42
+      (config.position === 'top' ? 300 : config.position === 'bottom' ? CANVAS_H - 420 : CANVAS_H * 0.42) +
+      (config.titleOffset || 0)
     const xBase = CANVAS_W / 2
     const fontFamily = "'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif"
     ctx.textBaseline = 'middle'
@@ -495,6 +529,10 @@ export default function CoverDesigner(props: {
             <div className={styles.cdColorRow}>
               <span>描边颜色</span>
               <input type="color" value={config.strokeColor} onChange={(e) => setConfig((c) => ({ ...c, strokeColor: e.target.value }))} />
+            </div>
+            <div className={styles.cdStyleRow}>
+              <span>标题垂直偏移</span>
+              <Slider min={0} max={400} step={10} value={config.titleOffset || 0} onChange={(v) => setConfig((c) => ({ ...c, titleOffset: v }))} />
             </div>
             <div className={styles.cdStyleRow}>
               <span>位置</span>

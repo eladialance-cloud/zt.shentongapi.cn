@@ -14,6 +14,8 @@
 //   POST   /admin/announcements/:id/publish    发布公告
 //   POST   /admin/announcements/:id/unpublish  撤回公告
 //   DELETE /admin/announcements/:id            删除公告
+//   GET    /admin/system/oral-workshop/publish-platforms  口播工坊发布平台开关列表
+//   PUT    /admin/system/oral-workshop/publish-platforms  保存口播工坊发布平台开关
 
 import { adminRequest } from './admin-auth-api'
 import type { AdminPaginatedResult } from '@/types/admin-auth'
@@ -26,6 +28,7 @@ import type {
   CreateTenantDto,
   NotificationConfig,
   OralWorkshopConfig,
+  PublishPlatformItem,
   RateLimitConfig,
   SystemConfigSection,
   Tenant,
@@ -135,6 +138,17 @@ export async function testOralWorkshopCapability(body: {
   })
 }
 
+/** 口播工坊发布平台开关列表（平台是否开放给用户扫码绑定） */
+export async function getOralWorkshopPublishPlatforms(): Promise<PublishPlatformItem[]> {
+  return adminRequest<PublishPlatformItem[]>('get', '/admin/system/oral-workshop/publish-platforms')
+}
+
+/** 保存口播工坊发布平台开关（全量提交） */
+export async function saveOralWorkshopPublishPlatforms(items: PublishPlatformItem[]): Promise<{ ok: boolean }> {
+  return adminRequest<{ ok: boolean }>('put', '/admin/system/oral-workshop/publish-platforms', {
+    data: { items }
+  })
+}
 /** 更新口播工坊引擎配置 */
 export async function updateOralWorkshopConfig(cfg: OralWorkshopConfig): Promise<void> {
   await updateSystemConfig({ section: 'oral_workshop', config: cfg as unknown as Record<string, unknown> })
@@ -226,6 +240,8 @@ export default {
   getRateLimitConfig,
   getNotificationConfig,
   getOralWorkshopConfig,
+  getOralWorkshopPublishPlatforms,
+  saveOralWorkshopPublishPlatforms,
   listOralWorkshopModels,
   testOralWorkshopCapability,
   updateOralWorkshopConfig,

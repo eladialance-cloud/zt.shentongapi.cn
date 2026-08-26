@@ -1,4 +1,4 @@
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min, Validate, ValidatorConstraint, type ValidatorConstraintInterface, type ValidationArguments } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Max, MaxLength, Min, Validate, ValidatorConstraint, type ValidatorConstraintInterface, type ValidationArguments } from 'class-validator';
 import { validateMediaRef } from '../ffmpeg';
 
 /** 媒体引用白名单校验：只允许公网 http(s) 链接或以 /uploads/ 开头的服务端路径（防任意文件读取） */
@@ -99,10 +99,93 @@ export class CreateOralWorkshopJobDto {
   @MaxLength(128)
   speakerId?: string;
 
+  /** 语速（0.5-1.5，默认 0.9；用户级覆盖后台/环境变量） */
+  @IsOptional()
+  @IsNumber()
+  @Min(0.5)
+  @Max(1.5)
+  voiceSpeechRate?: number;
+
+  /** 人声音量增益（-20~20，默认 0） */
+  @IsOptional()
+  @IsNumber()
+  @Min(-20)
+  @Max(20)
+  voiceLoudnessRate?: number;
+
+  /** 情感（高兴/愤怒/悲伤/害怕/平静/无；映射火山 context_texts） */
+  @IsOptional()
+  @IsIn(['高兴', '愤怒', '悲伤', '害怕', '平静', '无'])
+  voiceEmotion?: string;
+
+  /** BGM（E3：后台音乐库条目 URL 或自定义 URL） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  @Validate(SafeMediaRefConstraint)
+  bgmUrl?: string;
+
+  /** BGM 音量（0-1，默认 0.2） */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  bgmVolume?: number;
+
+  /** 画中画素材（P3 D4/E6：叠加到成片的图片/视频，位置/缩放/时间可选） */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(4)
+  pipAssets?: Array<{
+    /** 素材 URL（/uploads/ 或公网 http(s)） */
+    url: string;
+    /** 位置：tl=左上 / tr=右上 / bl=左下 / br=右下 / center=居中 */
+    position?: 'tl' | 'tr' | 'bl' | 'br' | 'center';
+    /** 缩放（0.1-1，相对原视频宽度比例，默认 0.25） */
+    scale?: number;
+    /** 起始秒（可选） */
+    startSec?: number;
+    /** 结束秒（可选，需大于 startSec） */
+    endSec?: number;
+  }>;
+
   /** 数字人清晰度档位：V1=标准 / V2=高清（留空=后台默认） */
   @IsOptional()
   @IsIn(['V1', 'V2'])
   dhModelVersion?: 'V1' | 'V2';
+
+  /** 数字人生成方式（D6）：auto=自动降级（默认）/ cloud=强制云端火山 / local=强制本地卡片视频 */
+  @IsOptional()
+  @IsIn(['auto', 'cloud', 'local'])
+  dhGenerationMode?: 'auto' | 'cloud' | 'local';
+
+  /** 多镜头拼接（D3：列表从上到下即最终视频拼接顺序，每镜头选择形象+时长；传了则忽略单选 digitalHumanId） */
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(6)
+  shots?: Array<{
+    /** 数字人形象资产 ID（digital_human_assets.id） */
+    digitalHumanId: number;
+    /** 镜头时长（秒，2-120） */
+    seconds: number;
+  }>;
+
+  /** 字幕轨开关（E7：false = 成片不烧录字幕，默认 true） */
+  @IsOptional()
+  @IsBoolean()
+  subtitlesEnabled?: boolean;
+
+  /** BGM 轨开关（E7：false = 不混入背景音乐，默认 true） */
+  @IsOptional()
+  @IsBoolean()
+  bgmEnabled?: boolean;
+
+  /** 字幕文本覆盖（E4：多行文本，每行一条字幕；留空=按文案自动分段） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  subtitlesOverride?: string;
 
   /** 幂等键：重复提交同一 clientTxnId 直接返回已有任务，防止重复扣费 */
   @IsOptional()
@@ -187,6 +270,72 @@ export class BatchCreateOralWorkshopJobsDto {
   @MaxLength(128)
   speakerId?: string;
 
+  /** 批量统一语速（0.5-1.5） */
+  @IsOptional()
+  @IsNumber()
+  @Min(0.5)
+  @Max(1.5)
+  voiceSpeechRate?: number;
+
+  /** 批量统一音量增益（-20~20） */
+  @IsOptional()
+  @IsNumber()
+  @Min(-20)
+  @Max(20)
+  voiceLoudnessRate?: number;
+
+  /** 批量统一情感 */
+  @IsOptional()
+  @IsIn(['高兴', '愤怒', '悲伤', '害怕', '平静', '无'])
+  voiceEmotion?: string;
+
+  /** 批量统一 BGM URL */
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  @Validate(SafeMediaRefConstraint)
+  bgmUrl?: string;
+
+  /** 批量统一 BGM 音量（0-1） */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  bgmVolume?: number;
+
+  /** 批量统一画中画素材（P3 D4/E6） */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(4)
+  pipAssets?: Array<{
+    url: string;
+    position?: 'tl' | 'tr' | 'bl' | 'br' | 'center';
+    scale?: number;
+    startSec?: number;
+    endSec?: number;
+  }>;
+
+  /** 批量统一数字人生成方式（D6） */
+  @IsOptional()
+  @IsIn(['auto', 'cloud', 'local'])
+  dhGenerationMode?: 'auto' | 'cloud' | 'local';
+
+  /** 批量统一字幕轨开关（E7） */
+  @IsOptional()
+  @IsBoolean()
+  subtitlesEnabled?: boolean;
+
+  /** 批量统一 BGM 轨开关（E7） */
+  @IsOptional()
+  @IsBoolean()
+  bgmEnabled?: boolean;
+
+  /** 批量统一字幕文本覆盖（E4） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  subtitlesOverride?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(512)
@@ -248,6 +397,13 @@ export class CreateVoiceAssetDto {
   @MaxLength(512)
   @Validate(SafeMediaRefConstraint)
   refAudioUrl: string;
+
+  /** 情感参考音频 URL（C6：复刻时附带的情绪素材，可选） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  @Validate(SafeMediaRefConstraint)
+  emotionRefAudio?: string;
 }
 
 /** 我的数字人形象 DTO */
@@ -257,16 +413,34 @@ export class CreateDigitalHumanAssetDto {
   @MaxLength(128)
   name: string;
 
-  /** 火山数字人形象 ID */
-  @IsNotEmpty({ message: 'cloudId 不能为空' })
+  /** 形象类型（D2）：cloud=火山形象 ID（默认）/ video=本地上传视频 */
+  @IsOptional()
+  @IsIn(['cloud', 'video'])
+  kind?: 'cloud' | 'video';
+
+  /** 火山数字人形象 ID（kind=cloud 时必填） */
+  @IsOptional()
   @IsString()
   @MaxLength(128)
-  cloudId: string;
+  cloudId?: string;
+
+  /** 本地视频形象 URL（kind=video 时必填，转码后的 MP4） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  @Validate(SafeMediaRefConstraint)
+  videoUrl?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(512)
   previewUrl?: string;
+
+  /** 形象描述（D1） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  description?: string;
 }
 
 /** 选题灵感 DTO */
@@ -286,6 +460,97 @@ export class GenerateTopicsDto {
   @Min(1)
   @Max(10)
   count?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(50, { each: true })
+  excludedTopics?: string[];
+
+  /** 行业或产品（选题贴合该领域，可选） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  industryOrProduct?: string;
+
+  /** 产品卖点（选题围绕卖点展开，可选） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  productSellingPoints?: string;
+}
+
+/** 智能改写 DTO（A4：选模板/字数/参考范文，AI 改写口播文案） */
+export class RewriteScriptDto {
+  @IsNotEmpty({ message: 'script 不能为空' })
+  @IsString()
+  @MaxLength(20000)
+  script: string;
+
+  /** 改写模板：rewrite_master（信息保全）/ generic_rewrite（精简）/ rewrite_detailed（爆款详细）/ rewrite_deep_learn（深度学习） */
+  @IsOptional()
+  @IsIn(['rewrite_master', 'generic_rewrite', 'rewrite_detailed', 'rewrite_deep_learn'])
+  templateId?: string;
+
+  /** 目标字数（默认 260，范围 100-800） */
+  @IsOptional()
+  @IsInt()
+  @Min(100)
+  @Max(800)
+  wordCount?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  persona?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  style?: string;
+
+  /** 参考范文（深度学习模板用） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  reference?: string;
+}
+
+/** 产品/营销文案 DTO（A5：至少填产品名称或卖点之一） */
+export class ProductCopyDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  productName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  sellingPoints?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  persona?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  style?: string;
+}
+
+/** 对标账号风格分析 DTO（分析参考内容 → style_analysis + 5 条选题） */
+export class StyleAnalysisDto {
+  @IsNotEmpty({ message: '请提供对标内容' })
+  @IsString()
+  @MaxLength(20000)
+  referenceContent: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(50, { each: true })
+  excludedTopics?: string[];
 }
 
 /** 选题 → 口播文案生成 DTO（选题灵感选中后，AI 扩写完整口播文案） */

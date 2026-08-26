@@ -1,9 +1,12 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OralWorkshopJobEntity } from './entities/oral-workshop-job.entity';
 import { OralWorkshopStepEntity } from './entities/oral-workshop-step.entity';
 import { VoiceAssetEntity } from './entities/voice-asset.entity';
 import { DigitalHumanAssetEntity } from './entities/digital-human-asset.entity';
+import { PublishAccountEntity } from './entities/publish-account.entity';
+import { PublishPlatformEntity } from './entities/publish-platform.entity';
+import { IpArchiveEntity } from './entities/ip-archive.entity';
 import { OralWorkshopController } from './oral-workshop.controller';
 import { OralWorkshopService } from './oral-workshop.service';
 import { OralWorkshopExecutor } from './oral-workshop.executor';
@@ -17,6 +20,8 @@ import { ApiKeyPoolModule } from '../api-key-pool/api-key-pool.module';
 import { CommonModule } from '../../common/common.module';
 import { ModelProviderEntity } from '../admin-model/entities/model-provider.entity';
 import { SystemConfigEntity } from '../admin-system/entities/system-config.entity';
+import { MediaAssetEntity } from '../media-assets/entities/media-asset.entity';
+import { MediaAssetsModule } from '../media-assets/media-asset.module';
 
 @Module({
   imports: [
@@ -25,14 +30,18 @@ import { SystemConfigEntity } from '../admin-system/entities/system-config.entit
       OralWorkshopStepEntity,
       VoiceAssetEntity,
       DigitalHumanAssetEntity,
+      PublishAccountEntity,
       ModelProviderEntity,
       SystemConfigEntity,
+      MediaAssetEntity,
+      IpArchiveEntity,
     ]),
     CreditsModule,
     ApiKeyPoolModule,
     CommonModule,
     ChannelModule,
     PaymentModule,
+    forwardRef(() => MediaAssetsModule),
   ],
   controllers: [OralWorkshopController],
   providers: [

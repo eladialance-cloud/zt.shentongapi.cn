@@ -181,34 +181,76 @@ export class OralWorkshopLlmService {
     return this.caller.chat([{ role: 'user', content: prompt }], { temperature, purpose });
   }
 
-  /** 文案改写（信息保全，260 字左右） */
-  async rewriteScript(script: string, persona?: string, style?: string): Promise<string> {
-    return this.call('rewrite_master', {
+  /** 文案改写（可选手模板/字数/风格；模板缺失回退 rewrite_master） */
+  async rewriteScript(
+    script: string,
+    opts: { persona?: string; style?: string; templateId?: string; wordCount?: number; reference?: string } = {},
+  ): Promise<string> {
+    const templateId = opts.templateId || 'rewrite_master';
+    return this.call(templateId, {
       script,
-      persona: persona ?? '',
-      style: style ?? '口语化、有网感',
+      persona: opts.persona ?? '',
+      style: opts.style ?? '口语化、有网感',
+      reference: opts.reference ?? '',
+      wordCount: String(opts.wordCount ?? 260),
     }, 0.7, 'rewrite');
   }
 
-  /** 选题 → 口播文案创作 */
-  async createScript(topic: string, reference?: string, persona?: string): Promise<string> {
-    return this.call('script_creation', {
-      topic,
-      reference: reference ?? '',
-      persona: persona ?? '',
+  /** 选题 → 口播文案创作（校验篇幅，过短自动重试 1 次，避免"只有一句话"） */
+  async createScript(topic: string, reference?: string, persona?: string, style?: string): Promise<string> {
+    const render = (temperature: number) =>
+      this.call('script_creation', {
+        topic,
+        reference: reference ?? '',
+        persona: persona ?? '',
+        style: style ?? '',
+      }, temperature, 'script');
+    let text = await render(0.7);
+    if (Array.from(text.trim()).length < 100) {
+      text = await render(0.8);
+    }
+    const len = Array.from(text.trim()).length;
+    if (len < 100) {
+      throw new LlmOutputError('文案生成过短（' + len + ' 字），请重试');
+    }
+    return text;
+  }
+
+  /** 产品/营销文案创作（至少提供产品名称或卖点之一） */
+  async createProductCopy(
+    productInfo: string,
+    persona?: string,
+    style?: string,
+  ): Promise<string> {
+    const text = await this.call('product_copy', {
+      productInfo,
+      persona: [persona, style].filter(Boolean).join('；'),
     }, 0.7, 'script');
+    const len = Array.from(text.trim()).length;
+    if (len < 50) throw new LlmOutputError('产品文案生成过短（' + len + ' 字），请重试');
+    return text;
   }
 
   /** 选题生成：关键词 + 人设 → topics 数组 */
   async generateTopics(
     keywords: string,
-    opts: { persona?: string; count?: number; excludedTopics?: string[] } = {},
+    opts: {
+      persona?: string;
+      count?: number;
+      excludedTopics?: string[];
+      styleAnalysis?: string;
+      industryOrProduct?: string;
+      productSellingPoints?: string;
+    } = {},
   ): Promise<TopicItem[]> {
     const text = await this.call('topic_generation', {
       keywords,
       persona: opts.persona ?? '',
       count: String(opts.count ?? 5),
       excludedTopics: opts.excludedTopics?.length ? opts.excludedTopics.join('、') : '',
+      styleAnalysis: opts.styleAnalysis ?? '',
+      industryOrProduct: opts.industryOrProduct ?? '',
+      productSellingPoints: opts.productSellingPoints ?? '',
     }, 0.7, 'topic');
     const data = extractJson(text) as { topics?: unknown };
     if (!Array.isArray(data.topics)) throw new LlmOutputError('选题输出缺少 topics 数组');
@@ -220,13 +262,21 @@ export class OralWorkshopLlmService {
   /** 关键词选题（带机会分析） */
   async keywordTopics(
     keywords: string,
-    opts: { persona?: string; count?: number; excludedTopics?: string[] } = {},
+    opts: {
+      persona?: string;
+      count?: number;
+      excludedTopics?: string[];
+      industryOrProduct?: string;
+      productSellingPoints?: string;
+    } = {},
   ): Promise<KeywordTopicsResult> {
     const text = await this.call('keyword_topics', {
       keywords,
       persona: opts.persona ?? '',
       count: String(opts.count ?? 5),
       excludedTopics: opts.excludedTopics?.length ? opts.excludedTopics.join('、') : '',
+      industryOrProduct: opts.industryOrProduct ?? '',
+      productSellingPoints: opts.productSellingPoints ?? '',
     }, 0.7, 'topic');
     const data = extractJson(text) as { keyword_analysis?: unknown; topics?: unknown };
     if (typeof data.keyword_analysis !== 'string' || !Array.isArray(data.topics)) {
@@ -291,6 +341,32 @@ export class OralWorkshopLlmService {
 
   async generateTitle(script: string, platform = '抖音'): Promise<string> {
     return this.call('title_publish', { script, platform }, 0.7, 'title');
+  }
+
+  /** 发布包：标题 + 副标题 + 发布描述 + 话题标签（结构化 JSON，失败抛 LlmOutputError 由调用方降级） */
+  async generatePublishPackage(
+    script: string,
+    platform = '抖音',
+  ): Promise<{ title: string; subtitle: string; description: string; topic_tags: string[] }> {
+    const text = await this.call('publish_package', { script, platform }, 0.6, 'title');
+    const data = extractJson(text) as Partial<{
+      title?: unknown;
+      subtitle?: unknown;
+      description?: unknown;
+      topic_tags?: unknown;
+    }>;
+    const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+    const title = str(data.title);
+    const subtitle = str(data.subtitle);
+    const description = str(data.description);
+    const tags = Array.isArray(data.topic_tags)
+      ? data.topic_tags
+          .map((x) => str(x))
+          .filter(Boolean)
+          .map((x) => x.replace(/^#/, ''))
+      : [];
+    if (!title || !description) throw new LlmOutputError('发布包输出结构不完整');
+    return { title, subtitle, description, topic_tags: tags };
   }
   /** 封面标题（结构化 h1/h2，供封面设计器） */
   async generateCoverTitle(script: string): Promise<{ h1: string; h2: string }> {

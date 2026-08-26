@@ -446,6 +446,14 @@
   font-size: 12px;
 }
 
+.uploadPreview {
+  max-width: 200px;
+  max-height: 56px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
+  background: rgba(0, 0, 0, 0.25);
+}
+
 .assetActions {
   display: flex;
   gap: 8px;
@@ -580,6 +588,37 @@
   font-size: 12px;
   color: var(--color-text-tertiary);
   margin-top: 6px;
+}
+
+.rewriteCompare {
+  display: flex;
+  gap: 12px;
+}
+
+.rewriteCompareCol {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.rewriteCompareHead {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+}
+
+.rewriteCompareText {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
 }
 
 .extractRow {
@@ -852,4 +891,138 @@
   gap: 8px;
   flex-wrap: wrap;
   margin-top: 8px;
+}
+
+/* 详情页发布面板表单行 */
+.publishFormRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.publishFormRow .ant-select-selector {
+  border-radius: 8px;
+}
+
+/* 素材库 */
+.materialCell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.materialThumb {
+  width: 96px;
+  height: 64px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-bg-root);
+  border: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+
+.materialThumb img,
+.materialThumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.materialThumb audio {
+  width: 100%;
+  height: 100%;
+}
+
+.materialInfo {
+  min-width: 0;
+  flex: 1;
+}
+
+.materialTitle {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.materialTags {
+  margin-top: 4px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.materialTags .ant-tag {
+  margin-inline-end: 0;
+}
+
+.suggestGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.suggestCard {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg-container);
+  padding: 12px;
+}
+
+.suggestHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.suggestPos {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+.suggestText {
+  font-size: 13px;
+  color: var(--color-text-primary);
+  line-height: 1.5;
+  margin: 0 0 10px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.suggestAsset {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.suggestAsset img,
+.suggestAsset video {
+  width: 72px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--color-bg-root);
+  flex-shrink: 0;
+}
+
+.suggestNoMatch {
+  color: var(--color-text-tertiary);
+}
+
+.suggestActions {
+  display: flex;
+  gap: 8px;
 }

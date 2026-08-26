@@ -57,7 +57,7 @@ describe('OralWorkshopLlmService', () => {
       assert.ok(content.includes('职场教练'));
       return '改写后的文案';
     }));
-    const out = await svc.rewriteScript('这是原文', '职场教练', '犀利');
+    const out = await svc.rewriteScript('这是原文', { persona: '职场教练', style: '犀利' });
     assert.equal(out, '改写后的文案');
     assert.equal(called, 1);
   });
@@ -66,11 +66,11 @@ describe('OralWorkshopLlmService', () => {
     const svc = new OralWorkshopLlmService(fakeCaller((content) => {
       assert.ok(content.includes('为什么越努力越焦虑'));
       assert.ok(content.includes('参考范文内容'));
-      assert.ok(content.includes('260字'));
-      return '口播文案正文';
+      assert.ok(content.includes('200-300 字'));
+      return '这是一段足够长的口播文案正文。今天我们要聊一个很多人都在关心的话题，为什么越努力越焦虑。其实答案很简单，就是方向不对。只要你找到了正确的方法，并且坚持下去，就一定能看到改变。记住，慢就是快，少就是多。不要和别人比较，只和昨天的自己比较。每天进步一点点，一年之后就是天壤之别。';
     }));
     const out = await svc.createScript('为什么越努力越焦虑', '参考范文内容', '职场教练');
-    assert.equal(out, '口播文案正文');
+    assert.equal(out, '这是一段足够长的口播文案正文。今天我们要聊一个很多人都在关心的话题，为什么越努力越焦虑。其实答案很简单，就是方向不对。只要你找到了正确的方法，并且坚持下去，就一定能看到改变。记住，慢就是快，少就是多。不要和别人比较，只和昨天的自己比较。每天进步一点点，一年之后就是天壤之别。');
   });
 
   it('generateTopics：解析 topics 数组（含代码块包裹）', async () => {

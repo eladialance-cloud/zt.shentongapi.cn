@@ -85,6 +85,8 @@ function newService(voiceRows: any[] = [], dhRows: any[] = []) {
     fakeStepRepo() as any,
     voiceRepo as any,
     dhRepo as any,
+    makeRepo<any>() as any,
+    makeRepo<any>() as any,
     fakeBilling() as any,
     fakeLlm as unknown as OralWorkshopLlmService,
     fakeSystemLlm as any,
@@ -184,6 +186,7 @@ describe('OralWorkshopExecutor 资产接线', () => {
     const dhAssetRepo = { findOne: async () => null };
     const service: any = {
       nextPendingStepOf: async () => 'digitalHuman',
+      parseShots: () => null,
       getStepResults: async () => ({ voiceClone: { audio_path: 'https://oss/x/voice.mp3' } }),
       markStepRunning: async () => undefined,
       markStepDone: async () => undefined,
@@ -229,6 +232,8 @@ function newBatchService() {
     stepRepo as any,
     voiceRepo as any,
     dhRepo as any,
+    makeRepo<any>() as any,
+    makeRepo<any>() as any,
     fakeBilling() as any,
     fakeLlm as unknown as OralWorkshopLlmService,
     fakeSystemLlm as any,
@@ -301,6 +306,8 @@ describe('OralWorkshopService 批量矩阵化建单', () => {
     const service = new OralWorkshopService(
       fakeJobRepoForBatch() as any,
       fakeStepRepo() as any,
+      makeRepo<any>() as any,
+      makeRepo<any>() as any,
       makeRepo<any>() as any,
       makeRepo<any>() as any,
       failingBilling as any,

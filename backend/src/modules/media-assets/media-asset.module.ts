@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MediaAssetEntity } from './entities/media-asset.entity';
 import { MediaAssetController } from './controllers/media-asset.controller';
@@ -25,7 +25,7 @@ import { OralWorkshopModule } from '../oral-workshop/oral-workshop.module';
       PublishPlanEntity,
     ]),
     CommonModule,
-    OralWorkshopModule,
+    forwardRef(() => OralWorkshopModule),
   ],
   controllers: [MediaAssetController],
   providers: [MediaAssetService, MaterialSearchService],

@@ -48,6 +48,8 @@ import VideoClaw from "@/pages/VideoClaw";
 import OralWorkshopWorkbench from "@/pages/OralWorkshop/Workbench";
 import OralWorkshopProjects from "@/pages/OralWorkshop/Projects";
 import OralWorkshopDetail from "@/pages/OralWorkshop/Detail";
+import OralWorkshopAccounts from "@/pages/OralWorkshop/Accounts";
+import OralWorkshopMaterials from "@/pages/OralWorkshop/Materials";
 import BriefsList from "@/pages/Briefs";
 import BriefsNew from "@/pages/Briefs/New";
 import BriefsDetail from "@/pages/Briefs/Detail";
@@ -155,6 +157,8 @@ const router = createHashRouter([
       // ===== 口播工坊 =====
       { path: "/oral-workshop", element: <OralWorkshopProjects /> },
       { path: "/oral-workshop/workbench", element: <OralWorkshopWorkbench /> },
+      { path: "/oral-workshop/accounts", element: <OralWorkshopAccounts /> },
+      { path: "/oral-workshop/materials", element: <OralWorkshopMaterials /> },
       { path: "/oral-workshop/:id", element: <OralWorkshopDetail /> },
     ],
   },

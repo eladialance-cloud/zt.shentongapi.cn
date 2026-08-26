@@ -110,9 +110,13 @@ export function buildAss(segments: SubtitleSegment[], opts: AssSubtitleOptions):
   const style = opts.style;
   const fontSize = Math.round(style.fontSize * (opts.bilingual ? 0.72 : 1));
   const primary = hexToAssColor(style.color);
-  const outline = style.shadow ? hexToAssColor(style.shadow.color) : '&H00000000&';
+  // E5：优先使用 stroke 作为描边（Outline），无 stroke 时回退 shadow 颜色（原实现兼容）
+  const strokeColor = style.stroke?.color || style.shadow?.color;
+  const outline = strokeColor ? hexToAssColor(strokeColor) : '&H00000000&';
+  const outlineWidth = style.stroke && style.stroke.width > 0 ? Math.round(style.stroke.width) : 0;
   const shadowDist = Math.round(style.shadow?.distance ?? 0);
   const bold = style.bold ? '-1' : '0';
+  const italic = style.italic ? '-1' : '0';
   const fontFamily = style.fontFamily || '思源黑体';
 
   const header = [
@@ -125,7 +129,7 @@ export function buildAss(segments: SubtitleSegment[], opts: AssSubtitleOptions):
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    'Style: Default,' + fontFamily + ',' + fontSize + ',' + primary + ',' + primary + ',' + outline + ',&H96000000&,' + bold + ',0,0,0,100,100,0,0,1,3,' + shadowDist + ',5,40,40,40,1',
+    'Style: Default,' + fontFamily + ',' + fontSize + ',' + primary + ',' + primary + ',' + outline + ',&H96000000&,' + bold + ',' + italic + ',0,0,100,100,0,0,1,' + outlineWidth + ',' + shadowDist + ',5,40,40,40,1',
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',

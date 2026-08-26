@@ -3,12 +3,19 @@
  * 任务列表：分页 + 状态筛选 + 一键创建入口
  */
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Select, Table, Tag, message } from 'antd'
+import { Button, Popconfirm, Select, Statistic, Table, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { Clapperboard, Plus, RefreshCw, Eye } from 'lucide-react'
+import { Clapperboard, PlayCircle, Plus, RefreshCw, Trash2, Eye } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { cancelOralWorkshopJob, listOralWorkshopJobs } from '@/api/oral-workshop-api'
-import type { OralWorkshopJob, OralWorkshopJobStatus } from '@/types/oral-workshop'
+import {
+  cancelOralWorkshopJob,
+  deleteOralWorkshopJob,
+  getJobStats,
+  listOralWorkshopJobs,
+  retryOralWorkshopJob,
+} from '@/api/oral-workshop-api'
+import type { JobStats, OralWorkshopJob, OralWorkshopJobStatus } from '@/types/oral-workshop'
+import { useCreditsStore } from '@/store/credits'
 import styles from './styles.module.css'
 
 export const STATUS_META: Record<OralWorkshopJobStatus, { label: string; color: string }> = {
@@ -38,6 +45,8 @@ export default function OralWorkshopProjects() {
   const [pageSize, setPageSize] = useState(20)
   const [status, setStatus] = useState<OralWorkshopJobStatus | undefined>()
   const [loading, setLoading] = useState(false)
+  const [stats, setStats] = useState<JobStats | null>(null)
+  const [retryingId, setRetryingId] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -49,6 +58,8 @@ export default function OralWorkshopProjects() {
       })
       setList(data.list)
       setTotal(data.total)
+      const st = await getJobStats().catch(() => null)
+      setStats(st)
     } catch (err) {
       const e = err as Error
       message.error('任务列表加载失败: ' + (e?.message ?? e))
@@ -61,11 +72,37 @@ export default function OralWorkshopProjects() {
     void load()
   }, [load])
 
+  const handleRetry = async (id: number) => {
+    setRetryingId(id)
+    try {
+      await retryOralWorkshopJob(id)
+      message.success('任务已重新入队执行')
+      void load()
+    } catch (err) {
+      const e = err as Error
+      message.error('重试失败: ' + (e?.message ?? e))
+    } finally {
+      setRetryingId(null)
+    }
+  }
+
+  const handleDelete = async (id: number) => {
+    try {
+      await deleteOralWorkshopJob(id)
+      message.success('任务已删除')
+      void load()
+    } catch (err) {
+      const e = err as Error
+      message.error('删除失败: ' + (e?.message ?? e))
+    }
+  }
+
   const handleCancel = async (id: number) => {
     try {
       await cancelOralWorkshopJob(id)
       message.success('任务已取消，预扣 Credits 已退还')
       void load()
+      void useCreditsStore.getState().fetchBalance()
     } catch (err) {
       const e = err as Error
       message.error('取消失败: ' + (e?.message ?? e))
@@ -125,6 +162,22 @@ export default function OralWorkshopProjects() {
               取消
             </Button>
           )}
+          {record.status === 'failed' && (
+            <Button
+              type="link"
+              size="small"
+              icon={<PlayCircle size={14} />}
+              loading={retryingId === record.id}
+              onClick={() => void handleRetry(record.id)}
+            >
+              重试
+            </Button>
+          )}
+          <Popconfirm title="确定删除该任务？删除后不可恢复。" onConfirm={() => void handleDelete(record.id)}>
+            <Button type="link" size="small" danger icon={<Trash2 size={14} />}>
+              删除
+            </Button>
+          </Popconfirm>
         </span>
       ),
     },
@@ -156,6 +209,28 @@ export default function OralWorkshopProjects() {
           </Button>
         </div>
       </header>
+
+      {stats && (
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            flexWrap: 'wrap',
+            padding: 16,
+            marginBottom: 16,
+            background: 'var(--color-bg-container)',
+            border: '1px solid var(--color-border)',
+            borderRadius: 12,
+          }}
+        >
+          <Statistic title="全部任务" value={stats.total} />
+          <Statistic title="排队中" value={stats.pending} />
+          <Statistic title="生成中" value={stats.processing} />
+          <Statistic title="已完成" value={stats.done} valueStyle={{ color: '#52c41a' }} />
+          <Statistic title="失败" value={stats.failed} valueStyle={{ color: '#ff4d4f' }} />
+          <Statistic title="已取消" value={stats.cancelled} />
+        </div>
+      )}
 
       <div className={styles.filterBar}>
         <span className={styles.filterLabel}>状态</span>

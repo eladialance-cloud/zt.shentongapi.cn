@@ -16,7 +16,7 @@ import { Repository } from 'typeorm';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { buildCardVideoCommand, buildCoverCommand, composePlan, type FfmpegPlan } from './composer';
+import { buildCardVideoCommand, buildCoverCommand, buildShotConcatCommand, buildShotTrimCommand, composePlan, type FfmpegPlan } from './composer';
 import { deriveTitle, ensureBadgeImage, segmentScript, segmentScriptBilingual, type TitlePair } from './compose-inputs';
 import { loadTemplate } from './template-loader';
 import { VoiceCloneAdapter } from './adapters/voice.adapter';
@@ -42,6 +42,8 @@ export interface OralWorkshopEngineConfig {
   watermarkText: string;
   /** 单轮并发任务上限（管理后台可配） */
   maxConcurrentJobs: number;
+  /** E3：系统 BGM 库（管理后台维护，[{id,name,url,category}]，模板 auto_bgm 或任务未选时取第一条） */
+  bgmLibrary: Array<{ id: string; name: string; url: string; category?: string }>;
   /** 火山方舟（云端）配置组：管理后台口播工坊-火山方舟配置，环境变量兜底 */
   volcano: {
     /** 火山方舟 API Key（LLM/声音克隆/数字人共用） */
@@ -259,7 +261,15 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
 
   private async runRewrite(job: OralWorkshopJobEntity): Promise<Record<string, unknown>> {
     const script = job.scriptInput ?? '';
-    const rewritten = await this.llm.rewriteScript(script, job.persona ?? undefined);
+    // B4/B5：人设/风格/目标受众/创作目标统一注入改写（对标参考软件「改写模板+字数」）
+    const styleParts = [job.style, job.goal ? '目标：' + job.goal : '', job.targetAudience ? '受众：' + job.targetAudience : '']
+      .filter(Boolean)
+      .join('；');
+    const rewritten = await this.llm.rewriteScript(script, {
+      persona: job.persona ?? undefined,
+      style: styleParts || undefined,
+      wordCount: 260,
+    });
     return { rewritten_script: rewritten };
   }
 
@@ -333,17 +343,26 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
         enableSubtitle: config.volcano.voiceEnableSubtitle,
         timeoutMs: Number(process.env.VOLCANO_REQUEST_TIMEOUT_MS || 60000),
       });
+      const speedRatio = job.voiceSpeechRate != null ? Number(job.voiceSpeechRate) : Number(process.env.ORAL_WORKSHOP_VOICE_SPEED || 0.9);
+      const loudnessRate = job.voiceLoudnessRate != null ? Math.round(Number(job.voiceLoudnessRate)) : undefined;
+      const emotionText = job.voiceEmotion && job.voiceEmotion !== '无' ? job.voiceEmotion : (process.env.ORAL_WORKSHOP_VOICE_EMOTION_TEXT || undefined);
       const res = await adapter.generateVoice({
         refAudioUrl,
         refAudioText: refAudioText || script,
         text: script,
         speakerId,
-        speedRatio: Number(process.env.ORAL_WORKSHOP_VOICE_SPEED || 0.9),
-        emotionText: process.env.ORAL_WORKSHOP_VOICE_EMOTION_TEXT || undefined,
+        speedRatio,
+        emotionText,
       });
       const ext = res.mimeType.includes('mp3') || res.mimeType.includes('mpeg') ? 'mp3' : 'wav';
       const dest = path.join(outputDir, 'voice.' + ext);
       fs.writeFileSync(dest, res.audioBuffer);
+      // C4：用户级音量增益（-20~20）→ 合成后增益一次（适配器 loudness 走后台配置）
+      if (loudnessRate !== undefined) {
+        const gainPath = path.join(outputDir, 'voice.gain.mp3');
+        await this.runFfmpeg(['ffmpeg', '-y', '-i', dest, '-af', 'volume=' + String(loudnessRate) + 'dB', '-c:a', 'libmp3lame', '-q:a', '4', gainPath], outputDir);
+        fs.renameSync(gainPath, dest);
+      }
       // 档位积分定价：基础 + 配音档 + 数字人档（结算时按 job.creditsCost）
       const dhCost = (job.dhModelVersion === 'V1' ? config.volcano.dhTierV1.creditsCost : config.volcano.dhTierV2.creditsCost) || 0;
       const tierCost = tier.creditsCost || 0;
@@ -382,6 +401,8 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
     fs.mkdirSync(outputDir, { recursive: true });
     const config = await this.readEngineConfig();
     const engine = config.digitalHumanEngine;
+    const mode: 'auto' | 'cloud' | 'local' = job.dhGenerationMode || 'auto';
+    const shots = this.service.parseShots(job.shots) ?? [];
 
     // 1) 用户提供数字人/绿幕视频
     if (job.videoUrl) {
@@ -395,9 +416,16 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
     const voiceArtifact = results.voiceClone ?? {};
     const audioPath = String(voiceArtifact.audio_path || job.audioUrl || '');
 
+    // D3：多镜头拼接（shots 数组长度 > 1 时走独立合成管线）
+    if (shots.length > 1) {
+      return this.runMultiShot(job, shots, mode, engine, config, outputDir);
+    }
+
     // 2) 火山数字人：提交 + 轮询 → 下载成片
     let volcanoSkipped = false;
-    const useVolcano = engine === 'volcano' || (engine === 'auto' && this.hasVolcanoDigitalHuman(config));
+    const useVolcano = mode === 'local'
+      ? false
+      : mode === 'cloud' || engine === 'volcano' || (engine === 'auto' && this.hasVolcanoDigitalHuman(config));
     if (useVolcano) {
       if (!this.hasVolcanoDigitalHuman(config)) {
         throw new Error('数字人引擎配置为 volcano，但缺少火山方舟密钥 / 数字人 endpoint（请在管理后台-口播工坊-火山方舟配置 填写）');
@@ -405,7 +433,7 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       if (!audioPath) throw new Error('数字人合成需要语音（voiceClone 产物 audio_path）');
       if (!/^https?:\/\//.test(audioPath)) {
         // 本地合成音频没有公网 URL，火山无法拉取：auto 模式降级本地卡片视频，显式 volcano 才报错
-        if (engine !== 'auto') {
+        if (engine !== 'auto' || mode === 'cloud') {
           throw new Error('火山数字人要求音频为公网 URL（当前为本地文件，请先接入 OSS 上传或托管到公网）');
         }
         this.logger.warn(`[oral-workshop] 任务 ${job.id} 火山数字人需要公网音频 URL，auto 降级本地卡片视频`);
@@ -441,7 +469,7 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
     }
 
     // 3) 本地兜底：纯字幕卡片视频（模板背景色 + 语音轨）
-    const useLocal = engine === 'local' || (engine === 'auto' && !this.hasVolcanoDigitalHuman(config)) || volcanoSkipped;
+    const useLocal = mode === 'local' || !useVolcano || volcanoSkipped;
     if (useLocal) {
       if (!audioPath) throw new Error('本地数字人模式需要语音（voiceClone 产物 audio_path）');
       const template = loadTemplate(this.templateIdOf(job));
@@ -460,6 +488,105 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
     }
 
     throw new Error('数字人引擎不可用：请配置火山（VOLCANO_ARK_API_KEY/VOLCANO_DIGITAL_HUMAN_ENDPOINT）或提供 videoUrl');
+  }
+
+
+  /**
+   * D3：多镜头数字人合成（shots 数组长度 > 1 时使用）
+   * 按 shots 顺序切分语音段，每个镜头用对应形象生成/裁剪视频，最后 concat 拼接 + 主语音轨。
+   */
+  private async runMultiShot(
+    job: OralWorkshopJobEntity,
+    shots: Array<{ digitalHumanId: number; seconds: number }>,
+    mode: 'auto' | 'cloud' | 'local',
+    engine: string,
+    config: OralWorkshopEngineConfig,
+    outputDir: string,
+  ): Promise<Record<string, unknown>> {
+    const results = await this.service.getStepResults(job.id);
+    const voiceArtifact = results.voiceClone ?? {};
+    const audioPath = String(voiceArtifact.audio_path || job.audioUrl || '');
+    if (!audioPath) {
+      throw new Error('多镜头数字人合成需要语音（voiceClone 产物 audio_path）');
+    }
+    const template = loadTemplate(this.templateIdOf(job));
+    const canCloud = mode === 'cloud' || engine === 'volcano' || (mode === 'auto' && this.hasVolcanoDigitalHuman(config));
+    const audioPublic = /^https?:\/\//.test(audioPath);
+    const segments: string[] = [];
+    let cursor = 0;
+    const adapter = new DigitalHumanAdapter({
+      endpoint: config.volcano.dhEndpoint,
+      apiKey: config.volcano.apiKey,
+      submitPath: config.volcano.dhSubmitPath,
+      queryPath: config.volcano.dhQueryPath,
+      modelVersion: job.dhModelVersion || config.volcano.dhModelVersion || 'V1',
+      pollIntervalMs: Number(process.env.VOLCANO_DH_POLL_INTERVAL_MS || 3000),
+      maxAttempts: Number(process.env.VOLCANO_DH_MAX_ATTEMPTS || 120),
+      timeoutMs: Number(process.env.VOLCANO_REQUEST_TIMEOUT_MS || 60000),
+    });
+    for (let i = 0; i < shots.length; i++) {
+      const seconds = Math.max(2, Math.round(shots[i].seconds || 0));
+      const segAudio = path.join(outputDir, 'shot' + i + '.mp3');
+      await this.runFfmpeg([
+        'ffmpeg', '-y', '-ss', String(cursor), '-i', audioPath, '-t', String(seconds), '-vn',
+        '-acodec', 'libmp3lame', '-q:a', '4', segAudio,
+      ], outputDir);
+      cursor += seconds;
+      const asset = this.dhAssetRepo
+        ? await this.dhAssetRepo.findOne({ where: { id: shots[i].digitalHumanId, userId: job.userId } })
+        : null;
+      if (!asset) {
+        throw new Error('数字人形象不存在或不属于当前用户（digitalHumanId=' + shots[i].digitalHumanId + '）');
+      }
+      const segOut = path.join(outputDir, 'shot' + i + '.mp4');
+      if (asset.kind === 'video' && asset.videoUrl) {
+        const raw = path.join(outputDir, 'shot' + i + '-raw' + (extnameOf(asset.videoUrl) || '.mp4'));
+        await downloadTo(asset.videoUrl, raw);
+        await this.runFfmpeg(buildShotTrimCommand({ inputPath: raw, seconds, outputPath: segOut }), outputDir);
+      } else if (canCloud && mode !== 'local') {
+        if (!audioPublic) {
+          if (mode !== 'auto') {
+            throw new Error('火山数字人要求音频为公网 URL（当前为本地文件，请先接入 OSS 上传或托管到公网）');
+          }
+          this.logger.warn('[oral-workshop] 任务 ' + job.id + ' 镜头 ' + i + ' 火山数字人需要公网音频，降级本地卡片视频');
+          await this.runFfmpeg(buildCardVideoCommand({
+            audioPath: segAudio,
+            outputPath: segOut,
+            width: template.project_settings.width,
+            height: template.project_settings.height,
+            fps: template.project_settings.fps,
+            background: template.project_settings.background,
+          }), outputDir);
+        } else {
+          const { videoUrl } = await adapter.generate({ audioUrl: segAudio, digitalHumanId: String(asset.cloudId) });
+          await downloadTo(videoUrl, segOut);
+        }
+      } else {
+        await this.runFfmpeg(buildCardVideoCommand({
+          audioPath: segAudio,
+          outputPath: segOut,
+          width: template.project_settings.width,
+          height: template.project_settings.height,
+          fps: template.project_settings.fps,
+          background: template.project_settings.background,
+        }), outputDir);
+      }
+      segments.push(segOut);
+    }
+    const listPath = path.join(outputDir, 'concat.txt');
+    fs.writeFileSync(listPath, segments.map((s) => "file '" + s + "'").join('\n'), 'utf8');
+    const dest = path.join(outputDir, 'human.mp4');
+    await this.runFfmpeg(buildShotConcatCommand({
+      segments,
+      listPath,
+      audioPath,
+      outputPath: dest,
+      width: template.project_settings.width,
+      height: template.project_settings.height,
+      fps: template.project_settings.fps,
+    }), outputDir);
+    this.logger.log('[oral-workshop] 任务 ' + job.id + ' digitalHuman 多镜头合成完成（' + shots.length + ' 镜头）');
+    return { video_path: dest, source: 'multishot', engine: 'multi', shots: shots.length };
   }
 
   /**
@@ -481,11 +608,18 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
     const badgeImagePath = process.env.ORAL_WORKSHOP_BADGE_IMAGE || ensureBadgeImage(outputDir);
     const script = job.rewrittenScript || job.scriptInput || '';
     const engineCfg = await this.readEngineConfig();
-    let subtitles = segmentScript(script);
+    let subtitles: ReturnType<typeof segmentScript> | undefined = segmentScript(script);
+    // E7：字幕开关（任务级 subtitlesEnabled，默认开）
+    const subtitlesEnabled = job.subtitlesEnabled !== false;
+    if (!subtitlesEnabled) subtitles = undefined;
+    // E4：字幕文本覆盖（用户编辑的多行字幕，每行一条；留空=按文案自动分段）
+    if (subtitlesEnabled && job.subtitlesOverride?.trim()) {
+      subtitles = segmentScript(job.subtitlesOverride.trim());
+    }
     let bilingual = false;
     let subtitleLang = 'zh';
     const targetLang = job.targetLang ? String(job.targetLang).trim() : '';
-    if (targetLang && targetLang !== 'zh') {
+    if (subtitlesEnabled && targetLang && targetLang !== 'zh') {
       // 指定目标语言：zh + 目标语言 双行字幕（zh-xx 方言同理，LLM 翻译）
       const pairs = await this.llm.translateSubtitles(script, targetLang);
       if (!pairs || pairs.length === 0) {
@@ -494,7 +628,7 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       subtitles = segmentScriptBilingual(pairs.map((p) => ({ zh: p.zh, en: p.translated })));
       bilingual = true;
       subtitleLang = targetLang;
-    } else if (job.bilingual) {
+    } else if (subtitlesEnabled && job.bilingual) {
       const pairs = await this.llm.translateBilingual(script);
       if (!pairs || pairs.length === 0) {
         throw new Error('双语字幕：翻译结果为空，请检查 LLM 供应商配置');
@@ -503,12 +637,49 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       bilingual = true;
       subtitleLang = 'en';
     }
+    // E3：BGM（任务级 bgmUrl > 模板 auto_bgm 的 BGM 库默认 > 无 BGM）
+    let bgmPath: string | undefined;
+    const bgmUrl = job.bgmUrl || (template.auto_bgm ? engineCfg.bgmLibrary?.[0]?.url : undefined) || undefined;
+    if (job.bgmEnabled !== false && bgmUrl) {
+      const bgmDest = path.join(outputDir, 'bgm' + (extnameOf(bgmUrl) || '.mp3'));
+      try {
+        await downloadTo(bgmUrl, bgmDest);
+        bgmPath = bgmDest;
+      } catch (err) {
+        this.logger.warn('[oral-workshop] 任务 ' + job.id + ' BGM 下载失败，跳过 BGM: ' + (err as Error).message);
+      }
+    }
+    // P3 D4/E6：画中画素材（下载到本地，图片/视频均可；失败跳过并警告）
+    const pipAssets: Array<{ path: string; isImage?: boolean; position?: 'tl' | 'tr' | 'bl' | 'br' | 'center'; scale?: number; startSec?: number; endSec?: number }> = [];
+    const pipConfig = this.service.parsePipAssets(job.pipAssets);
+    if (pipConfig && pipConfig.length > 0) {
+      for (const [idx, pip] of pipConfig.entries()) {
+        const ext = extnameOf(pip.url) || (/\.(png|jpe?g|gif|webp|bmp)(\?|$)/i.test(pip.url) ? '.png' : '.mp4');
+        const dest = path.join(outputDir, 'pip' + idx + ext);
+        try {
+          await downloadTo(pip.url, dest);
+          pipAssets.push({
+            path: dest,
+            isImage: /\.(png|jpe?g|gif|webp|bmp)$/i.test(ext),
+            position: pip.position as 'tl' | 'tr' | 'bl' | 'br' | 'center',
+            scale: pip.scale,
+            startSec: pip.startSec,
+            endSec: pip.endSec,
+          });
+        } catch (err) {
+          this.logger.warn('[oral-workshop] 任务 ' + job.id + ' 画中画素材下载失败，跳过: ' + (err as Error).message);
+        }
+      }
+    }
     const plan = composePlan({
       voicePath: audioPath,
       humanVideoPath,
+      pipAssets: pipAssets.length > 0 ? pipAssets : undefined,
       subtitles,
       bilingual,
-      highlightKeywords: [],
+      bgmPath,
+      bgmVolume: job.bgmVolume != null ? Math.min(Math.max(Number(job.bgmVolume), 0), 1) : 0.2,
+      highlightKeywords: template.subtitle_config?.highlight_keywords ?? [],
       template,
       badgeImagePath,
       fontDir: process.env.ORAL_WORKSHOP_FONT_DIR || undefined,
@@ -646,6 +817,17 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       watermarkEnabled: bool('ORAL_WORKSHOP_WATERMARK_ENABLED', 'watermarkEnabled', true),
       watermarkText: str('ORAL_WORKSHOP_WATERMARK_TEXT', 'watermarkText', '深瞳AI'),
       maxConcurrentJobs: num('ORAL_WORKSHOP_MAX_CONCURRENT_JOBS', 'maxConcurrentJobs', 5),
+      bgmLibrary: Array.isArray(db.bgmLibrary)
+        ? db.bgmLibrary
+            .filter((v): v is { name?: unknown; url?: unknown; id?: unknown; category?: unknown } => typeof v === 'object' && v !== null)
+            .map((v) => ({
+              id: String(v.id ?? v.name ?? ''),
+              name: String(v.name ?? ''),
+              url: String(v.url ?? ''),
+              category: typeof v.category === 'string' ? v.category : undefined,
+            }))
+            .filter((v) => Boolean(v.url))
+        : [],
       volcano: {
         apiKey: str('VOLCANO_ARK_API_KEY', 'volcanoApiKey', ''),
         voiceEndpoint: str('VOLCANO_ARK_ENDPOINT', 'voiceEndpoint', 'https://ark.cn-beijing.volces.com/api/v3'),

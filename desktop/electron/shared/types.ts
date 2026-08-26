@@ -492,6 +492,50 @@ export interface HermesMemoryOpResult {
   evicted?: string[];
 }
 
+/** 发布平台（桌面端扫码登录用；id 与后端 publish_platforms.platform 一致） */
+export interface PlatformInfo {
+  id: string;
+  displayName: string;
+  loginUrl: string;
+  publishUrl: string;
+  homeUrl: string;
+}
+
+/** 扫码登录结果（桌面端采集 cookies 加密存本地） */
+export type PlatformSetupLoginResult =
+  | { ok: true; cookiesJson: string; displayName?: string }
+  | { ok: false; error: string };
+
+/** 登录态测试结果 */
+export type PlatformTestLoginResult =
+  | { ok: true; online: boolean; status?: number | string; message?: string }
+  | { ok: false; error: string };
+
+/** 发布平台账号本地会话 API（桌面端扫码绑定；管理后台只控制平台开关） */
+export interface PlatformAccountApi {
+  /** 支持的平台列表（含登录/发布/主页地址） */
+  getSupportedPlatforms(): Promise<PlatformInfo[]>;
+  /** 弹出扫码登录窗口并采集 cookies（成功已写入本地会话） */
+  setupLogin(platform: string): Promise<PlatformSetupLoginResult>;
+  /** 用本地会话探测平台登录态 */
+  testLogin(platform: string): Promise<PlatformTestLoginResult>;
+  /** 系统浏览器打开平台主页 */
+  openAccount(platform: string): Promise<void>;
+  /** 用本地会话打开发布页并尽力预填标题/描述/标签 */
+  openPublish(
+    platform: string,
+    payload?: { title?: string; description?: string; tags?: string },
+  ): Promise<{ ok: boolean; error?: string }>;
+  /** 保存本地会话（加密写入 userData/platform-sessions.json） */
+  saveSession(
+    platform: string,
+    cookiesJson: string,
+    displayName?: string,
+  ): Promise<{ ok: boolean; error?: string }>;
+  /** 移除本地会话 */
+  removeSession(platform: string): Promise<{ ok: boolean }>;
+}
+
 export interface ElectronAPI {
   service: {
     getStatus(): Promise<Record<ServiceName, ServiceStatus>>;
@@ -529,6 +573,9 @@ export interface ElectronAPI {
     /** 拉取远程文件为 base64 + mime（限 http/https，超时 60s，上限 50MB） */
     fetchBuffer(url: string): Promise<{ data: string; mime: string }>;
   };
+  /** 发布平台账号（桌面端扫码绑定登录态，本地加密存储） */
+  platformAccount: PlatformAccountApi;
+
   /** 设置页每类默认模型同步（chat/vision/image/video/tts → Hermes/ST-Claw 配置） */
   modelDefaultsSync(dto: { chat?: string | null; vision?: string | null; image?: string | null; video?: string | null; tts?: string | null } | null): void;
 

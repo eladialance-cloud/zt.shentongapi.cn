@@ -29,6 +29,14 @@ export class VoiceAssetEntity {
   @Column({ name: 'speaker_id', type: 'varchar', length: 128, nullable: true })
   speakerId?: string | null;
 
+  /** 克隆试听音频 URL（火山复刻响应 demo_audio，桌面端「我的声音」试听用） */
+  @Column({ name: 'demo_audio', type: 'varchar', length: 512, nullable: true })
+  demoAudio?: string | null;
+
+  /** 情感参考音频 URL（C6：复刻时附带的情绪素材，可选） */
+  @Column({ name: 'emotion_ref_audio', type: 'varchar', length: 512, nullable: true })
+  emotionRefAudio?: string | null;
+
   @Column({ length: 16, default: 'ready' })
   status: string;
 
