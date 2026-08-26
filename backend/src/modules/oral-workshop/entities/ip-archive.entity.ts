@@ -23,7 +23,7 @@ export class IpArchiveEntity {
   url: string;
 
   /** 首个作品标题（兜底用链接） */
-  @Column({ length: 255, nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
   title?: string | null;
 
   /** 风格分析（LLM 生成） */
