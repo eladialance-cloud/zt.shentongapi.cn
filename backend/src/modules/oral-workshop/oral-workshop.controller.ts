@@ -49,6 +49,49 @@ export class OralWorkshopController {
     return this.oralWorkshopService.extractScript(user.userId, body.videoUrl);
   }
 
+  @Post('topics')
+  @ApiOperation({ summary: '选题灵感生成（关键词/人设/排除项 → 候选选题）' })
+  generateTopics(@CurrentUser() user: ICurrentUser, @Body() dto: GenerateTopicsDto) {
+    return this.oralWorkshopService.generateTopics(user.userId, dto);
+  }
+
+  @Post('style-analysis')
+  @ApiOperation({ summary: '对标风格分析：参考内容 → 风格分析 + 5 条选题' })
+  styleAnalysis(@CurrentUser() user: ICurrentUser, @Body() dto: StyleAnalysisDto) {
+    return this.oralWorkshopService.styleAnalysis(user.userId, dto);
+  }
+
+  @Post('script')
+  @ApiOperation({ summary: '选题 → 口播文案生成（选题灵感选中后自动扩写完整口播文案）' })
+  generateScript(@CurrentUser() user: ICurrentUser, @Body() dto: GenerateScriptDto) {
+    return this.oralWorkshopService.generateScript(user.userId, dto);
+  }
+
+  @Post('rewrite')
+  @ApiOperation({ summary: '改写口播文案（模板/字数/人设/风格/参考）' })
+  rewriteScript(@CurrentUser() user: ICurrentUser, @Body() dto: RewriteScriptDto) {
+    return this.oralWorkshopService.rewrite(user.userId, dto);
+  }
+
+  @Post('product-copy')
+  @ApiOperation({ summary: '产品/营销文案（产品名称/卖点 → 口播文案）' })
+  productCopy(@CurrentUser() user: ICurrentUser, @Body() dto: ProductCopyDto) {
+    return this.oralWorkshopService.productCopy(user.userId, dto);
+  }
+
+  @Post('extract-file')
+  @ApiOperation({ summary: '上传本地文件提取口播文案（音视频/图文/PDF）' })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 200 * 1024 * 1024 } }))
+  extractFile(@CurrentUser() user: ICurrentUser, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('请选择要上传的文件');
+    return this.oralWorkshopService.extractFile(user.userId, file);
+  }
+
+  @Post('media/trim')
+  @ApiOperation({ summary: '裁剪媒体（音视频截取片段，返回裁剪后 URL）' })
+  trimMedia(@CurrentUser() user: ICurrentUser, @Body() body: { sourceUrl: string; startSec: number; endSec: number }) {
+    return this.oralWorkshopService.trimMedia(user.userId, body);
+  }
   @Post('jobs/:id/title')
   @ApiOperation({ summary: '生成封面标题（主标题+副标题，AI）' })
   generateCoverTitle(@CurrentUser() user: ICurrentUser, @Param('id') id: string) {
@@ -85,6 +128,21 @@ export class OralWorkshopController {
   }
 
 
+  @Post('jobs/:id/retry')
+  @ApiOperation({ summary: '重试失败任务' })
+  retryJob(@CurrentUser() user: ICurrentUser, @Param('id') id: string) {
+    const jobId = Number(id);
+    if (!Number.isInteger(jobId) || jobId <= 0) throw new BadRequestException('无效的任务 ID');
+    return this.oralWorkshopService.retryJob(user.userId, jobId);
+  }
+
+  @Delete('jobs/:id')
+  @ApiOperation({ summary: '删除任务（软删除）' })
+  deleteJob(@CurrentUser() user: ICurrentUser, @Param('id') id: string) {
+    const jobId = Number(id);
+    if (!Number.isInteger(jobId) || jobId <= 0) throw new BadRequestException('无效的任务 ID');
+    return this.oralWorkshopService.deleteJob(user.userId, jobId);
+  }
   // ===== 工作台元数据（音色池 + 积分定价） =====
   @Get('meta')
   @ApiOperation({ summary: '工作台元数据：官方音色池 + 档位积分定价 + 人设预设 + BGM 库 + 最近成片预览' })
@@ -92,6 +150,11 @@ export class OralWorkshopController {
     return this.oralWorkshopService.getWorkshopMeta(user.userId);
   }
 
+  @Get('templates')
+  @ApiOperation({ summary: '可用模板列表（工作台选择，返回轻量元数据）' })
+  listTemplates() {
+    return this.oralWorkshopService.listTemplates();
+  }
   // ===== 官方音色池 =====
   @Get('voice-pool')
   @ApiOperation({ summary: '官方音色池（管理后台维护，创建任务时可选）' })
@@ -189,6 +252,13 @@ export class OralWorkshopController {
     return this.oralWorkshopService.saveAccountSession(user.userId, accountId, body);
   }
 
+  @Post('publish-accounts/:id/bind')
+  @ApiOperation({ summary: '绑定发布账号（旧版模拟授权：待授权 → 已绑定；扫码绑定请用 session 接口）' })
+  bindPublishAccount(@CurrentUser() user: ICurrentUser, @Param('id') id: string) {
+    const accountId = Number(id);
+    if (!Number.isInteger(accountId) || accountId <= 0) throw new BadRequestException('无效的账号 ID');
+    return this.oralWorkshopService.bindPublishAccount(user.userId, accountId);
+  }
   @Post('publish-accounts/:id/test-login')
   @ApiOperation({ summary: '测试连接：用 cookie 探测平台登录态（对标 account:test-login）' })
   testAccountLogin(@CurrentUser() user: ICurrentUser, @Param('id') id: string) {
@@ -246,6 +316,21 @@ export class OralWorkshopController {
     return this.oralWorkshopService.writePublishResult(user.userId, body.planId, { results: body.results ?? [] });
   }
 
+  @Post('jobs/:id/advance')
+  @ApiOperation({ summary: '推进任务到下一步（执行器步骤驱动）' })
+  advance(@CurrentUser() user: ICurrentUser, @Param('id') id: string) {
+    const jobId = Number(id);
+    if (!Number.isInteger(jobId) || jobId <= 0) throw new BadRequestException('无效的任务 ID');
+    return this.oralWorkshopService.advance(user.userId, jobId);
+  }
+
+  @Post('jobs/:id/export')
+  @ApiOperation({ summary: '导出发布包（标题/副标题/发布描述/话题标签）' })
+  exportPackage(@CurrentUser() user: ICurrentUser, @Param('id') id: string) {
+    const jobId = Number(id);
+    if (!Number.isInteger(jobId) || jobId <= 0) throw new BadRequestException('无效的任务 ID');
+    return this.publisher.exportPackage(user.userId, jobId);
+  }
   @Post('jobs/:id/publish-package')
   @ApiOperation({ summary: '生成发布包：AI 标题/副标题/发布描述/话题标签（供发布面板使用）' })
   generatePublishPackage(@CurrentUser() user: ICurrentUser, @Param('id') id: string) {

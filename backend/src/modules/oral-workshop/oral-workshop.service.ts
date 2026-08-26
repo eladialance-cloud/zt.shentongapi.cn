@@ -1327,6 +1327,16 @@ export class OralWorkshopService implements OnModuleInit {
     return { loginStatus: account.loginStatus, detail };
   }
 
+  /** 绑定发布账号（旧版模拟授权：待授权 → 已绑定；桌面端新版扫码走 session 接口） */
+  async bindPublishAccount(userId: number, accountId: number): Promise<PublishAccountEntity> {
+    const account = await this.accountRepo.findOne({ where: { id: accountId, userId } });
+    if (!account) throw new NotFoundException('发布账号不存在');
+    account.status = 'active';
+    if (!account.boundAt) account.boundAt = new Date();
+    const saved = await this.accountRepo.save(account);
+    delete (saved as unknown as Record<string, unknown>).cookies;
+    return saved;
+  }
   /** 解绑：清空登录态（cookies 置空） */
   async clearAccountSession(userId: number, accountId: number): Promise<PublishAccountEntity> {
     const account = await this.accountRepo.findOne({ where: { id: accountId, userId } });
