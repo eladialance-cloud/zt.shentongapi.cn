@@ -31,6 +31,7 @@ import { MediaAssetsModule } from '../media-assets/media-asset.module';
       VoiceAssetEntity,
       DigitalHumanAssetEntity,
       PublishAccountEntity,
+      PublishPlatformEntity,
       ModelProviderEntity,
       SystemConfigEntity,
       MediaAssetEntity,
