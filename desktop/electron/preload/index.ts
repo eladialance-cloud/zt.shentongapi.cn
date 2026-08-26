@@ -121,6 +121,16 @@ const electronAPI: ElectronAPI = {
     removeSession: (platform: string) =>
       ipcRenderer.invoke('platform-account:remove-session', platform),
   },
+  videoParser: {
+    extractUrl: (text: string) =>
+      ipcRenderer.invoke('video-parser:extract-url', text) as Promise<string | null>,
+    validateUrl: (url: string) =>
+      ipcRenderer.invoke('video-parser:validate-url', url) as Promise<{ ok: boolean; platform: string }>,
+    parse: (url: string) => ipcRenderer.invoke('video-parser:parse', url),
+    readFile: (filePath: string) =>
+      ipcRenderer.invoke('video-parser:read-file', filePath) as Promise<ArrayBuffer | null>,
+  },
+
   modelDefaultsSync: (dto) => ipcRenderer.send('model-defaults:sync', dto),
   hermesSkills: {
     list: () => ipcRenderer.invoke('hermes-skills:list'),

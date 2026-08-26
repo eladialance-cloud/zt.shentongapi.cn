@@ -536,6 +536,31 @@ export interface PlatformAccountApi {
   removeSession(platform: string): Promise<{ ok: boolean }>;
 }
 
+/** 桌面端本地视频解析结果（对标轻语 videoParser：读取链接→打开页面→抓视频→落盘） */
+export type VideoParseResult =
+  | {
+      ok: true
+      videoPath: string
+      title: string
+      coverUrl?: string
+      duration?: number
+      platform: string
+      mediaUrl: string
+    }
+  | { ok: false; error: string; platform?: string; pageText?: string }
+
+/** 桌面端本地视频解析 API（渲染进程→主进程 IPC） */
+export interface VideoParserApi {
+  /** 从分享文本/口令中提取首个 URL */
+  extractUrl(text: string): Promise<string | null>
+  /** 校验链接是否为可解析的 http(s)/直链 */
+  validateUrl(url: string): Promise<{ ok: boolean; platform: string }>
+  /** 解析平台链接 → 本地视频文件（内置 Chromium 打开页面，等 video 元素/拦响应） */
+  parse(url: string): Promise<VideoParseResult>
+  /** 读取解析产物（仅限解析目录），供上传后端提取文案 */
+  readFile(filePath: string): Promise<ArrayBuffer | null>
+}
+
 export interface ElectronAPI {
   service: {
     getStatus(): Promise<Record<ServiceName, ServiceStatus>>;
@@ -575,6 +600,8 @@ export interface ElectronAPI {
   };
   /** 发布平台账号（桌面端扫码绑定登录态，本地加密存储） */
   platformAccount: PlatformAccountApi;
+  /** 桌面端本地视频解析器（对标轻语 videoParser：抖音/快手/B站/小红书/视频号链接 → 本地视频文件） */
+  videoParser: VideoParserApi;
 
   /** 设置页每类默认模型同步（chat/vision/image/video/tts → Hermes/ST-Claw 配置） */
   modelDefaultsSync(dto: { chat?: string | null; vision?: string | null; image?: string | null; video?: string | null; tts?: string | null } | null): void;

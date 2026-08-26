@@ -224,10 +224,14 @@ export class OralWorkshopService implements OnModuleInit {
         const direct = await resolveDirectMediaUrl(videoUrlSafe);
         await downloadTo(direct, videoPath);
       } catch (err) {
-        throw new BadRequestException(
-          '该链接是网页而非视频文件直链，自动解析失败: ' + (err as Error).message +
-          '。可直接粘贴 .mp4/.mov 等视频直链，或在服务器安装 yt-dlp（sudo pip3 install -U yt-dlp）后重试'
-        );
+        const raw = (err as Error).message || '';
+        let hint = '可直接粘贴 .mp4/.mov 等视频直链，或在服务器升级 yt-dlp（standalone 二进制）后重试';
+        if (/Unsupported URL|Unsupported webpage|Unsupported site|no longer exists|unsupported url/i.test(raw)) {
+          hint = '该平台链接暂不支持自动解析（yt-dlp 不支持此网站，如微信视频号）。请将视频下载到本地后使用「上传文件提取文案」，或改用抖音/快手/B站/西瓜视频等支持平台的链接';
+        } else if (/ENOENT|No such file|not found/i.test(raw)) {
+          hint = '服务器未安装 yt-dlp，请安装 standalone 二进制后重试（https://github.com/yt-dlp/yt-dlp/releases/latest）';
+        }
+        throw new BadRequestException('该链接是网页而非视频文件直链，自动解析失败: ' + raw + '。' + hint);
       }
     }
 

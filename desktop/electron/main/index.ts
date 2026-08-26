@@ -24,6 +24,8 @@ app.commandLine.appendSwitch('ignore-gpu-blocklist')
 app.commandLine.appendSwitch('disable-gpu-sandbox')
 // 允许在缺少 GPU 时使用 SwiftShader 软件渲染，保证 PixiJS 至少能创建 WebGL 上下文
 app.commandLine.appendSwitch('enable-unsafe-swiftshader')
+// 对标轻语：本地视频解析需要页面自动播放（video.play 无手势触发）
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 // 仅开发环境（未打包）启用远程调试端口，生产环境关闭
 if (!app.isPackaged) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
@@ -68,6 +70,7 @@ import {
   setupLogin,
   testLogin,
 } from './platform-login'
+import { registerVideoParserIpc } from './video-parser'
 
 // ===== Hermes 编排依赖（团队驱动执行） =====
 
@@ -832,6 +835,9 @@ ipcMain.handle(
   ipcMain.handle('platform-account:remove-session', (_e, platform: string) =>
     removeSession(typeof platform === 'string' ? platform : ''),
   )
+
+  // 本地视频解析器（对标轻语 video-parser：抖音/快手/B站/小红书/视频号链接 → 本地视频文件）
+  registerVideoParserIpc()
 
   ipcMain.handle('service:getStatus', () => serviceManager.getAllStatus())
   ipcMain.handle('service:status', (_event, name: ServiceName) =>

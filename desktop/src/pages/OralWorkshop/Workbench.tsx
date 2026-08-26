@@ -526,17 +526,42 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
 
   /** 学习对标：从对标视频 URL 提取文案并回填 */
   const handleExtractScript = async () => {
-    if (!benchmarkUrl.trim()) {
+    const raw = benchmarkUrl.trim()
+    if (!raw) {
       message.warning('请输入对标视频链接')
       return
     }
     setBenchmarkLoading(true)
     try {
-      const res = await extractScriptFromVideo(benchmarkUrl.trim())
+      const res = await extractScriptFromVideo(raw)
       form.setFieldsValue({ scriptInput: res.text })
       message.success('文案提取成功，已填入文案（可继续修改）')
     } catch (err) {
-      message.error('提取失败: ' + (err as Error).message)
+      const msg = (err as Error).message || ''
+      const parser = window.electronAPI?.videoParser
+      // 服务器 yt-dlp 解不了（微信视频号/部分网页）→ 自动切本地浏览器解析（对标轻语 video-parser）
+      if (parser && /yt-dlp|Unsupported URL|Unsupported site|网页而非视频|自动解析失败/i.test(msg)) {
+        try {
+          message.info('服务器未能解析该链接，正在使用本地浏览器解析…（首次约需 10-30 秒）')
+          const parsed = await parser.parse(raw)
+          if (parsed.ok) {
+            const buf = await parser.readFile(parsed.videoPath)
+            if (!buf || !buf.byteLength) throw new Error('本地解析结果为空')
+            const ext = (parsed.videoPath.match(/\.(\w+)$/)?.[1] || 'mp4').toLowerCase()
+            const mime = /^(mp3|m4a|wav|aac|flac)$/.test(ext) ? 'audio/' + ext : 'video/' + ext
+            const file = new File([buf], 'parsed-video.' + ext, { type: mime })
+            const res2 = await extractFileFromUpload(file)
+            form.setFieldsValue({ scriptInput: res2.text })
+            message.success('本地解析+文案提取成功，已填入文案（可继续修改）')
+          } else {
+            throw new Error(parsed.error)
+          }
+        } catch (err2) {
+          message.error('提取失败: ' + ((err2 as Error).message || String(err2)))
+        }
+      } else {
+        message.error('提取失败: ' + msg)
+      }
     } finally {
       setBenchmarkLoading(false)
     }
@@ -1053,7 +1078,7 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
             </div>
             <div className={styles.extractRow}>
               <Input
-                placeholder="学习对标：粘贴对标视频链接（抖音/快手/B站…）自动提取文案"
+                placeholder="学习对标：粘贴对标视频链接（抖音/快手/B站/小红书/视频号…）自动提取文案"
                 value={benchmarkUrl}
                 maxLength={512}
                 onChange={(e) => setBenchmarkUrl(e.target.value)}
@@ -1105,7 +1130,7 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                 showCount
               />
             </Form.Item>
-            <div className={styles.panelHint}>支持直接粘贴文案，或通过「选题灵感 / 学习对标」一键生成。</div>
+            <div className={styles.panelHint}>支持直接粘贴文案，或通过「选题灵感 / 学习对标」一键生成。服务器无法解析的链接（如微信视频号）会自动使用本地浏览器解析后提取文案。</div>
           </div>
         )}
 
