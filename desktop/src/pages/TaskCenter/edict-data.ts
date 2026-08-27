@@ -243,6 +243,8 @@ export interface UiEdictTask {
 
 export function toUiTask(t: BoardTask): UiEdictTask {
   const org = t.org || "";
+  // 执行部门优先取 assigneeOrg（Doing/Next 时 kanban 会把 org 置为"执行中"，部门只存在于 assigneeOrg）
+  const assigneeOrg = t.assigneeOrg || "";
   const priority = t.priority || "medium";
   const rejectedEntries = (t.flow_log || []).filter((f) => f.remark?.includes("封驳"));
   const lastReject = rejectedEntries[rejectedEntries.length - 1];
@@ -253,10 +255,10 @@ export function toUiTask(t: BoardTask): UiEdictTask {
     state: t.state as EdictState,
     level: priority === "high" ? "heavy" : "light",
     priority,
-    assignee: org || t.official || "太子",
+    assignee: assigneeOrg || org || t.official || "太子",
     org,
     official: t.official,
-    dept: /部$/.test(org) ? org : undefined,
+    dept: assigneeOrg || (/部$/.test(org) ? org : undefined),
     createdAt: t.createdAt || t.updatedAt || "",
     updatedAt: t.updatedAt || t.createdAt || "",
     block: t.block,

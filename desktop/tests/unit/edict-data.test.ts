@@ -67,10 +67,22 @@ describe("toUiTask 任务适配", () => {
 
 describe("buildJunjiStats 统计派生", () => {
   it("统计总数/执行中/封驳数", () => {
+    // 动态日期：避免测试写死日期导致跨天失败（doneToday 按本地"今天"统计）
+    const mkDate = (dayOffset: number, hour: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() + dayOffset);
+      d.setHours(hour, 0, 0, 0);
+      return d.toISOString();
+    };
+    const today8 = mkDate(0, 8);
+    const today9 = mkDate(0, 9);
+    const today820 = mkDate(0, 8);
+    const yest8 = mkDate(-1, 8);
+    const yest9 = mkDate(-1, 9);
     const tasks: EdictTask[] = [
-      baseTask({ state: "Done", createdAt: "2026-08-27T08:00:00Z", updatedAt: "2026-08-27T09:00:00Z", flow_log: [{ at: "x", from: "门下省", to: "中书省", remark: "封驳" }] }),
-      baseTask({ id: "JJC-20260827-002", title: "t2", state: "Doing", createdAt: "2026-08-27T08:10:00Z", updatedAt: "2026-08-27T08:20:00Z" }),
-      baseTask({ id: "JJC-20260827-003", title: "t3", state: "Done", createdAt: "2026-08-26T08:00:00Z", updatedAt: "2026-08-26T09:00:00Z" }),
+      baseTask({ state: "Done", createdAt: today8, updatedAt: today9, flow_log: [{ at: "x", from: "门下省", to: "中书省", remark: "封驳" }] }),
+      baseTask({ id: "JJC-20260827-002", title: "t2", state: "Doing", createdAt: today820, updatedAt: today9 }),
+      baseTask({ id: "JJC-20260827-003", title: "t3", state: "Done", createdAt: yest8, updatedAt: yest9 }),
     ];
     const st = buildJunjiStats(tasks);
     expect(st.executing).toBe(1);

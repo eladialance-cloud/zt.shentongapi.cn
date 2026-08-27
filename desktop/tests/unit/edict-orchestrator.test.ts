@@ -236,7 +236,7 @@ describe("edictRunPipeline（编排：中书→门下→尚书→六部→完成
           return menxiaCalls === 1 ? "封驳：方案缺少时间节点。" : "准奏。";
         }
         if (profile === "shangshu") return "部门：礼部。任务令：撰写需求文档。";
-        if (profile === "hubu") return "交付摘要：需求文档已完成。";
+        if (profile === "libu") return "交付摘要：需求文档已完成。";
         return "";
       },
     });
@@ -256,7 +256,7 @@ describe("edictRunPipeline（编排：中书→门下→尚书→六部→完成
         if (profile === "zhongshu") return "方案：A。";
         if (profile === "menxia") { menxiaCalls += 1; return "封驳：继续修改。"; }
         if (profile === "shangshu") return "部门：工部。任务令：执行方案A。";
-        if (profile === "hubu") return "交付摘要：完成。";
+        if (profile === "gongbu") return "交付摘要：完成。";
         return "";
       },
     });
@@ -285,6 +285,77 @@ describe("edictRunPipeline（编排：中书→门下→尚书→六部→完成
   });
 });
 
+describe("六部接进流水线（尚书省派发 → 对应部门 profile 执行）", () => {
+  const SIX: Array<{ dept: string; profile: string }> = [
+    { dept: "户部", profile: "hubu" },
+    { dept: "礼部", profile: "libu" },
+    { dept: "兵部", profile: "bingbu" },
+    { dept: "刑部", profile: "xingbu" },
+    { dept: "工部", profile: "gongbu" },
+    { dept: "吏部", profile: "libu_hr" },
+  ];
+
+  for (const { dept, profile } of SIX) {
+    it(`尚书省输出「部门：${dept}」→ Doing 调用 ${profile}`, async () => {
+      const called: string[] = [];
+      const { deps, store } = makeDeps({
+        runHermes: async (p) => {
+          called.push(p);
+          if (p === "zhongshu") return "方案：由尚书省派发执行。";
+          if (p === "menxia") return "四维审议通过，准奏。";
+          if (p === "shangshu") return `部门：${dept}。任务令：完成交付。`;
+          return "交付摘要：已完成。";
+        },
+      });
+      await edictIssue(deps, { title: "测试任务" });
+      const r = await edictRunPipeline(deps, "JJC-20260827-001");
+      expect(r.ok).toBe(true);
+      expect(called).toContain(profile);
+      // assigneeOrg 持久化 + 看板流转记录「尚书省 → XX部」
+      expect(store[0].assigneeOrg).toBe(dept);
+      expect(store[0].flow_log.some((f) => f.remark.includes(`派发：尚书省 → ${dept}`))).toBe(true);
+    });
+  }
+
+  it("下旨指定部门 → 优先派发指定部门（尚书省输出不一致时以指定为准）", async () => {
+    const called: string[] = [];
+    const { deps, store } = makeDeps({
+      runHermes: async (p) => {
+        called.push(p);
+        if (p === "zhongshu") return "方案：执行。";
+        if (p === "menxia") return "准奏。";
+        if (p === "shangshu") return "部门：户部。任务令：执行。";
+        return "交付摘要：完成。";
+      },
+    });
+    await edictIssue(deps, { title: "测试任务", dept: "兵部" });
+    const r = await edictRunPipeline(deps, "JJC-20260827-001");
+    expect(r.ok).toBe(true);
+    expect(called).toContain("bingbu");
+    expect(called).not.toContain("hubu");
+    expect(store[0].assigneeOrg).toBe("兵部");
+    expect(store[0].flow_log.some((f) => f.remark.includes("（下旨指定）"))).toBe(true);
+  });
+
+  it("尚书省未输出部门 → 兜底户部执行且不中断", async () => {
+    const called: string[] = [];
+    const { deps, store } = makeDeps({
+      runHermes: async (p) => {
+        called.push(p);
+        if (p === "zhongshu") return "方案：执行。";
+        if (p === "menxia") return "准奏。";
+        if (p === "shangshu") return "任务令：直接执行。";
+        return "交付摘要：完成。";
+      },
+    });
+    await edictIssue(deps, { title: "测试任务" });
+    const r = await edictRunPipeline(deps, "JJC-20260827-001");
+    expect(r.ok).toBe(true);
+    expect(called).toContain("hubu");
+    expect(store[0].assigneeOrg).toBe("户部");
+    expect(store[0].flow_log.some((f) => f.remark.includes("默认户部"))).toBe(true);
+  });
+});
 describe("buildNodePrompt", () => {
   it("中书节点含任务上下文与职责", () => {
     const p = buildNodePrompt("Zhongshu", {
