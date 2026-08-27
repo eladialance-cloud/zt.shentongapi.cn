@@ -63,7 +63,7 @@ export default function JunjiPanelsHub() {
       </div>
 
       {/* 面板内容 */}
-      {active === "overview" && <JunjiView />}
+      {active === "overview" && <JunjiView onNavigateModels={() => setActive("models")} />}
       {active === "court" && <CourtDiscussion />}
       {active === "monitor" && <MonitorPanel />}
       {active === "models" && <ModelConfig />}

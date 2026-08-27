@@ -193,6 +193,26 @@ export interface EdictKnownModel {
   provider: string;
 }
 
+/** 技能库条目（技能市场《我的》技能库：OpenClaw 内置 / Hermes 已装 / 云端技能包） */
+export interface EdictLibrarySkill {
+  name: string;
+  description: string;
+  /** 类别：开发/文档知识/沟通协作/运维系统/内容创作/任务流程/生活硬件/其他 */
+  category: string;
+  /** 依赖提示：离线可用 / 需账号 / 需 macOS / 需安装 CLI */
+  deps: string;
+  /** 来源：openclaw=OpenClaw 内置，hermes=Hermes 已装，market=云端技能包 */
+  source: "openclaw" | "hermes" | "market";
+  /** SKILL.md 所在目录 */
+  dir: string;
+}
+
+export interface EdictSkillLibraryResult {
+  ok: boolean;
+  skills: EdictLibrarySkill[];
+  error?: string;
+}
+
 /** 模型变更日志条目 */
 export interface EdictModelChangeEntry {
   at: string;

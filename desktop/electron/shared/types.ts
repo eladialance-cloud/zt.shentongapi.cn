@@ -16,6 +16,7 @@ import type {
   EdictRemoteSkillsResult,
   EdictSessionItem,
   EdictSkillContentResult,
+  EdictSkillLibraryResult,
   EdictStats,
   EdictSubConfig,
   EdictTask,
@@ -36,6 +37,7 @@ export type {
   EdictRemoteSkillsResult,
   EdictSessionItem,
   EdictSkillContentResult,
+  EdictSkillLibraryResult,
   EdictStats,
   EdictSubConfig,
   EdictTask,
@@ -905,6 +907,12 @@ export interface EdictAPI {
   updateRemoteSkill(agentId: string, skillName: string): Promise<EdictOp>;
   /** 技能配置：移除远程技能 */
   removeRemoteSkill(agentId: string, skillName: string): Promise<EdictOp>;
+  /** 技能配置：技能库（技能市场《我的》：OpenClaw 内置 / Hermes 已装 / 云端技能包） */
+  skillLibrary(): Promise<EdictSkillLibraryResult>;
+  /** 技能配置：把技能库技能整目录复制到官署 profile */
+  copySkill(agentId: string, source: string, skillName: string): Promise<EdictOp>;
+  /** 技能配置：删除官署本地技能（可重新添加） */
+  removeSkill(agentId: string, skillName: string): Promise<EdictOp>;
   /** 朝堂议政：开始议政 */
   courtDiscussStart(topic: string, officials: string[], taskId?: string): Promise<EdictCourtDiscussResult>;
   /** 朝堂议政：推进一轮（可带皇帝发言/天命） */

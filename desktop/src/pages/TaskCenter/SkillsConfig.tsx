@@ -13,8 +13,11 @@ import {
   edictAddRemoteSkill,
   edictUpdateRemoteSkill,
   edictRemoveRemoteSkill,
+  edictSkillLibrary,
+  edictCopySkill,
+  edictRemoveSkill,
 } from "@/api/edict-api";
-import type { EdictAgentConfig, EdictRemoteSkillItem } from "@shared/edict-types";
+import type { EdictAgentConfig, EdictLibrarySkill, EdictRemoteSkillItem } from "@shared/edict-types";
 import { toast } from "./panels-data";
 
 // 社区知名 Skills 源快选列表（照搬 edict 原版）
@@ -68,6 +71,25 @@ const COMMUNITY_SOURCES = [
   },
 ];
 
+/** 官署推荐技能（对齐 edict 原版 SKILL_AGENT_MAPPING + 官署职能）：添加技能弹窗左侧推荐方案 */
+const AGENT_RECOMMEND: Record<string, string[]> = {
+  taizi: ["clawhub", "taskflow", "github", "summarize"],
+  zhongshu: ["taskflow", "diagram-maker", "summarize", "spike"],
+  menxia: ["oracle", "github", "gh-issues", "summarize"],
+  shangshu: ["taskflow", "github", "trello", "himalaya"],
+  libu: ["summarize", "nano-pdf", "notion", "meme-maker"],
+  hubu: ["model-usage", "summarize", "taskflow"],
+  libu_hr: ["notion", "himalaya", "summarize"],
+  bingbu: ["coding-agent", "github", "gh-issues", "node-inspect-debugger", "python-debugpy", "diagram-maker", "spike", "oracle"],
+  xingbu: ["oracle", "github", "gh-issues", "node-inspect-debugger", "python-debugpy", "healthcheck"],
+  gongbu: ["tmux", "healthcheck", "mcporter", "github", "weather"],
+  zaochao: ["summarize", "blogwatcher", "meme-maker", "sherpa-onnx-tts"],
+  qintianjian: ["model-usage", "summarize", "taskflow", "diagram-maker"],
+};
+
+/** 技能库类别清单（筛选 chips） */
+const LIB_CATEGORIES = ["开发", "文档知识", "沟通协作", "运维系统", "内容创作", "任务流程", "生活硬件", "其他"];
+
 interface SkillModalState {
   agentId: string;
   name: string;
@@ -104,6 +126,13 @@ export default function SkillsConfig() {
   const [quickPickSource, setQuickPickSource] = useState<(typeof COMMUNITY_SOURCES)[0] | null>(null);
   const [quickPickAgent, setQuickPickAgent] = useState("");
 
+  // 技能库（技能市场《我的》）：OpenClaw 内置 / Hermes 已装 / 云端技能包
+  const [library, setLibrary] = useState<EdictLibrarySkill[]>([]);
+  const [libLoading, setLibLoading] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [libSearch, setLibSearch] = useState("");
+  const [removingLocalKey, setRemovingLocalKey] = useState<string | null>(null);
+
   const loadAgentConfig = async () => {
     if (!available) return;
     try {
@@ -133,6 +162,51 @@ export default function SkillsConfig() {
       toast("远程技能列表加载失败", "err");
     }
     setRemoteLoading(false);
+  };
+
+  const loadLibrary = async () => {
+    setLibLoading(true);
+    try {
+      const r = await edictSkillLibrary();
+      if (r.ok) setLibrary(r.skills || []);
+      else toast(r.error || "技能库加载失败", "err");
+    } catch {
+      toast("技能库加载失败", "err");
+    }
+    setLibLoading(false);
+  };
+
+  /** 从技能库添加技能到官署（整目录复制） */
+  const handleAddFromLibrary = async (agentId: string, skill: EdictLibrarySkill) => {
+    try {
+      const r = await edictCopySkill(agentId, skill.source, skill.name);
+      if (r.ok) {
+        toast("✅ 技能 " + skill.name + " 已添加到该官署", "ok");
+        void loadAgentConfig();
+      } else {
+        toast(r.error || "添加失败", "err");
+      }
+    } catch {
+      toast("服务器连接失败", "err");
+    }
+  };
+
+  /** 删除官署本地技能（可重新从技能库添加） */
+  const handleRemoveLocal = async (agentId: string, skillName: string) => {
+    const key = agentId + "/" + skillName;
+    setRemovingLocalKey(key);
+    try {
+      const r = await edictRemoveSkill(agentId, skillName);
+      if (r.ok) {
+        toast("🗑️ 技能 " + skillName + " 已移除", "ok");
+        void loadAgentConfig();
+      } else {
+        toast(r.error || "移除失败", "err");
+      }
+    } catch {
+      toast("服务器连接失败", "err");
+    }
+    setRemovingLocalKey(null);
   };
 
   const openSkill = async (agentId: string, skillName: string) => {
@@ -513,52 +587,83 @@ export default function SkillsConfig() {
               <div style={{ fontSize: 11, color: "var(--acc)", fontWeight: 700, letterSpacing: ".04em", marginBottom: 4 }}>
                 为 {addForm.agentLabel} 添加技能
               </div>
-              <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 18 }}>📦 创建本地 Skill</div>
-              <form onSubmit={submitAdd} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>技能名称 <span style={{ color: "#ff5270" }}>*</span></label>
+              <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 18 }}>📦 从技能库添加（技能市场《我的》）</div>
+                      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                {/* 左：推荐方案 */}
+                <div style={{ width: 210, flexShrink: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>💡 推荐给 {addForm.agentLabel}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflowY: "auto" }}>
+                    {(AGENT_RECOMMEND[addForm.agentId] || []).map((n) => {
+                      const libSkill = library.find((s) => s.name === n);
+                      const added = agentConfig.agents.find((a) => a.id === addForm.agentId)?.skills?.some((s) => s.name === n);
+                      if (!libSkill) return null;
+                      return (
+                        <div key={n} style={{ padding: "8px 10px", background: "var(--panel2)", borderRadius: 8, border: "1px solid var(--line)", fontSize: 12 }}>
+                          <div style={{ fontWeight: 600 }}>📦 {n}</div>
+                          <div style={{ fontSize: 10, color: "var(--muted)", margin: "2px 0 6px" }}>{libSkill.category} · {libSkill.deps}</div>
+                          {added ? (
+                            <span style={{ fontSize: 10, color: "#4caf88", fontWeight: 600 }}>✓ 已添加</span>
+                          ) : (
+                            <button onClick={() => void handleAddFromLibrary(addForm.agentId, libSkill)} style={{ padding: "3px 10px", background: "var(--acc)", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 11 }}>添加</button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* 右：全量技能库 */}
+                <div style={{ flex: 1, minWidth: 260 }}>
                   <input
-                    type="text"
-                    required
-                    placeholder="如 brainstorming, code-review"
-                    value={formData.name}
-                    onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") }))}
-                    style={{ width: "100%", padding: "10px 12px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--text)", fontSize: 13, outline: "none" }}
+                    value={libSearch}
+                    onChange={(e) => setLibSearch(e.target.value)}
+                    placeholder="搜索技能…"
+                    style={{ width: "100%", padding: "6px 10px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--text)", fontSize: 12, marginBottom: 10 }}
                   />
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+                    <button onClick={() => setCategoryFilter("")} style={{ padding: "4px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer", border: "1px solid " + (categoryFilter === "" ? "var(--acc)" : "var(--line)"), background: categoryFilter === "" ? "#0d1f45" : "var(--panel)", color: categoryFilter === "" ? "var(--acc)" : "var(--muted)" }}>全部</button>
+                    {LIB_CATEGORIES.map((c) => (
+                      <button key={c} onClick={() => setCategoryFilter(categoryFilter === c ? "" : c)} style={{ padding: "4px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer", border: "1px solid " + (categoryFilter === c ? "var(--acc)" : "var(--line)"), background: categoryFilter === c ? "#0d1f45" : "var(--panel)", color: categoryFilter === c ? "var(--acc)" : "var(--muted)" }}>{c}</button>
+                    ))}
+                  </div>
+                  <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                    {libLoading ? (
+                      <div style={{ color: "var(--muted)", fontSize: 12, padding: "20px 0", textAlign: "center" }}>⟳ 加载技能库…</div>
+                    ) : (
+                      (() => {
+                        const kw = libSearch.trim().toLowerCase();
+                        const filtered = library.filter((s) =>
+                          (!categoryFilter || s.category === categoryFilter) &&
+                          (!kw || s.name.toLowerCase().includes(kw) || s.description.toLowerCase().includes(kw))
+                        );
+                        if (!filtered.length) return <div style={{ color: "var(--muted)", fontSize: 12, padding: "20px 0", textAlign: "center" }}>没有匹配的技能（可先到技能市场《我的》查看/安装）</div>;
+                        return filtered.map((s) => {
+                          const added = agentConfig.agents.find((a) => a.id === addForm.agentId)?.skills?.some((sk) => sk.name === s.name);
+                          const srcLabel = s.source === "openclaw" ? "OpenClaw 内置" : s.source === "hermes" ? "Hermes 已装" : "云端技能包";
+                          return (
+                            <div key={s.name + "|" + s.source} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "var(--panel2)", borderRadius: 8, border: "1px solid var(--line)" }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                  📦 {s.name}
+                                  <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 999, background: "#1a2040", color: "var(--acc)" }}>{srcLabel}</span>
+                                </div>
+                                <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.category} · {s.deps} · {s.description.slice(0, 60)}</div>
+                              </div>
+                              {added ? (
+                                <span style={{ fontSize: 10, color: "#4caf88", fontWeight: 600, whiteSpace: "nowrap" }}>✓ 已添加</span>
+                              ) : (
+                                <button onClick={() => void handleAddFromLibrary(addForm.agentId, s)} style={{ padding: "4px 10px", background: "var(--acc)", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 11, whiteSpace: "nowrap" }}>添加</button>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>技能描述</label>
-                  <input
-                    type="text"
-                    placeholder="一句话说明用途"
-                    value={formData.desc}
-                    onChange={(e) => setFormData((p) => ({ ...p, desc: e.target.value }))}
-                    style={{ width: "100%", padding: "10px 12px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--text)", fontSize: 13, outline: "none" }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>触发词</label>
-                  <input
-                    type="text"
-                    placeholder="如：当用户请求设计图标时"
-                    value={formData.trigger}
-                    onChange={(e) => setFormData((p) => ({ ...p, trigger: e.target.value }))}
-                    style={{ width: "100%", padding: "10px 12px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--text)", fontSize: 13, outline: "none" }}
-                  />
-                </div>
-                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
-                  <button type="button" className="btn btn-g" onClick={() => setAddForm(null)} style={{ padding: "8px 20px" }}>
-                    取消
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    style={{ padding: "8px 20px", fontSize: 13, background: "var(--acc)", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}
-                  >
-                    {submitting ? "⟳ 创建中…" : "📦 创建技能"}
-                  </button>
-                </div>
-              </form>
+              </div>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+                <button type="button" className="btn btn-g" onClick={() => setAddForm(null)} style={{ padding: "8px 20px" }}>关闭</button>
+              </div>
             </div>
           </div>
         </div>

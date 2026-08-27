@@ -17,6 +17,7 @@ import type {
   EdictRemoteSkillsResult,
   EdictSessionItem,
   EdictSkillContentResult,
+  EdictSkillLibraryResult,
   EdictStats,
   EdictSubConfig,
   EdictTask,
@@ -168,6 +169,21 @@ export async function edictUpdateRemoteSkill(agentId: string, skillName: string)
 /** 技能配置：移除远程技能 */
 export async function edictRemoveRemoteSkill(agentId: string, skillName: string): Promise<EdictOp> {
   return getEdict().removeRemoteSkill(agentId, skillName);
+}
+
+/** 技能库：技能市场《我的》（OpenClaw 内置 / Hermes 已装 / 云端技能包） */
+export async function edictSkillLibrary(): Promise<EdictSkillLibraryResult> {
+  return getEdict().skillLibrary();
+}
+
+/** 把技能库技能整目录复制到官署 profile */
+export async function edictCopySkill(agentId: string, source: string, skillName: string): Promise<EdictOp> {
+  return getEdict().copySkill(agentId, source, skillName);
+}
+
+/** 删除官署本地技能（可重新添加） */
+export async function edictRemoveSkill(agentId: string, skillName: string): Promise<EdictOp> {
+  return getEdict().removeSkill(agentId, skillName);
 }
 
 /** 朝堂议政：开始 */

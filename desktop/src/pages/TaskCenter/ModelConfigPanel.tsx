@@ -92,7 +92,7 @@ export default function ModelConfig() {
                 </div>
               </div>
               <div className="mc-cur">
-                当前: <b>{ag.model === "未配置" ? "未配置" : ag.model}</b>
+                当前: <b>{ag.model === "未配置" || !ag.model ? "未配置（跟随全局默认）" : ag.model}</b>
               </div>
               <select className="msel" value={sel} onChange={(e) => handleSelect(ag.id, e.target.value)}>
                 {models.map((m) => (
@@ -136,7 +136,7 @@ export default function ModelConfig() {
       </div>
 
       <div style={{ marginTop: 16, fontSize: 11, color: "var(--muted)" }}>
-        💡 模型走平台 llm-proxy 网关，切换后自动同步到对应官署 Hermes profile；太子（OpenClaw）模型请在对话页选择。
+        💡 模型选项 = 管理后台已启用的大模型（走平台 llm-proxy 网关）；选「跟随全局默认」则沿用全局配置。切换后自动同步到对应官署 Hermes profile；太子（OpenClaw）模型请在对话页选择。
       </div>
     </div>
   );

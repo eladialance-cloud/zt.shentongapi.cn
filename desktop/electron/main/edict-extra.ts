@@ -37,6 +37,8 @@ import type {
   EdictSkillInfo,
   EdictSubConfig,
   EdictTask,
+  EdictLibrarySkill,
+  EdictSkillLibraryResult,
 } from "../shared/edict-types";
 
 // ===== 依赖 =====
@@ -66,23 +68,7 @@ const ORG_TO_ID: Record<string, string> = {
   "刑部": "xingbu", "工部": "gongbu", "钦天监": "qintianjian", "司礼监": "zaochao",
 };
 
-/** 本地模型清单兜底（照搬 edict scripts/sync_agent_config.py KNOWN_MODELS） */
-const FALLBACK_KNOWN_MODELS: EdictKnownModel[] = [
-  { id: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6", provider: "Anthropic" },
-  { id: "anthropic/claude-opus-4-5", label: "Claude Opus 4.5", provider: "Anthropic" },
-  { id: "anthropic/claude-haiku-3-5", label: "Claude Haiku 3.5", provider: "Anthropic" },
-  { id: "openai/gpt-4o", label: "GPT-4o", provider: "OpenAI" },
-  { id: "openai/gpt-4o-mini", label: "GPT-4o Mini", provider: "OpenAI" },
-  { id: "openai-codex/gpt-5.3-codex", label: "GPT-5.3 Codex", provider: "OpenAI Codex" },
-  { id: "google/gemini-2.0-flash", label: "Gemini 2.0 Flash", provider: "Google" },
-  { id: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro", provider: "Google" },
-  { id: "copilot/claude-sonnet-4", label: "Claude Sonnet 4", provider: "Copilot" },
-  { id: "copilot/claude-opus-4.5", label: "Claude Opus 4.5", provider: "Copilot" },
-  { id: "github-copilot/claude-opus-4.6", label: "Claude Opus 4.6", provider: "GitHub Copilot" },
-  { id: "copilot/gpt-4o", label: "GPT-4o", provider: "Copilot" },
-  { id: "copilot/gemini-2.5-pro", label: "Gemini 2.5 Pro", provider: "Copilot" },
-  { id: "copilot/o3-mini", label: "o3-mini", provider: "Copilot" },
-];
+
 
 /** 官署展示元数据（label/emoji/role 与 OFFICIALS 一致，另含说话风格） */
 const COURT_OFFICIALS: EdictCourtOfficial[] = [
@@ -285,18 +271,18 @@ export async function wakeAgent(deps: EdictExtraDeps, agentId: string): Promise<
 /** 从平台 llm-proxy 拉取可用模型；失败回退本地清单 */
 export async function fetchKnownModels(deps: EdictExtraDeps): Promise<EdictKnownModel[]> {
   const token = deps.getAuthToken();
-  if (!token || !deps.stApiBase) return FALLBACK_KNOWN_MODELS;
+  if (!token || !deps.stApiBase) return [];
   const fetcher = deps.fetch ?? globalThis.fetch;
   try {
     const res = await fetcher(deps.stApiBase.replace(/\/+$/, "") + "/llm-proxy/v1/models", {
       headers: { Authorization: "Bearer " + token },
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return FALLBACK_KNOWN_MODELS;
+    if (!res.ok) return [];
     const body = (await res.json()) as Record<string, unknown>;
     const arr = (body?.data as unknown) ?? body;
     const list = Array.isArray(arr) ? arr : Array.isArray((arr as { data?: unknown })?.data) ? (arr as { data: unknown[] }).data : null;
-    if (!list) return FALLBACK_KNOWN_MODELS;
+    if (!list) return [];
     return list
       .map((m) => {
         const item = m as Record<string, unknown>;
@@ -306,13 +292,25 @@ export async function fetchKnownModels(deps: EdictExtraDeps): Promise<EdictKnown
       })
       .filter((x): x is EdictKnownModel => !!x);
   } catch {
-    return FALLBACK_KNOWN_MODELS;
+    return [];
   }
 }
 
 /** 切换模型：写全局 config.yaml + 变更日志 + 同步到目标 profile */
 export async function applyModelChange(deps: EdictExtraDeps, agentId: string, model: string): Promise<EdictOp> {
   if (!agentId || !model) return { ok: false, error: "参数缺失" };
+  // 跟随全局默认：删除该官署 profile 的 config.yaml，读取时回退到全局 config.yaml
+  if (model === "__default__") {
+    const profileCfg = path.join(deps.hermesHome, "profiles", agentId, "config.yaml");
+    const oldModel = readProfileModel(deps, agentId);
+    try {
+      if (fs.existsSync(profileCfg)) fs.rmSync(profileCfg, { force: true });
+    } catch (err) {
+      return { ok: false, error: "重置配置失败: " + (err instanceof Error ? err.message : String(err)) };
+    }
+    appendModelChangeLog(deps, { at: nowIso(), agentId, oldModel, newModel: "跟随全局默认" });
+    return { ok: true, data: { oldModel, newModel: "__default__", profileIds: [] } };
+  }
   const cfgPath = path.join(deps.hermesHome, "config.yaml");
   if (!fs.existsSync(cfgPath)) return { ok: false, error: "Hermes 尚未配置（请先登录并安装 Hermes 运行时）" };
   let content: string;
@@ -366,6 +364,203 @@ export async function buildAgentConfig(deps: EdictExtraDeps): Promise<EdictAgent
   }));
   const knownModels = await fetchKnownModels(deps);
   return { agents, knownModels };
+}
+
+// ===== 技能库（技能市场《我的》：OpenClaw 内置 / Hermes 已装 / 云端技能包） =====
+
+/** OpenClaw 内置技能根（打包后 runtime 下载目录；开发兜底 desktop/runtime） */
+function getOpenClawSkillsRoot(deps: EdictExtraDeps): string {
+  const candidates = [
+    path.join(deps.runtimeRoot, "openclaw", "node_modules", "openclaw", "skills"),
+    path.join(process.cwd(), "runtime", "openclaw", "node_modules", "openclaw", "skills"),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return candidates[0];
+}
+
+/** OpenClaw 技能 → 类别（添加技能弹窗分类筛选用） */
+const SKILL_CATEGORY: Record<string, string> = {
+  coding: "开发",
+  "coding-agent": "开发", github: "开发", "gh-issues": "开发",
+  "node-inspect-debugger": "开发", "python-debugpy": "开发", "diagram-maker": "开发",
+  spike: "开发", oracle: "开发", "skill-creator": "开发", "model-usage": "开发", gemini: "开发",
+  notion: "文档知识", obsidian: "文档知识", "bear-notes": "文档知识", "apple-notes": "文档知识",
+  "nano-pdf": "文档知识", summarize: "文档知识", blogwatcher: "文档知识", "session-logs": "文档知识",
+  himalaya: "沟通协作", gog: "沟通协作", trello: "沟通协作", xurl: "沟通协作", goplaces: "沟通协作",
+  tmux: "运维系统", healthcheck: "运维系统", mcporter: "运维系统", weather: "运维系统",
+  camsnap: "运维系统", "node-connect": "运维系统", clawhub: "运维系统",
+  "meme-maker": "内容创作", "video-frames": "内容创作", songsee: "内容创作",
+  "sherpa-onnx-tts": "内容创作", "openai-whisper": "内容创作", "openai-whisper-api": "内容创作",
+  sag: "内容创作", gifgrep: "内容创作",
+  taskflow: "任务流程", "taskflow-inbox-triage": "任务流程",
+  "1password": "生活硬件", blucli: "生活硬件", eightctl: "生活硬件", openhue: "生活硬件",
+  sonoscli: "生活硬件", "spotify-player": "生活硬件", ordercli: "生活硬件",
+  "things-mac": "生活硬件", peekaboo: "生活硬件",
+};
+
+/** OpenClaw 技能 → 依赖提示 */
+const SKILL_DEPS: Record<string, string> = {
+  "apple-notes": "需 macOS", "apple-reminders": "需 macOS", "bear-notes": "需 macOS",
+  "things-mac": "需 macOS", peekaboo: "需 macOS",
+  github: "需账号", "gh-issues": "需账号", notion: "需账号", gog: "需账号", himalaya: "需账号",
+  trello: "需账号", xurl: "需账号", goplaces: "需账号", "openai-whisper-api": "需账号",
+  sag: "需账号", "1password": "需账号", camsnap: "需账号", openhue: "需账号",
+  sonoscli: "需账号", "spotify-player": "需账号", blucli: "需账号", eightctl: "需账号", ordercli: "需账号",
+  "coding-agent": "需安装 CLI", oracle: "需安装 CLI", gemini: "需安装 CLI",
+  summarize: "需联网", blogwatcher: "需联网", weather: "需联网", "meme-maker": "需联网",
+};
+
+/** 解析 SKILL.md 的 name/description（frontmatter） */
+function parseSkillMeta(skillDir: string): { name: string; description: string } {
+  const md = path.join(skillDir, "SKILL.md");
+  try {
+    const content = fs.readFileSync(md, "utf-8");
+    const m = content.match(/^description:\s*(.+)$/m) || content.match(/^#\s+(.+)$/m);
+    return {
+      name: path.basename(skillDir),
+      description: m ? m[1].trim().replace(/"/g, "") : "",
+    };
+  } catch {
+    return { name: path.basename(skillDir), description: "" };
+  }
+}
+
+/** 枚举技能库（OpenClaw 内置 + Hermes 已装 + 云端技能包） */
+export function listSkillLibrary(deps: EdictExtraDeps): EdictSkillLibraryResult {
+  const skills: EdictLibrarySkill[] = [];
+  // 1) OpenClaw 内置（OpenClaw 运行时自带 skills）
+  try {
+    const root = getOpenClawSkillsRoot(deps);
+    if (fs.existsSync(root)) {
+      for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
+        if (!ent.isDirectory()) continue;
+        const dir = path.join(root, ent.name);
+        if (!fs.existsSync(path.join(dir, "SKILL.md"))) continue;
+        const meta = parseSkillMeta(dir);
+        skills.push({
+          name: meta.name,
+          description: meta.description,
+          category: SKILL_CATEGORY[meta.name] || "其他",
+          deps: SKILL_DEPS[meta.name] || "离线可用",
+          source: "openclaw",
+          dir,
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("[edict] OpenClaw 技能枚举失败: " + (err instanceof Error ? err.message : String(err)));
+  }
+  // 2) Hermes 已装技能（$HERMES_HOME/skills）
+  try {
+    const root = path.join(deps.hermesHome, "skills");
+    if (fs.existsSync(root)) {
+      for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
+        if (!ent.isDirectory()) continue;
+        const dir = path.join(root, ent.name);
+        if (!fs.existsSync(path.join(dir, "SKILL.md"))) continue;
+        const meta = parseSkillMeta(dir);
+        skills.push({
+          name: meta.name,
+          description: meta.description || "Hermes 已安装技能",
+          category: "其他",
+          deps: "离线可用",
+          source: "hermes",
+          dir,
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("[edict] Hermes 技能枚举失败: " + (err instanceof Error ? err.message : String(err)));
+  }
+  // 3) 云端技能包（market 本地安装记录，type=skill）
+  try {
+    const { listInstalled } = require("./local-market/local-content-manager") as typeof import("./local-market/local-content-manager");
+    const records = listInstalled().filter((r) => r.type === "skill");
+    for (const r of records) {
+      if (!fs.existsSync(path.join(r.dir, "SKILL.md"))) continue;
+      const meta = parseSkillMeta(r.dir);
+      skills.push({
+        name: r.name || meta.name,
+        description: meta.description || r.name || "云端技能包",
+        category: "其他",
+        deps: "离线可用",
+        source: "market",
+        dir: r.dir,
+      });
+    }
+  } catch (err) {
+    console.warn("[edict] 云端技能包枚举失败: " + (err instanceof Error ? err.message : String(err)));
+  }
+  // 去重（同名同目录）
+  const seen = new Set<string>();
+  const dedup = skills.filter((s) => {
+    const key = s.name + "|" + s.dir;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return { ok: true, skills: dedup };
+}
+
+/** 按来源+名称解析技能库目录（SKILL.md 所在目录） */
+function resolveLibrarySkillDir(deps: EdictExtraDeps, source: string, skillName: string): string {
+  if (source === "openclaw") {
+    const dir = path.join(getOpenClawSkillsRoot(deps), skillName);
+    return fs.existsSync(path.join(dir, "SKILL.md")) ? dir : "";
+  }
+  if (source === "hermes") {
+    const dir = path.join(deps.hermesHome, "skills", skillName);
+    return fs.existsSync(path.join(dir, "SKILL.md")) ? dir : "";
+  }
+  if (source === "market") {
+    try {
+      const { listInstalled } = require("./local-market/local-content-manager") as typeof import("./local-market/local-content-manager");
+      const rec = listInstalled().find((r) => r.type === "skill" && (r.name === skillName || path.basename(r.dir) === skillName));
+      return rec && fs.existsSync(path.join(rec.dir, "SKILL.md")) ? rec.dir : "";
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
+/** 把技能库技能整目录复制到官署 profile skills/（已存在则拒绝，提示先删除） */
+export function copySkillToProfile(deps: EdictExtraDeps, agentId: string, source: string, skillName: string): EdictOp {
+  const srcDir = resolveLibrarySkillDir(deps, source, skillName);
+  if (!srcDir || !fs.existsSync(path.join(srcDir, "SKILL.md"))) {
+    return { ok: false, error: "技能库中不存在该技能: " + skillName };
+  }
+  const dstDir = path.join(deps.hermesHome, "profiles", agentId, "skills", skillName);
+  if (fs.existsSync(path.join(dstDir, "SKILL.md"))) {
+    return { ok: false, error: "该官署已有技能 " + skillName + "，请先删除再添加" };
+  }
+  try {
+    fs.mkdirSync(dstDir, { recursive: true });
+    fs.cpSync(srcDir, dstDir, { recursive: true });
+    return { ok: true, data: dstDir };
+  } catch (err) {
+    return { ok: false, error: "复制技能失败: " + (err instanceof Error ? err.message : String(err)) };
+  }
+}
+
+/** 删除官署本地技能（整目录，可重新从技能库添加） */
+export function removeLocalSkill(deps: EdictExtraDeps, agentId: string, skillName: string): EdictOp {
+  const dir = path.join(profileSkillsDir(deps, agentId), skillName);
+  try {
+    if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+  } catch (err) {
+    return { ok: false, error: "删除失败: " + (err instanceof Error ? err.message : String(err)) };
+  }
+  // 同步清理远程登记（若该技能来自远程源）
+  try {
+    const registry = readRegistry(deps).filter((it) => !(it.agentId === agentId && it.skillName === skillName));
+    writeRegistry(deps, registry);
+  } catch {
+    // 忽略 registry 清理失败
+  }
+  return { ok: true };
 }
 
 // ===== 技能配置 skills =====
@@ -941,6 +1136,10 @@ export function registerEdictExtraIpc(deps: EdictExtraDeps, opts: EdictExtraIpcO
   );
   ipcMain.handle("edict:update-remote-skill", (_e, agentId: string, skillName: string): Promise<EdictOp> => updateRemoteSkill(deps, agentId, skillName));
   ipcMain.handle("edict:remove-remote-skill", (_e, agentId: string, skillName: string): EdictOp => removeRemoteSkill(deps, agentId, skillName));
+  // 技能库（技能市场《我的》）：枚举 / 复制到官署 / 删除官署技能
+  ipcMain.handle("edict:skill-library", (): EdictSkillLibraryResult => listSkillLibrary(deps));
+  ipcMain.handle("edict:copy-skill", (_e, agentId: string, source: string, skillName: string): EdictOp => copySkillToProfile(deps, agentId, source, skillName));
+  ipcMain.handle("edict:remove-skill", (_e, agentId: string, skillName: string): EdictOp => removeLocalSkill(deps, agentId, skillName));
 
   // 朝堂议政
   ipcMain.handle("edict:court-discuss/start", (_e, topic: string, officials: string[], taskId?: string): EdictCourtDiscussResult =>
@@ -979,7 +1178,7 @@ export function registerEdictExtraIpc(deps: EdictExtraDeps, opts: EdictExtraIpcO
     for (const ch of [
       "edict:agents-status", "edict:agent-wake", "edict:agent-config", "edict:set-model", "edict:model-change-log",
       "edict:skill-content", "edict:add-skill", "edict:remote-skills-list", "edict:add-remote-skill",
-      "edict:update-remote-skill", "edict:remove-remote-skill",
+      "edict:update-remote-skill", "edict:remove-remote-skill", "edict:skill-library", "edict:copy-skill", "edict:remove-skill",
       "edict:court-discuss/start", "edict:court-discuss/advance", "edict:court-discuss/conclude",
       "edict:court-discuss/destroy", "edict:court-discuss/fate",
       "edict:morning-brief", "edict:morning-config", "edict:save-morning-config", "edict:refresh-morning",

@@ -45,6 +45,7 @@ import type {
   EdictModelChangeEntry,
   EdictMorningBrief,
   EdictRemoteSkillsResult,
+  EdictSkillLibraryResult,
   EdictSessionItem,
   EdictSkillContentResult,
   EdictSubConfig
@@ -303,6 +304,11 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('edict:update-remote-skill', agentId, skillName) as Promise<EdictOp>,
     removeRemoteSkill: (agentId: string, skillName: string) =>
       ipcRenderer.invoke('edict:remove-remote-skill', agentId, skillName) as Promise<EdictOp>,
+    skillLibrary: () => ipcRenderer.invoke('edict:skill-library') as Promise<EdictSkillLibraryResult>,
+    copySkill: (agentId: string, source: string, skillName: string) =>
+      ipcRenderer.invoke('edict:copy-skill', agentId, source, skillName) as Promise<EdictOp>,
+    removeSkill: (agentId: string, skillName: string) =>
+      ipcRenderer.invoke('edict:remove-skill', agentId, skillName) as Promise<EdictOp>,
     courtDiscussStart: (topic: string, officials: string[], taskId?: string) =>
       ipcRenderer.invoke('edict:court-discuss/start', topic, officials, taskId) as Promise<EdictCourtDiscussResult>,
     courtDiscussAdvance: (sessionId: string, userMessage?: string, decree?: string) =>

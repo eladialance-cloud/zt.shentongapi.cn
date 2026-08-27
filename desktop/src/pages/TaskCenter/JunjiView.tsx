@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button, Drawer, Empty, Spin } from "antd";
 import {
   isEdictAvailable,
+  edictAgentConfig,
   edictBoard,
   edictModels,
   edictOfficials,
@@ -31,7 +32,7 @@ const STATUS_CLASS: Record<OfficialCard["status"], string> = {
   offline: styles.statusOffline,
 };
 
-export default function JunjiView() {
+export default function JunjiView({ onNavigateModels }: { onNavigateModels?: () => void }) {
   const [available] = useState<boolean>(() => isEdictAvailable());
   const [loading, setLoading] = useState(true);
   const [drawerOfficial, setDrawerOfficial] = useState<OfficialCard | null>(null);
@@ -41,17 +42,24 @@ export default function JunjiView() {
   });
   const [news, setNews] = useState<ReturnType<typeof buildNews>>([]);
   const [defaultModel, setDefaultModel] = useState("");
+  const [agentModels, setAgentModels] = useState<Record<string, string>>({});
   const [modelsLoading, setModelsLoading] = useState(false);
   const [courtOpen, setCourtOpen] = useState(false);
   const closeCourt = useCallback(() => setCourtOpen(false), []);
 
   const loadAll = useCallback(async () => {
     try {
-      const [officialRes, boardRes, statsRes] = await Promise.all([
+      const [officialRes, boardRes, statsRes, agentCfg] = await Promise.all([
         edictOfficials(),
         edictBoard(),
         edictStats(),
+        edictAgentConfig().catch(() => null),
       ]);
+      if (agentCfg?.agents) {
+        const m: Record<string, string> = {};
+        agentCfg.agents.forEach((a) => { m[a.id] = a.model; });
+        setAgentModels(m);
+      }
       setOfficials(buildOfficialCards(officialRes, boardRes.tasks));
       setStats(buildJunjiStats(boardRes.tasks));
       setNews(buildNews(boardRes.tasks));
@@ -203,15 +211,16 @@ export default function JunjiView() {
               <div className={styles.panelHead}>
                 ⚙️ 模型配置
                 <span className={styles.panelSub}>
-                  当前默认 {defaultModel || (modelsLoading ? "加载中…" : "未配置")}
+                  全局默认 {defaultModel || (modelsLoading ? "加载中…" : "未配置")} · 各官署当前模型
                 </span>
+                {onNavigateModels && <button className={styles.bannerBtn} style={{ padding: "4px 12px", fontSize: 12 }} onClick={onNavigateModels}>去模型配置</button>}
               </div>
               <div className={styles.panelBody}>
                 <div className={styles.modelList}>
                   {OFFICIAL_META.map((o) => (
                     <div key={o.id} className={styles.modelRow}>
                       <span className={styles.modelName}>{o.emoji} {o.name}</span>
-                      <span className={styles.modelValue}>默认模型</span>
+                      <span className={styles.modelValue}>{agentModels[o.id] || "未配置"}</span>
                     </div>
                   ))}
                 </div>
