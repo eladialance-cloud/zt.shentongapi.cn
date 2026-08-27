@@ -274,21 +274,21 @@ export async function fetchKnownModels(deps: EdictExtraDeps): Promise<EdictKnown
   if (!token || !deps.stApiBase) return [];
   const fetcher = deps.fetch ?? globalThis.fetch;
   try {
-    const res = await fetcher(deps.stApiBase.replace(/\/+$/, "") + "/llm-proxy/v1/models", {
+    // 管理后台已启用的大模型（与对话页模型下拉同一数据源；JWT 鉴权）
+    const res = await fetcher(deps.stApiBase.replace(/\/+$/, "") + "/models/chat-options", {
       headers: { Authorization: "Bearer " + token },
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return [];
-    const body = (await res.json()) as Record<string, unknown>;
-    const arr = (body?.data as unknown) ?? body;
-    const list = Array.isArray(arr) ? arr : Array.isArray((arr as { data?: unknown })?.data) ? (arr as { data: unknown[] }).data : null;
-    if (!list) return [];
+    const body = (await res.json()) as unknown;
+    const raw = Array.isArray(body) ? body : (body as { data?: unknown })?.data;
+    const list = Array.isArray(raw) ? raw : [];
     return list
       .map((m) => {
         const item = m as Record<string, unknown>;
-        const id = String(item.id ?? item.model ?? "");
+        const id = String(item.id ?? item.modelId ?? item.model ?? "");
         if (!id) return null;
-        return { id, label: String(item.label ?? item.name ?? id), provider: String(item.provider ?? item.owner ?? "平台") };
+        return { id, label: String(item.name ?? item.label ?? id), provider: String(item.provider ?? item.owner ?? "平台") };
       })
       .filter((x): x is EdictKnownModel => !!x);
   } catch {
@@ -368,16 +368,23 @@ export async function buildAgentConfig(deps: EdictExtraDeps): Promise<EdictAgent
 
 // ===== 技能库（技能市场《我的》：OpenClaw 内置 / Hermes 已装 / 云端技能包） =====
 
-/** OpenClaw 内置技能根（打包后 runtime 下载目录；开发兜底 desktop/runtime） */
-function getOpenClawSkillsRoot(deps: EdictExtraDeps): string {
+/** OpenClaw 内置技能根（运行时下载目录 + 打包内置 resources/openclaw/skills） */
+function getOpenClawSkillsRoots(deps: EdictExtraDeps): string[] {
   const candidates = [
     path.join(deps.runtimeRoot, "openclaw", "node_modules", "openclaw", "skills"),
     path.join(process.cwd(), "runtime", "openclaw", "node_modules", "openclaw", "skills"),
-  ];
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
-  }
-  return candidates[0];
+    typeof process.resourcesPath === "string" && process.resourcesPath
+      ? path.join(process.resourcesPath, "openclaw", "skills")
+      : "",
+    path.join(process.cwd(), "resources", "openclaw", "skills"),
+  ].filter(Boolean);
+  return candidates.filter((c) => fs.existsSync(c));
+}
+
+/** OpenClaw 内置技能根（兼容单根读取，取第一个存在的） */
+function getOpenClawSkillsRoot(deps: EdictExtraDeps): string {
+  const roots = getOpenClawSkillsRoots(deps);
+  return roots[0] ?? path.join(deps.runtimeRoot, "openclaw", "node_modules", "openclaw", "skills");
 }
 
 /** OpenClaw 技能 → 类别（添加技能弹窗分类筛选用） */
@@ -430,10 +437,9 @@ function parseSkillMeta(skillDir: string): { name: string; description: string }
 /** 枚举技能库（OpenClaw 内置 + Hermes 已装 + 云端技能包） */
 export function listSkillLibrary(deps: EdictExtraDeps): EdictSkillLibraryResult {
   const skills: EdictLibrarySkill[] = [];
-  // 1) OpenClaw 内置（OpenClaw 运行时自带 skills）
+  // 1) OpenClaw 内置（OpenClaw 运行时自带 skills + 桌面端内置 resources/openclaw/skills）
   try {
-    const root = getOpenClawSkillsRoot(deps);
-    if (fs.existsSync(root)) {
+    for (const root of getOpenClawSkillsRoots(deps)) {
       for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
         if (!ent.isDirectory()) continue;
         const dir = path.join(root, ent.name);
@@ -474,6 +480,34 @@ export function listSkillLibrary(deps: EdictExtraDeps): EdictSkillLibraryResult 
   } catch (err) {
     console.warn("[edict] Hermes 技能枚举失败: " + (err instanceof Error ? err.message : String(err)));
   }
+  // 2b) 桌面端内置 Hermes 技能（resources/hermes/skills，打包后 resourcesPath/hermes/skills）
+  try {
+    const bundledRoots = [
+      typeof process.resourcesPath === "string" && process.resourcesPath
+        ? path.join(process.resourcesPath, "hermes", "skills")
+        : "",
+      path.join(process.cwd(), "resources", "hermes", "skills"),
+    ].filter(Boolean);
+    for (const root of bundledRoots) {
+      if (!fs.existsSync(root)) continue;
+      for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
+        if (!ent.isDirectory()) continue;
+        const dir = path.join(root, ent.name);
+        if (!fs.existsSync(path.join(dir, "SKILL.md"))) continue;
+        const meta = parseSkillMeta(dir);
+        skills.push({
+          name: meta.name,
+          description: meta.description || "Hermes 内置技能",
+          category: "其他",
+          deps: "离线可用",
+          source: "hermes",
+          dir,
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("[edict] 内置 Hermes 技能枚举失败: " + (err instanceof Error ? err.message : String(err)));
+  }
   // 3) 云端技能包（market 本地安装记录，type=skill）
   try {
     const { listInstalled } = require("./local-market/local-content-manager") as typeof import("./local-market/local-content-manager");
@@ -507,12 +541,26 @@ export function listSkillLibrary(deps: EdictExtraDeps): EdictSkillLibraryResult 
 /** 按来源+名称解析技能库目录（SKILL.md 所在目录） */
 function resolveLibrarySkillDir(deps: EdictExtraDeps, source: string, skillName: string): string {
   if (source === "openclaw") {
-    const dir = path.join(getOpenClawSkillsRoot(deps), skillName);
-    return fs.existsSync(path.join(dir, "SKILL.md")) ? dir : "";
+    for (const root of getOpenClawSkillsRoots(deps)) {
+      const dir = path.join(root, skillName);
+      if (fs.existsSync(path.join(dir, "SKILL.md"))) return dir;
+    }
+    return "";
   }
   if (source === "hermes") {
     const dir = path.join(deps.hermesHome, "skills", skillName);
-    return fs.existsSync(path.join(dir, "SKILL.md")) ? dir : "";
+    if (fs.existsSync(path.join(dir, "SKILL.md"))) return dir;
+    const bundledRoots = [
+      typeof process.resourcesPath === "string" && process.resourcesPath
+        ? path.join(process.resourcesPath, "hermes", "skills")
+        : "",
+      path.join(process.cwd(), "resources", "hermes", "skills"),
+    ].filter(Boolean);
+    for (const root of bundledRoots) {
+      const bdir = path.join(root, skillName);
+      if (fs.existsSync(path.join(bdir, "SKILL.md"))) return bdir;
+    }
+    return "";
   }
   if (source === "market") {
     try {

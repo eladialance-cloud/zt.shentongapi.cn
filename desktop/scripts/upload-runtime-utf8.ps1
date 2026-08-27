@@ -20,10 +20,8 @@ $ErrorActionPreference = "Stop"
 
 $CdnDomain = "zt.shentongapi.cn"
 $CdnBasePath = "/runtime"
-# CDN 归档在服务器上挂载到 nginx 容器的 /usr/share/nginx/html/runtime/
-# docker-compose.yml 中: ./cdn:/usr/share/nginx/html/runtime:ro
-# 所以远程目标目录是 <RemoteProjectDir>/cdn/
-$RemoteBaseDir = "$RemoteProjectDir/cdn"
+# nginx location /runtime/ alias /opt/shentong/updates/runtime/
+$RemoteBaseDir = "$RemoteProjectDir/updates/runtime"
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
@@ -93,7 +91,7 @@ $total = $uploadList.Count
 $index = 0
 foreach ($item in $uploadList) {
     $index++
-    $tmpRemote = "/tmp/runtime_upload_$($item.Filename)"
+    $tmpRemote = "/tmp/runtime_upload_$($item.Service)_$($item.Version)_$($item.Filename)"
     Write-Host "[$index/$total] 上传 $($item.Filename) ..." -ForegroundColor Yellow
     scp $item.FilePath "${ServerUser}@${ServerHost}:$tmpRemote"
     if ($LASTEXITCODE -ne 0) {
@@ -111,7 +109,7 @@ $moveCommands = ""
 foreach ($item in $uploadList) {
     $targetDir = "$RemoteBaseDir/$($item.Service)/$($item.Version)"
     $targetFile = "$targetDir/$($item.Filename)"
-    $tmpRemote = "/tmp/runtime_upload_$($item.Filename)"
+    $tmpRemote = "/tmp/runtime_upload_$($item.Service)_$($item.Version)_$($item.Filename)"
     $moveCommands += "sudo mkdir -p $targetDir && " + `
         "sudo mv $tmpRemote $targetFile && "
 }
@@ -131,6 +129,7 @@ echo '=== 部署完成 ===' && \
 find $RemoteBaseDir -type f -name '*.tar.gz' | sort
 "@
 
+$remoteCmd = $remoteCmd -replace "`r", ""
 ssh "${ServerUser}@${ServerHost}" $remoteCmd
 
 if ($LASTEXITCODE -ne 0) {

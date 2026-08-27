@@ -4,7 +4,9 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { isEdictAvailable, edictAgentConfig, edictSetModel, edictModelChangeLog } from "@/api/edict-api";
-import type { EdictAgentConfig, EdictModelChangeEntry } from "@shared/edict-types";
+import { listChatModels } from "@/api/chat-api";
+import type { EdictAgentConfig, EdictKnownModel, EdictModelChangeEntry } from "@shared/edict-types";
+import type { ModelOption } from "@/types/chat";
 import { toast } from "./panels-data";
 
 export default function ModelConfig() {
@@ -13,14 +15,26 @@ export default function ModelConfig() {
   const [selMap, setSelMap] = useState<Record<string, string>>({});
   const [statusMap, setStatusMap] = useState<Record<string, { cls: string; text: string }>>({});
   const [loading, setLoading] = useState(true);
+  const [knownModels, setKnownModels] = useState<EdictKnownModel[]>([]);
+  const [modelWarn, setModelWarn] = useState("");
   const [available] = useState<boolean>(() => isEdictAvailable());
 
   const load = useCallback(async () => {
     try {
       const cfg = await edictAgentConfig();
       setAgentConfig(cfg);
+      // 主进程 knownModels（JWT 读取）为空时，用对话页模型列表兜底（同一登录态，管理后台已启用模型）
+      let models: EdictKnownModel[] = cfg.knownModels || [];
+      if (!models.length) {
+        const chatModels: ModelOption[] = await listChatModels().catch(() => [] as ModelOption[]);
+        models = chatModels.map((m) => ({ id: m.id, label: m.name, provider: m.provider || "平台" }));
+        if (models.length) setModelWarn("模型列表来自对话页数据源（主进程读取失败已兜底）");
+      } else {
+        setModelWarn("");
+      }
+      setKnownModels(models);
       const m: Record<string, string> = {};
-      cfg.agents.forEach((ag) => { m[ag.id] = ag.model; });
+      cfg.agents.forEach((ag) => { m[ag.id] = !ag.model || ag.model === "未配置" ? "__default__" : ag.model; });
       setSelMap(m);
       const log = await edictModelChangeLog();
       setChangeLog(log || []);
@@ -41,9 +55,7 @@ export default function ModelConfig() {
     return <div className="edictPanels empty" style={{ padding: 32, color: "var(--muted)" }}>⚠️ 请先启动 Hermes 运行时并登录</div>;
   }
 
-  const models = agentConfig.knownModels?.length
-    ? agentConfig.knownModels
-    : [];
+  const models = knownModels;
 
   const handleSelect = (agentId: string, val: string) => {
     setSelMap((p) => ({ ...p, [agentId]: val }));
@@ -51,7 +63,7 @@ export default function ModelConfig() {
 
   const resetMC = (agentId: string) => {
     const ag = agentConfig.agents.find((a) => a.id === agentId);
-    if (ag) setSelMap((p) => ({ ...p, [agentId]: ag.model }));
+    if (ag) setSelMap((p) => ({ ...p, [agentId]: !ag.model || ag.model === "未配置" ? "__default__" : ag.model }));
   };
 
   const applyModel = async (agentId: string) => {
@@ -76,8 +88,9 @@ export default function ModelConfig() {
     <div className="edictPanels">
       <div className="model-grid">
         {agentConfig.agents.map((ag) => {
-          const sel = selMap[ag.id] || ag.model;
-          const changed = sel !== ag.model;
+          const applied = !ag.model || ag.model === "未配置" ? "__default__" : ag.model;
+          const sel = selMap[ag.id] || applied;
+          const changed = sel !== applied;
           const st = statusMap[ag.id];
           return (
             <div className="mc-card" key={ag.id}>
@@ -95,12 +108,18 @@ export default function ModelConfig() {
                 当前: <b>{ag.model === "未配置" || !ag.model ? "未配置（跟随全局默认）" : ag.model}</b>
               </div>
               <select className="msel" value={sel} onChange={(e) => handleSelect(ag.id, e.target.value)}>
+                <option value="__default__">跟随全局默认</option>
                 {models.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.label} ({m.provider})
                   </option>
                 ))}
               </select>
+              {!models.length && (
+                <div style={{ fontSize: 11, color: "#f0b429", marginTop: 6 }}>
+                  模型列表为空：请确认已登录，且管理后台已启用大模型；或点击「重置」后再试
+                </div>
+              )}
               <div className="mc-btns">
                 <button className="btn btn-p" disabled={!changed} onClick={() => void applyModel(ag.id)}>
                   应用
@@ -136,7 +155,8 @@ export default function ModelConfig() {
       </div>
 
       <div style={{ marginTop: 16, fontSize: 11, color: "var(--muted)" }}>
-        💡 模型选项 = 管理后台已启用的大模型（走平台 llm-proxy 网关）；选「跟随全局默认」则沿用全局配置。切换后自动同步到对应官署 Hermes profile；太子（OpenClaw）模型请在对话页选择。
+        💡 模型选项 = 管理后台已启用的大模型；选「跟随全局默认」则沿用全局配置。切换后自动同步到对应官署 Hermes profile；太子（OpenClaw）模型请在对话页选择。
+        {modelWarn && <div style={{ color: "#f0b429", marginTop: 4 }}>⚠️ {modelWarn}</div>}
       </div>
     </div>
   );

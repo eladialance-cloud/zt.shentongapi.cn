@@ -152,6 +152,11 @@ export default function SkillsConfig() {
     if (activeTab === "remote") void loadRemoteSkills();
   }, [activeTab]);
 
+  useEffect(() => {
+    if (available) void loadLibrary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [available]);
+
   const loadRemoteSkills = async () => {
     setRemoteLoading(true);
     try {
@@ -226,6 +231,7 @@ export default function SkillsConfig() {
   const openAddForm = (agentId: string, agentLabel: string) => {
     setAddForm({ agentId, agentLabel });
     setFormData({ name: "", desc: "", trigger: "" });
+    void loadLibrary();
   };
 
   const submitAdd = async (e: React.FormEvent) => {
@@ -350,7 +356,19 @@ export default function SkillsConfig() {
                   <div className="sk-item" key={sk.name} onClick={() => openSkill(ag.id, sk.name)}>
                     <span className="si-name">📦 {sk.name}</span>
                     <span className="si-desc">{sk.description || "无描述"}</span>
-                    <span className="si-arrow">›</span>
+                    <span className="si-arrow" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      <button
+                        title="删除技能（可重新从技能库添加）"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm("确定删除技能「" + sk.name + "」吗？可重新从技能库添加。")) void handleRemoveLocal(ag.id, sk.name);
+                        }}
+                        style={{ background: "transparent", border: "none", color: "#ff5270", cursor: "pointer", fontSize: 13, padding: "2px 6px" }}
+                      >
+                        ✕
+                      </button>
+                      <span>›</span>
+                    </span>
                   </div>
                 ))
               )}

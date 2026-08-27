@@ -23,6 +23,8 @@ import {
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import * as marketApi from "@/api/market-api";
+import { edictSkillLibrary } from "@/api/edict-api";
+import type { EdictLibrarySkill } from "@shared/edict-types";
 import type { UserSkillSource } from "@/types/skill-source";
 import type { InstalledRecord } from "@/types/market";
 import styles from "./styles.module.css";
@@ -47,6 +49,7 @@ export default function OpenSourceSkills({
   const [installedIds, setInstalledIds] = useState<Set<number | string>>(new Set());
   const [installing, setInstalling] = useState<Record<number, boolean>>({});
   const [records, setRecords] = useState<InstalledRecord[]>([]);
+  const [libSkills, setLibSkills] = useState<EdictLibrarySkill[]>([]);
 
   const loadCategories = useCallback(async () => {
     try {
@@ -86,15 +89,20 @@ export default function OpenSourceSkills({
     }
   }, [page, category, keyword]);
 
-  /** 「我的」模式：只加载本地已安装的开源技能（source=github） */
+  /** 「我的」模式：OpenClaw 内置技能 + 本地已安装的开源技能（source=github） */
   const loadInstalledGithub = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await marketApi.listInstalled().catch(() => [] as InstalledRecord[]);
+      const [list, libRes] = await Promise.all([
+        marketApi.listInstalled().catch(() => [] as InstalledRecord[]),
+        edictSkillLibrary().catch(() => ({ ok: false as const, skills: [] as EdictLibrarySkill[] })),
+      ]);
       setRecords(list.filter((r) => r.type === "skill" && r.source === "github"));
+      setLibSkills((libRes?.skills || []).filter((sk) => sk.source === "openclaw"));
     } catch (err) {
       console.warn("[OpenSourceSkills] load installed github failed:", err);
       setRecords([]);
+      setLibSkills([]);
     } finally {
       setLoading(false);
     }
@@ -147,17 +155,50 @@ export default function OpenSourceSkills({
     }
   };
 
-  /** 「我的」：仅展示本地已安装的开源技能 */
+  /** 「我的」：OpenClaw 内置技能 + 本地已安装的开源技能 */
   if (mine) {
     return (
       <Spin spinning={loading}>
-        {records.length === 0 && !loading ? (
+        {records.length === 0 && libSkills.length === 0 && !loading ? (
           <Empty
-            description="还没有安装开源技能，去「官方 → 开源技能库」下载安装"
+            description="还没有开源技能（OpenClaw 内置技能无需安装，可直接到军机处「技能 → 添加技能」选用）"
             style={{ marginTop: 48 }}
           />
         ) : (
           <div className={styles.skillGrid}>
+            {libSkills.map((sk) => (
+              <Card key={"openclaw-" + sk.name} className={styles.skillCard} bordered={false}>
+                <div className={styles.skillCardBody}>
+                  <div className={styles.skillHeader}>
+                    <div className={styles.skillName}>
+                      <div className={styles.skillIcon}>
+                        <GithubOutlined />
+                      </div>
+                      <span>{sk.name}</span>
+                    </div>
+                    <Tag className={styles.installedTag} color="blue">
+                      OpenClaw 内置
+                    </Tag>
+                  </div>
+                  <div
+                    className={styles.skillDesc}
+                    style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                    title={sk.description}
+                  >
+                    {sk.description || "OpenClaw 内置技能"}
+                  </div>
+                  <div className={styles.skillMeta}>
+                    <Tag color="geekblue" style={{ marginRight: 8 }}>{sk.category || "其他"}</Tag>
+                    <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{sk.deps || "离线可用"}</span>
+                  </div>
+                  <div className={styles.skillActions}>
+                    <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
+                      可在军机处「技能 → 添加技能」中选择使用
+                    </span>
+                  </div>
+                </div>
+              </Card>
+            ))}
             {records.map((r) => (
               <Card
                 key={String(r.id)}

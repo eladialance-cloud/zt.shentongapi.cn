@@ -13,7 +13,7 @@ $ErrorActionPreference = "Stop"
 
 $CdnDomain = "zt.shentongapi.cn"
 $CdnBasePath = "/runtime"
-$RemoteBaseDir = "$RemoteProjectDir/cdn"
+$RemoteBaseDir = "$RemoteProjectDir/updates/runtime"
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
@@ -82,7 +82,7 @@ $total = $uploadList.Count
 $index = 0
 foreach ($item in $uploadList) {
     $index++
-    $tmpRemote = "/tmp/runtime_upload_$($item.Filename)"
+    $tmpRemote = "/tmp/runtime_upload_$($item.Service)_$($item.Version)_$($item.Filename)"
     Write-Host "[$index/$total] Uploading $($item.Filename) ..." -ForegroundColor Yellow
     scp $item.FilePath "${ServerUser}@${ServerHost}:$tmpRemote"
     if ($LASTEXITCODE -ne 0) {
@@ -100,7 +100,7 @@ $moveCommands = ""
 foreach ($item in $uploadList) {
     $targetDir = "$RemoteBaseDir/$($item.Service)/$($item.Version)"
     $targetFile = "$targetDir/$($item.Filename)"
-    $tmpRemote = "/tmp/runtime_upload_$($item.Filename)"
+    $tmpRemote = "/tmp/runtime_upload_$($item.Service)_$($item.Version)_$($item.Filename)"
     $moveCommands += "sudo mkdir -p $targetDir && sudo mv $tmpRemote `"$targetFile`" && "
 }
 
@@ -117,6 +117,7 @@ echo '=== Deploy done ===' && \
 find $RemoteBaseDir -type f -name '*.tar.gz' | sort
 "@
 
+$remoteCmd = $remoteCmd -replace "`r", ""
 ssh "${ServerUser}@${ServerHost}" $remoteCmd
 
 if ($LASTEXITCODE -ne 0) {
