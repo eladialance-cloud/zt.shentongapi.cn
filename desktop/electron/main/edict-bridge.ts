@@ -14,7 +14,7 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getRuntimeRoot } from "./runtime-config";
-import { EDICT_PROFILE_IDS, syncHermesProfileConfigs } from "./hermes-config";
+import { EDICT_PROFILE_IDS, syncHermesProfileConfigs, applyAgentModels } from "./hermes-config";
 import {
   edictApprove,
   edictBlock,
@@ -170,6 +170,8 @@ export async function ensureEdictHermesProfiles(ids?: readonly string[]): Promis
     }
   }
   syncHermesProfileConfigs(hermesHome, EDICT_PROFILE_IDS);
+  // 回灌军机处持久化的官署模型（全局同步会覆盖 profile model，需按用户选择恢复）
+  applyAgentModels(hermesHome, EDICT_PROFILE_IDS);
   return { ok: true, created };
 }
 

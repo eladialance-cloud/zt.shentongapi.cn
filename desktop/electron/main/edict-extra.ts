@@ -16,7 +16,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { EdictDeps } from "./edict-orchestrator";
 import { OFFICIALS, edictIssue } from "./edict-orchestrator";
-import { EDICT_PROFILE_IDS, syncHermesProfileConfigs } from "./hermes-config";
+import { EDICT_PROFILE_IDS, syncHermesProfileConfigs, writeAgentModel, removeAgentModel } from "./hermes-config";
 import type {
   EdictAgentConfig,
   EdictAgentStatusInfo,
@@ -296,15 +296,16 @@ export async function fetchKnownModels(deps: EdictExtraDeps): Promise<EdictKnown
   }
 }
 
-/** 切换模型：写全局 config.yaml + 变更日志 + 同步到目标 profile */
+/** 切换官署模型：持久化用户选择 + 写目标官署 profile config + 变更日志 */
 export async function applyModelChange(deps: EdictExtraDeps, agentId: string, model: string): Promise<EdictOp> {
   if (!agentId || !model) return { ok: false, error: "参数缺失" };
-  // 跟随全局默认：删除该官署 profile 的 config.yaml，读取时回退到全局 config.yaml
+  const profileCfg = path.join(deps.hermesHome, "profiles", agentId, "config.yaml");
+  const oldModel = readProfileModel(deps, agentId);
+  // 跟随全局默认：删除持久化记录 + 该官署 profile config，读取时回退到全局 config.yaml
   if (model === "__default__") {
-    const profileCfg = path.join(deps.hermesHome, "profiles", agentId, "config.yaml");
-    const oldModel = readProfileModel(deps, agentId);
     try {
       if (fs.existsSync(profileCfg)) fs.rmSync(profileCfg, { force: true });
+      removeAgentModel(deps.hermesHome, agentId);
     } catch (err) {
       return { ok: false, error: "重置配置失败: " + (err instanceof Error ? err.message : String(err)) };
     }
@@ -313,26 +314,24 @@ export async function applyModelChange(deps: EdictExtraDeps, agentId: string, mo
   }
   const cfgPath = path.join(deps.hermesHome, "config.yaml");
   if (!fs.existsSync(cfgPath)) return { ok: false, error: "Hermes 尚未配置（请先登录并安装 Hermes 运行时）" };
-  let content: string;
-  try {
-    content = fs.readFileSync(cfgPath, "utf-8");
-  } catch (err) {
-    return { ok: false, error: "读取配置失败: " + (err as Error).message };
-  }
-  const oldModel = readConfigDefaultModel(content) || "";
-  const patched = replaceConfigModel(content, model);
-  if (patched !== content) {
-    try {
-      fs.writeFileSync(cfgPath, patched, "utf-8");
-    } catch (err) {
-      return { ok: false, error: "写入配置失败: " + (err as Error).message };
-    }
-  }
-  // 同步到对应 profile（agentId 对应官署则只同步该官署；否则同步全部官署）
-  const profileIds = EDICT_PROFILE_IDS.includes(agentId as never)
+  // 目标官署（agentId 对应官署则只同步该官署；否则同步全部官署，兼容旧行为）
+  const isOfficial = EDICT_PROFILE_IDS.includes(agentId as never);
+  const profileIds = isOfficial
     ? [agentId as (typeof EDICT_PROFILE_IDS)[number]]
     : EDICT_PROFILE_IDS;
+  // 确保官署 profile config 存在（以全局为蓝本，含 provider/key），再单独改该官署 model
   syncHermesProfileConfigs(deps.hermesHome, profileIds);
+  // 持久化官署模型选择（独立存储，重启不被全局同步覆盖）
+  writeAgentModel(deps.hermesHome, agentId, model);
+  try {
+    for (const tid of profileIds) {
+      const tcfg = path.join(deps.hermesHome, "profiles", tid, "config.yaml");
+      if (!fs.existsSync(tcfg)) continue;
+      fs.writeFileSync(tcfg, replaceConfigModel(fs.readFileSync(tcfg, "utf-8"), model), "utf-8");
+    }
+  } catch (err) {
+    return { ok: false, error: "写入配置失败: " + (err as Error).message };
+  }
   appendModelChangeLog(deps, { at: nowIso(), agentId, oldModel, newModel: model });
   return { ok: true, data: { oldModel, newModel: model, profileIds } };
 }
