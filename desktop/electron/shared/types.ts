@@ -2,20 +2,42 @@
 // 该文件同时被 tsconfig.node.json 与 tsconfig.web.json 包含
 
 import type {
+  EdictAgentConfig,
+  EdictAgentStatusInfo,
+  EdictAgentsStatusData,
   EdictBoard,
+  EdictCourtDiscussResult,
+  EdictModelChangeEntry,
+  EdictMorningBrief,
   EdictOfficial,
   EdictOp,
   EdictPipelineResult,
+  EdictRemoteSkillItem,
+  EdictRemoteSkillsResult,
+  EdictSessionItem,
+  EdictSkillContentResult,
   EdictStats,
+  EdictSubConfig,
   EdictTask,
   EdictTodo,
 } from "./edict-types";
 export type {
+  EdictAgentConfig,
+  EdictAgentStatusInfo,
+  EdictAgentsStatusData,
   EdictBoard,
+  EdictCourtDiscussResult,
+  EdictModelChangeEntry,
+  EdictMorningBrief,
   EdictOfficial,
   EdictOp,
   EdictPipelineResult,
+  EdictRemoteSkillItem,
+  EdictRemoteSkillsResult,
+  EdictSessionItem,
+  EdictSkillContentResult,
   EdictStats,
+  EdictSubConfig,
   EdictTask,
   EdictTodo,
 };
@@ -860,6 +882,53 @@ export interface EdictAPI {
   onBoardUpdated(cb: (board: EdictBoard) => void): () => void;
   /** 单任务变化推送（edict:task-updated） */
   onTaskUpdated(cb: (task: EdictTask) => void): () => void;
+
+  /** 省部调度：全部官署 Agent 在线状态 */
+  agentsStatus(): Promise<EdictAgentsStatusData>;
+  /** 省部调度：唤醒（确保）指定官署 profile */
+  agentWake(agentId: string): Promise<EdictOp>;
+  /** 模型配置：官署 Agent 配置（含模型/技能/knownModels） */
+  agentConfig(): Promise<EdictAgentConfig>;
+  /** 模型配置：切换指定官署模型（写 Hermes config.yaml + 同步 profiles） */
+  setModel(agentId: string, model: string): Promise<EdictOp>;
+  /** 模型配置：模型变更日志 */
+  modelChangeLog(): Promise<EdictModelChangeEntry[]>;
+  /** 技能配置：读取官署技能文件内容 */
+  skillContent(agentId: string, skillName: string): Promise<EdictSkillContentResult>;
+  /** 技能配置：本地新增技能 */
+  addSkill(agentId: string, skillName: string, description: string, trigger: string): Promise<EdictOp>;
+  /** 技能配置：远程技能列表 */
+  remoteSkillsList(): Promise<EdictRemoteSkillsResult>;
+  /** 技能配置：添加远程技能 */
+  addRemoteSkill(agentId: string, skillName: string, sourceUrl: string, description?: string): Promise<EdictOp>;
+  /** 技能配置：更新远程技能 */
+  updateRemoteSkill(agentId: string, skillName: string): Promise<EdictOp>;
+  /** 技能配置：移除远程技能 */
+  removeRemoteSkill(agentId: string, skillName: string): Promise<EdictOp>;
+  /** 朝堂议政：开始议政 */
+  courtDiscussStart(topic: string, officials: string[], taskId?: string): Promise<EdictCourtDiscussResult>;
+  /** 朝堂议政：推进一轮（可带皇帝发言/天命） */
+  courtDiscussAdvance(sessionId: string, userMessage?: string, decree?: string): Promise<EdictCourtDiscussResult>;
+  /** 朝堂议政：散朝总结 */
+  courtDiscussConclude(sessionId: string): Promise<EdictOp & { summary?: string }>;
+  /** 朝堂议政：销毁会话 */
+  courtDiscussDestroy(sessionId: string): Promise<EdictOp>;
+  /** 朝堂议政：命运骰子 */
+  courtDiscussFate(): Promise<{ ok: boolean; event: string }>;
+  /** 天下要闻：简报 */
+  morningBrief(): Promise<EdictMorningBrief>;
+  /** 天下要闻：订阅配置 */
+  morningConfig(): Promise<EdictSubConfig>;
+  /** 天下要闻：保存订阅配置 */
+  saveMorningConfig(config: EdictSubConfig): Promise<EdictOp>;
+  /** 天下要闻：立即采集 */
+  refreshMorning(): Promise<EdictOp>;
+  /** 小任务/会话列表 */
+  sessions(): Promise<EdictSessionItem[]>;
+  /** 旨库：模板下旨（复用 issue 建任务） */
+  createTask(input: { title: string; body?: string; priority?: string; dept?: string }): Promise<EdictOp<{ taskId: string }>>;
+  /** 天下要闻：采集完成推送（edict:morning-updated） */
+  onMorningUpdated(cb: (brief: EdictMorningBrief) => void): () => void;
 }
 
 /** 通过 contextBridge.exposeInMainWorld('runtime', ...) 暴露给渲染进程的运行时 API 形状 */

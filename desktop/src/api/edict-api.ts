@@ -5,11 +5,20 @@
  */
 import type { ElectronAPI } from "@shared/types";
 import type {
+  EdictAgentConfig,
+  EdictAgentsStatusData,
   EdictBoard,
+  EdictCourtDiscussResult,
+  EdictModelChangeEntry,
+  EdictMorningBrief,
   EdictOfficial,
   EdictOp,
   EdictPipelineResult,
+  EdictRemoteSkillsResult,
+  EdictSessionItem,
+  EdictSkillContentResult,
   EdictStats,
+  EdictSubConfig,
   EdictTask,
 } from "@shared/edict-types";
 
@@ -102,4 +111,121 @@ export function onEdictBoardUpdated(cb: (board: EdictBoard) => void): () => void
 /** 单任务变化推送（edict:task-updated）；返回取消监听函数 */
 export function onEdictTaskUpdated(cb: (task: EdictTask) => void): () => void {
   return getEdict().onTaskUpdated(cb);
+}
+
+// ===== 补齐面板（edict-extra）：省部调度 / 模型 / 技能 / 朝堂议政 / 天下要闻 / 小任务 / 旨库 =====
+
+/** 省部调度：全部官署 Agent 在线状态 */
+export async function edictAgentsStatus(): Promise<EdictAgentsStatusData> {
+  return getEdict().agentsStatus();
+}
+
+/** 省部调度：唤醒（确保）指定官署 */
+export async function edictAgentWake(agentId: string): Promise<EdictOp> {
+  return getEdict().agentWake(agentId);
+}
+
+/** 模型配置：官署配置（模型/技能/knownModels） */
+export async function edictAgentConfig(): Promise<EdictAgentConfig> {
+  return getEdict().agentConfig();
+}
+
+/** 模型配置：切换官署模型 */
+export async function edictSetModel(agentId: string, model: string): Promise<EdictOp> {
+  return getEdict().setModel(agentId, model);
+}
+
+/** 模型配置：变更日志 */
+export async function edictModelChangeLog(): Promise<EdictModelChangeEntry[]> {
+  return getEdict().modelChangeLog();
+}
+
+/** 技能配置：读取技能内容 */
+export async function edictSkillContent(agentId: string, skillName: string): Promise<EdictSkillContentResult> {
+  return getEdict().skillContent(agentId, skillName);
+}
+
+/** 技能配置：本地新增技能 */
+export async function edictAddSkill(agentId: string, skillName: string, description: string, trigger: string): Promise<EdictOp> {
+  return getEdict().addSkill(agentId, skillName, description, trigger);
+}
+
+/** 技能配置：远程技能列表 */
+export async function edictRemoteSkillsList(): Promise<EdictRemoteSkillsResult> {
+  return getEdict().remoteSkillsList();
+}
+
+/** 技能配置：添加远程技能 */
+export async function edictAddRemoteSkill(agentId: string, skillName: string, sourceUrl: string, description?: string): Promise<EdictOp> {
+  return getEdict().addRemoteSkill(agentId, skillName, sourceUrl, description);
+}
+
+/** 技能配置：更新远程技能 */
+export async function edictUpdateRemoteSkill(agentId: string, skillName: string): Promise<EdictOp> {
+  return getEdict().updateRemoteSkill(agentId, skillName);
+}
+
+/** 技能配置：移除远程技能 */
+export async function edictRemoveRemoteSkill(agentId: string, skillName: string): Promise<EdictOp> {
+  return getEdict().removeRemoteSkill(agentId, skillName);
+}
+
+/** 朝堂议政：开始 */
+export async function edictCourtStart(topic: string, officials: string[], taskId?: string): Promise<EdictCourtDiscussResult> {
+  return getEdict().courtDiscussStart(topic, officials, taskId);
+}
+
+/** 朝堂议政：推进一轮 */
+export async function edictCourtAdvance(sessionId: string, userMessage?: string, decree?: string): Promise<EdictCourtDiscussResult> {
+  return getEdict().courtDiscussAdvance(sessionId, userMessage, decree);
+}
+
+/** 朝堂议政：散朝总结 */
+export async function edictCourtConclude(sessionId: string): Promise<EdictOp & { summary?: string }> {
+  return getEdict().courtDiscussConclude(sessionId);
+}
+
+/** 朝堂议政：销毁会话 */
+export async function edictCourtDestroy(sessionId: string): Promise<EdictOp> {
+  return getEdict().courtDiscussDestroy(sessionId);
+}
+
+/** 朝堂议政：命运骰子 */
+export async function edictCourtFate(): Promise<{ ok: boolean; event: string }> {
+  return getEdict().courtDiscussFate();
+}
+
+/** 天下要闻：简报 */
+export async function edictMorningBrief(): Promise<EdictMorningBrief> {
+  return getEdict().morningBrief();
+}
+
+/** 天下要闻：订阅配置 */
+export async function edictMorningConfig(): Promise<EdictSubConfig> {
+  return getEdict().morningConfig();
+}
+
+/** 天下要闻：保存订阅配置 */
+export async function edictSaveMorningConfig(config: EdictSubConfig): Promise<EdictOp> {
+  return getEdict().saveMorningConfig(config);
+}
+
+/** 天下要闻：立即采集 */
+export async function edictRefreshMorning(): Promise<EdictOp> {
+  return getEdict().refreshMorning();
+}
+
+/** 天下要闻：采集完成推送 */
+export function onEdictMorningUpdated(cb: (brief: EdictMorningBrief) => void): () => void {
+  return getEdict().onMorningUpdated(cb);
+}
+
+/** 小任务/会话列表 */
+export async function edictSessions(): Promise<EdictSessionItem[]> {
+  return getEdict().sessions();
+}
+
+/** 旨库：模板下旨 */
+export async function edictCreateTask(input: { title: string; body?: string; priority?: string; dept?: string }): Promise<EdictOp<{ taskId: string }>> {
+  return getEdict().createTask(input);
 }

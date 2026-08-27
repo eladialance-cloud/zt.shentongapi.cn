@@ -32,6 +32,7 @@ import {
 import type { EdictBoard, EdictOp, EdictTask } from "../shared/edict-types";
 import { OFFICIALS } from "./edict-orchestrator";
 import { ST_API_BASE } from "./service-manager";
+import type { EdictExtraDeps } from "./edict-extra";
 
 // ===== 路径解析 =====
 
@@ -130,7 +131,7 @@ function getEdictProfilesDir(): string {
  * 3. 同步全局 config.yaml 到每个 profile（profile 是独立 HERMES_HOME）。
  * 返回创建/更新明细；失败不抛错（日志记录），运行时 runHermes 仍会按需兜底同步 config。
  */
-export async function ensureEdictHermesProfiles(): Promise<{ ok: boolean; created: string[]; reason?: string }> {
+export async function ensureEdictHermesProfiles(ids?: readonly string[]): Promise<{ ok: boolean; created: string[]; reason?: string }> {
   const env = buildHermesCliEnv();
   const nodeBin = env.HERMES_NODE as string;
   const entry = env.HERMES_ENTRY as string;
@@ -140,7 +141,8 @@ export async function ensureEdictHermesProfiles(): Promise<{ ok: boolean; create
     return { ok: false, created, reason: "Hermes 运行时未安装（官署执行需要 Hermes）" };
   }
   const soulDir = getEdictProfilesDir();
-  for (const id of EDICT_PROFILE_IDS) {
+  const targets: readonly string[] = ids && ids.length ? ids : EDICT_PROFILE_IDS;
+  for (const id of targets) {
     const profileDir = path.join(hermesHome, "profiles", id);
     try {
       if (!fs.existsSync(profileDir)) {
@@ -450,4 +452,26 @@ export function registerEdictIpc(deps: EdictDeps, opts: EdictIpcOptions = {}): (
   timer.unref?.();
 
   return () => clearInterval(timer);
+}
+
+// ===== 补齐面板依赖（edict-extra） =====
+
+/** 构建补齐面板（monitor/court/models/skills/morning/sessions）依赖；复用同一份看板 deps */
+export function createEdictExtraDeps(base: EdictDeps): EdictExtraDeps {
+  return {
+    ...base,
+    hermesHome: path.join(app.getPath("userData"), "hermes-home"),
+    edictDataRoot: getEdictDataRoot(),
+    runtimeRoot: getRuntimeRoot(),
+    stApiBase: ST_API_BASE,
+    getAuthToken: () => {
+      try {
+        const auth = JSON.parse(fs.readFileSync(path.join(app.getPath("userData"), "openclaw-chat", "auth.json"), "utf-8"));
+        return typeof auth?.token === "string" ? auth.token : "";
+      } catch {
+        return "";
+      }
+    },
+    ensureProfiles: (ids) => ensureEdictHermesProfiles(ids),
+  };
 }

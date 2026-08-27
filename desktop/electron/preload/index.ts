@@ -38,7 +38,16 @@ import type {
   EdictOp,
   EdictOfficial,
   EdictStats,
-  EdictPipelineResult
+  EdictPipelineResult,
+  EdictAgentConfig,
+  EdictAgentsStatusData,
+  EdictCourtDiscussResult,
+  EdictModelChangeEntry,
+  EdictMorningBrief,
+  EdictRemoteSkillsResult,
+  EdictSessionItem,
+  EdictSkillContentResult,
+  EdictSubConfig
 } from '../shared/types'
 
 const electronAPI: ElectronAPI = {
@@ -275,6 +284,46 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.on('edict:task-updated', handler)
       return () => {
         ipcRenderer.removeListener('edict:task-updated', handler)
+      }
+    },
+    // ===== 补齐面板（edict-extra）：省部调度/模型/技能/朝堂议政/天下要闻/小任务/旨库 =====
+    agentsStatus: () => ipcRenderer.invoke('edict:agents-status') as Promise<EdictAgentsStatusData>,
+    agentWake: (agentId: string) => ipcRenderer.invoke('edict:agent-wake', agentId) as Promise<EdictOp>,
+    agentConfig: () => ipcRenderer.invoke('edict:agent-config') as Promise<EdictAgentConfig>,
+    setModel: (agentId: string, model: string) => ipcRenderer.invoke('edict:set-model', agentId, model) as Promise<EdictOp>,
+    modelChangeLog: () => ipcRenderer.invoke('edict:model-change-log') as Promise<EdictModelChangeEntry[]>,
+    skillContent: (agentId: string, skillName: string) =>
+      ipcRenderer.invoke('edict:skill-content', agentId, skillName) as Promise<EdictSkillContentResult>,
+    addSkill: (agentId: string, skillName: string, description: string, trigger: string) =>
+      ipcRenderer.invoke('edict:add-skill', agentId, skillName, description, trigger) as Promise<EdictOp>,
+    remoteSkillsList: () => ipcRenderer.invoke('edict:remote-skills-list') as Promise<EdictRemoteSkillsResult>,
+    addRemoteSkill: (agentId: string, skillName: string, sourceUrl: string, description?: string) =>
+      ipcRenderer.invoke('edict:add-remote-skill', agentId, skillName, sourceUrl, description) as Promise<EdictOp>,
+    updateRemoteSkill: (agentId: string, skillName: string) =>
+      ipcRenderer.invoke('edict:update-remote-skill', agentId, skillName) as Promise<EdictOp>,
+    removeRemoteSkill: (agentId: string, skillName: string) =>
+      ipcRenderer.invoke('edict:remove-remote-skill', agentId, skillName) as Promise<EdictOp>,
+    courtDiscussStart: (topic: string, officials: string[], taskId?: string) =>
+      ipcRenderer.invoke('edict:court-discuss/start', topic, officials, taskId) as Promise<EdictCourtDiscussResult>,
+    courtDiscussAdvance: (sessionId: string, userMessage?: string, decree?: string) =>
+      ipcRenderer.invoke('edict:court-discuss/advance', sessionId, userMessage, decree) as Promise<EdictCourtDiscussResult>,
+    courtDiscussConclude: (sessionId: string) =>
+      ipcRenderer.invoke('edict:court-discuss/conclude', sessionId) as Promise<EdictOp & { summary?: string }>,
+    courtDiscussDestroy: (sessionId: string) =>
+      ipcRenderer.invoke('edict:court-discuss/destroy', sessionId) as Promise<EdictOp>,
+    courtDiscussFate: () => ipcRenderer.invoke('edict:court-discuss/fate') as Promise<{ ok: boolean; event: string }>,
+    morningBrief: () => ipcRenderer.invoke('edict:morning-brief') as Promise<EdictMorningBrief>,
+    morningConfig: () => ipcRenderer.invoke('edict:morning-config') as Promise<EdictSubConfig>,
+    saveMorningConfig: (config: EdictSubConfig) => ipcRenderer.invoke('edict:save-morning-config', config) as Promise<EdictOp>,
+    refreshMorning: () => ipcRenderer.invoke('edict:refresh-morning') as Promise<EdictOp>,
+    sessions: () => ipcRenderer.invoke('edict:sessions') as Promise<EdictSessionItem[]>,
+    createTask: (input: { title: string; body?: string; priority?: string; dept?: string }) =>
+      ipcRenderer.invoke('edict:create-task', input) as Promise<EdictOp<{ taskId: string }>>,
+    onMorningUpdated: (callback: (brief: EdictMorningBrief) => void) => {
+      const handler = (_event: IpcRendererEvent, brief: EdictMorningBrief): void => callback(brief)
+      ipcRenderer.on('edict:morning-updated', handler)
+      return () => {
+        ipcRenderer.removeListener('edict:morning-updated', handler)
       }
     },
   },

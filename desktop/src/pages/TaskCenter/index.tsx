@@ -36,8 +36,8 @@ import { countRunning, nativeTaskId, shouldAutoStart, submitStepRunner } from ".
 import PipelineView from "./PipelineView";
 import ScheduledPanel from "./ScheduledPanel";
 import { listScheduledTasks } from "@/api/scheduled-task-api";
-import JunjiView from "./JunjiView";
 import EdictView from "./EdictView";
+import JunjiPanelsHub from "./JunjiPanelsHub";
 import { onEdictBoardUpdated } from "@/api/edict-api";
 import { OFFICIALS_COUNT } from "./edict-data";
 import edictStyles from "./edict.module.css";
@@ -477,7 +477,7 @@ export default function TaskCenter() {
       </div>
 
       {/* ===== 军机处视图（默认） ===== */}
-      {activeEdictTab === "junji" && <JunjiView />}
+      {activeEdictTab === "junji" && <JunjiPanelsHub />}
 
       {/* ===== 三省六部视图 ===== */}
       {activeEdictTab === "edict" && <EdictView />}

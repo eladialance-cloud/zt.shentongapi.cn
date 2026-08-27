@@ -106,3 +106,214 @@ export interface EdictPipelineResult {
   finalState: EdictState;
   steps: EdictPipelineStep[];
 }
+
+// ===== 军机处补齐（edict 10 面板对齐）：省部调度 / 朝堂议政 / 模型配置 / 技能配置 / 小任务 / 天下要闻 =====
+
+/** 官署 Agent 在线状态（省部调度 monitor） */
+export interface EdictAgentStatusInfo {
+  id: string;
+  label: string;
+  emoji: string;
+  role: string;
+  status: "running" | "idle" | "offline" | "unconfigured";
+  statusLabel: string;
+  lastActive?: string;
+  model?: string;
+  tasksActive: number;
+}
+
+/** 省部调度聚合状态（IPC edict:agents-status 载荷） */
+export interface EdictAgentsStatusData {
+  ok: boolean;
+  gateway: { alive: boolean; probe: boolean; status: string };
+  agents: EdictAgentStatusInfo[];
+  checkedAt: string;
+}
+
+/** 朝堂议政消息（edict 原版 CourtMessage） */
+export interface EdictCourtMessage {
+  type: string;
+  content: string;
+  official_id?: string;
+  official_name?: string;
+  emotion?: string;
+  action?: string;
+  timestamp?: number;
+}
+
+/** 朝堂议政官员 */
+export interface EdictCourtOfficial {
+  id: string;
+  name: string;
+  emoji: string;
+  role: string;
+  personality: string;
+  speaking_style: string;
+}
+
+/** 朝堂议政会话（持久化到 userData/edict-data/court-sessions/<id>.json） */
+export interface EdictCourtSession {
+  session_id: string;
+  topic: string;
+  phase: "session" | "concluded";
+  round: number;
+  officials: EdictCourtOfficial[];
+  messages: EdictCourtMessage[];
+  taskId?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 朝堂议政操作结果（IPC edict:court-discuss/* 载荷） */
+export interface EdictCourtDiscussResult {
+  ok: boolean;
+  session_id?: string;
+  topic?: string;
+  round?: number;
+  new_messages?: Array<{
+    official_id: string;
+    name: string;
+    content: string;
+    emotion?: string;
+    action?: string;
+  }>;
+  scene_note?: string;
+  total_messages?: number;
+  /** start 时返回完整会话（供前端直接渲染朝堂布局/聊天记录） */
+  officials?: EdictCourtOfficial[];
+  messages?: EdictCourtMessage[];
+  phase?: string;
+  error?: string;
+}
+
+/** 已知模型（模型配置 models） */
+export interface EdictKnownModel {
+  id: string;
+  label: string;
+  provider: string;
+}
+
+/** 模型变更日志条目 */
+export interface EdictModelChangeEntry {
+  at: string;
+  agentId: string;
+  oldModel: string;
+  newModel: string;
+  rolledBack?: boolean;
+}
+
+/** 官署技能（技能配置 skills） */
+export interface EdictSkillInfo {
+  name: string;
+  description: string;
+  path: string;
+}
+
+/** 官署 Agent 配置（含模型与技能） */
+export interface EdictAgentInfo {
+  id: string;
+  label: string;
+  emoji: string;
+  role: string;
+  model: string;
+  skills: EdictSkillInfo[];
+}
+
+/** 官署配置聚合（IPC edict:agent-config 载荷） */
+export interface EdictAgentConfig {
+  agents: EdictAgentInfo[];
+  knownModels?: EdictKnownModel[];
+}
+
+/** 远程技能条目 */
+export interface EdictRemoteSkillItem {
+  skillName: string;
+  agentId: string;
+  sourceUrl: string;
+  description: string;
+  localPath: string;
+  addedAt: string;
+  lastUpdated: string;
+  status: "valid" | "not-found" | string;
+}
+
+/** 远程技能列表结果 */
+export interface EdictRemoteSkillsResult {
+  ok: boolean;
+  remoteSkills?: EdictRemoteSkillItem[];
+  count?: number;
+  listedAt?: string;
+  error?: string;
+}
+
+/** 技能内容结果 */
+export interface EdictSkillContentResult {
+  ok: boolean;
+  name?: string;
+  agent?: string;
+  content?: string;
+  path?: string;
+  error?: string;
+}
+
+/** 天下要闻条目 */
+export interface EdictMorningNewsItem {
+  title: string;
+  summary?: string;
+  desc?: string;
+  link: string;
+  source: string;
+  image?: string;
+  pub_date?: string;
+}
+
+/** 天下要闻简报（IPC edict:morning-brief 载荷） */
+export interface EdictMorningBrief {
+  date?: string;
+  generated_at?: string;
+  categories: Record<string, EdictMorningNewsItem[]>;
+}
+
+/** 订阅分类配置 */
+export interface EdictSubCategoryConfig {
+  name: string;
+  enabled: boolean;
+}
+
+/** 自定义信息源 */
+export interface EdictCustomFeed {
+  name: string;
+  url: string;
+  category: string;
+}
+
+/** 订阅配置（IPC edict:morning-config 载荷） */
+export interface EdictSubConfig {
+  categories: EdictSubCategoryConfig[];
+  keywords: string[];
+  custom_feeds: EdictCustomFeed[];
+  feishu_webhook: string;
+}
+
+/** 小任务/会话条目（IPC edict:sessions 载荷） */
+export interface EdictSessionItem {
+  id: string;
+  title: string;
+  agent: string;
+  agentLabel?: string;
+  org?: string;
+  state: string;
+  channel?: string;
+  heartbeat?: string;
+  lastMessage?: string;
+  totalTokens?: number;
+  updatedAt?: string;
+  activity?: EdictCourtMessage[];
+  isEdict: boolean;
+}
+
+/** 模型切换请求（IPC edict:set-model 载荷） */
+export interface EdictSetModelInput {
+  agentId: string;
+  model: string;
+}
