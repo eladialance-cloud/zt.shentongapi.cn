@@ -31,7 +31,14 @@ import type {
   TeamMemberProfileItem,
   OrchestrateStepActionPayload,
   PlatformAccountApi,
-  PlatformInfo
+  PlatformInfo,
+  EdictAPI,
+  EdictBoard,
+  EdictTask,
+  EdictOp,
+  EdictOfficial,
+  EdictStats,
+  EdictPipelineResult
 } from '../shared/types'
 
 const electronAPI: ElectronAPI = {
@@ -232,6 +239,44 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('llm-integrations:remove', id) as Promise<{ ok: boolean; integrations: LlmIntegration[]; error?: string }>,
     test: (baseUrl: string, apiKey: string, model: string) =>
       ipcRenderer.invoke('llm-integrations:test', { baseUrl, apiKey, model }) as Promise<{ ok: boolean; message?: string }>,
+  },
+  edict: {
+    issue: (input) =>
+      ipcRenderer.invoke('edict:issue', input) as Promise<EdictOp<{ taskId: string }>>,
+    board: () => ipcRenderer.invoke('edict:board') as Promise<EdictBoard>,
+    task: (taskId: string) =>
+      ipcRenderer.invoke('edict:task', taskId) as Promise<EdictOp<EdictTask | null>>,
+    transition: (taskId: string, to: string, note?: string) =>
+      ipcRenderer.invoke('edict:transition', taskId, to, note) as Promise<EdictOp>,
+    veto: (taskId: string, reason: string) =>
+      ipcRenderer.invoke('edict:veto', taskId, reason) as Promise<EdictOp>,
+    approve: (taskId: string) =>
+      ipcRenderer.invoke('edict:approve', taskId) as Promise<EdictOp>,
+    complete: (taskId: string, output?: string, summary?: string, actorAgentId?: string) =>
+      ipcRenderer.invoke('edict:complete', taskId, output, summary, actorAgentId) as Promise<EdictOp>,
+    block: (taskId: string, reason: string) =>
+      ipcRenderer.invoke('edict:block', taskId, reason) as Promise<EdictOp>,
+    progress: (taskId: string, text: string, plan?: string) =>
+      ipcRenderer.invoke('edict:progress', taskId, text, plan) as Promise<EdictOp>,
+    run: (taskId: string, opts?: { maxVetoRounds?: number }) =>
+      ipcRenderer.invoke('edict:run', taskId, opts) as Promise<EdictOp<EdictPipelineResult>>,
+    officials: () => ipcRenderer.invoke('edict:officials') as Promise<EdictOfficial[]>,
+    stats: () => ipcRenderer.invoke('edict:stats') as Promise<EdictStats>,
+    models: () => ipcRenderer.invoke('edict:models'),
+    onBoardUpdated: (callback: (board: EdictBoard) => void) => {
+      const handler = (_event: IpcRendererEvent, board: EdictBoard): void => callback(board)
+      ipcRenderer.on('edict:board-updated', handler)
+      return () => {
+        ipcRenderer.removeListener('edict:board-updated', handler)
+      }
+    },
+    onTaskUpdated: (callback: (task: EdictTask) => void) => {
+      const handler = (_event: IpcRendererEvent, task: EdictTask): void => callback(task)
+      ipcRenderer.on('edict:task-updated', handler)
+      return () => {
+        ipcRenderer.removeListener('edict:task-updated', handler)
+      }
+    },
   },
   openclawChat: {
     /** 注入用户 llm-proxy 静态 Key（登录后调用；OpenClaw openai provider 指向云端 llm-proxy） */

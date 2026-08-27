@@ -35,6 +35,12 @@ import type { TaskGroup, UnifiedTask, UnifiedTaskSource, UnifiedTaskStatus } fro
 import { countRunning, nativeTaskId, shouldAutoStart, submitStepRunner } from "./task-runner";
 import PipelineView from "./PipelineView";
 import ScheduledPanel from "./ScheduledPanel";
+import { listScheduledTasks } from "@/api/scheduled-task-api";
+import JunjiView from "./JunjiView";
+import EdictView from "./EdictView";
+import { onEdictBoardUpdated } from "@/api/edict-api";
+import { OFFICIALS_COUNT } from "./edict-data";
+import edictStyles from "./edict.module.css";
 import styles from "./styles.module.css";
 
 /** 时间格式化（与 Channels 页一致） */
@@ -348,6 +354,17 @@ export default function TaskCenter() {
     });
   }, [tasks, token, autoStartOn, teamIdByKey, loadData]);
 
+  // 三省六部看板订阅：真实任务数 badge（主进程 3s 轮询推送）
+  useEffect(() => {
+    let off: (() => void) | null = null;
+    try {
+      off = onEdictBoardUpdated((b) => setEdictTaskCount(b.tasks.length));
+    } catch {
+      /* 非桌面环境跳过 */
+    }
+    return () => off?.();
+  }, []);
+
   // 清理：离开待执行的任务从派发集合中移除（允许重试重新派发）
   useEffect(() => {
     for (const key of dispatchedRef.current) {
@@ -386,8 +403,160 @@ export default function TaskCenter() {
     setAutoStartOn(v);
     try { localStorage.setItem("tc-auto-start", v ? "1" : "0"); } catch { /* ignore */ }
   };
+
+  /** 执行日志：统一任务按创建时间倒序拍平（含来源/状态/完成时间） */
+  const logEntries = useMemo(() => {
+    return [...filtered]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .map((t) => ({
+        key: t.key,
+        task: t,
+        title: t.title,
+        status: t.status,
+        source: t.source,
+        createdAt: t.createdAt,
+        finishedAt: t.finishedAt,
+      }));
+  }, [filtered]);
+
+  /** 军机处/三省六部 视图 Tab（v4：军机处置首默认） */
+  const [activeEdictTab, setActiveEdictTab] = useState<"junji" | "edict" | "scheduled" | "mine" | "logs">("junji");
+  /** 三省六部看板任务数（真实 board 推送） */
+  const [edictTaskCount, setEdictTaskCount] = useState(0);
+  /** 定时任务数（真实 API） */
+  const [scheduledCount, setScheduledCount] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      listScheduledTasks()
+        .then((items) => { if (alive) setScheduledCount(Array.isArray(items) ? items.length : 0); })
+        .catch(() => { if (alive) setScheduledCount(0); });
+    };
+    void load();
+    const timer = setInterval(load, 60_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, []);
+  /** 我的任务数（已加载的统一任务） */
+  const mineCount = tasks.length;
   return (
     <div className={styles.pageContainer}>
+      {/* ===== v4 Tab 栏：军机处 / 三省六部 / 定时任务 / 我的任务 / 执行日志 ===== */}
+      <div className={edictStyles.tabsBar} style={{ marginBottom: 14 }}>
+        <button
+          className={[
+            edictStyles.tabItem,
+            edictStyles.tabItemJunji,
+            activeEdictTab === "junji" ? edictStyles.tabItemJunjiActive : "",
+          ].filter(Boolean).join(" ")}
+          onClick={() => setActiveEdictTab("junji")}
+        >
+          🏛 军机处
+          <span className={edictStyles.tabNew}>新</span>
+          <span className={edictStyles.tabBadge}>{OFFICIALS_COUNT}</span>
+        </button>
+        <button
+          className={[
+            edictStyles.tabItem,
+            activeEdictTab === "edict" ? edictStyles.tabItemActive : "",
+          ].filter(Boolean).join(" ")}
+          onClick={() => setActiveEdictTab("edict")}
+        >
+          📜 三省六部
+          <span className={edictStyles.tabNew}>新</span>
+          <span className={edictStyles.tabBadge}>{edictTaskCount}</span>
+        </button>
+        <button className={edictStyles.tabItem} onClick={() => setActiveEdictTab("scheduled")}>
+          ⏰ 定时任务 <span className={edictStyles.tabBadge}>{scheduledCount}</span>
+        </button>
+        <button className={edictStyles.tabItem} onClick={() => setActiveEdictTab("mine")}>
+          📄 我的任务 <span className={edictStyles.tabBadge}>{mineCount}</span>
+        </button>
+        <button className={edictStyles.tabItem} onClick={() => setActiveEdictTab("logs")}>
+          🧾 执行日志
+        </button>
+      </div>
+
+      {/* ===== 军机处视图（默认） ===== */}
+      {activeEdictTab === "junji" && <JunjiView />}
+
+      {/* ===== 三省六部视图 ===== */}
+      {activeEdictTab === "edict" && <EdictView />}
+
+      {/* ===== 定时任务视图 ===== */}
+      {activeEdictTab === "scheduled" && (
+        <div className={styles.pageContainerInner}>
+          <div className={styles.pageHeader}>
+            <div className={styles.pageTitle}>
+              <span className={styles.pageTitleIcon}>
+                <ClockCircleOutlined />
+              </span>
+              <div className={styles.pageTitleText}>
+                <span className={styles.pageTitleMain}>定时任务</span>
+                <span className={styles.pageTitleSub}>到期由调度器触发执行，创建走对话/OpenClaw</span>
+              </div>
+            </div>
+          </div>
+          <ScheduledPanel />
+        </div>
+      )}
+
+{/* ===== 执行日志视图 ===== */}
+      {activeEdictTab === "logs" && (
+        <div className={styles.pageContainerInner}>
+          <div className={styles.pageHeader}>
+            <div className={styles.pageTitle}>
+              <span className={styles.pageTitleIcon}>
+                <RobotOutlined />
+              </span>
+              <div className={styles.pageTitleText}>
+                <span className={styles.pageTitleMain}>执行日志</span>
+                <span className={styles.pageTitleSub}>任务执行历史（含三省六部流转，详情见各任务）</span>
+              </div>
+            </div>
+            <div className={styles.headerActions}>
+              <Button
+                className={styles.ghostBtn}
+                icon={<ReloadOutlined />}
+                loading={loading}
+                onClick={() => void loadData(false)}
+              >
+                刷新
+              </Button>
+            </div>
+          </div>
+          <div className={styles.filterBar}>
+            <Input
+              className={styles.searchInput}
+              prefix={<SearchOutlined />}
+              placeholder="搜索执行日志…"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              allowClear
+              style={{ width: 260 }}
+            />
+            <span className={styles.filterCount}>共 {logEntries.length} 条执行记录</span>
+          </div>
+          <div className={styles.logList}>
+            {logEntries.length === 0 ? (
+              <Empty description="暂无执行记录" />
+            ) : (
+              logEntries.map((e) => (
+                <div key={e.key} className={styles.logRow} onClick={() => setSelected(e.task)}>
+                  <span className={styles[PILL_CLS[e.status]]}>{STATUS_TAG_META[e.status].label}</span>
+                  <span className={styles.logSource}>{sourceLabelOf(e.task)}</span>
+                  <span className={styles.logTitle}>{e.title}</span>
+                  <span className={styles.logTime}>创建 {formatRelative(e.createdAt)}</span>
+                  {e.finishedAt && <span className={styles.logTime}>完成 {formatRelative(e.finishedAt)}</span>}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+{/* ===== 我的任务视图 ===== */}
+      {activeEdictTab === "mine" && (
+      <>
       {/* ===== 页头 ===== */}
       <div className={styles.pageHeader}>
         <div className={styles.pageTitle}>
@@ -396,7 +565,7 @@ export default function TaskCenter() {
           </span>
           <div className={styles.pageTitleText}>
             <span className={styles.pageTitleMain}>任务中心</span>
-            <span className={styles.pageTitleSub}>Hermes 编排 · 子代理逐步执行 · 产出逐项确认</span>
+            <span className={styles.pageTitleSub}>Hermes 编排 · 三省六部 · 产出逐项确认</span>
           </div>
         </div>
         <div className={styles.headerActions}>
@@ -453,8 +622,6 @@ export default function TaskCenter() {
         <span className={styles.filterCount}>共 {filtered.length} 条</span>
       </div>
 
-
-      <ScheduledPanel />
 
       {/* ===== 双栏主体 ===== */}
       <div className={styles.workspace}>
@@ -550,6 +717,8 @@ export default function TaskCenter() {
           )}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

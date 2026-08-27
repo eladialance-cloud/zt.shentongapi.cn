@@ -218,3 +218,40 @@ export function syncHermesConfig(hermesHome: string, opts: HermesConfigOptions):
   }
   return cfgPath
 }
+
+/** 三省六部 11 个官署 profile id（不含太子：太子=OpenClaw 入口，非 Hermes profile） */
+export const EDICT_PROFILE_IDS = [
+  'zhongshu', 'menxia', 'shangshu', 'libu', 'hubu', 'libu_hr',
+  'bingbu', 'xingbu', 'gongbu', 'zaochao', 'qintianjian',
+] as const;
+
+/**
+ * 把全局 $HERMES_HOME/config.yaml 同步到每个官署 profile 目录。
+ * 原因：Hermes CLI 的 -p <profile> 会把 HERMES_HOME 切到 <root>/profiles/<id>，
+ * profile 是独立 HERMES_HOME，必须各自持有 config.yaml（否则报 No inference provider configured）。
+ * 幂等：内容一致时跳过。返回本次实际写入的 profile id 列表。
+ */
+export function syncHermesProfileConfigs(hermesHome: string, profileIds: readonly string[] = EDICT_PROFILE_IDS): string[] {
+  const cfgPath = join(hermesHome, 'config.yaml')
+  if (!existsSync(cfgPath)) return []
+  let content = ''
+  try {
+    content = readFileSync(cfgPath, 'utf-8')
+  } catch {
+    return []
+  }
+  const written: string[] = []
+  for (const id of profileIds) {
+    const profileDir = join(hermesHome, 'profiles', id)
+    const target = join(profileDir, 'config.yaml')
+    try {
+      if (existsSync(target) && readFileSync(target, 'utf-8') === content) continue
+      mkdirSync(profileDir, { recursive: true })
+      writeFileSync(target, content, 'utf-8')
+      written.push(id)
+    } catch (err) {
+      console.warn('[hermes-config] 同步 profile config 失败（' + id + '）: ' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+  return written
+}

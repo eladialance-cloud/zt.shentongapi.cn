@@ -71,6 +71,7 @@ import {
   testLogin,
 } from './platform-login'
 import { registerVideoParserIpc } from './video-parser'
+import { createEdictDeps, ensureEdictHermesProfiles, registerEdictIpc } from './edict-bridge'
 
 // ===== Hermes 编排依赖（团队驱动执行） =====
 
@@ -502,6 +503,15 @@ function registerIpcHandlers(): void {
   ipcMain.on('openclaw-chat:abort', () => {
     openClawChat.abort()
   })
+
+  // ===== 三省六部看板（OpenClaw 太子 + Hermes 官署执行；edict:* IPC + 看板轮询推送） =====
+  const disposeEdictIpc = registerEdictIpc(createEdictDeps(), { pollIntervalMs: 3000 })
+  // 引导 11 个官署 Hermes profiles（幂等：缺失创建 + SOUL.md 注入 + config.yaml 同步），失败不影响启动
+  ensureEdictHermesProfiles().then((r) => {
+    if (r.created.length) console.log('[edict-bridge] 已引导官署 profiles: ' + r.created.join(','))
+    else if (!r.ok) console.warn('[edict-bridge] 官署 profiles 引导跳过: ' + (r.reason || '未知'))
+  })
+  app.on('will-quit', () => disposeEdictIpc())
 
   // 注入用户 llm-proxy 静态 Key（登录后由渲染层调用；OpenClaw 的 openai provider 指向云端 llm-proxy）
   ipcMain.on('openclaw-chat:set-proxy-key', (_event, key: string) => {

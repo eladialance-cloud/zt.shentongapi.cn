@@ -29,12 +29,12 @@
 #   The default below uses bin/hermes. Adjust $HermesEntryRel if needed.
 
 param(
-    [string]$HermesVersion = "0.19.0",
+    [string]$HermesVersion = "0.20.5",
     [string]$NodeVersion = "v20.18.1",
     [string]$HermesPkg = "hermes-agent",
     # Relative path (from build root) to the hermes entry script.
     # Verify against node_modules/hermes-agent/package.json "bin" field.
-    [string]$HermesEntryRel = "node_modules\hermes-agent\bin\hermes",
+    [string]$HermesEntryRel = "node_modules\hermes-agent\bin\hermes.js",
     [string]$OutputDir = ""
 )
 
@@ -121,8 +121,19 @@ if (-not (Test-Path $NodeZip)) {
 }
 
 # ============================================================
-# 2. Prepare build directory
+# 2. Prepare build directory (幂等: 已装同版本则跳过重建, 避免重复 npm install)
 # ============================================================
+$skipReinstall = $false
+$installedPkgJson = Join-Path $BuildDir "node_modules\$HermesPkg\package.json"
+if (Test-Path $installedPkgJson) {
+    try {
+        $installedVer = (Get-Content $installedPkgJson -Raw | ConvertFrom-Json).version
+        if ($installedVer -eq $HermesVersion) { $skipReinstall = $true }
+    } catch { $skipReinstall = $false }
+}
+if ($skipReinstall) {
+    Write-Host "[2/6] Build dir already has $HermesPkg@$HermesVersion, skip Node extract + npm install ..." -ForegroundColor Gray
+} else {
 Write-Host "[2/6] Preparing build directory ..." -ForegroundColor Yellow
 Remove-Item -Recurse -Force $BuildDir -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
@@ -184,6 +195,7 @@ try {
 } finally {
     $ErrorActionPreference = $prevEAP
     Pop-Location
+}
 }
 
 # Verify entry point exists. If the guessed path is wrong, print helpful

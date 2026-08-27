@@ -1,0 +1,178 @@
+/* ===== 上朝动画（照搬 edict CourtCeremony 样式，金色宫廷风适配深瞳暗色主题） ===== */
+
+.bg {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: radial-gradient(ellipse at 50% 38%, #181226 0%, #07090f 72%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  animation: crmFadeIn 0.6s ease forwards;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.bg.out {
+  animation: crmFadeOut 0.5s ease forwards;
+}
+
+.glow {
+  position: absolute;
+  width: 440px;
+  height: 440px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(212, 160, 23, 0.1), transparent 70%);
+  animation: crmPulse 3s ease-in-out infinite;
+}
+
+/* 主文案（照搬原版 crm-line1/2/3） */
+.l1 {
+  font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif;
+  font-size: 46px;
+  font-weight: 900;
+  color: #e9d9a8;
+  letter-spacing: 0.15em;
+  opacity: 0;
+  transform: translateY(20px);
+  text-shadow: 0 0 30px rgba(212, 160, 23, 0.35);
+}
+
+.l2 {
+  font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: #d4a017;
+  letter-spacing: 0.2em;
+  margin-top: 10px;
+  opacity: 0;
+  transform: translateY(15px);
+}
+
+.l3 {
+  font-size: 14px;
+  color: #9aa3b8;
+  margin-top: 24px;
+  opacity: 0;
+  letter-spacing: 0.05em;
+}
+
+.date {
+  font-size: 12px;
+  color: #3a4668;
+  margin-top: 34px;
+  opacity: 0;
+  letter-spacing: 0.08em;
+}
+
+.skip {
+  font-size: 11px;
+  color: #3a4668;
+  margin-top: 14px;
+  opacity: 0;
+  animation: crmChar 0.4s 2.8s forwards;
+}
+
+/* 错峰入场（照搬原版 in 类） */
+.l1.in { animation: crmSlideUp 0.55s 0.2s ease forwards; }
+.l2.in { animation: crmSlideUp 0.5s 0.9s ease forwards; }
+.l3.in { animation: crmSlideUp 0.5s 1.5s ease forwards; }
+.date.in { animation: crmChar 0.4s 2.2s ease forwards; }
+
+/* ===== 百官就位（新增，按真实 board 状态点亮） ===== */
+.court {
+  margin-top: 26px;
+  opacity: 0;
+}
+
+.court.in {
+  animation: crmSlideUp 0.5s 1.1s ease forwards;
+}
+
+.courtTitle {
+  text-align: center;
+  font-size: 13px;
+  color: #8a6d1f;
+  letter-spacing: 0.3em;
+  margin-bottom: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(84px, 1fr));
+  gap: 8px;
+  max-width: 760px;
+  padding: 0 16px;
+}
+
+.placard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  border: 1px solid rgba(212, 160, 23, 0.22);
+  border-radius: 10px;
+  background: rgba(24, 18, 8, 0.55);
+  opacity: 0;
+  animation: crmPlacard 0.5s ease forwards;
+}
+
+.placardEmoji {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.placardName {
+  font-size: 12px;
+  color: #e9d9a8;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.placardStatus {
+  font-size: 10px;
+  line-height: 16px;
+  padding: 0 8px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.idle    { color: #8a93a8; background: rgba(138, 147, 168, 0.12); }
+.duty    { color: #ffd666; background: rgba(255, 214, 102, 0.14); }
+.audit   { color: #b7a3ff; background: rgba(183, 163, 255, 0.14); }
+.review  { color: #7cc4ff; background: rgba(124, 196, 255, 0.14); }
+.blocked { color: #ff8f8f; background: rgba(255, 143, 143, 0.14); }
+
+/* ===== 动画 ===== */
+@keyframes crmFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes crmFadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes crmPulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 1;    transform: scale(1.08); }
+}
+
+@keyframes crmSlideUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes crmChar {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes crmPlacard {
+  from { opacity: 0; transform: translateY(10px) scale(0.9); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}

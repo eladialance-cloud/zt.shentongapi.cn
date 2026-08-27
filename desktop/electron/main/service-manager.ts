@@ -35,6 +35,7 @@ import { syncHermesConfig } from './hermes-config'
 import { resolveModelDefaults } from './model-defaults'
 import treeKill from 'tree-kill'
 import { getRuntimeRoot } from './runtime-config'
+import { getEdictDataRoot } from './edict-bridge'
 
 interface ServiceDef {
   displayName: string
@@ -237,6 +238,9 @@ function buildOpenClawEnv(): NodeJS.ProcessEnv {
     ST_API_BASE,
     ST_ACCOUNTING_FILE: path.join(accountingDir, 'current-accounting.json'),
     ST_AUTH_FILE: path.join(accountingDir, 'auth.json'),
+    // 三省六部看板：edict-create 工具卡读取（kanban 脚本解释器 + 可写运行时根）
+    EDICT_HOME: getEdictDataRoot(),
+    EDICT_PYTHON: hermesRoot ? path.join(hermesRoot, 'python', 'python.exe') : '',
   }
 }
 
@@ -330,7 +334,19 @@ function deepMergeConfig(base: Record<string, unknown>, patch: Record<string, un
 }
 
 
-/** 五层协作方法论系统提示（AGENTS.md + SOUL.md）写入 OpenClaw workspace */
+/** 五层协作方法论系统提示（AGENTS.md + SOUL.md）写入 OpenClaw workspace *//** 太子人设文件（OpenClaw = 太子：分拣/传旨/回奏） */
+function getTaiziSoul(): string {
+  try {
+    const p = app.isPackaged
+      ? path.join(process.resourcesPath, 'edict', 'profiles', 'taizi-openclaw.md')
+      : path.join(process.cwd(), 'resources', 'edict', 'profiles', 'taizi-openclaw.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf-8') : ''
+  } catch {
+    return ''
+  }
+}
+
+
 function ensureOpenClawWorkspace(): void {
   try {
     const workspaceDir = path.join(getOpenClawHome(), '.openclaw', 'workspace')
@@ -362,11 +378,12 @@ function ensureOpenClawWorkspace(): void {
 收到用户消息后，按以下顺序判断：
 
 1. **闲聊/简单问答** → 你直接回答，不调用任何工具
-2. **确定性操作**（发邮件、查数据、同步文件、生成报表等明确操作指令）
+2. **正式旨意/复杂任务**（「帮我做XX」「调研XX」「写一份XX」「部署XX」，或以「传旨」「下旨」开头）
+   → 调用 edict-create 工具传旨建任务（三省六部：中书→门下→尚书→六部执行），标题 10-30 字中文概括
+3. **确定性操作**（发邮件、查数据、同步文件、生成报表等明确操作指令）
    → 调用 n8n-run-workflow 工具
-3. **复杂任务**（多步骤、需要分析/推理/创作、需求模糊）
-   → 调用 hermes-agent 工具
-4. **涉及业务知识/规则/模板/历史案例/行业术语** → 先调用 knowledge-query 查知识库，再回答
+4. **需要多步骤编排/长期记忆的复杂任务**（用户明确不走三省六部时）→ 调用 hermes-agent 工具
+5. **涉及业务知识/规则/模板/历史案例/行业术语** → 先调用 knowledge-query 查知识库，再回答
 
 ## 知识库检索（必须遵守）
 
@@ -398,7 +415,7 @@ function ensureOpenClawWorkspace(): void {
 - 任何失败都要透明告知用户，不静默吞错
 `
 
-    const soulMd = `# SOUL.md — 深瞳AI Agent 行为准则
+    const soulMd = getTaiziSoul() || `# SOUL.md — 深瞳AI Agent 行为准则
 
 ## 核心原则
 
@@ -435,8 +452,11 @@ function ensureOpenClawWorkspace(): void {
 - 回答前不确定，先查证再回答
 `
 
+    const existingSoul = fs.existsSync(soulPath) ? fs.readFileSync(soulPath, 'utf-8') : ''
+    // 旧版通用模板（从未被用户定制）→ 自动升级为太子人设；用户已定制则保留
+    const isOldGenericSoul = existingSoul.includes('# SOUL.md — 深瞳AI Agent 行为准则') && !existingSoul.includes('太子')
     if (!fs.existsSync(agentsPath)) fs.writeFileSync(agentsPath, agentsMd, 'utf-8')
-    if (!fs.existsSync(soulPath)) fs.writeFileSync(soulPath, soulMd, 'utf-8')
+    if (!existingSoul || isOldGenericSoul) fs.writeFileSync(soulPath, soulMd, 'utf-8')
     console.log('[service-manager] OpenClaw workspace 系统提示已注入: ' + workspaceDir)
   } catch (err) {
     console.warn('[service-manager] ensureOpenClawWorkspace failed:', err)

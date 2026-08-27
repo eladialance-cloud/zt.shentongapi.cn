@@ -1,6 +1,25 @@
 // 主进程 / 渲染进程共享类型定义
 // 该文件同时被 tsconfig.node.json 与 tsconfig.web.json 包含
 
+import type {
+  EdictBoard,
+  EdictOfficial,
+  EdictOp,
+  EdictPipelineResult,
+  EdictStats,
+  EdictTask,
+  EdictTodo,
+} from "./edict-types";
+export type {
+  EdictBoard,
+  EdictOfficial,
+  EdictOp,
+  EdictPipelineResult,
+  EdictStats,
+  EdictTask,
+  EdictTodo,
+};
+
 export type ServiceName = "openclaw" | "n8n" | "mcp" | "hermes" | "video-claw";
 
 export type ServiceStatus =
@@ -773,6 +792,9 @@ export interface ElectronAPI {
   };
 
 
+  /** 三省六部看板（OpenClaw 太子 + Hermes 官署执行，edict JSON 看板） */
+  edict: EdictAPI;
+
   /** OpenClaw 本地直达对话（记账在云端，消息走本地 OpenClaw） */
   openclawChat: {
     /** 注入用户 llm-proxy 静态 Key（登录后调用；OpenClaw openai provider 指向云端 llm-proxy） */
@@ -803,6 +825,41 @@ export interface ElectronAPI {
     /** 错误（openclaw-chat:error） */
     onError(cb: (payload: OpenClawChatErrorPayload) => void): () => void;
   };
+}
+
+
+/** 三省六部 IPC API（edict:*，主进程 edict-bridge 注册） */
+export interface EdictAPI {
+  /** 下旨：太子建任务（create → Zhongshu）；返回 taskId */
+  issue(input: { title: string; body?: string; priority?: string; dept?: string }): Promise<EdictOp<{ taskId: string }>>;
+  /** 全量看板 */
+  board(): Promise<EdictBoard>;
+  /** 单个任务 */
+  task(taskId: string): Promise<EdictOp<EdictTask | null>>;
+  /** 状态流转（校验状态机，非法返回原因） */
+  transition(taskId: string, to: string, note?: string): Promise<EdictOp>;
+  /** 封驳（门下 → 中书，需 reason） */
+  veto(taskId: string, reason: string): Promise<EdictOp>;
+  /** 准奏（门下 → 尚书） */
+  approve(taskId: string): Promise<EdictOp>;
+  /** 完成收口（done） */
+  complete(taskId: string, output?: string, summary?: string, actorAgentId?: string): Promise<EdictOp>;
+  /** 阻塞 */
+  block(taskId: string, reason: string): Promise<EdictOp>;
+  /** 进展上报 */
+  progress(taskId: string, text: string, plan?: string): Promise<EdictOp>;
+  /** 编排执行：当前状态按状态机推进到终态（Hermes CLI 逐节点） */
+  run(taskId: string, opts?: { maxVetoRounds?: number }): Promise<EdictOp<EdictPipelineResult>>;
+  /** 官署状态 */
+  officials(): Promise<EdictOfficial[]>;
+  /** 军机处统计 */
+  stats(): Promise<EdictStats>;
+  /** 默认模型 + 官署 profiles */
+  models(): Promise<{ default: string; profiles: { id: string; label: string }[] }>;
+  /** 看板变化推送（edict:board-updated） */
+  onBoardUpdated(cb: (board: EdictBoard) => void): () => void;
+  /** 单任务变化推送（edict:task-updated） */
+  onTaskUpdated(cb: (task: EdictTask) => void): () => void;
 }
 
 /** 通过 contextBridge.exposeInMainWorld('runtime', ...) 暴露给渲染进程的运行时 API 形状 */

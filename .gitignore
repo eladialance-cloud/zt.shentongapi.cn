@@ -94,3 +94,12 @@ desktop/.cache/
 
 # Runtime uploads
 backend/uploads/
+
+# 本地 T2.2 真机联调运行时副本（0.20.5 便携构建解压）
+/runtime/
+
+# 本地部署 bundle（不进 git）
+*.bundle
+
+# 本地备份文件
+*.bak-v*
