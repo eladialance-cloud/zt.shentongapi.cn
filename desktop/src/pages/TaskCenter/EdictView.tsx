@@ -594,7 +594,7 @@ export default function EdictView() {
                         {new Date(p.at).toLocaleTimeString("zh-CN", { hour12: false, hour: "2-digit", minute: "2-digit" })}
                       </span>
                       <span className={styles.flowNote}>
-                        <b>{p.agent}</b>：{p.text}
+                        <b>{p.agentLabel || p.agent}</b>：{p.text}
                       </span>
                     </div>
                   ))}

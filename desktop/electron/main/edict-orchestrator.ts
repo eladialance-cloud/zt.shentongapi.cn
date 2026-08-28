@@ -68,6 +68,13 @@ export const ORG_AGENT_MAP: Record<string, string> = {
   吏部: "libu_hr",
 };
 
+/** profile id → 中文官署名（产出写回 progress_log 展示用） */
+const PROFILE_LABEL: Record<string, string> = {
+  zhongshu: "中书省", menxia: "门下省", shangshu: "尚书省",
+  libu: "礼部", hubu: "户部", libu_hr: "吏部", bingbu: "兵部",
+  xingbu: "刑部", gongbu: "工部", zaochao: "司礼监", qintianjian: "钦天监",
+};
+
 export const OFFICIALS: EdictOfficial[] = [
   { id: "taizi", label: "太子", status: "idle", role: "分拣入口（OpenClaw）" },
   { id: "zhongshu", label: "中书省", status: "idle", role: "规划决策" },
@@ -339,6 +346,16 @@ export async function edictRunPipeline(deps: EdictDeps, taskId: string, opts: Ed
           if (!confirmOp.ok) return confirmOp;
           const flow = await kanban(deps, "shangshu", ["flow", taskId, "尚书省", "完成", "✅ 尚书省复核通过，任务完成"]);
           if (!flow.ok) return flow;
+          // 最终产出写回看板 output 字段（UI「产出」区可见；六部交付即最终产出）
+          if (previousOutput) {
+            const finalOutput = previousOutput.slice(0, 2000);
+            try {
+              const allTasks = deps.readBoard();
+              deps.writeBoard(allTasks.map((t2) => (t2.id === taskId ? { ...t2, output: finalOutput } : t2)));
+            } catch (err) {
+              deps.log?.(`产出落盘失败: ${(err as Error).message}`);
+            }
+          }
           continue;
         }
         await edictTransition(deps, taskId, next, {});
@@ -350,11 +367,18 @@ export async function edictRunPipeline(deps: EdictDeps, taskId: string, opts: Ed
       try {
         output = (await deps.runHermes(profile, prompt)).trim();
       } catch (err) {
-        steps.push({ state, error: (err as Error).message });
-        return { ok: false, error: `Hermes 执行失败（${state}）: ${(err as Error).message}` };
+        const msg = (err as Error).message;
+        steps.push({ state, error: msg });
+        // 失败原因写回看板 progress_log（UI 可见，不再静默）
+        const progErr = await kanban(deps, profile, ["progress", taskId, `❌ ${PROFILE_LABEL[profile] || profile}执行失败：${msg.slice(0, 90)}`]);
+        if (!progErr.ok) deps.log?.(`失败回写看板失败: ${progErr.error}`);
+        return { ok: false, error: `Hermes 执行失败（${state}）: ${msg}` };
       }
       steps.push({ state, output: output.slice(0, 500) });
       previousOutput = output;
+      // 产出写回看板 progress_log（UI「进展」区实时可见该官署回答）
+      const progOk = await kanban(deps, profile, ["progress", taskId, `${PROFILE_LABEL[profile] || profile}产出：${output.slice(0, 90)}`]);
+      if (!progOk.ok) deps.log?.(`产出回写看板失败（${profile}）: ${progOk.error}`);
 
       // 2) 按节点规则流转
       if (state === "Menxia") {

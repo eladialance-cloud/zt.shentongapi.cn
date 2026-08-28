@@ -268,8 +268,19 @@ export function createEdictDeps(): EdictDeps {
       child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
       child.on("error", (err) => reject(new Error("Hermes 启动失败: " + err.message)));
       child.on("close", (code) => {
-        if (code === 0) resolve(stdout.trim());
-        else reject(new Error(`Hermes 执行失败（退出码 ${code}）: ${(stderr || stdout).slice(0, 300)}`));
+        const out = stdout.trim();
+        if (code === 0) {
+          if (out) {
+            resolve(out);
+          } else if (stderr.trim()) {
+            // 退出码 0 但无输出：stderr 有内容按失败处理（对齐聊天链路；答案在 stdout，横幅在 stderr）
+            reject(new Error(`Hermes 无输出（stderr: ${stderr.trim().slice(0, 300)}）`));
+          } else {
+            reject(new Error("Hermes 执行完成但无任何输出"));
+          }
+        } else {
+          reject(new Error(`Hermes 执行失败（退出码 ${code}）: ${(stderr || stdout).slice(0, 300)}`));
+        }
       });
     });
 

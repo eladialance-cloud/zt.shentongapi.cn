@@ -224,6 +224,9 @@ describe("edictRunPipeline（编排：中书→门下→尚书→六部→完成
     expect(states).toContain("Menxia");
     expect(states).toContain("Assigned");
     expect(states).toContain("Doing");
+    // 产出写回看板：progress_log 有各官署产出记录 + output 字段落最终产出
+    expect(store[0].progress_log.some((p) => p.text.includes("产出"))).toBe(true);
+    expect(store[0].output).toContain("交付摘要");
   });
 
   it("封驳一轮 → 打回 Zhongshu → 二轮准奏 → Done", async () => {
@@ -282,6 +285,8 @@ describe("edictRunPipeline（编排：中书→门下→尚书→六部→完成
     expect(r.ok === false ? r.error : "").toContain("Hermes 执行失败");
     // 任务保留在 Zhongshu（可重试）
     expect(store[0].state).toBe("Zhongshu");
+    // 失败原因已写回看板 progress_log（UI 可见，不再静默）
+    expect(store[0].progress_log.some((p) => p.text.includes("执行失败"))).toBe(true);
   });
 });
 

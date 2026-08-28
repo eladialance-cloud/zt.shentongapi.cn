@@ -59,7 +59,7 @@ export interface EdictTask {
   ac?: string;
   archived?: boolean;
   flow_log: EdictFlowLogEntry[];
-  progress_log: { at: string; agent: string; text: string; todos?: string[] }[];
+  progress_log: { at: string; agent: string; agentLabel?: string; text: string; todos?: string[] }[];
   todos: EdictTodo[];
   createdAt?: string;
   updatedAt?: string;

@@ -237,7 +237,7 @@ export interface UiEdictTask {
   rejected: boolean;
   rejectReason?: string;
   flowLog: EdictFlowLogEntry[];
-  progressLog: { at: string; agent: string; text: string; todos?: string[] }[];
+  progressLog: { at: string; agent: string; agentLabel?: string; text: string; todos?: string[] }[];
   todos: EdictTodo[];
 }
 
