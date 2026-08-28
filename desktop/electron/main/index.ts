@@ -35,6 +35,7 @@ if (!app.isPackaged) {
 import { createMainWindow, getMainWindow, setQuitting } from './windows/main-window'
 import { createTray, destroyTray } from './tray'
 import { ServiceManager, ST_API_BASE } from './service-manager'
+import { ensureN8nAuth } from './n8n-auth'
 import { syncOpenClawMcpFromBackend } from './openclaw-mcp-sync'
 import { AppUpdater } from './updater'
 import { getDeviceFingerprint } from './device'
@@ -392,6 +393,14 @@ if (!gotLock) {
 
     const mainWindow = createMainWindow(serviceManager, isDev)
     createTray(mainWindow, serviceManager)
+
+    // 本地 n8n 自动登录注入：n8n 每次就绪后自动登录并给 iframe 请求附加会话 Cookie
+    // （Electron 新内核阻止第三方 Cookie，iframe 内无法保存登录态，必须由主进程注入）
+    serviceManager.on('status-changed', (name: string, status: string) => {
+      if (name === 'n8n' && status === 'running') {
+        void ensureN8nAuth()
+      }
+    })
     // 自动更新：启动时实例化并检查更新（Task 35.3）
     appUpdater = new AppUpdater(mainWindow)
     appUpdater.checkForUpdates()
