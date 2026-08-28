@@ -26,6 +26,8 @@ app.commandLine.appendSwitch('disable-gpu-sandbox')
 app.commandLine.appendSwitch('enable-unsafe-swiftshader')
 // 对标轻语：本地视频解析需要页面自动播放（video.play 无手势触发）
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+// 修复内嵌 n8n iframe 登录：Electron 新内核默认阻止第三方 Cookie，导致 file:// 应用内的 http://127.0.0.1:5678 iframe 无法保存登录会话 Cookie（浏览器直连正常、App 内登录转圈回登录页）
+app.commandLine.appendSwitch('disable-features', 'ThirdPartyCookies,ThirdPartyStoragePartitioning')
 // 仅开发环境（未打包）启用远程调试端口，生产环境关闭
 if (!app.isPackaged) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
