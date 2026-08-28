@@ -55,7 +55,7 @@ const SERVICE_DEFS: Record<ServiceName, ServiceDef> = {
 const VIDEO_CLAW_FRONTEND_PORT = 3000
 
 /** N8N API Key（生成并持久化到 userData/n8n-api-key，供本地 REST API 导入工作流） */
-function getOrCreateN8nApiKey(): string {
+export function getOrCreateN8nApiKey(): string {
   try {
     const keyFile = path.join(app.getPath('userData'), 'n8n-api-key')
     if (fs.existsSync(keyFile)) {
@@ -132,6 +132,13 @@ function buildHermesEnv(): NodeJS.ProcessEnv {
   } catch (err) {
     console.warn('[service-manager] mkdir hermes-home failed:', err)
   }
+  // 记账上下文目录（n8n-run-workflow 等工具卡读取 ST_AUTH_FILE / ST_ACCOUNTING_FILE）
+  const accountingDir = path.join(app.getPath('userData'), 'openclaw-chat')
+  try {
+    fs.mkdirSync(accountingDir, { recursive: true })
+  } catch (err) {
+    console.warn('[service-manager] mkdir openclaw-chat failed:', err)
+  }
   return {
     ...process.env,
     PORT: String(SERVICE_DEFS.hermes.port),
@@ -140,7 +147,15 @@ function buildHermesEnv(): NodeJS.ProcessEnv {
     // K1 修复：Hermes 进程实际读取的环境变量名是 CUSTOM_API_KEY，
     // 需将 HERMES_API_SERVER_KEY 映射到 CUSTOM_API_KEY，否则 spawnService 中的检查永远失败
     CUSTOM_API_KEY: key,
-    MCP_BACKEND_URL: 'http://127.0.0.1:' + SERVICE_DEFS.mcp.port
+    MCP_BACKEND_URL: 'http://127.0.0.1:' + SERVICE_DEFS.mcp.port,
+    // 官署技能所需环境变量（与 OpenClaw 进程对齐）：n8n-run-workflow 读取 N8N/ST 系列变量，
+    // 看板工具卡读取 EDICT_HOME；Hermes 长驻服务同样注入，保证技能脚本可运行
+    N8N_API_KEY: getOrCreateN8nApiKey(),
+    N8N_BASE_URL: 'http://127.0.0.1:' + SERVICE_DEFS.n8n.port,
+    ST_API_BASE,
+    ST_AUTH_FILE: path.join(accountingDir, 'auth.json'),
+    ST_ACCOUNTING_FILE: path.join(accountingDir, 'current-accounting.json'),
+    EDICT_HOME: getEdictDataRoot(),
   }
 }
 

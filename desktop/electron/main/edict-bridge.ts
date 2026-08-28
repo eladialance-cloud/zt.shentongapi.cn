@@ -39,7 +39,7 @@ import {
 } from "./edict-orchestrator";
 import type { EdictBoard, EdictNotifyConfig, EdictOp, EdictTask } from "../shared/edict-types";
 import { OFFICIALS } from "./edict-orchestrator";
-import { ST_API_BASE } from "./service-manager";
+import { ST_API_BASE, getOrCreateN8nApiKey } from "./service-manager";
 import type { EdictExtraDeps } from "./edict-extra";
 
 // ===== 路径解析 =====
@@ -104,11 +104,26 @@ export function resolveHermesPython(): string {
 function buildHermesCliEnv(): NodeJS.ProcessEnv {
   const root = resolveHermesRoot();
   const ext = process.platform === "win32" ? ".exe" : "";
+  // 记账上下文目录（n8n-run-workflow 工具卡读取 ST_AUTH_FILE / ST_ACCOUNTING_FILE）
+  const accountingDir = path.join(app.getPath("userData"), "openclaw-chat");
+  try {
+    fs.mkdirSync(accountingDir, { recursive: true });
+  } catch {
+    // 忽略创建失败，技能脚本运行时仍会兜底
+  }
   return {
     ...process.env,
     HERMES_NODE: path.join(root, "node", "node" + ext),
     HERMES_ENTRY: path.join(root, "node_modules", "hermes-agent", "bin", "hermes.js"),
     HERMES_HOME: path.join(app.getPath("userData"), "hermes-home"),
+    // 官署技能所需环境变量（与 OpenClaw 进程对齐）：n8n-run-workflow 读取 N8N/ST 系列变量，
+    // 看板工具卡读取 EDICT_HOME；确保官署 Hermes CLI 进程内技能脚本可直接运行
+    N8N_API_KEY: getOrCreateN8nApiKey(),
+    N8N_BASE_URL: "http://127.0.0.1:5678",
+    ST_API_BASE,
+    ST_AUTH_FILE: path.join(accountingDir, "auth.json"),
+    ST_ACCOUNTING_FILE: path.join(accountingDir, "current-accounting.json"),
+    EDICT_HOME: getEdictDataRoot(),
   };
 }
 
@@ -126,6 +141,16 @@ const EDICT_PROFILE_DESC: Record<string, string> = {
   zaochao: "司礼监·上朝与要闻：上朝仪式、每日要闻简报",
   qintianjian: "钦天监·分析与预测：数据分析、性能度量、趋势预测",
 };
+
+/** 六部（执行层）官署：预置 n8n-run-workflow 技能 */
+const N8N_SKILL_AGENTS: readonly string[] = ["hubu", "libu", "bingbu", "xingbu", "gongbu", "libu_hr"];
+
+/** n8n-run-workflow 技能蓝本目录（打包后 resources/openclaw/skills；开发 desktop/resources/openclaw/skills） */
+function getN8nSkillSourceDir(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "openclaw", "skills", "n8n-run-workflow")
+    : path.join(process.cwd(), "resources", "openclaw", "skills", "n8n-run-workflow");
+}
 
 /** 官署 SOUL.md 蓝本目录（打包后 resources/edict/profiles；开发 desktop/resources/edict/profiles） */
 function getEdictProfilesDir(): string {
@@ -168,6 +193,14 @@ export async function ensureEdictHermesProfiles(ids?: readonly string[]): Promis
       const soulSrc = path.join(soulDir, id + ".md");
       const soulDst = path.join(profileDir, "SOUL.md");
       if (fs.existsSync(soulSrc)) fs.copyFileSync(soulSrc, soulDst);
+      // 预置执行层技能：六部（户/礼/吏/兵/刑/工）新装即自带 n8n-run-workflow，
+      // 可直接调用本地 N8N 工作流（幂等：仅内容变化时覆盖，用户可删除后从技能库重加）
+      if (N8N_SKILL_AGENTS.includes(id)) {
+        const n8nSrc = getN8nSkillSourceDir();
+        if (fs.existsSync(n8nSrc)) {
+          copyDirIfChanged(n8nSrc, path.join(profileDir, "skills", "n8n-run-workflow"));
+        }
+      }
     } catch (err) {
       console.warn("[edict-bridge] 引导 profile " + id + " 失败: " + (err instanceof Error ? err.message : String(err)));
     }
