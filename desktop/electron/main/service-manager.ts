@@ -81,6 +81,8 @@ function buildN8nEnv(): NodeJS.ProcessEnv {
     N8N_PROTOCOL: 'http',
     N8N_EDITOR_BASE_URL: 'http://127.0.0.1:5678',
     N8N_DIAGNOSTICS_ENABLED: 'false',
+    // 本地 HTTP 部署必须关闭 Secure Cookie，否则登录后的会话 Cookie 带 Secure 标志，在 http://127.0.0.1 下无法保存，导致登录后立即被踢回登录页
+    N8N_SECURE_COOKIE: 'false',
     GENERIC_TIMEZONE: 'Asia/Shanghai',
     // 本地 REST API 鉴权（工作流导入）
     N8N_API_KEY: getOrCreateN8nApiKey(),
