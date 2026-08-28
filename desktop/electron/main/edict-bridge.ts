@@ -163,16 +163,11 @@ export async function ensureEdictHermesProfiles(ids?: readonly string[]): Promis
         });
         created.push(id);
       }
-      // 注入官署 SOUL.md：profile create 会先写默认模板，需识别默认模板并覆盖；
-      // 用户后续自定义（非默认模板）则保留不覆盖
+      // 注入官署 SOUL.md：每次启动从蓝本覆盖（官署人设由应用管理，保证与安装包版本一致；
+      // 用户自定义走「技能市场」，不在此处保留旧 SOUL）
       const soulSrc = path.join(soulDir, id + ".md");
       const soulDst = path.join(profileDir, "SOUL.md");
-      if (fs.existsSync(soulSrc)) {
-        const isDefaultSoul =
-          !fs.existsSync(soulDst) ||
-          fs.readFileSync(soulDst, "utf-8").includes("You are Hermes Agent, an intelligent AI assistant created by Nous Research");
-        if (isDefaultSoul) fs.copyFileSync(soulSrc, soulDst);
-      }
+      if (fs.existsSync(soulSrc)) fs.copyFileSync(soulSrc, soulDst);
     } catch (err) {
       console.warn("[edict-bridge] 引导 profile " + id + " 失败: " + (err instanceof Error ? err.message : String(err)));
     }

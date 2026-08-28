@@ -354,11 +354,6 @@ function ensureOpenClawWorkspace(): void {
     const workspaceDir = path.join(getOpenClawHome(), '.openclaw', 'workspace')
     const agentsPath = path.join(workspaceDir, 'AGENTS.md')
     const soulPath = path.join(workspaceDir, 'SOUL.md')
-    // 文件已存在则不覆盖（用户可自行定制 Agent 行为）
-    if (fs.existsSync(agentsPath) && fs.existsSync(soulPath)) {
-      console.log('[service-manager] OpenClaw workspace 已存在，跳过写入（保留用户自定义）')
-      return
-    }
     fs.mkdirSync(workspaceDir, { recursive: true })
 
     const agentsMd = `# AGENTS.md — 深瞳AI 协作方法论
@@ -454,12 +449,10 @@ function ensureOpenClawWorkspace(): void {
 - 回答前不确定，先查证再回答
 `
 
-    const existingSoul = fs.existsSync(soulPath) ? fs.readFileSync(soulPath, 'utf-8') : ''
-    // 旧版通用模板（从未被用户定制）→ 自动升级为太子人设；用户已定制则保留
-    const isOldGenericSoul = existingSoul.includes('# SOUL.md — 深瞳AI Agent 行为准则') && !existingSoul.includes('太子')
-    if (!fs.existsSync(agentsPath)) fs.writeFileSync(agentsPath, agentsMd, 'utf-8')
-    if (!existingSoul || isOldGenericSoul) fs.writeFileSync(soulPath, soulMd, 'utf-8')
-    console.log('[service-manager] OpenClaw workspace 系统提示已注入: ' + workspaceDir)
+    // 蓝本同步：每次启动从蓝本覆盖（官署人设/方法论由应用管理，用户自定义走技能市场）
+    fs.writeFileSync(agentsPath, agentsMd, 'utf-8')
+    fs.writeFileSync(soulPath, soulMd, 'utf-8')
+    console.log('[service-manager] OpenClaw workspace 蓝本已同步: ' + workspaceDir)
   } catch (err) {
     console.warn('[service-manager] ensureOpenClawWorkspace failed:', err)
   }
