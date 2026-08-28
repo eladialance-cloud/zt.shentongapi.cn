@@ -12,13 +12,17 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
+import { createConnection } from "node:net";
 import * as path from "node:path";
 import { getRuntimeRoot } from "./runtime-config";
 import { EDICT_PROFILE_IDS, syncHermesProfileConfigs, applyAgentModels } from "./hermes-config";
 import {
+  appendFlowLog,
+  edictAdvance,
   edictApprove,
   edictBlock,
   edictBoard,
+  edictCancel,
   edictComplete,
   edictIssue,
   edictOfficials,
@@ -26,10 +30,14 @@ import {
   edictRunPipeline,
   edictStats,
   edictTransition,
+  edictUnblock,
   edictVeto,
+  escalateOneLevel,
+  isStalledTask,
+  stallMetaOf,
   type EdictDeps,
 } from "./edict-orchestrator";
-import type { EdictBoard, EdictOp, EdictTask } from "../shared/edict-types";
+import type { EdictBoard, EdictNotifyConfig, EdictOp, EdictTask } from "../shared/edict-types";
 import { OFFICIALS } from "./edict-orchestrator";
 import { ST_API_BASE } from "./service-manager";
 import type { EdictExtraDeps } from "./edict-extra";
@@ -340,7 +348,82 @@ export function createEdictDeps(): EdictDeps {
     now: () => Date.now(),
     log: (msg) => console.log("[edict] " + msg),
     reportExecution,
+    notify: (input) => sendEdictNotify({
+      title: input.finalState === "Done" ? "✅ 三省六部任务完成" : input.finalState === "Cancelled" ? "🗑 三省六部任务已取消" : input.finalState === "Blocked" ? "⛔ 三省六部任务已阻塞" : "❌ 三省六部执行失败",
+      content: `任务 ${input.taskId}《${input.title}》\n结果：${input.finalState}${input.summary ? "\n" + input.summary : ""}`,
+    }),
   };
+}
+
+// ===== 结果回传通知（P5：照搬 edict 原版 feishu.py / wecom.py 负载格式） =====
+
+function getEdictNotifyConfigFile(): string {
+  return path.join(getEdictDataRoot(), "data", "notify-config.json");
+}
+
+/** 读取通知配置（本地持久化；缺省关闭） */
+export function readEdictNotifyConfig(): EdictNotifyConfig {
+  try {
+    const raw = fs.readFileSync(getEdictNotifyConfigFile(), "utf-8");
+    const cfg = JSON.parse(raw) as Partial<EdictNotifyConfig>;
+    return {
+      enabled: !!cfg.enabled,
+      feishuWebhook: typeof cfg.feishuWebhook === "string" ? cfg.feishuWebhook : "",
+      wecomWebhook: typeof cfg.wecomWebhook === "string" ? cfg.wecomWebhook : "",
+    };
+  } catch {
+    return { enabled: false, feishuWebhook: "", wecomWebhook: "" };
+  }
+}
+
+/** 保存通知配置 */
+export function saveEdictNotifyConfig(cfg: EdictNotifyConfig): EdictOp {
+  const next: EdictNotifyConfig = {
+    enabled: !!cfg?.enabled,
+    feishuWebhook: typeof cfg?.feishuWebhook === "string" ? cfg.feishuWebhook.trim() : "",
+    wecomWebhook: typeof cfg?.wecomWebhook === "string" ? cfg.wecomWebhook.trim() : "",
+  };
+  try {
+    fs.mkdirSync(path.dirname(getEdictNotifyConfigFile()), { recursive: true });
+    fs.writeFileSync(getEdictNotifyConfigFile(), JSON.stringify(next, null, 2), "utf-8");
+    return { ok: true, data: next };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
+/** 发送单个 webhook（照搬 feishu.py interactive card / wecom.py markdown 负载） */
+async function sendWebhook(kind: "feishu" | "wecom", webhook: string, title: string, content: string, url?: string): Promise<void> {
+  let body: string;
+  if (kind === "feishu") {
+    const elements: unknown[] = [{ tag: "div", text: { tag: "lark_md", content } }];
+    if (url) {
+      elements.push({ tag: "action", actions: [{ tag: "button", text: { tag: "plain_text", content: "查看详情" }, url, type: "primary" }] });
+    }
+    body = JSON.stringify({ msg_type: "interactive", card: { header: { title: { tag: "plain_text", content: title }, template: "blue" }, elements } });
+  } else {
+    let text = `**${title}**\n${content}`;
+    if (url) text += `\n[查看详情](${url})`;
+    body = JSON.stringify({ msgtype: "markdown", markdown: { content: text } });
+  }
+  const res = await fetch(webhook, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok) throw new Error(`${kind === "feishu" ? "飞书" : "企业微信"} webhook 返回 HTTP ${res.status}`);
+}
+
+/** 发送通知（读配置；开关关闭或未配置时静默跳过；任一渠道失败抛错由调用方 best-effort 兜底） */
+export async function sendEdictNotify(input: { title: string; content: string; url?: string }): Promise<void> {
+  const cfg = readEdictNotifyConfig();
+  if (!cfg.enabled) return;
+  const jobs: Promise<void>[] = [];
+  if (cfg.feishuWebhook) jobs.push(sendWebhook("feishu", cfg.feishuWebhook, input.title, input.content, input.url));
+  if (cfg.wecomWebhook) jobs.push(sendWebhook("wecom", cfg.wecomWebhook, input.title, input.content, input.url));
+  if (!jobs.length) return;
+  await Promise.all(jobs);
 }
 
 // ===== 当前默认模型（edict:models） =====
@@ -424,6 +507,32 @@ export function registerEdictIpc(deps: EdictDeps, opts: EdictIpcOptions = {}): (
     profiles: OFFICIALS.filter((o) => o.id !== "taizi").map((o) => ({ id: o.id, label: o.label })),
   }));
 
+  // P2 人工介入（省部调度任务卡操作）：取消 / 推进 / 重试 / 升级 / 解阻
+  ipcMain.handle("edict:cancel", (_e, taskId: string): Promise<EdictOp> => edictCancel(deps, taskId));
+  ipcMain.handle("edict:advance", (_e, taskId: string): Promise<EdictOp> => edictAdvance(deps, taskId));
+  ipcMain.handle("edict:escalate", (_e, taskId: string): Promise<EdictOp> => escalateOneLevel(deps, taskId));
+  ipcMain.handle("edict:unblock", (_e, taskId: string): Promise<EdictOp> => edictUnblock(deps, taskId));
+  ipcMain.handle("edict:retry", (_e, taskId: string): EdictOp => {
+    if (runningTasks.has(taskId)) return { ok: false, error: "该任务正在编排执行中，请稍候" };
+    runPipelineSafe(taskId);
+    return { ok: true, data: "已重新触发三省六部编排" };
+  });
+
+  // P5 结果回传通知配置（桌面端本地持久化）
+  ipcMain.handle("edict:notify-config", (): EdictNotifyConfig => readEdictNotifyConfig());
+  ipcMain.handle("edict:save-notify-config", (_e, cfg: EdictNotifyConfig): EdictOp => saveEdictNotifyConfig(cfg));
+  ipcMain.handle("edict:test-notify", async (): Promise<EdictOp> => {
+    try {
+      const cfg = readEdictNotifyConfig();
+      if (!cfg.enabled) return { ok: false, error: "通知开关未开启" };
+      if (!cfg.feishuWebhook && !cfg.wecomWebhook) return { ok: false, error: "未配置任何 Webhook（飞书/企微至少填一个）" };
+      await sendEdictNotify({ title: "🧪 三省六部通知测试", content: "这是一条来自深瞳AI桌面端的测试消息，通知配置已生效。" });
+      return { ok: true, data: "测试消息已发送" };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  });
+
   // 看板轮询：内容变化 → 广播 board-updated；单个任务变化 → task-updated；新传旨任务自动编排
   let lastRaw = "";
   const readRaw = () => {
@@ -464,13 +573,109 @@ export function registerEdictIpc(deps: EdictDeps, opts: EdictIpcOptions = {}): (
   }, pollIntervalMs);
   timer.unref?.();
 
-  return () => clearInterval(timer);
+  // P2 停滞检测器（照搬 orchestrator_worker._check_stalled）：每 60s 扫描停滞任务
+  // 恢复策略：重试（≤2 次）→ 升级（≤3 级）→ 标记 Blocked 人工介入
+  const STALL_THRESHOLD_MS = 10 * 60_000;
+  const MAX_STALL_RETRIES = 2;
+  const MAX_ESCALATION_LEVEL = 3;
+
+  const applyStallRecovery = async (task: EdictTask): Promise<void> => {
+    const taskId = task.id;
+    const nowIso = new Date().toISOString();
+    const { stallCount, escalationLevel } = stallMetaOf(task);
+    const cur = deps.readBoard().find((t) => t.id === taskId);
+    if (!cur || runningTasks.has(taskId)) return;
+    // 停滞检测落痕（flow_log 可见）
+    await appendFlowLog(deps, taskId, {
+      from: cur.state,
+      to: cur.state,
+      remark: `⏰ 停滞检测：${cur.state} 超过 10 分钟无进展`,
+      agent: "orchestrator",
+      agentLabel: "编排器",
+    });
+    if (stallCount < MAX_STALL_RETRIES) {
+      const tasks = deps.readBoard();
+      deps.writeBoard(tasks.map((t) => (t.id === taskId ? { ...t, meta: { ...(t.meta || {}), stall_count: stallCount + 1, last_stall_at: nowIso } } : t)));
+      deps.log?.(`[edict] 停滞重试 ${taskId}（第 ${stallCount + 1} 次）`);
+      runPipelineSafe(taskId);
+      return;
+    }
+    if (escalationLevel < MAX_ESCALATION_LEVEL) {
+      deps.log?.(`[edict] 停滞升级 ${taskId}（第 ${escalationLevel + 1} 级）`);
+      await escalateOneLevel(deps, taskId);
+      // 升级到可继续流转的状态（如 Menxia→Zhongshu）后重新编排；Blocked 则停在人工介入
+      runPipelineSafe(taskId);
+      return;
+    }
+    deps.log?.(`[edict] 停滞转阻塞 ${taskId}（重试${MAX_STALL_RETRIES}次+升级${MAX_ESCALATION_LEVEL}级）`);
+    await edictBlock(deps, taskId, "任务多次停滞（重试2次+升级3级），需人工介入", "zhongshu");
+  };
+
+  const stallTimer = setInterval(() => {
+    const now = Date.now();
+    for (const t of deps.readBoard()) {
+      if (!isStalledTask(t, now, STALL_THRESHOLD_MS)) continue;
+      void applyStallRecovery(t);
+    }
+  }, 60_000);
+  stallTimer.unref?.();
+
+  return () => {
+    clearInterval(timer);
+    clearInterval(stallTimer);
+  };
 }
 
 // ===== 补齐面板依赖（edict-extra） =====
 
+// ===== Hermes 运行时真实状态探测（P1） =====
+
+/** Hermes 服务端口（与 service-manager SERVICE_DEFS.hermes.port 对齐） */
+const HERMES_STATUS_PORT = 8642;
+
+function tcpProbe(port: number, host = "127.0.0.1"): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = createConnection({ port, host });
+    let settled = false;
+    const done = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(ok);
+    };
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+    setTimeout(() => done(false), 1200);
+  });
+}
+
+/** 本地探测 Hermes 运行时：alive=端口监听；probe=HTTP 有响应（任意非 5xx） */
+export async function probeHermesRuntime(): Promise<{ alive: boolean; probe: boolean; status: string; checkedAt: string }> {
+  const alive = await tcpProbe(HERMES_STATUS_PORT);
+  let probe = false;
+  if (alive) {
+    try {
+      const res = await fetch("http://127.0.0.1:" + HERMES_STATUS_PORT + "/health", { signal: AbortSignal.timeout(1500) });
+      probe = res.status < 500;
+    } catch {
+      probe = false;
+    }
+  }
+  return {
+    alive,
+    probe,
+    status: alive ? (probe ? "Hermes 运行时正常" : "Hermes 已监听（API 未就绪）") : "Hermes 运行时未启动",
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+export interface CreateEdictExtraDepsOptions {
+  /** 真实 Hermes 运行时状态（P1）：优先注入 serviceManager 状态；缺省走本地端口探测 */
+  getHermesRuntimeStatus?: () => Promise<{ alive: boolean; probe: boolean; status: string; checkedAt?: string }>;
+}
+
 /** 构建补齐面板（monitor/court/models/skills/morning/sessions）依赖；复用同一份看板 deps */
-export function createEdictExtraDeps(base: EdictDeps): EdictExtraDeps {
+export function createEdictExtraDeps(base: EdictDeps, opts: CreateEdictExtraDepsOptions = {}): EdictExtraDeps {
   return {
     ...base,
     hermesHome: path.join(app.getPath("userData"), "hermes-home"),
@@ -486,5 +691,6 @@ export function createEdictExtraDeps(base: EdictDeps): EdictExtraDeps {
       }
     },
     ensureProfiles: (ids) => ensureEdictHermesProfiles(ids),
+    getHermesRuntimeStatus: opts.getHermesRuntimeStatus ?? (() => probeHermesRuntime()),
   };
 }

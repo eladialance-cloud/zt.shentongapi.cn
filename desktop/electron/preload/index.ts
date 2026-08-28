@@ -44,6 +44,7 @@ import type {
   EdictCourtDiscussResult,
   EdictModelChangeEntry,
   EdictMorningBrief,
+  EdictNotifyConfig,
   EdictRemoteSkillsResult,
   EdictSkillLibraryResult,
   EdictSessionItem,
@@ -273,6 +274,14 @@ const electronAPI: ElectronAPI = {
     officials: () => ipcRenderer.invoke('edict:officials') as Promise<EdictOfficial[]>,
     stats: () => ipcRenderer.invoke('edict:stats') as Promise<EdictStats>,
     models: () => ipcRenderer.invoke('edict:models'),
+    cancel: (taskId: string) => ipcRenderer.invoke('edict:cancel', taskId) as Promise<EdictOp>,
+    advance: (taskId: string) => ipcRenderer.invoke('edict:advance', taskId) as Promise<EdictOp>,
+    retry: (taskId: string) => ipcRenderer.invoke('edict:retry', taskId) as Promise<EdictOp>,
+    escalate: (taskId: string) => ipcRenderer.invoke('edict:escalate', taskId) as Promise<EdictOp>,
+    unblock: (taskId: string) => ipcRenderer.invoke('edict:unblock', taskId) as Promise<EdictOp>,
+    notifyConfig: () => ipcRenderer.invoke('edict:notify-config') as Promise<EdictNotifyConfig>,
+    saveNotifyConfig: (config: EdictNotifyConfig) => ipcRenderer.invoke('edict:save-notify-config', config) as Promise<EdictOp>,
+    testNotify: () => ipcRenderer.invoke('edict:test-notify') as Promise<EdictOp>,
     onBoardUpdated: (callback: (board: EdictBoard) => void) => {
       const handler = (_event: IpcRendererEvent, board: EdictBoard): void => callback(board)
       ipcRenderer.on('edict:board-updated', handler)

@@ -523,7 +523,22 @@ function registerIpcHandlers(): void {
   // ===== 三省六部看板（OpenClaw 太子 + Hermes 官署执行；edict:* IPC + 看板轮询推送） =====
   const edictDeps = createEdictDeps()
   const disposeEdictIpc = registerEdictIpc(edictDeps, { pollIntervalMs: 3000 })
-  const disposeEdictExtraIpc = registerEdictExtraIpc(createEdictExtraDeps(edictDeps), {})
+  const disposeEdictExtraIpc = registerEdictExtraIpc(
+    createEdictExtraDeps(edictDeps, {
+      // P1：Hermes 真实运行状态（serviceManager 服务状态 + 端口监听），替代 config.yaml 假状态
+      getHermesRuntimeStatus: async () => {
+        const st = await serviceManager.getServiceStatus("hermes");
+        const alive = st === "running";
+        return {
+          alive,
+          probe: alive,
+          status: alive ? "Hermes 运行时正常" : st === "unknown" ? "Hermes 状态未知（未启动）" : "Hermes 运行时未启动",
+          checkedAt: new Date().toISOString(),
+        };
+      },
+    }),
+    {}
+  )
   // 引导 11 个官署 Hermes profiles（幂等：缺失创建 + SOUL.md 注入 + config.yaml 同步），失败不影响启动
   ensureEdictHermesProfiles().then((r) => {
     if (r.created.length) console.log('[edict-bridge] 已引导官署 profiles: ' + r.created.join(','))

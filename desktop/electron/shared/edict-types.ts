@@ -337,3 +337,18 @@ export interface EdictSetModelInput {
   agentId: string;
   model: string;
 }
+
+/** Hermes 运行时真实状态（P1：端口/服务探测，替代 config.yaml 假状态） */
+export interface EdictHermesRuntimeStatus {
+  alive: boolean;
+  probe: boolean;
+  status: string;
+  checkedAt?: string;
+}
+
+/** 三省六部结果回传通知配置（P5：桌面端本地持久化 webhook） */
+export interface EdictNotifyConfig {
+  enabled: boolean;
+  feishuWebhook: string;
+  wecomWebhook: string;
+}

@@ -160,9 +160,42 @@ async function loadMyTaskSource(): Promise<UnifiedTask[]> {
   }
 }
 
-/** Hermes 源：hermes-api 实例列表 */
+/** 三省六部看板状态 → 统一状态（本地编排记录） */
+function mapEdictStateToHermes(state: string): UnifiedTaskStatus {
+  if (state === "Done") return "done";
+  if (state === "Cancelled") return "cancelled";
+  if (state === "Blocked") return "failed";
+  if (state === "Taizi" || state === "Pending") return "todo";
+  return "running";
+}
+
+/**
+ * P4：Hermes 源 = 本地三省六部编排记录（edict 看板 JJC- 任务）。
+ * 原实现调云端 GET /hermes/instances（云实例表），桌面端永远为空（死入口）。
+ */
 async function loadHermesSource(): Promise<UnifiedTask[]> {
   try {
+    const { isEdictAvailable, edictBoard } = await import("@/api/edict-api");
+    if (isEdictAvailable()) {
+      const board = await edictBoard();
+      return (board.tasks || [])
+        .filter((t) => /^JJC-/i.test(t.id || ""))
+        .map((t) => ({
+          key: "hermes:" + t.id,
+          source: "hermes" as const,
+          title: t.title || t.id,
+          status: mapEdictStateToHermes(t.state),
+          rawStatus: t.state,
+          assignee: t.assigneeOrg || t.org,
+          createdAt: t.createdAt || t.updatedAt || new Date().toISOString(),
+          finishedAt: t.state === "Done" || t.state === "Cancelled" ? t.updatedAt || t.createdAt || null : null,
+        }));
+    }
+  } catch (err) {
+    console.warn("[TaskCenter] 加载本地三省六部记录失败:", err);
+  }
+  try {
+    // 非桌面环境兜底：云端 Hermes 实例列表
     const instances = await (await import("@/api/hermes-api")).listInstances();
     return (instances ?? []).map((inst) => {
       const loose = inst as unknown as Record<string, unknown>;
@@ -304,7 +337,19 @@ export default function TaskCenter() {
           setTeamTaskByKey(result.teamTaskByKey);
           unifiedTasks = result.tasks;
         }
-        setTasks(unifiedTasks);
+        // P4：合并本地三省六部编排记录（Hermes 源）到统一列表（与云端 unified 结果按 key 去重）
+        let finalTasks = unifiedTasks;
+        if (sourceFilter === "all" || sourceFilter === "hermes") {
+          const hermesLocal = await loadHermesSource().catch(() => []);
+          if (hermesLocal.length) {
+            const seen = new Set(finalTasks.map((t) => t.key));
+            finalTasks = [
+              ...finalTasks,
+              ...hermesLocal.filter((t) => !seen.has(t.key) && (statusFilter === "all" || t.status === statusFilter)),
+            ];
+          }
+        }
+        setTasks(finalTasks);
       } catch (err) {
         console.warn("[TaskCenter] 加载任务失败:", err);
         setTasks([]);
@@ -421,6 +466,12 @@ export default function TaskCenter() {
 
   /** 军机处/三省六部 视图 Tab（v4：军机处置首默认） */
   const [activeEdictTab, setActiveEdictTab] = useState<"junji" | "edict" | "scheduled" | "mine" | "logs">("junji");
+  /** P3：军机处总览抽屉「查看该官署任务」→ 三省六部看板筛选 */
+  const [edictOrgFilter, setEdictOrgFilter] = useState<string | null>(null);
+  const handleNavigateBoard = useCallback((orgName?: string) => {
+    setEdictOrgFilter(orgName ?? null);
+    setActiveEdictTab("edict");
+  }, []);
   /** 三省六部看板任务数（真实 board 推送） */
   const [edictTaskCount, setEdictTaskCount] = useState(0);
   /** 定时任务数（真实 API） */
@@ -477,10 +528,12 @@ export default function TaskCenter() {
       </div>
 
       {/* ===== 军机处视图（默认） ===== */}
-      {activeEdictTab === "junji" && <JunjiPanelsHub />}
+      {activeEdictTab === "junji" && <JunjiPanelsHub onNavigateBoard={handleNavigateBoard} />}
 
       {/* ===== 三省六部视图 ===== */}
-      {activeEdictTab === "edict" && <EdictView />}
+      {activeEdictTab === "edict" && (
+        <EdictView orgFilter={edictOrgFilter} onClearOrgFilter={() => setEdictOrgFilter(null)} />
+      )}
 
       {/* ===== 定时任务视图 ===== */}
       {activeEdictTab === "scheduled" && (

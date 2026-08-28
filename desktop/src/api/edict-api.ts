@@ -11,6 +11,7 @@ import type {
   EdictCourtDiscussResult,
   EdictModelChangeEntry,
   EdictMorningBrief,
+  EdictNotifyConfig,
   EdictOfficial,
   EdictOp,
   EdictPipelineResult,
@@ -102,6 +103,50 @@ export async function edictStats(): Promise<EdictStats> {
 /** 默认模型 + 官署 profiles */
 export async function edictModels(): Promise<{ default: string; profiles: { id: string; label: string }[] }> {
   return getEdict().models();
+}
+
+// ===== 人工介入（P2：省部调度任务卡操作） =====
+
+/** 人工介入：取消任务 */
+export async function edictCancel(taskId: string): Promise<EdictOp> {
+  return getEdict().cancel(taskId);
+}
+
+/** 人工介入：推进到下一合法状态 */
+export async function edictAdvance(taskId: string): Promise<EdictOp> {
+  return getEdict().advance(taskId);
+}
+
+/** 人工介入：重新触发三省六部编排（停滞重试） */
+export async function edictRetry(taskId: string): Promise<EdictOp> {
+  return getEdict().retry(taskId);
+}
+
+/** 人工介入：停滞升级一步 */
+export async function edictEscalate(taskId: string): Promise<EdictOp> {
+  return getEdict().escalate(taskId);
+}
+
+/** 人工介入：解阻（Blocked → 重新起草） */
+export async function edictUnblock(taskId: string): Promise<EdictOp> {
+  return getEdict().unblock(taskId);
+}
+
+// ===== 结果回传通知（P5：桌面端本地 webhook 配置） =====
+
+/** 结果回传通知：读取配置 */
+export async function edictNotifyConfig(): Promise<EdictNotifyConfig> {
+  return getEdict().notifyConfig();
+}
+
+/** 结果回传通知：保存配置 */
+export async function edictSaveNotifyConfig(config: EdictNotifyConfig): Promise<EdictOp> {
+  return getEdict().saveNotifyConfig(config);
+}
+
+/** 结果回传通知：发送测试消息 */
+export async function edictTestNotify(): Promise<EdictOp> {
+  return getEdict().testNotify();
 }
 
 /** 看板变化推送（edict:board-updated）；返回取消监听函数 */

@@ -41,7 +41,7 @@ const DEPT_COLORS: Record<string, string> = {
 /** 详情抽屉动作弹窗类型 */
 type PromptKind = "veto" | "block" | "complete" | null;
 
-export default function EdictView() {
+export default function EdictView({ orgFilter, onClearOrgFilter }: { orgFilter?: string | null; onClearOrgFilter?: () => void }) {
   const [available] = useState<boolean>(() => isEdictAvailable());
   const [issueText, setIssueText] = useState("");
   const [level, setLevel] = useState<"auto" | "light" | "heavy">("auto");
@@ -70,6 +70,15 @@ export default function EdictView() {
       if (!quiet) setLoading(false);
     }
   }, []);
+
+  /** P3：官署筛选（来自军机处总览抽屉「查看该官署任务」） */
+  const filteredTasks = useMemo(
+    () =>
+      orgFilter
+        ? tasks.filter((t) => t.assignee === orgFilter || t.org === orgFilter || t.dept === orgFilter)
+        : tasks,
+    [tasks, orgFilter]
+  );
 
   useEffect(() => {
     if (!available) {
@@ -269,6 +278,23 @@ export default function EdictView() {
 
   return (
     <div className={styles.edictRoot}>
+      {/* P3：官署筛选横幅（从军机处总览抽屉跳转而来） */}
+      {orgFilter && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", marginBottom: 10, borderRadius: 10, background: "var(--color-bg-spotlight)", border: "1px dashed var(--color-border, #e5e7eb)" }}>
+          <span style={{ fontSize: 15 }}>🎯</span>
+          <span style={{ fontSize: 13, flex: 1 }}>
+            正在查看 <b>{orgFilter}</b> 的任务（{filteredTasks.length} 道）
+          </span>
+          <button
+            className={styles.issueBtnOutline}
+            style={{ padding: "3px 10px", fontSize: 12 }}
+            onClick={() => onClearOrgFilter?.()}
+          >
+            清除筛选
+          </button>
+        </div>
+      )}
+
       {/* 下旨栏 */}
       <div className={styles.issueBar}>
         <Input
@@ -298,7 +324,7 @@ export default function EdictView() {
       <Spin spinning={loading}>
         <div className={styles.board}>
           {EDICT_COLUMNS.map((col) => {
-            const colTasks = tasks.filter((t) => col.states.includes(t.state));
+            const colTasks = filteredTasks.filter((t) => col.states.includes(t.state));
             const isOver = dragOverCol === col.key;
             return (
               <div

@@ -39,7 +39,7 @@ const HUB_TABS: { key: HubTab; label: string; cls?: string }[] = [
   { key: "morning", label: "🌅 天下要闻" },
 ];
 
-export default function JunjiPanelsHub() {
+export default function JunjiPanelsHub({ onNavigateBoard }: { onNavigateBoard?: (orgName?: string) => void }) {
   const [active, setActive] = useState<HubTab>("overview");
 
   return (
@@ -63,7 +63,7 @@ export default function JunjiPanelsHub() {
       </div>
 
       {/* 面板内容 */}
-      {active === "overview" && <JunjiView onNavigateModels={() => setActive("models")} />}
+      {active === "overview" && <JunjiView onNavigateModels={() => setActive("models")} onNavigateBoard={onNavigateBoard} />}
       {active === "court" && <CourtDiscussion />}
       {active === "monitor" && <MonitorPanel />}
       {active === "models" && <ModelConfig />}

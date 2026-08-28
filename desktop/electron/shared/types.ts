@@ -19,6 +19,7 @@ import type {
   EdictSkillLibraryResult,
   EdictStats,
   EdictSubConfig,
+  EdictNotifyConfig,
   EdictTask,
   EdictTodo,
 } from "./edict-types";
@@ -30,6 +31,7 @@ export type {
   EdictCourtDiscussResult,
   EdictModelChangeEntry,
   EdictMorningBrief,
+  EdictNotifyConfig,
   EdictOfficial,
   EdictOp,
   EdictPipelineResult,
@@ -884,6 +886,22 @@ export interface EdictAPI {
   onBoardUpdated(cb: (board: EdictBoard) => void): () => void;
   /** 单任务变化推送（edict:task-updated） */
   onTaskUpdated(cb: (task: EdictTask) => void): () => void;
+  /** 人工介入：取消任务 */
+  cancel(taskId: string): Promise<EdictOp>;
+  /** 人工介入：推进到下一合法状态 */
+  advance(taskId: string): Promise<EdictOp>;
+  /** 人工介入：重新触发三省六部编排（停滞重试） */
+  retry(taskId: string): Promise<EdictOp>;
+  /** 人工介入：停滞升级一步 */
+  escalate(taskId: string): Promise<EdictOp>;
+  /** 人工介入：解阻（Blocked → 重新起草） */
+  unblock(taskId: string): Promise<EdictOp>;
+  /** 结果回传通知：读取本地配置 */
+  notifyConfig(): Promise<EdictNotifyConfig>;
+  /** 结果回传通知：保存本地配置 */
+  saveNotifyConfig(config: EdictNotifyConfig): Promise<EdictOp>;
+  /** 结果回传通知：发送测试消息 */
+  testNotify(): Promise<EdictOp>;
 
   /** 省部调度：全部官署 Agent 在线状态 */
   agentsStatus(): Promise<EdictAgentsStatusData>;

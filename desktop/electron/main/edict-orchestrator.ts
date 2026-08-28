@@ -49,6 +49,8 @@ export interface EdictDeps {
     steps?: unknown[];
     durationMs: number;
   }) => Promise<void>;
+  /** 结果回传通知（P5，best-effort）：任务完成/失败/阻塞时推送飞书/企微 webhook */
+  notify?: (input: EdictNotifyInput) => Promise<void>;
 }
 
 const KANBAN_SCRIPT = "kanban_update.py";
@@ -451,4 +453,137 @@ async function reportPipelineExecution(
   } catch (err) {
     deps.log?.(`计费回写失败（best-effort）: ${(err as Error).message}`);
   }
+  // P5：结果回传通知（best-effort：完成/失败/阻塞/取消 → 飞书/企微 webhook）
+  if (deps.notify) {
+    try {
+      const tasks = deps.readBoard();
+      const task = tasks.find((t) => t.id === taskId);
+      const finalState = result.ok && result.data?.finalState ? result.data.finalState : ((task?.state as EdictState) ?? "Blocked");
+      const status: EdictNotifyInput["status"] =
+        finalState === "Done" ? "completed" :
+        finalState === "Cancelled" ? "cancelled" :
+        finalState === "Blocked" ? "blocked" : "failed";
+      await deps.notify({
+        taskId,
+        title: task?.title || taskId,
+        finalState,
+        status,
+        summary: task?.output ? `产出：${task.output.slice(0, 200)}` : task?.now || "",
+        output: task?.output?.slice(0, 500),
+        steps,
+      });
+    } catch (err) {
+      deps.log?.(`结果回传通知失败（best-effort）: ${(err as Error).message}`);
+    }
+  }
+}
+// ===== P2/P5 补齐：停滞处理 + 人工介入 + 结果回传通知 =====
+
+/** 结果回传通知载荷 */
+export interface EdictNotifyInput {
+  taskId: string;
+  title: string;
+  finalState: EdictState;
+  status: "completed" | "failed" | "blocked" | "cancelled";
+  summary?: string;
+  output?: string;
+  steps?: EdictPipelineResult["steps"];
+}
+
+/** 追加看板流转日志（原子：读-追加-写） */
+export function appendFlowLog(deps: EdictDeps, taskId: string, entry: Omit<EdictFlowLogEntry, "at">): EdictOp {
+  const tasks = deps.readBoard();
+  const task = tasks.find((t) => t.id === taskId);
+  if (!task) return { ok: false, error: `任务不存在: ${taskId}` };
+  const flow_log = [...(task.flow_log || []), { at: new Date(deps.now()).toISOString(), ...entry }];
+  deps.writeBoard(tasks.map((t) => (t.id === taskId ? { ...t, flow_log } : t)));
+  return { ok: true };
+}
+
+/** 停滞元信息（meta 持久化，参考 orchestrator_worker 的 stall_count/escalation_level） */
+export function stallMetaOf(task: EdictTask): { stallCount: number; escalationLevel: number } {
+  const m = (task.meta || {}) as Record<string, unknown>;
+  const toNum = (v: unknown): number => (typeof v === "number" ? v : Number(v || 0));
+  return { stallCount: toNum(m.stall_count), escalationLevel: toNum(m.escalation_level) };
+}
+
+/** 停滞判定：非终态编排状态且超过阈值未更新（照搬 orchestrator_worker 阈值语义） */
+export function isStalledTask(task: EdictTask, now: number, thresholdMs: number): boolean {
+  if (["Done", "Cancelled", "Blocked", "Pending"].includes(task.state)) return false;
+  const last = task.updatedAt || task.createdAt || "";
+  if (!last) return false;
+  const t = new Date(last).getTime();
+  if (Number.isNaN(t)) return false;
+  return now - t >= thresholdMs;
+}
+
+/** 停滞升级一步（适配本地状态机：Menxia→Zhongshu / Review→Menxia / PendingConfirm→Review；其余执行态无合法回退 → Blocked 人工介入） */
+export async function escalateOneLevel(deps: EdictDeps, taskId: string): Promise<EdictOp> {
+  const task = deps.readBoard().find((t) => t.id === taskId);
+  if (!task) return { ok: false, error: `任务不存在: ${taskId}` };
+  const state = task.state as EdictState;
+  const level = stallMetaOf(task).escalationLevel + 1;
+  // 先记升级层级（meta），再走状态机
+  {
+    const tasks = deps.readBoard();
+    const cur = tasks.find((t) => t.id === taskId);
+    if (cur) {
+      const meta = { ...(cur.meta || {}), escalation_level: level };
+      deps.writeBoard(tasks.map((t) => (t.id === taskId ? { ...t, meta } : t)));
+    }
+  }
+  const after = async (r: EdictOp, from: EdictState, to: EdictState, label: string): Promise<EdictOp> => {
+    if (r.ok) await appendFlowLog(deps, taskId, { from, to, remark: `⬆️ 停滞升级：${label}`, agent: "shangshu", agentLabel: "尚书省" });
+    return r;
+  };
+  switch (state) {
+    case "Menxia":
+      return after(await edictTransition(deps, taskId, "Zhongshu", { note: "⬆️ 停滞升级：门下省 → 中书省重拟", actorAgentId: "menxia" }), "Menxia", "Zhongshu", "门下省 → 中书省重拟");
+    case "Review":
+      return after(await edictTransition(deps, taskId, "Menxia", { note: "⬆️ 停滞升级：待复核 → 退回门下省重审", actorAgentId: "shangshu" }), "Review", "Menxia", "待复核 → 退回门下省重审");
+    case "PendingConfirm":
+      return after(await edictTransition(deps, taskId, "Review", { note: "⬆️ 停滞升级：待回奏确认 → 退回复核", actorAgentId: "shangshu" }), "PendingConfirm", "Review", "待回奏确认 → 退回复核");
+    case "Taizi":
+      // 太子分拣停滞：推进到中书省起草（Taizi→Blocked 非法）
+      return after(await edictTransition(deps, taskId, "Zhongshu", { note: "⬆️ 停滞升级：太子分拣停滞 → 转中书省起草", actorAgentId: "taizi" }), "Taizi", "Zhongshu", "太子分拣停滞 → 转中书省起草");
+    case "Zhongshu":
+    case "Assigned":
+    case "Next":
+    case "Doing":
+    default:
+      return edictBlock(deps, taskId, `停滞升级（第${level}级）：${EDICT_STATE_LABEL[state] || state} 长时间无进展，转人工介入`);
+  }
+}
+
+/** 手动介入：取消任务 */
+export async function edictCancel(deps: EdictDeps, taskId: string): Promise<EdictOp> {
+  return edictTransition(deps, taskId, "Cancelled", { note: "🙅 皇上传旨取消", actorAgentId: "taizi" });
+}
+
+/** 手动介入：推进到下一合法状态 */
+export async function edictAdvance(deps: EdictDeps, taskId: string): Promise<EdictOp> {
+  const task = deps.readBoard().find((t) => t.id === taskId);
+  if (!task) return { ok: false, error: `任务不存在: ${taskId}` };
+  const from = task.state as EdictState;
+  const order: EdictState[] = ["Pending", "Taizi", "Zhongshu", "Menxia", "Assigned", "Next", "Doing", "Review", "Done"];
+  const idx = order.indexOf(from);
+  for (let i = idx + 1; i < order.length; i++) {
+    const to = order[i];
+    if (assertTransition(from, to).ok) {
+      const r = await edictTransition(deps, taskId, to, { note: `👆 人工推进：${EDICT_STATE_LABEL[from]} → ${EDICT_STATE_LABEL[to]}` });
+      if (r.ok) await appendFlowLog(deps, taskId, { from, to, remark: `👆 人工推进：${EDICT_STATE_LABEL[from]} → ${EDICT_STATE_LABEL[to]}`, agent: "taizi", agentLabel: "太子" });
+      return r;
+    }
+  }
+  return { ok: false, error: `任务 ${from} 无合法下一状态（可能已是终态或需先解阻）` };
+}
+
+/** 手动介入：解阻（Blocked → Zhongshu 重新起草，随后可重新编排） */
+export async function edictUnblock(deps: EdictDeps, taskId: string): Promise<EdictOp> {
+  const task = deps.readBoard().find((t) => t.id === taskId);
+  if (!task) return { ok: false, error: `任务不存在: ${taskId}` };
+  if (task.state !== "Blocked") return { ok: false, error: `仅阻塞任务可解阻（当前 ${task.state}）` };
+  const r = await edictTransition(deps, taskId, "Zhongshu", { note: "✅ 解阻：中书省重新起草", actorAgentId: "taizi" });
+  if (r.ok) await appendFlowLog(deps, taskId, { from: "Blocked", to: "Zhongshu", remark: "✅ 解阻：中书省重新起草", agent: "taizi", agentLabel: "太子" });
+  return r;
 }

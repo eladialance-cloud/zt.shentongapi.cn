@@ -21,6 +21,7 @@ import type {
   EdictAgentConfig,
   EdictAgentStatusInfo,
   EdictAgentsStatusData,
+  EdictHermesRuntimeStatus,
   EdictCourtDiscussResult,
   EdictCourtMessage,
   EdictCourtOfficial,
@@ -56,6 +57,8 @@ export interface EdictExtraDeps extends EdictDeps {
   getAuthToken: () => string;
   /** 确保官署 profiles（创建/补 SOUL.md/同步 config）；返回创建明细 */
   ensureProfiles: (ids?: readonly string[]) => Promise<{ ok: boolean; created: string[]; reason?: string }>;
+  /** 真实 Hermes 运行时状态（P1）：serviceManager 注入或本地端口探测；缺省按未就绪处理 */
+  getHermesRuntimeStatus?: () => Promise<EdictHermesRuntimeStatus>;
   /** 网络抓取（默认全局 fetch；测试可注入） */
   fetch?: typeof fetch;
 }
@@ -181,7 +184,7 @@ export function replaceConfigModel(content: string, model: string): string {
 // ===== 省部调度 monitor =====
 
 /** 从看板聚合每位官署的最近活跃时间与在办任务数 */
-export function buildAgentsStatus(deps: EdictExtraDeps): EdictAgentsStatusData {
+export async function buildAgentsStatus(deps: EdictExtraDeps): Promise<EdictAgentsStatusData> {
   const tasks = deps.readBoard();
   const lastByAgent: Record<string, string> = {};
   const activeByAgent: Record<string, number> = {};
@@ -201,7 +204,14 @@ export function buildAgentsStatus(deps: EdictExtraDeps): EdictAgentsStatusData {
     for (const f of t.flow_log || []) mark(f.agent, f.agentLabel, f.at);
     for (const p of t.progress_log || []) mark(p.agent, undefined, p.at);
   }
-  const hermesReady = deps.hermesHome ? fs.existsSync(path.join(deps.hermesHome, "config.yaml")) : false;
+  // P1：真实 Hermes 运行时状态（serviceManager 注入或端口探测），替换原先 config.yaml 假状态
+  let runtime: EdictHermesRuntimeStatus = { alive: false, probe: false, status: "Hermes 运行时未启动" };
+  try {
+    if (deps.getHermesRuntimeStatus) runtime = await deps.getHermesRuntimeStatus();
+  } catch (err) {
+    console.warn("[edict-extra] Hermes 运行时探测失败:", (err as Error).message);
+  }
+  const hermesAlive = !!runtime.alive;
   const agents: EdictAgentStatusInfo[] = OFFICIALS.map((o) => {
     const profileDir = path.join(deps.hermesHome, "profiles", o.id);
     const hasProfile = fs.existsSync(profileDir);
@@ -212,9 +222,12 @@ export function buildAgentsStatus(deps: EdictExtraDeps): EdictAgentsStatusData {
     if (o.id === "taizi") {
       status = active > 0 ? "running" : "idle";
       statusLabel = active > 0 ? "执行中" : "待命";
-    } else if (!hasProfile || !hermesReady) {
+    } else if (!hasProfile) {
       status = "unconfigured";
       statusLabel = "未配置";
+    } else if (!hermesAlive) {
+      status = "offline";
+      statusLabel = "离线（Hermes 未运行）";
     } else if (active > 0) {
       status = "running";
       statusLabel = "执行中";
@@ -237,12 +250,12 @@ export function buildAgentsStatus(deps: EdictExtraDeps): EdictAgentsStatusData {
   return {
     ok: true,
     gateway: {
-      alive: hermesReady,
-      probe: hermesReady,
-      status: hermesReady ? "Hermes 运行时正常" : "Hermes 运行时未就绪",
+      alive: runtime.alive,
+      probe: runtime.probe,
+      status: runtime.status || (runtime.alive ? "Hermes 运行时正常" : "Hermes 运行时未启动"),
     },
     agents,
-    checkedAt: nowIso(),
+    checkedAt: runtime.checkedAt || nowIso(),
   };
 }
 
@@ -1164,7 +1177,7 @@ export function registerEdictExtraIpc(deps: EdictExtraDeps, opts: EdictExtraIpcO
     });
 
   // 省部调度
-  ipcMain.handle("edict:agents-status", (): EdictAgentsStatusData => buildAgentsStatus(deps));
+  ipcMain.handle("edict:agents-status", (): Promise<EdictAgentsStatusData> => buildAgentsStatus(deps));
   ipcMain.handle("edict:agent-wake", (_e, agentId: string): Promise<EdictOp> => wakeAgent(deps, agentId));
 
   // 模型配置

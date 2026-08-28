@@ -32,7 +32,7 @@ const STATUS_CLASS: Record<OfficialCard["status"], string> = {
   offline: styles.statusOffline,
 };
 
-export default function JunjiView({ onNavigateModels }: { onNavigateModels?: () => void }) {
+export default function JunjiView({ onNavigateModels, onNavigateBoard }: { onNavigateModels?: () => void; onNavigateBoard?: (orgName?: string) => void }) {
   const [available] = useState<boolean>(() => isEdictAvailable());
   const [loading, setLoading] = useState(true);
   const [drawerOfficial, setDrawerOfficial] = useState<OfficialCard | null>(null);
@@ -41,6 +41,7 @@ export default function JunjiView({ onNavigateModels }: { onNavigateModels?: () 
     issuedToday: 0, executing: 0, doneToday: 0, rejected: 0, byState: {}, avgMinutes: 0,
   });
   const [news, setNews] = useState<ReturnType<typeof buildNews>>([]);
+  const [boardTasks, setBoardTasks] = useState<import("@shared/edict-types").EdictTask[]>([]);
   const [defaultModel, setDefaultModel] = useState("");
   const [agentModels, setAgentModels] = useState<Record<string, string>>({});
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -60,6 +61,7 @@ export default function JunjiView({ onNavigateModels }: { onNavigateModels?: () 
         agentCfg.agents.forEach((a) => { m[a.id] = a.model; });
         setAgentModels(m);
       }
+      setBoardTasks(boardRes.tasks || []);
       setOfficials(buildOfficialCards(officialRes, boardRes.tasks));
       setStats(buildJunjiStats(boardRes.tasks));
       setNews(buildNews(boardRes.tasks));
@@ -168,6 +170,23 @@ export default function JunjiView({ onNavigateModels }: { onNavigateModels?: () 
             </div>
           </div>
         </div>
+
+        {/* 空看板引导（P3：无旨意任务时引导去下旨） */}
+        {boardTasks.length === 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", marginBottom: 12, borderRadius: 12, background: "var(--color-bg-spotlight)", border: "1px dashed var(--color-border, #e5e7eb)" }}>
+            <span style={{ fontSize: 22 }}>⚜️</span>
+            <div style={{ flex: 1, fontSize: 13, color: "var(--color-text-secondary)" }}>
+              三省六部暂无旨意任务。下旨后由太子分拣 → 中书省起草 → 门下省审议 → 尚书省派发六部执行。
+            </div>
+            <button
+              className={styles.bannerBtn}
+              style={{ whiteSpace: "nowrap" }}
+              onClick={() => onNavigateBoard?.()}
+            >
+              📜 去三省六部下旨
+            </button>
+          </div>
+        )}
 
         {/* 两栏 */}
         <div className={styles.junjiCols}>
@@ -345,7 +364,42 @@ export default function JunjiView({ onNavigateModels }: { onNavigateModels?: () 
             <div style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.8 }}>
               当前状态：<b>{drawerOfficial.statusText}</b>
             </div>
-            <Button type="primary" block onClick={() => setDrawerOfficial(null)}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div style={{ background: "var(--color-bg-spotlight)", borderRadius: 10, padding: 10 }}>
+                <div style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>当前模型</div>
+                <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>{agentModels[drawerOfficial.id] || "未配置"}</div>
+              </div>
+              <div style={{ background: "var(--color-bg-spotlight)", borderRadius: 10, padding: 10 }}>
+                <div style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>官署技能</div>
+                <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>在「技能」面板管理</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginTop: 4 }}>
+              最近任务（{drawerOfficial.name} 相关）：
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 160, overflowY: "auto" }}>
+              {boardTasks
+                .filter((t) => t.org === drawerOfficial.name || t.assigneeOrg === drawerOfficial.name)
+                .slice(0, 5)
+                .map((t) => (
+                  <div key={t.id} style={{ fontSize: 12, background: "var(--color-bg-spotlight)", borderRadius: 8, padding: "6px 10px" }}>
+                    <div style={{ fontWeight: 600 }}>{t.id} · {t.title}</div>
+                    <div style={{ color: "var(--color-text-tertiary)", marginTop: 2 }}>{t.state} · {t.now || t.output || ""}</div>
+                  </div>
+                ))}
+              {boardTasks.filter((t) => t.org === drawerOfficial.name || t.assigneeOrg === drawerOfficial.name).length === 0 && (
+                <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>暂无相关任务</div>
+              )}
+            </div>
+            <Button
+              type="primary"
+              block
+              onClick={() => {
+                const org = drawerOfficial.name;
+                setDrawerOfficial(null);
+                onNavigateBoard?.(org);
+              }}
+            >
               查看该官署任务（回看板）
             </Button>
           </div>
