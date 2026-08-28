@@ -37,6 +37,9 @@ extraResources:
     to: mcp/mcp-gateway-server.js
   - from: runtime/manifest.json
     to: runtime/manifest.json
+  # n8n 界面汉化脚本（n8n-trans 用户脚本，注入内嵌 n8n iframe 实现中文界面）
+  - from: resources/n8n/n8n-chinese.js
+    to: n8n/n8n-chinese.js
   # 内置 Hermes 技能目录（st-claw-controller 等，随包分发；Hermes 启动时同步到 HERMES_HOME/skills）
   - from: resources/hermes/skills
     to: hermes/skills
