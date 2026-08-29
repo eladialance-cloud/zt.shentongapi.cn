@@ -17,6 +17,18 @@ import * as path from "node:path";
 import type { EdictDeps } from "./edict-orchestrator";
 import { OFFICIALS, edictIssue } from "./edict-orchestrator";
 import { EDICT_PROFILE_IDS, syncHermesProfileConfigs, writeAgentModel, removeAgentModel } from "./hermes-config";
+
+// P0-3: 官署 ID / 技能名白名单校验（防止路径穿越写出 hermes-home/profiles 目录）
+const SAFE_AGENT_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const SAFE_SKILL_NAME_RE = /^[\w-]{1,128}$/;
+
+function assertSafeAgentId(agentId: string): boolean {
+  return SAFE_AGENT_ID_RE.test(agentId);
+}
+
+function assertSafeSkillName(skillName: string): boolean {
+  return SAFE_SKILL_NAME_RE.test(skillName);
+}
 import type {
   EdictAgentConfig,
   EdictAgentStatusInfo,
@@ -271,6 +283,7 @@ function readProfileModel(deps: EdictExtraDeps, agentId: string): string {
 
 /** 唤醒（确保）指定官署 profile；taizi 为 OpenClaw 入口，仅提示 */
 export async function wakeAgent(deps: EdictExtraDeps, agentId: string): Promise<EdictOp> {
+  if (!assertSafeAgentId(agentId)) return { ok: false, error: "官署 ID 非法" };
   if (agentId === "taizi" || agentId === "main") {
     return { ok: true, data: "太子由 OpenClaw 承载，无需唤醒" };
   }
@@ -312,6 +325,7 @@ export async function fetchKnownModels(deps: EdictExtraDeps): Promise<EdictKnown
 /** 切换官署模型：持久化用户选择 + 写目标官署 profile config + 变更日志 */
 export async function applyModelChange(deps: EdictExtraDeps, agentId: string, model: string): Promise<EdictOp> {
   if (!agentId || !model) return { ok: false, error: "参数缺失" };
+  if (!assertSafeAgentId(agentId)) return { ok: false, error: "官署 ID 非法" };
   const profileCfg = path.join(deps.hermesHome, "profiles", agentId, "config.yaml");
   const oldModel = readProfileModel(deps, agentId);
   // 跟随全局默认：删除持久化记录 + 该官署 profile config，读取时回退到全局 config.yaml
@@ -588,6 +602,7 @@ function resolveLibrarySkillDir(deps: EdictExtraDeps, source: string, skillName:
 
 /** 把技能库技能整目录复制到官署 profile skills/（已存在则拒绝，提示先删除） */
 export function copySkillToProfile(deps: EdictExtraDeps, agentId: string, source: string, skillName: string): EdictOp {
+  if (!assertSafeAgentId(agentId) || !assertSafeSkillName(skillName)) return { ok: false, error: "官署 ID 或技能名非法" };
   const srcDir = resolveLibrarySkillDir(deps, source, skillName);
   if (!srcDir || !fs.existsSync(path.join(srcDir, "SKILL.md"))) {
     return { ok: false, error: "技能库中不存在该技能: " + skillName };
@@ -607,6 +622,7 @@ export function copySkillToProfile(deps: EdictExtraDeps, agentId: string, source
 
 /** 删除官署本地技能（整目录，可重新从技能库添加） */
 export function removeLocalSkill(deps: EdictExtraDeps, agentId: string, skillName: string): EdictOp {
+  if (!assertSafeAgentId(agentId) || !assertSafeSkillName(skillName)) return { ok: false, error: "官署 ID 或技能名非法" };
   const dir = path.join(profileSkillsDir(deps, agentId), skillName);
   try {
     if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
@@ -632,6 +648,7 @@ function profileSkillsDir(deps: EdictExtraDeps, agentId: string): string {
 
 /** 列出官署本地技能（profiles/<id>/skills 下的 SKILL.md） */
 export function listProfileSkills(deps: EdictExtraDeps, agentId: string): EdictSkillInfo[] {
+  if (!assertSafeAgentId(agentId)) return [];
   const root = profileSkillsDir(deps, agentId);
   if (!fs.existsSync(root)) return [];
   const out: EdictSkillInfo[] = [];
@@ -654,7 +671,7 @@ export function listProfileSkills(deps: EdictExtraDeps, agentId: string): EdictS
 
 /** 读取技能文件内容 */
 export function readSkillContent(deps: EdictExtraDeps, agentId: string, skillName: string): EdictSkillContentResult {
-  if (!/^[\w\-]+$/.test(skillName)) return { ok: false, error: "技能名非法" };
+  if (!assertSafeAgentId(agentId) || !assertSafeSkillName(skillName)) return { ok: false, error: "官署 ID 或技能名非法" };
   const skillFile = path.join(profileSkillsDir(deps, agentId), skillName, "SKILL.md");
   if (!fs.existsSync(skillFile)) return { ok: false, error: "技能不存在: " + skillName };
   try {
@@ -666,7 +683,7 @@ export function readSkillContent(deps: EdictExtraDeps, agentId: string, skillNam
 
 /** 本地新增技能（创建 SKILL.md 模板） */
 export function addLocalSkill(deps: EdictExtraDeps, agentId: string, skillName: string, description: string, trigger: string): EdictOp {
-  if (!/^[\w\-]+$/.test(skillName)) return { ok: false, error: "技能名仅支持字母数字-_" };
+  if (!assertSafeAgentId(agentId) || !assertSafeSkillName(skillName)) return { ok: false, error: "官署 ID 或技能名非法" };
   const dir = path.join(profileSkillsDir(deps, agentId), skillName);
   const skillFile = path.join(dir, "SKILL.md");
   if (fs.existsSync(skillFile)) return { ok: false, error: "技能已存在: " + skillName };
@@ -719,7 +736,8 @@ export function listRemoteSkills(deps: EdictExtraDeps): EdictRemoteSkillsResult 
 
 /** 添加/更新远程技能：下载 SKILL.md 到 profile skills 目录 + 登记 registry */
 export async function addRemoteSkill(deps: EdictExtraDeps, agentId: string, skillName: string, sourceUrl: string, description = ""): Promise<EdictOp> {
-  if (!/^[\w\-]+$/.test(skillName) || !/^https?:\/\//.test(sourceUrl)) {
+  if (!assertSafeAgentId(agentId) || !assertSafeSkillName(skillName)) return { ok: false, error: "官署 ID 或技能名非法" };
+  if (!/^https?:\/\//.test(sourceUrl)) {
     return { ok: false, error: "技能名或 URL 非法" };
   }
   const fetcher = deps.fetch ?? globalThis.fetch;
@@ -759,6 +777,7 @@ export async function addRemoteSkill(deps: EdictExtraDeps, agentId: string, skil
 
 /** 更新远程技能（重新下载） */
 export async function updateRemoteSkill(deps: EdictExtraDeps, agentId: string, skillName: string): Promise<EdictOp> {
+  if (!assertSafeAgentId(agentId) || !assertSafeSkillName(skillName)) return { ok: false, error: "官署 ID 或技能名非法" };
   const registry = readRegistry(deps);
   const item = registry.find((it) => it.agentId === agentId && it.skillName === skillName);
   if (!item) return { ok: false, error: "远程技能不存在: " + skillName };
@@ -767,6 +786,7 @@ export async function updateRemoteSkill(deps: EdictExtraDeps, agentId: string, s
 
 /** 移除远程技能（删文件 + registry） */
 export function removeRemoteSkill(deps: EdictExtraDeps, agentId: string, skillName: string): EdictOp {
+  if (!assertSafeAgentId(agentId) || !assertSafeSkillName(skillName)) return { ok: false, error: "官署 ID 或技能名非法" };
   const file = skillLocalPath(deps, agentId, skillName);
   try {
     if (fs.existsSync(file)) fs.rmSync(path.dirname(file), { recursive: true, force: true });

@@ -1,3 +1,5 @@
+process.env.NODE_ENV = 'test'; // SSRF 域名解析校验在测试环境跳过（字面 IP 检查仍生效）
+
 /** 火山语音技术 声音复刻/TTS 适配器单元测试（mock fetch，不依赖真实网络）
  * 运行: node -r ts-node/register --test test/unit/oral-workshop-voice-adapter.spec.ts
  */

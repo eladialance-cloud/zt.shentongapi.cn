@@ -4,6 +4,16 @@ import { AdminAuthService } from './admin-auth.service';
 import { AdminGuard } from './admin.guard';
 import { AdminLoginDto, AdminChangePasswordDto } from './dto/login.dto';
 import { Public } from '../../common/decorators/public.decorator';
+import type { Request } from 'express';
+
+/** 从请求中提取客户端 IP（兼容反向代理 x-forwarded-for） */
+function getClientIp(req: Request): string {
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff.length > 0) {
+    return xff.split(',')[0].trim();
+  }
+  return req.ip || '0.0.0.0';
+}
 
 /**
  * 管理端认证控制器
@@ -29,17 +39,26 @@ export class AdminAuthController {
   @Post('login')
   @Public()
   @ApiOperation({ summary: '管理员登录' })
-  async login(@Body() dto: AdminLoginDto) {
-    return this.service.login(dto.username, dto.password);
+  async login(@Body() dto: AdminLoginDto, @Req() req: Request) {
+    return this.service.login(dto.username, dto.password, getClientIp(req));
   }
 
   @Post('logout')
   @Public()
   @UseGuards(AdminGuard)
   @ApiOperation({ summary: '管理员登出' })
-  async logout() {
-    await this.service.logout();
+  async logout(@Req() req: any, @Body() body: { refreshToken?: string }) {
+    const auth: string = req.headers?.authorization || '';
+    const token = auth.match(/^Bearer\s+(.+)$/i)?.[1];
+    await this.service.logout(token, body?.refreshToken);
     return null;
+  }
+
+  @Post('refresh')
+  @Public()
+  @ApiOperation({ summary: '管理员令牌续期（refreshToken 轮换）' })
+  async refresh(@Body() body: { refreshToken: string }) {
+    return this.service.refresh(body?.refreshToken || '');
   }
 
   @Get('profile')

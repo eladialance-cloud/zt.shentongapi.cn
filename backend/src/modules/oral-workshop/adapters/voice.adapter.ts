@@ -14,6 +14,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
+import { assertPublicMediaUrl } from '../ffmpeg';
 
 export interface VolcanoVoiceConfig {
   /** TTS 合成端点（HTTP unidirectional，默认官方地址） */
@@ -124,6 +125,8 @@ export class VoiceCloneAdapter {
   /** 读取参考音频（URL 或本地路径）为 Buffer */
   async loadRefAudio(refAudioUrl: string): Promise<Buffer> {
     if (refAudioUrl.startsWith('http://') || refAudioUrl.startsWith('https://')) {
+      // P0-4: SSRF 防护——参考音频 URL 不得指向内网/环回/保留地址（DNS 防重绑定）
+      await assertPublicMediaUrl(refAudioUrl);
       const resp = await fetch(refAudioUrl, { signal: AbortSignal.timeout(30000) });
       if (!resp.ok) throw new VoiceCloneError('参考音频下载失败: HTTP ' + resp.status);
       const buf = Buffer.from(await resp.arrayBuffer());

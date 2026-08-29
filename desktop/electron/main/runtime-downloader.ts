@@ -832,22 +832,33 @@ async function downloadOnce(
             if (totalSize > 0) {
               onProgress?.({ percent: 100, speedKBs: 0, etaSec: 0 });
             }
-            // 校验 sha256
-            if (expectedSha256) {
-              const actual = hash.digest("hex");
-              if (actual.toLowerCase() !== expectedSha256.toLowerCase()) {
-                try {
-                  fs.unlinkSync(tmpFile);
-                } catch {
-                  // ignore
-                }
-                reject(
-                  new Error(
-                    `sha256 mismatch: expected=${expectedSha256} actual=${actual}`,
-                  ),
-                );
-                return;
+            // 校验 sha256：清单缺失哈希时拒绝无完整性校验的下载，防止供应链篡改
+            if (!expectedSha256) {
+              try {
+                fs.unlinkSync(tmpFile);
+              } catch {
+                // ignore
               }
+              reject(
+                new Error(
+                  "运行时清单缺少 sha256 校验值，拒绝无完整性校验的下载",
+                ),
+              );
+              return;
+            }
+            const actual = hash.digest("hex");
+            if (actual.toLowerCase() !== expectedSha256.toLowerCase()) {
+              try {
+                fs.unlinkSync(tmpFile);
+              } catch {
+                // ignore
+              }
+              reject(
+                new Error(
+                  `sha256 mismatch: expected=${expectedSha256} actual=${actual}`,
+                ),
+              );
+              return;
             }
             resolve(true);
           });
@@ -879,7 +890,7 @@ async function downloadOnce(
 
 /** 校验文件 SHA-256（流式同步读取） */
 function verifySha256(filePath: string, expectedSha256: string): boolean {
-  if (!expectedSha256) return true;
+  if (!expectedSha256) return false;
   try {
     const hash = crypto.createHash("sha256");
     const fd = fs.openSync(filePath, "r");

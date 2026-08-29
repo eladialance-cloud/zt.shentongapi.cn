@@ -30,6 +30,7 @@ import {
   ICurrentUser,
 } from '../../../common/decorators/current-user.decorator';
 import { generateFileName } from '../../../common/utils/file.util';
+import { assertSafeUploadFile } from '../../../common/utils/upload-guard.util';
 import { PaginationQuery } from '../../../common/types/pagination.type';
 
 /**
@@ -83,13 +84,18 @@ export class FileController {
         file: Express.Multer.File,
         cb: (error: Error | null, acceptFile: boolean) => void,
       ) => {
+        // P0-7: 全局危险类型拦截（html/svg/js/xml/可执行文件等，防止存储型 XSS）
+        try {
+          assertSafeUploadFile(file);
+        } catch (err) {
+          return cb(err as Error, false);
+        }
         // 允许常见文件类型
         const allowedMimes = [
           'image/jpeg',
           'image/png',
           'image/gif',
           'image/webp',
-          'image/svg+xml',
           'application/pdf',
           'text/plain',
           'text/markdown',
@@ -111,7 +117,6 @@ export class FileController {
           'application/x-bzip2',
           'application/zstd',
           'application/json',
-          'application/xml',
           'text/csv',
           'audio/mpeg',
           'audio/wav',

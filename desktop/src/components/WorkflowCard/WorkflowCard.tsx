@@ -74,6 +74,7 @@ const STATUS_CONFIG: Record<WorkflowExecutionStatus, { icon: React.ReactNode; la
   success:  { icon: <CheckCircleFilled />,   label: '成功',   color: '#34D399' },
   failed:   { icon: <CloseCircleFilled />,    label: '失败',   color: '#F87171' },
   running:  { icon: <ClockCircleFilled />,    label: '执行中', color: '#FBBF24' },
+  queued:   { icon: <ClockCircleFilled />,    label: '排队中', color: '#94A3B8' },
   canceled: { icon: <ClockCircleFilled />,    label: '已取消', color: '#8B949E' },
 }
 

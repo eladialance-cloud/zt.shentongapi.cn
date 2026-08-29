@@ -158,9 +158,16 @@ export default function PaymentConfigPage() {
     setEditing(cfg)
     const meta = CHANNEL_META[cfg.channel]
     const values: Record<string, unknown> = {
-      displayName: cfg.displayName || meta.label,
-      ...(cfg.config || {})
+      displayName: cfg.displayName || meta.label
     }
+    // 后端已对密钥脱敏为 '***' 占位：不回填到输入框，留空表示保持不变
+    const raw = cfg.config || {}
+    meta.fields.forEach((f) => {
+      const v = raw[f.key]
+      if (v !== undefined && v !== null && v !== '***') {
+        values[f.key] = v
+      }
+    })
     form.resetFields()
     form.setFieldsValue(values)
   }
@@ -297,15 +304,19 @@ export default function PaymentConfigPage() {
             <Input maxLength={32} />
           </Form.Item>
           {editing &&
-            CHANNEL_META[editing.channel].fields.map((f) => (
-              <Form.Item key={f.key} name={f.key} label={f.label}>
-                {f.textarea ? (
-                  <Input.TextArea rows={3} placeholder={f.placeholder} />
-                ) : (
-                  <Input placeholder={f.placeholder} />
-                )}
-              </Form.Item>
-            ))}
+            CHANNEL_META[editing.channel].fields.map((f) => {
+              const masked = (editing.config?.[f.key]) === '***'
+              const ph = masked ? '已配置，留空保持不变（重新填写将覆盖）' : f.placeholder
+              return (
+                <Form.Item key={f.key} name={f.key} label={f.label}>
+                  {f.textarea ? (
+                    <Input.TextArea rows={3} placeholder={ph} />
+                  ) : (
+                    <Input placeholder={ph} />
+                  )}
+                </Form.Item>
+              )
+            })}
         </Form>
       </Modal>
     </div>

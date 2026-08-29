@@ -7,6 +7,7 @@ import { ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { Public } from '../../../common/decorators/public.decorator';
 import { LlmProxyService } from '../services/llm-proxy.service';
+import { createUploadFileFilter } from '../../../common/utils/upload-guard.util';
 
 @ApiTags('LLM 代理')
 @Controller('llm-proxy')
@@ -126,6 +127,7 @@ export class LlmProxyController {
     FileInterceptor('file', {
       storage: memoryStorage(),
       limits: { fileSize: 50 * 1024 * 1024 },
+      fileFilter: createUploadFileFilter(),
     }),
   )
   async uploadFile(

@@ -7,6 +7,7 @@ import { EmailService } from './email.service';
 import { DeviceService } from '../../device/device.service';
 import { InviteCodeService } from '../../user/invite-code.service';
 import { BusinessException } from '../../../common/exceptions/business.exception';
+import { loginRateLimiter } from '../../../common/utils/login-rate-limiter';
 import { ErrorCode } from '../../../common/constants/error.constant';
 import { RedisService } from '../../../common/services/redis.service';
 import { RegisterDto } from '../dto/register.dto';
@@ -74,6 +75,7 @@ export class AuthService {
     }
 
     // 生成 tokens
+
     const roles = await this.userService.findUserRoles(user.id);
     const accessToken = await this.tokenService.generateAccessToken({
       sub: user.id,
@@ -93,6 +95,8 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, ip: string) {
+    // 登录限流：命中锁定直接 429
+    loginRateLimiter.assertNotLocked(ip, dto.account);
     let user: any;
     if (isEmail(dto.account)) {
       user = await this.userService.findByEmail(dto.account);
@@ -101,6 +105,7 @@ export class AuthService {
     }
 
     if (!user) {
+      loginRateLimiter.recordFailure(ip, dto.account);
       BusinessException.throw(ErrorCode.INVALID_CREDENTIALS);
     }
 
@@ -112,6 +117,7 @@ export class AuthService {
     const userWithPwd = await this.userService.findByIdWithPassword(user.id);
     const isMatch = await this.encryption.compare(dto.password, userWithPwd.password);
     if (!isMatch) {
+      loginRateLimiter.recordFailure(ip, dto.account);
       BusinessException.throw(ErrorCode.INVALID_CREDENTIALS);
     }
 
@@ -145,6 +151,9 @@ export class AuthService {
         await this.deviceService.updateLoginInfo(existingDevice.id, ip);
       }
     }
+
+    // 登录成功：清除该账号的失败计数
+    loginRateLimiter.reset(ip, dto.account);
 
     const roles = await this.userService.findUserRoles(user.id);
     const accessToken = await this.tokenService.generateAccessToken({

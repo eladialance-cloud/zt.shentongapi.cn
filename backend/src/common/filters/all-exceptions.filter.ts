@@ -79,8 +79,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
         timestamp: Date.now(),
       };
     } else {
-      // 未知异常：返回 1099 服务器内部错误，并打印 stack
-      httpStatus = HttpStatus.OK;
+      // 未知异常：返回 HTTP 500 + 1099 服务器内部错误，并打印 stack
+      httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
       payload = {
         code: ErrorCode.INTERNAL_ERROR,
         data: null,

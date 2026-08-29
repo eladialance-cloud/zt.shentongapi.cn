@@ -190,8 +190,19 @@ export class SkillRunnerService {
     if (!pkg.installPath) {
       BusinessException.throw(ErrorCode.VALIDATION_FAILED, '技能未安装');
     }
+    // P1: 入口文件路径白名单校验——禁止绝对路径/上级目录穿越，只允许安装目录内的脚本文件
+    const entry = (pkg.entryPoint || '').replace(/\\/g, '/').replace(/^\/\/?/, '');
+    const allowedExt = runtime === 'python' ? '.py' : '.js';
+    if (!entry || entry.startsWith('..') || path.isAbsolute(entry) || !/^[\w./-]+$/.test(entry) || !entry.toLowerCase().endsWith(allowedExt)) {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '技能入口文件配置非法');
+    }
+    const installRoot = path.resolve(pkg.installPath);
+    const resolvedEntry = path.resolve(installRoot, entry);
+    if (resolvedEntry !== installRoot && !resolvedEntry.startsWith(installRoot + path.sep)) {
+      BusinessException.throw(ErrorCode.VALIDATION_FAILED, '技能入口文件超出安装目录');
+    }
     const cmd = runtime === 'python' ? 'python3' : 'node';
-    const args = [pkg.entryPoint, JSON.stringify(input)];
+    const args = [entry, JSON.stringify(input)];
     try {
       const { stdout } = await execFileAsync(cmd, args, {
         timeout: 30000,

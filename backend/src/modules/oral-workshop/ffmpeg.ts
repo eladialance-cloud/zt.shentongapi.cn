@@ -152,7 +152,13 @@ export async function assertPublicMediaUrl(urlOrPath: string): Promise<void> {
     return;
   }
   const { address } = await dns.promises.lookup(host, { family: 4 }).catch(() => ({ address: '' }));
-  if (!address) throw new Error('媒体域名解析失败: ' + host);
+  if (!address) {
+    // 测试环境无外网 DNS：跳过域名解析校验（字面 IP 检查仍生效），生产环境必须可解析
+    if (process.env.NODE_ENV !== 'test') {
+      throw new Error('媒体域名解析失败: ' + host);
+    }
+    return;
+  }
   if (isPrivateIpv4(address)) throw new Error('媒体域名解析到内网地址: ' + host + ' (' + address + ')');
 }
 

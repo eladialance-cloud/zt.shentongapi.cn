@@ -51,11 +51,36 @@ function statusLabel(status: WorkflowExecutionStatus): string {
       return "失败";
     case "running":
       return "运行中";
+    case "queued":
+      return "排队中";
     case "canceled":
       return "已取消";
     default:
       return status;
   }
+}
+
+/** 从工作流模板解析候选 webhook 路径（优先 JSON 里的 Webhook 节点，其次引擎 ID/模板 ID） */
+function webhookPathsOf(tpl: WorkflowTemplate): string[] {
+  const paths: string[] = [];
+  try {
+    if (typeof tpl.workflowJson === "string" && tpl.workflowJson.trim()) {
+      const wf = JSON.parse(tpl.workflowJson);
+      const nodes = Array.isArray(wf?.nodes) ? wf.nodes : [];
+      for (const n of nodes) {
+        const type = String(n?.type || "");
+        if (type.toLowerCase().includes("webhook")) {
+          const p = n?.parameters?.path;
+          if (typeof p === "string" && p.trim()) paths.push(p.trim());
+        }
+      }
+    }
+  } catch {
+    // 模板 JSON 解析失败时忽略，走引擎 ID/模板 ID 兜底
+  }
+  if (tpl.n8nWorkflowId) paths.push(tpl.n8nWorkflowId);
+  if (tpl.id != null) paths.push(String(tpl.id));
+  return [...new Set(paths)];
 }
 
 /** 格式化 JSON 用于显示 */
@@ -122,7 +147,7 @@ export default function WorkflowDetail() {
     void loadData();
   }, [loadData]);
 
-  /** 执行工作流 */
+  /** 执行工作流（桌面端：本地 N8N 真跑 + 结果回传；Web 端：仅创建排队记录） */
   const handleExecute = async () => {
     if (!Number.isFinite(workflowId)) return;
     let input: unknown;
@@ -135,9 +160,80 @@ export default function WorkflowDetail() {
 
     setExecuting(true);
     try {
-      const result = await workflowApi.executeWorkflow(workflowId, input);
-      setLastResult(result);
-      message.success("工作流执行完成");
+      // 1) 云端创建执行记录（queued），供执行历史/结果回传定位
+      const created = await workflowApi.executeWorkflow(workflowId, input);
+      const execId = created.executionId;
+
+      const runLocal = window.electronAPI?.n8n?.runWorkflow;
+      if (!runLocal) {
+        // Web 端兜底：无法触达本地 N8N，仅保留排队记录
+        setLastResult({
+          id: execId,
+          workflowId,
+          status: "queued",
+          input,
+          creditsCost: 0,
+          createdAt: new Date(),
+        } as WorkflowExecution);
+        message.info("已创建执行记录；请在桌面端打开本页执行（本地 N8N 才能真跑）");
+        void loadData();
+        return;
+      }
+
+      // 2) 标记 running
+      await workflowApi
+        .reportWorkflowExecution(execId, { status: "running" })
+        .catch(() => undefined);
+
+      // 3) 本地 N8N 真执行：按候选 webhook 路径逐个尝试
+      const started = Date.now();
+      const res = await runLocal({
+        paths: webhookPathsOf(template!),
+        payload: input,
+        timeoutMs: 120000,
+      });
+      const durationMs = Date.now() - started;
+
+      if (res.ok) {
+        // 4) 成功：回传结果
+        await workflowApi
+          .reportWorkflowExecution(execId, {
+            status: "success",
+            output: res.data,
+            durationMs,
+            n8nExecutionId: res.path,
+          })
+          .catch(() => undefined);
+        setLastResult({
+          id: execId,
+          workflowId,
+          status: "success",
+          output: res.data,
+          durationMs,
+          creditsCost: 0,
+          createdAt: new Date(),
+        } as WorkflowExecution);
+        message.success("工作流执行完成");
+      } else {
+        // 5) 失败：回传错误
+        await workflowApi
+          .reportWorkflowExecution(execId, {
+            status: "failed",
+            error: res.error,
+            durationMs,
+          })
+          .catch(() => undefined);
+        setLastResult({
+          id: execId,
+          workflowId,
+          status: "failed",
+          errorMessage: res.error,
+          durationMs,
+          creditsCost: 0,
+          createdAt: new Date(),
+        } as WorkflowExecution);
+        message.error("工作流执行失败: " + res.error);
+      }
       // 刷新执行历史
       void loadData();
     } catch (err) {

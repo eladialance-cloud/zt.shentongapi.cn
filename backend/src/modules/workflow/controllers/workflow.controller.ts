@@ -21,6 +21,15 @@ import {
 import { WorkflowEntity } from '../../admin-workflow/entities/workflow.entity';
 import { N8nWorkflowExecLogEntity } from '../../admin-workflow/entities/n8n-workflow-exec-log.entity';
 
+/** 桌面端工作流执行结果回传 DTO */
+export interface ReportWorkflowExecutionDto {
+  status: 'running' | 'success' | 'failed' | 'cancelled';
+  output?: unknown;
+  error?: string;
+  n8nExecutionId?: string;
+  durationMs?: number;
+}
+
 @ApiTags('工作流')
 @ApiBearerAuth()
 @Controller('workflows')
@@ -79,6 +88,17 @@ export class WorkflowController {
       user.userId,
       input ?? {},
     );
+  }
+
+  @Post('executions/:id/report')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: '工作流执行结果回传（桌面端真执行后上报）' })
+  async reportExecution(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReportWorkflowExecutionDto,
+    @CurrentUser() user: ICurrentUser,
+  ): Promise<N8nWorkflowExecLogEntity> {
+    return this.workflowService.reportExecution(user.userId, id, dto ?? {});
   }
 
   // ------------------------------------------------------------------

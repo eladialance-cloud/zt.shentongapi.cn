@@ -1,6 +1,7 @@
 // Electron 主进程入口
 
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { hardenIpc, initIpcGuard } from './ipc-guard'
 import log from 'electron-log'
 import { getRuntimeDirInfo, setRuntimeRoot, defaultRuntimeRoot, getRuntimeRoot } from './runtime-config'
 import { join } from 'node:path'
@@ -36,6 +37,7 @@ import { createMainWindow, getMainWindow, setQuitting } from './windows/main-win
 import { createTray, destroyTray } from './tray'
 import { ServiceManager, ST_API_BASE } from './service-manager'
 import { ensureN8nAuth } from './n8n-auth'
+import { runLocalN8nWorkflow } from './n8n-executor'
 import { ensureN8nI18n } from './n8n-i18n'
 import { syncOpenClawMcpFromBackend } from './openclaw-mcp-sync'
 import { AppUpdater } from './updater'
@@ -391,6 +393,10 @@ if (!gotLock) {
     // 清理旧版本遗留的下载临时文件（避免残留半成品导致“运行时下载失败”）
     cleanupStaleTempFiles()
     app.setAppUserModelId('com.shentong.ai')
+
+    // P0-2: IPC 安全边界——注册任何通道前安装来源校验守卫（只信任主窗口顶层页面）
+    initIpcGuard(() => getMainWindow(), isDev)
+    hardenIpc()
 
     const mainWindow = createMainWindow(serviceManager, isDev)
     createTray(mainWindow, serviceManager)
@@ -859,6 +865,10 @@ ipcMain.handle(
     }
     return result
   })
+
+  // 本地 N8N 工作流真执行（替代后端假桩：桌面直连 127.0.0.1:5678 webhook）
+  ipcMain.handle('n8n:run-workflow', async (_event, input: { paths?: string[]; payload?: unknown; timeoutMs?: number }) =>
+    runLocalN8nWorkflow({ paths: input?.paths ?? [], payload: input?.payload, timeoutMs: input?.timeoutMs }))
 
   // 发布平台账号（桌面端扫码绑定登录态；管理后台只控制平台开关）
   ipcMain.handle('platform-account:get-platforms', () => getSupportedPlatforms())

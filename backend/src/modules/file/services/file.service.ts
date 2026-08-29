@@ -15,6 +15,7 @@ import {
   PaginatedResult,
 } from '../../../common/types/pagination.type';
 import { generateFileName } from '../../../common/utils/file.util';
+import { isActiveContent, isImageExtension } from '../../../common/utils/upload-guard.util';
 
 /**
  * 文件服务
@@ -57,6 +58,23 @@ export class FileService {
 
     // 文件已经在 FileInterceptor 的 diskStorage 中保存到 uploadDir
     // 这里只需写数据库记录
+    // P0-7: 对声称是图片的上传做文件头嗅探，阻止 HTML/SVG/XML 伪装图片（存储型 XSS）
+    if (isImageExtension(file.originalname)) {
+      try {
+        const absPath = path.resolve(this.uploadDir, file.filename);
+        const fd = fs.openSync(absPath, 'r');
+        const sniffBuf = Buffer.alloc(1024);
+        const n = fs.readSync(fd, sniffBuf, 0, sniffBuf.length, 0);
+        fs.closeSync(fd);
+        if (n > 0 && isActiveContent(sniffBuf.subarray(0, n))) {
+          try { fs.unlinkSync(absPath); } catch { /* ignore */ }
+          BusinessException.throw(ErrorCode.FILE_UPLOAD_FAILED, '文件内容与图片类型不符，已拒绝上传');
+        }
+      } catch (err) {
+        if (err instanceof BusinessException) throw err;
+        this.logger.warn('图片内容嗅探失败（已放行）: ' + (err as Error).message);
+      }
+    }
     const relativePath = `${this.uploadDir}/${file.filename}`;
     const fileUrl = `/uploads/files/${file.filename}`;
 

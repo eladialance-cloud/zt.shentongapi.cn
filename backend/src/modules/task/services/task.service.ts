@@ -11,10 +11,6 @@ import {
   UnifiedTaskItem,
   UnifiedTaskSource,
   UnifiedTaskStatus,
-  mapTeamStatus,
-  mapTaskStatus,
-  mapHermesStatus,
-  sortByCreatedAtDesc,
 } from '../utils/unified-mapper';
 import {
   CreateTaskDto,
@@ -153,119 +149,187 @@ export class TaskService {
       ? Math.min(100, Math.max(1, Math.trunc(rawPageSize)))
       : 10;
 
-    const items: UnifiedTaskItem[] = [];
-
-    // 1) team 源：用户创建的团队下的任务 + 用户自己创建的 auto/agent 无团队归属任务
-    //    （auto/agent 模式 team_id 为空，unified 也必须返回，否则任务中心看不到）
     const teams = await this.teamRepo.find({
       where: { creatorId: userId },
     });
-    const teamIds = teams.map((t) => t.id);
-    // assignee：team_members.id = assignee_member_id 取 roleTitle（仅团队模式任务有）
-    const members = teamIds.length > 0
-      ? await this.memberRepo.find({
-          where: { teamId: In(teamIds) },
-        })
-      : [];
-    const roleByMemberId = new Map<number, string>();
-    for (const m of members) {
-      roleByMemberId.set(m.id, m.roleTitle);
-    }
-    const teamTasks = await this.teamTaskRepo.find({
-      where:
-        teamIds.length > 0
-          ? [
-              { teamId: In(teamIds) },
-              { creatorId: userId, teamId: IsNull() },
-            ]
-          : { creatorId: userId, teamId: IsNull() },
-      order: { createdAt: 'DESC' },
-      take: 500,
+    const teamIds = teams.map((t) => Number(t.id));
+
+    // UNION SQL 分页：三源统一排序 + LIMIT/OFFSET 下推，
+    // 避免固定 take 500 全量拉取导致的数据截断与内存浪费
+    const { rows, total } = await this.queryUnifiedPage(userId, {
+      page,
+      pageSize,
+      source: query.source,
+      status: query.status,
+      teamIds,
     });
-    for (const t of teamTasks) {
-      items.push({
-        source: 'team',
-        sourceId: t.id,
-        title: t.title,
-        status: mapTeamStatus(t.status),
-        rawStatus: t.status,
-        assignee:
-          t.assigneeMemberId != null
-            ? roleByMemberId.get(t.assigneeMemberId)
-            : undefined,
-        createdAt: t.createdAt.toISOString(),
-        finishedAt: t.completedAt ? t.completedAt.toISOString() : null,
-        briefId: t.briefId ?? null,
-        executionRef: t.executionRef ?? null,
-      });
-    }
 
-    // 2) task 源：agent_task.userId 归属
-    const myTasks = await this.taskRepo.find({
-      where: { userId },
-      order: { createdAt: 'DESC' },
-      take: 500,
-    });
-    for (const t of myTasks) {
-      items.push({
-        source: 'task',
-        sourceId: t.id,
-        title: t.title || t.taskType,
-        status: mapTaskStatus(t.status),
-        rawStatus: t.status,
-        createdAt: t.createdAt.toISOString(),
-        finishedAt: t.finishedAt ? t.finishedAt.toISOString() : null,
-        briefId: null,
-      });
-    }
+    const list = rows.map((r) => ({
+      source: r.source as UnifiedTaskSource,
+      sourceId: Number(r.source_id),
+      title: (r.title ?? '') as string,
+      status: r.status as UnifiedTaskStatus,
+      rawStatus: (r.raw_status ?? '') as string,
+      assignee: r.assignee != null ? (r.assignee as string) : undefined,
+      createdAt: this.toIso(r.created_at),
+      finishedAt: r.finished_at ? this.toIso(r.finished_at) : null,
+      briefId: r.brief_id != null ? Number(r.brief_id) : null,
+      executionRef: r.execution_ref != null ? (r.execution_ref as string) : null,
+    }));
 
-    // 3) hermes 源：hermes_call_logs.userId 归属
-    const hermesLogs = await this.hermesRepo.find({
-      where: { userId },
-      order: { createdAt: 'DESC' },
-      take: 500,
-    });
-    for (const log of hermesLogs) {
-      items.push({
-        source: 'hermes',
-        sourceId: log.id,
-        title: log.target || log.callType,
-        status: mapHermesStatus(log.status),
-        rawStatus: log.status,
-        createdAt: log.createdAt.toISOString(),
-        finishedAt: null,
-        briefId: null,
-      });
-    }
-
-    // 过滤：统一 status / source 映射后过滤
-    let list = items;
-    if (query.source) {
-      const source = query.source as UnifiedTaskSource;
-      if (['team', 'task', 'hermes'].includes(source)) {
-        list = list.filter((i) => i.source === source);
-      }
-    }
-    if (query.status) {
-      const status = query.status as UnifiedTaskStatus;
-      if (['todo', 'running', 'done', 'failed', 'cancelled'].includes(status)) {
-        list = list.filter((i) => i.status === status);
-      }
-    }
-
-    // 排序：createdAt 倒序（最新在前）
-    list = sortByCreatedAtDesc(list);
-
-    // 分页
-    const total = list.length;
-    const start = (page - 1) * pageSize;
     return {
-      list: list.slice(start, start + pageSize),
+      list,
       total,
       page,
       pageSize,
       totalPages: Math.ceil(total / pageSize),
     };
+  }
+
+  /** 统一任务中心 UNION 分页查询（MySQL，参数化 + 数值 clamp） */
+  private async queryUnifiedPage(
+    userId: number,
+    opts: {
+      page: number;
+      pageSize: number;
+      source?: string;
+      status?: string;
+      teamIds: number[];
+    },
+  ): Promise<{ rows: Array<Record<string, unknown>>; total: number }> {
+    const { page, pageSize, source, status, teamIds } = opts;
+    const sqlNl = '\n'; // SQL 内换行（与文件换行符无关，避免 CR 进入 SQL）
+
+    // 各来源独立条件与参数（最终按分支出现顺序合并，避免 source 过滤时参数错位）
+    const teamConds: string[] = [];
+    const taskConds: string[] = [];
+    const hermesConds: string[] = [];
+    const teamParams: unknown[] = [];
+    const taskParams: unknown[] = [];
+    const hermesParams: unknown[] = [];
+
+    // team 源范围：用户创建的团队任务 + 用户自己创建的 auto/agent 无团队归属任务
+    const teamScope: string[] = [];
+    if (teamIds.length > 0) {
+      teamScope.push(`t.team_id IN (${teamIds.map(() => '?').join(',')})`);
+      teamParams.push(...teamIds);
+    }
+    teamScope.push('(t.creator_id = ? AND t.team_id IS NULL)');
+    teamParams.push(userId);
+    teamConds.push(`(${teamScope.join(' OR ')})`);
+
+    taskConds.push('user_id = ?');
+    taskParams.push(userId);
+
+    hermesConds.push('user_id = ?');
+    hermesParams.push(userId);
+
+    // 统一状态 → 各源枚举（与 unified-mapper 保持一致）
+    const teamMap: Record<string, string[]> = {
+      todo: ['pending'],
+      running: ['in_progress'],
+      done: ['completed'],
+      failed: ['failed'],
+    };
+    const taskMap: Record<string, string[]> = {
+      todo: ['queued'],
+      running: ['running'],
+      done: ['success'],
+      failed: ['failed'],
+      cancelled: ['cancelled'],
+    };
+    const hermesMap: Record<string, string[]> = {
+      running: ['running'],
+      done: ['success'],
+      failed: ['failed', 'timeout'],
+    };
+    const pushCond = (conds: string[], values: string[], col: string, params: unknown[]) => {
+      if (values.length > 0) {
+        conds.push(`${col} IN (${values.map(() => '?').join(',')})`);
+        params.push(...values);
+      } else {
+        conds.push('1 = 0');
+      }
+    };
+    const validStatuses = ['todo', 'running', 'done', 'failed', 'cancelled'];
+    if (status && validStatuses.includes(status)) {
+      pushCond(teamConds, teamMap[status] ?? [], 't.status', teamParams);
+      pushCond(taskConds, taskMap[status] ?? [], 'status', taskParams);
+      pushCond(hermesConds, hermesMap[status] ?? [], 'status', hermesParams);
+    }
+
+    const includeTeam = !source || source === 'team';
+    const includeTask = !source || source === 'task';
+    const includeHermes = !source || source === 'hermes';
+
+    // 分支与参数按同一顺序合并
+    const branches: string[] = [];
+    const params: unknown[] = [];
+    if (includeTeam) {
+      branches.push(
+        `SELECT 'team' AS source, t.id AS source_id, t.title AS title,` + sqlNl +
+        `  CASE t.status WHEN 'pending' THEN 'todo' WHEN 'in_progress' THEN 'running' WHEN 'completed' THEN 'done' ELSE 'failed' END AS status,` + sqlNl +
+        `  t.status AS raw_status,` + sqlNl +
+        `  t.created_at AS created_at, t.completed_at AS finished_at,` + sqlNl +
+        `  m.role_title AS assignee, t.brief_id AS brief_id, t.execution_ref AS execution_ref` + sqlNl +
+        `FROM team_tasks t` + sqlNl +
+        `LEFT JOIN team_members m ON m.id = t.assignee_member_id` + sqlNl +
+        `WHERE ${teamConds.join(' AND ')}`
+      );
+      params.push(...teamParams);
+    }
+    if (includeTask) {
+      branches.push(
+        `SELECT 'task' AS source, id AS source_id, COALESCE(title, task_type) AS title,` + sqlNl +
+        `  CASE status WHEN 'queued' THEN 'todo' WHEN 'running' THEN 'running' WHEN 'success' THEN 'done' WHEN 'cancelled' THEN 'cancelled' ELSE 'failed' END AS status,` + sqlNl +
+        `  status AS raw_status,` + sqlNl +
+        `  created_at AS created_at, finished_at AS finished_at,` + sqlNl +
+        `  NULL AS assignee, NULL AS brief_id, NULL AS execution_ref` + sqlNl +
+        `FROM agent_task` + sqlNl +
+        `WHERE ${taskConds.join(' AND ')}`
+      );
+      params.push(...taskParams);
+    }
+    if (includeHermes) {
+      branches.push(
+        `SELECT 'hermes' AS source, id AS source_id, COALESCE(target, call_type) AS title,` + sqlNl +
+        `  CASE status WHEN 'running' THEN 'running' WHEN 'success' THEN 'done' WHEN 'timeout' THEN 'failed' WHEN 'failed' THEN 'failed' ELSE 'todo' END AS status,` + sqlNl +
+        `  status AS raw_status,` + sqlNl +
+        `  created_at AS created_at, NULL AS finished_at,` + sqlNl +
+        `  NULL AS assignee, NULL AS brief_id, NULL AS execution_ref` + sqlNl +
+        `FROM hermes_call_logs` + sqlNl +
+        `WHERE ${hermesConds.join(' AND ')}`
+      );
+      params.push(...hermesParams);
+    }
+
+    const unionSql = branches.join(sqlNl + 'UNION ALL' + sqlNl);
+    if (!unionSql) {
+      return { rows: [], total: 0 };
+    }
+
+    // 总数（与分页查询同一组过滤条件）
+    const countSql = `SELECT COUNT(*) AS total FROM (${sqlNl}${unionSql}${sqlNl}) u`;
+    const countRows = (await this.taskRepo.query(countSql, [...params])) as Array<{
+      total: number | string;
+    }>;
+    const total = Number(countRows?.[0]?.total ?? 0);
+
+    // 分页数据：LIMIT/OFFSET 已 clamp，直接拼数值
+    const offset = (page - 1) * pageSize;
+    const pageSql = `SELECT * FROM (${sqlNl}${unionSql}${sqlNl}) u${sqlNl}ORDER BY u.created_at DESC${sqlNl}LIMIT ${pageSize} OFFSET ${offset}`;
+    const rows = (await this.taskRepo.query(pageSql, [...params])) as Array<
+      Record<string, unknown>
+    >;
+
+    return { rows, total };
+  }
+
+  /** MySQL 时间值（Date 或字符串）统一转 ISO 字符串 */
+  private toIso(v: unknown): string {
+    if (v instanceof Date) return v.toISOString();
+    if (typeof v === 'string' && v) return new Date(v).toISOString();
+    return String(v ?? '');
   }
   /**
    * 更新任务状态

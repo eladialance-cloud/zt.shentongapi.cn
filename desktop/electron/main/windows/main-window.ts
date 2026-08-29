@@ -2,6 +2,7 @@
 
 import { BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import type { ServiceManager } from '../service-manager'
 
 let mainWindow: BrowserWindow | null = null
@@ -46,6 +47,22 @@ export function createMainWindow(_serviceManager: ServiceManager, isDev: boolean
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
+  })
+
+  // P0-2: 阻止窗口内导航到应用之外的地址（http/https/自定义协议等），防止钓鱼/远程页面顶替应用
+  // 仅放行应用自身 index.html（含 hash/query）与 dev server 地址；其它 file:// 一律拒绝
+  const appIndexUrl = pathToFileURL(join(__dirname, '../renderer/index.html')).href.toLowerCase()
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const lower = url.toLowerCase()
+    const isAllowed =
+      lower === appIndexUrl ||
+      lower.startsWith(appIndexUrl + '#') ||
+      lower.startsWith(appIndexUrl + '?') ||
+      (isDev && !!process.env['ELECTRON_RENDERER_URL'] && lower.startsWith(process.env['ELECTRON_RENDERER_URL'].toLowerCase()))
+    if (!isAllowed) {
+      event.preventDefault()
+      shell.openExternal(url)
+    }
   })
 
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {

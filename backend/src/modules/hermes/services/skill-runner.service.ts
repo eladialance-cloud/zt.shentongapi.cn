@@ -29,6 +29,7 @@ export class SkillRunnerService {
     skill: HermesSkillEntity,
     input: Record<string, unknown>,
     userId: number,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     const config = skill.execConfig;
     if (!config) {
@@ -48,16 +49,16 @@ export class SkillRunnerService {
 
     switch (config.type) {
       case 'shell':
-        return this.runShell(config, input, timeoutMs);
+        return this.runShell(config, input, timeoutMs, signal);
 
       case 'api':
-        return this.runApi(config, input, timeoutMs);
+        return this.runApi(config, input, timeoutMs, signal);
 
       case 'script':
-        return this.runScript(config, input, timeoutMs);
+        return this.runScript(config, input, timeoutMs, signal);
 
       case 'workflow_ref':
-        return this.runWorkflow(config, input, userId, timeoutMs);
+        return this.runWorkflow(config, input, userId, timeoutMs, signal);
 
       default:
         throw new BadRequestException(
@@ -72,6 +73,7 @@ export class SkillRunnerService {
     config: SkillExecConfig,
     input: Record<string, unknown>,
     timeoutMs: number,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     if (!config.command) {
       throw new BadRequestException('shell 类型技能包缺少 command 配置');
@@ -90,6 +92,7 @@ export class SkillRunnerService {
         cwd,
         env,
         timeout: timeoutMs,
+        signal, // 外部超时取消：abort 即 kill 子进程
         maxBuffer: 10 * 1024 * 1024, // 10MB
       });
       return {
@@ -100,6 +103,9 @@ export class SkillRunnerService {
     } catch (err: any) {
       if (err.killed && err.signal === 'SIGTERM') {
         throw new BadRequestException('技能执行超时');
+      }
+      if (err?.name === 'AbortError') {
+        throw new BadRequestException('任务执行超时');
       }
       return {
         exitCode: err.code ?? 1,
@@ -115,6 +121,7 @@ export class SkillRunnerService {
     config: SkillExecConfig,
     input: Record<string, unknown>,
     timeoutMs: number,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     if (!config.url) {
       throw new BadRequestException('api 类型技能包缺少 url 配置');
@@ -136,6 +143,9 @@ export class SkillRunnerService {
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    // 外部超时取消联动：外部 abort 时立即取消本次请求
+    const onExternalAbort = () => controller.abort();
+    signal?.addEventListener('abort', onExternalAbort, { once: true });
 
     try {
       const resp = await fetch(config.url, {
@@ -173,6 +183,7 @@ export class SkillRunnerService {
       throw err;
     } finally {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', onExternalAbort);
     }
   }
 
@@ -182,6 +193,7 @@ export class SkillRunnerService {
     config: SkillExecConfig,
     input: Record<string, unknown>,
     timeoutMs: number,
+    _signal?: AbortSignal,
   ): Promise<unknown> {
     if (!config.code) {
       throw new BadRequestException('script 类型技能包缺少 code 配置');
@@ -194,6 +206,25 @@ export class SkillRunnerService {
     }
 
     this.logger.debug(`runScript: ${config.code.slice(0, 100)}...`);
+
+    // P1: 沙箱逃逸加固——拒绝常见逃逸/危险 API（vm 非安全沙箱，静态拦截提高利用成本）
+    const forbidden = [
+      /\brequire\s*\(/,
+      /\bprocess\b/,
+      /\bglobal\b/,
+      /\bglobalThis\b/,
+      /\bBuffer\b/,
+      /\bchild_process\b/,
+      /\beval\s*\(/,
+      /\bnew\s+Function\s*\(/,
+      /\.constructor\b/,
+      /\bimport\s*\(/,
+    ];
+    for (const re of forbidden) {
+      if (re.test(config.code)) {
+        throw new BadRequestException('脚本技能包含禁止的 API（require/process/global/eval/Function/import 等），已拒绝执行');
+      }
+    }
 
     // 使用 Node.js vm 模块创建沙箱上下文，隔离用户代码
     const sandbox = {
@@ -256,6 +287,7 @@ export class SkillRunnerService {
     input: Record<string, unknown>,
     userId: number,
     timeoutMs: number,
+    _signal?: AbortSignal,
   ): Promise<unknown> {
     if (!config.workflowId) {
       throw new BadRequestException('workflow_ref 类型技能包缺少 workflowId 配置');

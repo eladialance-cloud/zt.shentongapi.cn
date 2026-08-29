@@ -22,12 +22,17 @@ export interface WorkflowTemplate {
   outputSchema?: unknown
   /** 单次执行消耗积分 */
   pricePerExecution?: number
+  /** N8N 引擎工作流 ID（webhook 路径候选） */
+  n8nWorkflowId?: string
+  /** N8N 工作流 JSON 定义（解析 Webhook 节点路径用） */
+  workflowJson?: string
   createdAt?: Date
   updatedAt?: Date
 }
 
 /** 工作流执行状态 */
 export type WorkflowExecutionStatus =
+  | 'queued'
   | 'running'
   | 'success'
   | 'failed'

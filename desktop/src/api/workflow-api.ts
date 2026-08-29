@@ -47,13 +47,28 @@ export async function getTemplate(id: number): Promise<WorkflowTemplate> {
  * @param id 工作流模板 ID
  * @param input 执行输入参数
  */
+/** 创建工作流执行记录（返回云端执行记录 ID，桌面端随后本地真执行并回传结果） */
 export async function executeWorkflow(
   id: number,
   input: unknown,
-): Promise<WorkflowExecution> {
-  return httpClient.post<WorkflowExecution>(`/workflows/${id}/execute`, {
+): Promise<{ executionId: number; status: string }> {
+  return httpClient.post<{ executionId: number; status: string }>(`/workflows/${id}/execute`, {
     input,
   });
+}
+
+/** 工作流执行结果回传（桌面端本地 N8N 跑完后上报） */
+export async function reportWorkflowExecution(
+  executionId: number,
+  dto: {
+    status: "running" | "success" | "failed" | "cancelled";
+    output?: unknown;
+    error?: string;
+    n8nExecutionId?: string;
+    durationMs?: number;
+  },
+): Promise<unknown> {
+  return httpClient.post(`/workflows/executions/${executionId}/report`, dto);
 }
 
 /**

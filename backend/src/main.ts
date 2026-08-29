@@ -41,7 +41,18 @@ async function bootstrap() {
   app.use(helmet());
 
   // 静态托管 uploads（上传文件 / 口播工坊产物），配合前端 resolveMediaUrl 拼 API origin
-  app.useStaticAssets(path.join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
+  // P0-7: 上传文件一律 nosniff；活动内容扩展名强制下载（防同源渲染 XSS）
+  app.useStaticAssets(path.join(process.cwd(), 'uploads'), {
+    prefix: '/uploads/',
+    setHeaders: (res: any, filePath: string) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      const ext = path.extname(filePath).toLowerCase();
+      if (['.html', '.htm', '.shtml', '.xhtml', '.svg', '.js', '.mjs', '.cjs', '.xml', '.xsl'].includes(ext)) {
+        res.setHeader('Content-Disposition', 'attachment');
+        res.setHeader('Content-Type', 'application/octet-stream');
+      }
+    },
+  });
 
   // 全局管道
   app.useGlobalPipes(new AppValidationPipe());
@@ -63,16 +74,24 @@ async function bootstrap() {
     logger.warn(`DB migration skipped: ${(err as Error).message}`);
   }
 
-  // Swagger 文档
-  const { path: swaggerPath, document } = swaggerConfig(configService, app);
-  SwaggerModule.setup(swaggerPath, app, document);
+  // Swagger 文档：生产环境默认关闭（防接口信息泄露），需显式设置 SWAGGER_ENABLED=true 才开启
+  const isProduction = process.env.NODE_ENV === 'production';
+  const swaggerEnabled = isProduction ? process.env.SWAGGER_ENABLED === 'true' : true;
+  let swaggerPath = '';
+  if (swaggerEnabled) {
+    const setup = swaggerConfig(configService, app);
+    swaggerPath = setup.path;
+    SwaggerModule.setup(swaggerPath, app, setup.document);
+  }
 
   // 监听端口
   const port = process.env.PORT || configService.get<number>('PORT', 3001);
   await app.listen(port);
 
   logger.log(`Application is running on: http://localhost:${port}/api`);
-  logger.log(`Swagger documentation at: http://localhost:${port}/${swaggerPath}`);
+  if (swaggerEnabled) {
+    logger.log(`Swagger documentation at: http://localhost:${port}/${swaggerPath}`);
+  }
 }
 
 bootstrap();

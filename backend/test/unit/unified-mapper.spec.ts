@@ -114,6 +114,123 @@ function makeFind(rows: any[]) {
   };
 }
 
+/** 模拟 UNION SQL 查询：按 SQL 分支/状态/分页参数在内存还原查询结果（与 task.service 的 SQL 语义对齐） */
+function makeQuery(seed: any) {
+  return async (sql: string, params: unknown[] = []) => {
+    const isCount = /COUNT\(\*\)/.test(sql);
+    const segs = sql.split('UNION ALL');
+    const countQ = (seg: string) => (seg.match(/\?/g) ?? []).length;
+
+    // 从 SQL 推断实际 teamIds 数量（t.team_id IN (?,...) 的占位符数）
+    const inMatch = (segs[0] ?? '').match(/t\.team_id IN \(([^)]*)\)/);
+    const teamIdCount = inMatch ? (inMatch[1].match(/\?/g) ?? []).length : 0;
+    const teamQ = countQ(segs[0] ?? '');
+    const taskQ = countQ(segs[1] ?? '');
+    const hermesQ = countQ(segs[2] ?? '');
+
+    const includeTeam = sql.includes('FROM team_tasks');
+    const includeTask = sql.includes('FROM agent_task');
+    const includeHermes = sql.includes('FROM hermes_call_logs');
+
+    // SQL 参数顺序: 按分支合并 [teamIds..., uid, teamVals..., uid, taskVals..., uid, hermesVals...]
+    let cursor = 0;
+    let uid = 0;
+    const actualTeamIds: number[] = [];
+    const teamVals: string[] = [];
+    const taskVals: string[] = [];
+    const hermesVals: string[] = [];
+    if (includeTeam) {
+      actualTeamIds.push(...params.slice(0, teamIdCount).map(Number));
+      cursor = teamIdCount;
+      uid = Number(params[cursor++]);
+      const n = Math.max(0, teamQ - (teamIdCount + 1));
+      teamVals.push(...params.slice(cursor, cursor + n).map(String));
+      cursor += n;
+    }
+    if (includeTask) {
+      uid = Number(params[cursor++]);
+      const n = Math.max(0, taskQ - 1);
+      taskVals.push(...params.slice(cursor, cursor + n).map(String));
+      cursor += n;
+    }
+    if (includeHermes) {
+      uid = Number(params[cursor++]);
+      const n = Math.max(0, hermesQ - 1);
+      hermesVals.push(...params.slice(cursor, cursor + n).map(String));
+      cursor += n;
+    }
+
+    const blocked = segs.map((seg) => seg.includes('1 = 0'));
+
+    const rows: any[] = [];
+    if (includeTeam && !blocked[0]) {
+      for (const t of seed.teamTasks ?? []) {
+        const inTeam = actualTeamIds.includes(Number(t.teamId));
+        const ownAuto = Number(t.creatorId) === uid && t.teamId == null;
+        if (!(inTeam || ownAuto)) continue;
+        if (teamVals.length > 0 && !teamVals.includes(t.status)) continue;
+        rows.push({
+          source: 'team',
+          source_id: Number(t.id),
+          title: t.title,
+          status: mapTeamStatus(t.status),
+          raw_status: t.status,
+          created_at: t.createdAt,
+          finished_at: t.completedAt ?? null,
+          assignee:
+            t.assigneeMemberId != null
+              ? (seed.members ?? []).find((m: any) => Number(m.id) === Number(t.assigneeMemberId))?.roleTitle ?? null
+              : null,
+          brief_id: t.briefId ?? null,
+          execution_ref: t.executionRef ?? null,
+        });
+      }
+    }
+    if (includeTask && !blocked[1]) {
+      for (const t of seed.agentTasks ?? []) {
+        if (Number(t.userId) !== uid) continue;
+        if (taskVals.length > 0 && !taskVals.includes(t.status)) continue;
+        rows.push({
+          source: 'task',
+          source_id: Number(t.id),
+          title: t.title ?? t.taskType,
+          status: mapTaskStatus(t.status),
+          raw_status: t.status,
+          created_at: t.createdAt,
+          finished_at: t.finishedAt ?? null,
+          assignee: null,
+          brief_id: null,
+          execution_ref: null,
+        });
+      }
+    }
+    if (includeHermes && !blocked[2]) {
+      for (const h of seed.hermesLogs ?? []) {
+        if (Number(h.userId) !== uid) continue;
+        if (hermesVals.length > 0 && !hermesVals.includes(h.status)) continue;
+        rows.push({
+          source: 'hermes',
+          source_id: Number(h.id),
+          title: h.target ?? h.callType,
+          status: mapHermesStatus(h.status),
+          raw_status: h.status,
+          created_at: h.createdAt,
+          finished_at: null,
+          assignee: null,
+          brief_id: null,
+          execution_ref: null,
+        });
+      }
+    }
+    rows.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    if (isCount) return [{ total: rows.length }];
+    const m = sql.match(/LIMIT (\d+) OFFSET (\d+)/);
+    const limit = m ? Number(m[1]) : rows.length;
+    const offset = m ? Number(m[2]) : 0;
+    return rows.slice(offset, offset + limit);
+  };
+}
+
 function makeService(seed: {
   teams?: any[];
   members?: any[];
@@ -121,7 +238,10 @@ function makeService(seed: {
   agentTasks?: any[];
   hermesLogs?: any[];
 }) {
-  const taskRepo = { find: makeFind(seed.agentTasks ?? []) };
+  const taskRepo = {
+    find: makeFind(seed.agentTasks ?? []),
+    query: makeQuery(seed),
+  };
   const outputItemRepo = { find: async () => [] };
   const teamRepo = { find: makeFind(seed.teams ?? []) };
   const memberRepo = { find: makeFind(seed.members ?? []) };

@@ -240,7 +240,21 @@ export default function Chat() {
           (c.models || []).map((m) => 'custom/' + c.id + '/' + m.id),
         ),
       ]
-      setModelId((prev) => (prev && all.includes(prev) ? prev : all[0] || ''))
+      // 恢复用户已保存的默认对话模型（重启/刷新后不再重置为列表第一个）
+      let preferred = ''
+      try {
+        const defs = await chatApi.getDefaultModels()
+        if (defs && typeof defs.chat === 'string' && defs.chat) preferred = defs.chat
+      } catch (err) {
+        console.error('[Chat] load preferred model failed:', err)
+      }
+      setModelId((prev) =>
+        prev && all.includes(prev)
+          ? prev
+          : preferred && all.includes(preferred)
+            ? preferred
+            : all[0] || '',
+      )
     } catch (err) {
       console.error('[Chat] load models failed:', err)
     } finally {

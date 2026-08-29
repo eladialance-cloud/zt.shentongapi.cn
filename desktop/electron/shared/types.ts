@@ -648,6 +648,18 @@ export interface ElectronAPI {
   /** 桌面端本地视频解析器（对标轻语 videoParser：抖音/快手/B站/小红书/视频号链接 → 本地视频文件） */
   videoParser: VideoParserApi;
 
+  /** 本地 N8N 工作流真执行（直连 127.0.0.1:5678 webhook） */
+  n8n: {
+    runWorkflow(input: {
+      /** 候选 webhook 路径（按序尝试） */
+      paths: string[];
+      /** 工作流输入参数 */
+      payload?: unknown;
+      /** 总超时（毫秒） */
+      timeoutMs?: number;
+    }): Promise<{ ok: boolean; data?: unknown; error?: string; path?: string }>;
+  };
+
   /** 设置页每类默认模型同步（chat/vision/image/video/tts → Hermes/ST-Claw 配置） */
   modelDefaultsSync(dto: { chat?: string | null; vision?: string | null; image?: string | null; video?: string | null; tts?: string | null } | null): void;
 

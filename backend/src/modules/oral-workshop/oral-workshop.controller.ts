@@ -1,5 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseGuards, UseInterceptors, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  createImageUploadFilter,
+  createUploadFileFilter,
+  createVideoUploadFilter,
+} from '../../common/utils/upload-guard.util';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { MembershipGuard, RequireFeature } from '../payment/guards/membership.guard';
@@ -81,7 +86,7 @@ export class OralWorkshopController {
 
   @Post('extract-file')
   @ApiOperation({ summary: '上传本地文件提取口播文案（音视频/图文/PDF）' })
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 200 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 200 * 1024 * 1024 }, fileFilter: createUploadFileFilter() }))
   extractFile(@CurrentUser() user: ICurrentUser, @UploadedFile() file?: Express.Multer.File) {
     if (!file) throw new BadRequestException('请选择要上传的文件');
     return this.oralWorkshopService.extractFile(user.userId, file);
@@ -213,7 +218,7 @@ export class OralWorkshopController {
 
   @Post('digital-humans/upload')
   @ApiOperation({ summary: 'D2：上传真人视频建形象（ffmpeg 转码 MP4/H.264 ≤1080P + 首帧预览）' })
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 500 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 500 * 1024 * 1024 }, fileFilter: createVideoUploadFilter() }))
   uploadDigitalHuman(@CurrentUser() user: ICurrentUser, @UploadedFile() file?: Express.Multer.File) {
     if (!file) throw new BadRequestException('请选择要上传的视频文件');
     return this.oralWorkshopService.uploadDigitalHumanVideo(user.userId, file);
@@ -221,7 +226,7 @@ export class OralWorkshopController {
 
   @Post('digital-humans/upload-image')
   @ApiOperation({ summary: 'M4+：上传图片供 HeyGen talking photo 使用（保存到 uploads 并返回 URL，不建资产；由前端转公网 URL 后走新增形象）' })
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024 }, fileFilter: createImageUploadFilter() }))
   uploadDigitalHumanImage(@CurrentUser() user: ICurrentUser, @UploadedFile() file?: Express.Multer.File) {
     if (!file) throw new BadRequestException('请选择要上传的图片文件');
     return this.oralWorkshopService.uploadDigitalHumanImage(user.userId, file);

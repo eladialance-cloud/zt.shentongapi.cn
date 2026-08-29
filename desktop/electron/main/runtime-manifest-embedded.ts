@@ -35,7 +35,7 @@ export const EMBEDDED_MANIFEST: RuntimeManifest = {
         "linux-x64": 0
       },
       "sha256": {
-        "win32-x64": "",
+        "win32-x64": "86e5037279fd9448ea62d9a438bbc2abe982ff52a4ea62df1dc91a26aca08025",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""
@@ -64,7 +64,7 @@ export const EMBEDDED_MANIFEST: RuntimeManifest = {
         "linux-x64": 0
       },
       "sha256": {
-        "win32-x64": "",
+        "win32-x64": "185b701ee53a608bbbb70e708c17948cf98116fcb13b44f9cd7354dd0b3ea223",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""
@@ -93,7 +93,7 @@ export const EMBEDDED_MANIFEST: RuntimeManifest = {
         "linux-x64": 0
       },
       "sha256": {
-        "win32-x64": "",
+        "win32-x64": "36d94571f4abcb9c967bd657654e3c4a04a003bee1785ffefeec4ee8ddf4d848",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""

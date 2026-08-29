@@ -203,18 +203,23 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** 处理一批待执行任务，返回本批实际推进的步骤数 */
+  /** 处理一批待执行任务，返回本批实际推进的步骤数（并发执行，互不阻塞） */
   async processBatch(): Promise<number> {
     const cfg = await this.readEngineConfig();
     const jobs = await this.service.findExecutableJobs(cfg.maxConcurrentJobs);
+    if (jobs.length === 0) return 0;
     let processed = 0;
-    for (const job of jobs) {
+    // 并发执行各任务：长耗时步骤（TTS/ffmpeg 等）不再串行卡住整批。
+    // 并发上限 = findExecutableJobs 已按 maxConcurrentJobs 限量；
+    // 步骤级 markStepRunning 原子抢占保证同一任务同一步骤不会被执行两次。
+    const runner = async (job: OralWorkshopJobEntity): Promise<void> => {
       try {
         if (await this.processJob(job)) processed += 1;
       } catch (err) {
         this.logger.error(`[oral-workshop] 任务 ${job.id} 处理异常: ${(err as Error).message}`);
       }
-    }
+    };
+    await Promise.all(jobs.map((job) => runner(job)));
     return processed;
   }
 

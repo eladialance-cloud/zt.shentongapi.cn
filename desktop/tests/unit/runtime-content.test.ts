@@ -93,8 +93,8 @@ describe('isServiceContentStale 内容指纹校验', () => {
       expect(manifest).not.toBeNull()
       const key = process.platform + '-' + process.arch
       expect(manifest!.services[SVC].sha256[key]).toBeDefined()
-      // 内嵌清单 sha 为空（免校验开发构建）→ 不判定过期，仅验证回退路径可用
-      expect(isServiceContentStale(SVC)).toBe(false)
+      // P0-1: 内嵌清单已带真实 sha 且指纹不一致 → 判定过期（触发完整性重装）
+      expect(isServiceContentStale(SVC)).toBe(true)
     } finally {
       fs.renameSync(backupPath, builtinPath)
     }

@@ -149,6 +149,11 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('video-parser:read-file', filePath) as Promise<ArrayBuffer | null>,
   },
 
+  n8n: {
+    runWorkflow: (input: { paths: string[]; payload?: unknown; timeoutMs?: number }) =>
+      ipcRenderer.invoke('n8n:run-workflow', input) as Promise<{ ok: boolean; data?: unknown; error?: string; path?: string }>,
+  },
+
   modelDefaultsSync: (dto) => ipcRenderer.send('model-defaults:sync', dto),
   hermesSkills: {
     list: () => ipcRenderer.invoke('hermes-skills:list'),

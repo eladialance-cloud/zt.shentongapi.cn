@@ -451,8 +451,8 @@ export class HermesService {
     }
 
     try {
-      // 4. 带超时执行任务
-      const result = await this.withTimeout(this.dispatchTask(task), DEFAULT_TASK_TIMEOUT_MS);
+      // 4. 带超时执行任务（超时通过 AbortSignal 真正取消底层执行，避免任务在后台继续跑）
+      const result = await this.withTimeout((signal) => this.dispatchTask(task, signal), DEFAULT_TASK_TIMEOUT_MS);
 
       // 5. 计算实际耗时和积分
       const durationMs = Date.now() - startTime;
@@ -486,7 +486,7 @@ export class HermesService {
   /**
    * 任务分发
    */
-  private async dispatchTask(task: HermesTask): Promise<unknown> {
+  private async dispatchTask(task: HermesTask, signal?: AbortSignal): Promise<unknown> {
     switch (task.callType) {
       case 'agent_invoke':
         if (task.teamId) {
@@ -494,29 +494,37 @@ export class HermesService {
         }
         return this.invokeAgent(task);
       case 'workflow_run':
-        return this.runWorkflow(task);
+        return this.runWorkflow(task, signal);
       case 'tool_call':
-        return this.callTool(task);
+        return this.callTool(task, signal);
       case 'skill_execute':
-        return this.executeSkill(task);
+        return this.executeSkill(task, signal);
       default:
         throw new BadRequestException(`不支持的调用类型: ${task.callType}`);
     }
   }
 
   /**
-   * 带超时的 Promise 包装
+   * 带超时的 Promise 包装：超时后 abort 底层任务（kill 子进程/取消请求），
+   * 避免「已报超时但任务还在后台跑」导致的积分误退/副作用残留
    */
-  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-    return Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        setTimeout(
-          () => reject(new BadRequestException('任务执行超时')),
-          timeoutMs,
-        );
-      }),
-    ]);
+  private async withTimeout<T>(
+    run: (signal: AbortSignal) => Promise<T>,
+    timeoutMs: number,
+  ): Promise<T> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const taskPromise = run(controller.signal);
+      const timeoutPromise = new Promise<T>((_, reject) => {
+        controller.signal.addEventListener('abort', () => {
+          reject(new BadRequestException('任务执行超时'));
+        });
+      });
+      return await Promise.race([taskPromise, timeoutPromise]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** 调用整个 OPC 团队：OpenClaw 直调接口已下线（L0 探针确认 /api/chat、/api/agents 不存在），
@@ -527,7 +535,7 @@ export class HermesService {
   private async invokeAgent(task: HermesTask): Promise<unknown> {
     throw new BadRequestException('Agent 调用暂不可用：OpenClaw 直调接口已下线，请使用桌面端对话（本地 OpenClaw 自动调用）');
   }
-  private async runWorkflow(task: HermesTask): Promise<unknown> {
+  private async runWorkflow(task: HermesTask, _signal?: AbortSignal): Promise<unknown> {
     if (!task.n8nInstanceId || !task.workflowId) {
       throw new BadRequestException('工作流调用需要 n8nInstanceId 和 workflowId');
     }
@@ -539,7 +547,7 @@ export class HermesService {
     );
   }
 
-  private async callTool(task: HermesTask): Promise<unknown> {
+  private async callTool(task: HermesTask, _signal?: AbortSignal): Promise<unknown> {
     if (!task.serverId || !task.toolName) {
       throw new BadRequestException('工具调用需要 serverId 和 toolName');
     }
@@ -553,7 +561,7 @@ export class HermesService {
   /**
    * 技能包执行 — 通过 SkillRunnerService 执行
    */
-  private async executeSkill(task: HermesTask): Promise<unknown> {
+  private async executeSkill(task: HermesTask, signal?: AbortSignal): Promise<unknown> {
     if (!task.skillId) {
       throw new BadRequestException('技能执行需要 skillId');
     }
@@ -561,7 +569,7 @@ export class HermesService {
     if (!skill) {
       throw new NotFoundException(`技能包不存在: ${task.skillId}`);
     }
-    return this.skillRunner.run(skill, task.input, task.userId);
+    return this.skillRunner.run(skill, task.input, task.userId, signal);
   }
 
   health() {

@@ -298,7 +298,7 @@ describe('SubTask 36.4 - 三阶段计费测试', () => {
 
       // act
       const frozenTxnId = estimateAndFreeze(state, 1, 15, 'workflow')
-      const execution = (await executeWorkflow(1, { input: 'test' })) as WorkflowExecution
+      const execution = (await executeWorkflow(1, { input: 'test' })) as unknown as WorkflowExecution
       settleActualCost(state, 1, frozenTxnId, 15)
 
       // assert

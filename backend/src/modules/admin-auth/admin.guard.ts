@@ -6,6 +6,8 @@
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { RedisService } from '../../common/services/redis.service';
+import { ADMIN_TOKEN_BLACKLIST_PREFIX } from './admin-auth.service';
 
 /**
  * 管理端守卫
@@ -21,6 +23,7 @@ export class AdminGuard implements CanActivate {
   constructor(
     private jwtService: JwtService,
     private config: ConfigService,
+    private redis: RedisService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -38,7 +41,19 @@ export class AdminGuard implements CanActivate {
       const payload = await this.jwtService.verifyAsync<{
         userId: number;
         username: string;
+        jti?: string;
       }>(match[1], { secret: adminSecret });
+      // P0-6: 校验 token 是否已登出（黑名单）。Redis 不可用时降级放行，避免阻断管理端。
+      if (payload.jti) {
+        try {
+          const blacklisted = await this.redis.get(ADMIN_TOKEN_BLACKLIST_PREFIX + payload.jti);
+          if (blacklisted) {
+            throw new UnauthorizedException('管理端令牌已登出，请重新登录');
+          }
+        } catch (err) {
+          if (err instanceof UnauthorizedException) throw err;
+        }
+      }
       request.adminUser = { id: payload.userId, username: payload.username };
       return true;
     } catch {

@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -123,6 +124,41 @@ export class WorkflowService {
       executionId: saved.id,
       status: 'queued',
     };
+  }
+
+  // ------------------------------------------------------------------
+  // 3.5 桌面端工作流执行结果回传（真执行：桌面本地 N8N 跑完后上报）
+  // ------------------------------------------------------------------
+  async reportExecution(
+    userId: number,
+    executionId: number,
+    dto: {
+      status: 'running' | 'success' | 'failed' | 'cancelled';
+      output?: unknown;
+      error?: string;
+      n8nExecutionId?: string;
+      durationMs?: number;
+    },
+  ): Promise<N8nWorkflowExecLogEntity> {
+    const allowed = ['running', 'success', 'failed', 'cancelled'];
+    if (!dto || !allowed.includes(dto.status)) {
+      throw new BadRequestException('status 参数不合法');
+    }
+    const log = await this.execLogRepo.findOne({ where: { id: executionId } });
+    if (!log || Number(log.userId) !== userId) {
+      throw new NotFoundException('执行记录不存在');
+    }
+    log.status = dto.status;
+    if (dto.status === 'running') {
+      log.startedAt = log.startedAt ?? new Date();
+    } else {
+      if (dto.output !== undefined) log.outputData = dto.output as Record<string, unknown>;
+      if (dto.error) log.errorMessage = dto.error.slice(0, 2000);
+      log.finishedAt = new Date();
+      if (dto.durationMs != null) log.durationMs = dto.durationMs;
+    }
+    if (dto.n8nExecutionId) log.n8nExecutionId = dto.n8nExecutionId;
+    return this.execLogRepo.save(log);
   }
 
   // ------------------------------------------------------------------

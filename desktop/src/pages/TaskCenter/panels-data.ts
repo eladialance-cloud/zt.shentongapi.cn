@@ -3,6 +3,7 @@
  * 数据来源：深瞳 IPC（edict-api.ts）——与 edict 原版 HTTP API 一一对应。
  */
 import type { EdictTask } from "@shared/edict-types";
+import { message } from "antd";
 
 /** 官员/官署常量（edict 原版 DEPTS） */
 export interface Dept {
@@ -207,7 +208,6 @@ export type { EdictTask };
 
 /** 轻量提示（antd message；edict 原版 toast 适配） */
 export function toast(text: string, kind?: "ok" | "err"): void {
-  const { message } = require("antd") as typeof import("antd");
   if (kind === "err") message.error(text);
   else message.success(text);
 }
