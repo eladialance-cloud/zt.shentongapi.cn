@@ -42,6 +42,15 @@ interface RefreshResponse {
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:3001/api";
 
+/** 同步最新 token 到主进程 auth.json（n8n-run-workflow 等工具卡读取） */
+function syncAuthToken(token: string | null | undefined): void {
+  try {
+    window.electronAPI?.openclawChat?.syncAuth?.(token || "");
+  } catch {
+    // 非 Electron 环境忽略
+  }
+}
+
 interface AuthState {
   /** 访问令牌（短期，仅内存） */
   accessToken: string | null;
@@ -93,6 +102,7 @@ export const useAuthStore = create<AuthState>()(
           user,
           isAuthenticated: true,
         });
+        syncAuthToken(accessToken);
       },
 
       refreshAccessToken: async () => {
@@ -119,6 +129,7 @@ export const useAuthStore = create<AuthState>()(
             secretKey: state.secretKey,
             user: state.user,
           }));
+          syncAuthToken(newAccess);
           return true;
         } catch {
           // 刷新失败：清除认证状态

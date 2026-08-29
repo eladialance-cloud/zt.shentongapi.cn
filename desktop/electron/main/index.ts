@@ -520,6 +520,13 @@ function registerIpcHandlers(): void {
     openClawChat.abort()
   })
 
+  // 登录/刷新 token 时同步写 auth.json（n8n-run-workflow 工具卡读 ST_AUTH_FILE）
+  ipcMain.on('openclaw-chat:sync-auth', (_event, token: unknown) => {
+    if (typeof token === 'string' && token.trim()) {
+      openClawChat.syncAuthToken(token.trim())
+    }
+  })
+
   // ===== 三省六部看板（OpenClaw 太子 + Hermes 官署执行；edict:* IPC + 看板轮询推送） =====
   const edictDeps = createEdictDeps()
   const disposeEdictIpc = registerEdictIpc(edictDeps, { pollIntervalMs: 3000 })

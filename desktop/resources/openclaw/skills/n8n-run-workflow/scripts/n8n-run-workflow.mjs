@@ -3,7 +3,7 @@
  * N8N 工作流工具卡执行脚本
  * 流程：云端按工作流定价扣费（0 免费）→ 触发本地 N8N webhook
  * 依赖环境变量（由桌面端 service-manager 注入）：
- *   N8N_API_KEY        - 本地 N8N REST API Key
+ *   N8N_BASE_URL       - 本地 N8N 地址（默认 http://127.0.0.1:5678）
  *   ST_API_BASE        - 云端 API 地址（默认 https://zt.shentongapi.cn/api）
  *   ST_AUTH_FILE       - 云端登录信息文件（含 token）
  */
@@ -49,12 +49,13 @@ async function main() {
   }
 
   // 2) 触发本地 N8N webhook
+  // 将云端 token 注入 payload，供工作流内调用受保护接口（Authorization: Bearer）
+  if (token) payload.token = token;
   const base = process.env.N8N_BASE_URL || 'http://127.0.0.1:5678';
   const r2 = await fetch(base + '/webhook/' + webhookPath, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-N8N-API-KEY': process.env.N8N_API_KEY || '',
     },
     body: JSON.stringify(payload),
   });

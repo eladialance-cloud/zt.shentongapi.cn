@@ -39,7 +39,7 @@ import {
 } from "./edict-orchestrator";
 import type { EdictBoard, EdictNotifyConfig, EdictOp, EdictTask } from "../shared/edict-types";
 import { OFFICIALS } from "./edict-orchestrator";
-import { ST_API_BASE, getOrCreateN8nApiKey } from "./service-manager";
+import { ST_API_BASE } from "./service-manager";
 import type { EdictExtraDeps } from "./edict-extra";
 
 // ===== 路径解析 =====
@@ -118,7 +118,6 @@ function buildHermesCliEnv(): NodeJS.ProcessEnv {
     HERMES_HOME: path.join(app.getPath("userData"), "hermes-home"),
     // 官署技能所需环境变量（与 OpenClaw 进程对齐）：n8n-run-workflow 读取 N8N/ST 系列变量，
     // 看板工具卡读取 EDICT_HOME；确保官署 Hermes CLI 进程内技能脚本可直接运行
-    N8N_API_KEY: getOrCreateN8nApiKey(),
     N8N_BASE_URL: "http://127.0.0.1:5678",
     ST_API_BASE,
     ST_AUTH_FILE: path.join(accountingDir, "auth.json"),

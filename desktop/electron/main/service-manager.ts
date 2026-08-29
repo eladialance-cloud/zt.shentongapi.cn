@@ -54,24 +54,6 @@ const SERVICE_DEFS: Record<ServiceName, ServiceDef> = {
 /** AI 视频前端端口（iframe 加载地址；就绪判定需同时等后端与前端） */
 const VIDEO_CLAW_FRONTEND_PORT = 3000
 
-/** N8N API Key（生成并持久化到 userData/n8n-api-key，供本地 REST API 导入工作流） */
-export function getOrCreateN8nApiKey(): string {
-  try {
-    const keyFile = path.join(app.getPath('userData'), 'n8n-api-key')
-    if (fs.existsSync(keyFile)) {
-      const existing = fs.readFileSync(keyFile, 'utf-8').trim()
-      if (existing) return existing
-    }
-    const key = 'st-' + require('node:crypto').randomBytes(24).toString('hex')
-    fs.mkdirSync(path.dirname(keyFile), { recursive: true })
-    fs.writeFileSync(keyFile, key, 'utf-8')
-    return key
-  } catch (err) {
-    console.error('[service-manager] generate n8n api key failed:', err)
-    return 'st-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)
-  }
-}
-
 /** N8N 子进程环境变量（每次启动实时构建，注入 API Key 与数据目录） */
 function buildN8nEnv(): NodeJS.ProcessEnv {
   return {
@@ -84,8 +66,6 @@ function buildN8nEnv(): NodeJS.ProcessEnv {
     // 本地 HTTP 部署必须关闭 Secure Cookie，否则登录后的会话 Cookie 带 Secure 标志，在 http://127.0.0.1 下无法保存，导致登录后立即被踢回登录页
     N8N_SECURE_COOKIE: 'false',
     GENERIC_TIMEZONE: 'Asia/Shanghai',
-    // 本地 REST API 鉴权（工作流导入）
-    N8N_API_KEY: getOrCreateN8nApiKey(),
     // 工作流数据目录固定到 userData，避免默认 %USERPROFILE%\.n8n 残留
     N8N_USER_FOLDER: path.join(app.getPath('userData'), 'n8n-data')
   }
@@ -150,7 +130,6 @@ function buildHermesEnv(): NodeJS.ProcessEnv {
     MCP_BACKEND_URL: 'http://127.0.0.1:' + SERVICE_DEFS.mcp.port,
     // 官署技能所需环境变量（与 OpenClaw 进程对齐）：n8n-run-workflow 读取 N8N/ST 系列变量，
     // 看板工具卡读取 EDICT_HOME；Hermes 长驻服务同样注入，保证技能脚本可运行
-    N8N_API_KEY: getOrCreateN8nApiKey(),
     N8N_BASE_URL: 'http://127.0.0.1:' + SERVICE_DEFS.n8n.port,
     ST_API_BASE,
     ST_AUTH_FILE: path.join(accountingDir, 'auth.json'),
@@ -251,7 +230,6 @@ function buildOpenClawEnv(): NodeJS.ProcessEnv {
     HERMES_ENTRY: hermesRoot ? path.join(hermesRoot, 'node_modules', 'hermes-agent', 'bin', 'hermes.js') : '',
     HERMES_PYTHON: hermesRoot ? path.join(hermesRoot, 'python', 'python.exe') : '',
     HERMES_HOME: getHermesHome(),
-    N8N_API_KEY: getOrCreateN8nApiKey(),
     ST_API_BASE,
     ST_ACCOUNTING_FILE: path.join(accountingDir, 'current-accounting.json'),
     ST_AUTH_FILE: path.join(accountingDir, 'auth.json'),

@@ -356,6 +356,10 @@ const electronAPI: ElectronAPI = {
     abort: () => {
       ipcRenderer.send('openclaw-chat:abort')
     },
+    /** 同步最新云端 token 到 auth.json（登录/刷新 token 时调用，供工具卡读取） */
+    syncAuth: (token: string) => {
+      ipcRenderer.send('openclaw-chat:sync-auth', token)
+    },
     onMessage: (callback: (payload: OpenClawChatMessagePayload) => void) => {
       const handler = (_event: IpcRendererEvent, payload: OpenClawChatMessagePayload): void => callback(payload)
       ipcRenderer.on('openclaw-chat:message', handler)

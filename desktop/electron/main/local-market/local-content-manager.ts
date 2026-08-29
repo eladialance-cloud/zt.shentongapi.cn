@@ -18,6 +18,7 @@ import type {
   MarketItemDetail,
 } from '../../shared/types';
 import { extractTarGz } from '../runtime-downloader';
+import { ensureN8nAuth, getN8nAuthCookie } from '../n8n-auth';
 
 /** userData 目录（jest 等无 electron 环境时回退 APPDATA，与 runtime-config 一致） */
 function userDataDir(): string {
@@ -534,20 +535,22 @@ async function writeWorkflowFiles(dir: string, workflow: Record<string, unknown>
   }
 }
 
-/** 调用本地 n8n REST API 导入工作流（N8N_API_KEY 在 service-manager N8N_ENV 注入） */
+/** 调用本地 n8n 编辑器会话 API 导入工作流（n8n 1.62 不认 N8N_API_KEY 环境变量，需登录 Cookie） */
 async function importWorkflowToN8n(workflowJson: Record<string, unknown>): Promise<void> {
-  const apiKey = process.env.N8N_API_KEY;
+  await ensureN8nAuth();
+  const cookie = getN8nAuthCookie();
+  if (!cookie) throw new Error('n8n 未登录，无法导入工作流');
   const base = process.env.N8N_BASE_URL || 'http://127.0.0.1:5678';
-  const res = await fetch(base + '/api/v1/workflows', {
+  const res = await fetch(base + '/rest/workflows', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(apiKey ? { 'X-N8N-API-KEY': apiKey } : {}),
+      Cookie: 'n8n-auth=' + cookie,
     },
     body: JSON.stringify(workflowJson),
   });
   if (!res.ok) {
-    throw new Error('n8n import HTTP ' + res.status);
+    throw new Error('n8n import HTTP ' + res.status + ': ' + (await res.text()).slice(0, 200));
   }
 }
 

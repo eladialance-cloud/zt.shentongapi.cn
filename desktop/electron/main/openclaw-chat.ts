@@ -199,6 +199,21 @@ export class OpenClawChatService extends EventEmitter {
     this.activeAbort?.abort()
   }
 
+  /** 同步最新云端 token 到 auth.json（登录/刷新 token 时由渲染进程调用，供工具卡读取） */
+  syncAuthToken(token: string): void {
+    if (!this.deps.contextDir || typeof token !== 'string' || !token) return
+    try {
+      mkdirSync(this.deps.contextDir, { recursive: true })
+      writeFileSync(
+        join(this.deps.contextDir, 'auth.json'),
+        JSON.stringify({ token }),
+        'utf-8',
+      )
+    } catch (err) {
+      console.error('[openclaw-chat] sync auth token failed:', err)
+    }
+  }
+
   private writeContext(params: OpenClawSendParams): void {
     if (!this.deps.contextDir) return
     try {

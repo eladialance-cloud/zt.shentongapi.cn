@@ -22,6 +22,11 @@ let currentCookie: string | null = null
 let hookInstalled = false
 let authInFlight: Promise<void> | null = null
 
+/** 当前 n8n 会话 Cookie（供主进程调用编辑器 REST API：导入工作流、查询执行等） */
+export function getN8nAuthCookie(): string | null {
+  return currentCookie
+}
+
 function credentialsFile(): string {
   return join(app.getPath('userData'), 'n8n-credentials.json')
 }

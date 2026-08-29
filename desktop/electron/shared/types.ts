@@ -838,6 +838,8 @@ export interface ElectronAPI {
     ): Promise<{ ok: boolean; aborted?: boolean }>;
     /** 中断当前对话（本地 abort） */
     abort(): void;
+    /** 同步最新云端 token 到 auth.json（登录/刷新 token 时调用，供工具卡读取） */
+    syncAuth(token: string): void;
     /** 流式文本块（openclaw-chat:message） */
     onMessage(cb: (payload: OpenClawChatMessagePayload) => void): () => void;
     /** 终审/来源标注后的最终文本（openclaw-chat:finalize；渲染层用其覆盖流式内容） */
