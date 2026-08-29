@@ -526,6 +526,22 @@ export class SystemLlmService implements LlmCaller {
           if (!resp.ok) return { success: false, message: 'HTTP ' + resp.status + ': ' + text };
           return { success: true, message: '声音复刻已提交（custom_speaker_id=' + customSpeakerId + '）：' + text.slice(0, 150) };
         }
+        case 'heygen': {
+          const hKey = str(cfg.heygenApiKey) || process.env.HEYGEN_API_KEY || '';
+          if (!hKey) return { success: false, message: '未配置 HeyGen API Key（heygenApiKey）' };
+          const hEndpoint = (str(cfg.heygenEndpoint) || process.env.HEYGEN_ENDPOINT || 'https://api.heygen.com').replace(/\/+$/, '');
+          try {
+            const resp = await fetch(hEndpoint + '/v1/avatars', {
+              headers: { 'X-Api-Key': hKey },
+              signal: AbortSignal.timeout(20000),
+            });
+            const hText = (await resp.text().catch(() => '')).slice(0, 300);
+            if (!resp.ok) return { success: false, message: 'HeyGen 请求失败 HTTP ' + resp.status + ': ' + hText };
+            return { success: true, message: 'HeyGen 服务连通（可拉取形象列表）：' + hText.slice(0, 150) };
+          } catch (err) {
+            return { success: false, message: 'HeyGen 请求失败：' + ((err as Error).message || String(err)) };
+          }
+        }
         case 'dh': {
           const endpoint = str(cfg.dhEndpoint);
           if (!apiKey) return { success: false, message: '未配置火山方舟 API Key' };

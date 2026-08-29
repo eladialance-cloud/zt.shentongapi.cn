@@ -18,6 +18,7 @@ import { CreditsBillingService } from '../credits/services/credits-billing.servi
 import { PublishService } from '../channel/services/publish.service';
 import { SystemLlmService } from './system-llm.service';
 import { VoiceCloneAdapter } from './adapters/voice.adapter';
+import { HeyGenAdapter, type HeyGenAvatarItem } from './adapters/heygen.adapter';
 import { SystemConfigEntity } from '../admin-system/entities/system-config.entity';
 import { MediaAssetEntity } from '../media-assets/entities/media-asset.entity';
 import { MediaAssetService } from '../media-assets/services/media-asset.service';
@@ -777,9 +778,10 @@ export class OralWorkshopService implements OnModuleInit {
     Array<{
       id: number;
       name: string;
-      kind: 'cloud' | 'video';
+      kind: 'cloud' | 'video' | 'image' | 'avatar';
       cloudId: string;
       videoUrl: string | null;
+      imageUrl: string | null;
       previewUrl: string | null;
       description: string | null;
       authorized: boolean;
@@ -794,6 +796,7 @@ export class OralWorkshopService implements OnModuleInit {
       kind: r.kind ?? 'cloud',
       cloudId: r.cloudId,
       videoUrl: r.videoUrl ?? null,
+      imageUrl: r.imageUrl ?? null,
       previewUrl: r.previewUrl ?? null,
       description: r.description ?? null,
       authorized: r.authorized,
@@ -805,12 +808,15 @@ export class OralWorkshopService implements OnModuleInit {
   /** 新增形象（cloudId=火山数字人形象 ID） */
   async createDigitalHuman(
     userId: number,
-    dto: { name: string; kind?: 'cloud' | 'video'; cloudId?: string; videoUrl?: string; previewUrl?: string; description?: string },
-  ): Promise<{ id: number; name: string; kind: 'cloud' | 'video'; cloudId: string; videoUrl: string | null; description: string | null; authorized: boolean }> {
-    const kind = dto.kind === 'video' ? 'video' : 'cloud';
+    dto: { name: string; kind?: 'cloud' | 'video' | 'image'; cloudId?: string; videoUrl?: string; imageUrl?: string; previewUrl?: string; description?: string },
+  ): Promise<{ id: number; name: string; kind: 'cloud' | 'video' | 'image'; cloudId: string; videoUrl: string | null; imageUrl: string | null; description: string | null; authorized: boolean }> {
+    const kind = dto.kind === 'video' || dto.kind === 'image' ? dto.kind : 'cloud';
     if (!dto.name?.trim()) throw new BadRequestException('形象名称不能为空');
     if (kind === 'video') {
       if (!dto.videoUrl?.trim()) throw new BadRequestException('视频形象需要 videoUrl（请使用上传接口或填写转码后的 MP4 链接）');
+    } else if (kind === 'image') {
+      if (!dto.imageUrl?.trim()) throw new BadRequestException('图片形象需要 imageUrl（HeyGen talking photo 公网图片链接）');
+      if (!/^https?:\/\//.test(dto.imageUrl.trim())) throw new BadRequestException('图片形象需要公网 URL（http/https，供 HeyGen 拉取）');
     } else if (!dto.cloudId?.trim()) {
       throw new BadRequestException('形象名称与形象 ID 不能为空');
     }
@@ -818,8 +824,9 @@ export class OralWorkshopService implements OnModuleInit {
       userId,
       name: dto.name.trim().slice(0, 128),
       kind,
-      cloudId: kind === 'video' ? 'local-video-' + Date.now() : dto.cloudId!.trim().slice(0, 128),
+      cloudId: kind === 'video' ? 'local-video-' + Date.now() : kind === 'image' ? 'heygen-image-' + Date.now() : dto.cloudId!.trim().slice(0, 128),
       videoUrl: kind === 'video' ? dto.videoUrl!.trim().slice(0, 512) : null,
+      imageUrl: kind === 'image' ? dto.imageUrl!.trim().slice(0, 512) : null,
       previewUrl: dto.previewUrl?.trim().slice(0, 512) ?? null,
       description: dto.description?.trim().slice(0, 512) ?? null,
       authorized: true,
@@ -829,9 +836,10 @@ export class OralWorkshopService implements OnModuleInit {
     return {
       id: saved.id,
       name: saved.name,
-      kind: saved.kind,
+      kind: saved.kind as 'cloud' | 'video' | 'image',
       cloudId: saved.cloudId,
       videoUrl: saved.videoUrl ?? null,
+      imageUrl: saved.imageUrl ?? null,
       description: saved.description ?? null,
       authorized: saved.authorized,
     };
@@ -842,6 +850,31 @@ export class OralWorkshopService implements OnModuleInit {
     const row = await this.dhAssetRepo.findOne({ where: { id, userId } });
     if (!row) throw new NotFoundException('形象不存在');
     await this.dhAssetRepo.remove(row);
+  }
+
+  /** HeyGen 官方预置形象列表（读管理后台 heygen 配置；未配置返回 configured=false，前端引导配置） */
+  async listHeygenAvatars(): Promise<{ configured: boolean; avatars: HeyGenAvatarItem[]; message?: string }> {
+    let apiKey = '';
+    let endpoint = 'https://api.heygen.com';
+    if (this.configRepo) {
+      try {
+        const row = await this.configRepo.findOne({ where: { section: 'oral_workshop' } });
+        const cfg = (row?.configValue ?? {}) as Record<string, unknown>;
+        if (typeof cfg.heygenApiKey === 'string' && cfg.heygenApiKey.trim()) apiKey = cfg.heygenApiKey.trim();
+        if (typeof cfg.heygenEndpoint === 'string' && cfg.heygenEndpoint.trim()) endpoint = cfg.heygenEndpoint.trim();
+      } catch (err) {
+        this.logger.warn('[oral-workshop] 读取 HeyGen 配置失败: ' + (err as Error).message);
+      }
+    }
+    if (!apiKey) apiKey = process.env.HEYGEN_API_KEY || '';
+    if (!apiKey) return { configured: false, avatars: [] };
+    try {
+      const adapter = new HeyGenAdapter({ endpoint, apiKey });
+      const avatars = await adapter.listAvatars();
+      return { configured: true, avatars };
+    } catch (err) {
+      return { configured: true, avatars: [], message: (err as Error).message };
+    }
   }
 
   /**
@@ -906,6 +939,27 @@ export class OralWorkshopService implements OnModuleInit {
       description: saved.description ?? null,
       authorized: saved.authorized,
     };
+  }
+
+  /**
+   * M4+：上传图片供 HeyGen talking photo 使用——保存到 uploads 并返回相对 URL（不建资产）。
+   * 前端拿到 URL 后转公网绝对地址，再调 createDigitalHuman(kind='image') 建形象资产。
+   */
+  async uploadDigitalHumanImage(
+    userId: number,
+    file: Express.Multer.File,
+  ): Promise<{ imageUrl: string; previewUrl: string; fileName: string }> {
+    if (!file) throw new BadRequestException('请上传图片文件（字段名 file）');
+    if (file.size > 20 * 1024 * 1024) throw new BadRequestException('图片文件不能超过 20MB');
+    if (!/^image\//.test(file.mimetype)) throw new BadRequestException('仅支持图片文件（jpg/png/webp）');
+    const uploadsRoot = path.resolve(process.env.ORAL_WORKSHOP_UPLOADS_DIR || 'uploads');
+    const dir = path.join(uploadsRoot, 'oral-workshop', 'dh-upload', String(userId), String(Date.now()));
+    fs.mkdirSync(dir, { recursive: true });
+    const ext = (path.extname(file.originalname) || '.jpg').toLowerCase().replace(/[^a-z0-9.]/g, '');
+    const imagePath = path.join(dir, 'talking-photo' + (ext || '.jpg'));
+    fs.writeFileSync(imagePath, file.buffer);
+    const rel = path.relative(uploadsRoot, imagePath).replace(/\\/g, '/');
+    return { imageUrl: '/uploads/' + rel, previewUrl: '/uploads/' + rel, fileName: file.originalname || 'talking-photo.jpg' };
   }
 
   // ===== 发布账号（G：桌面端扫码绑定 + 管理后台平台开关；对标 aigc-human platform_accounts） =====
@@ -1656,7 +1710,14 @@ export class OralWorkshopService implements OnModuleInit {
     if (status === 'done') {
       job.status = 'done';
       if (job.frozenTxnId) {
-        const actual = job.creditsCost > 0 ? job.creditsCost : DEFAULT_ESTIMATED_CREDITS;
+        // 实际成本：voiceClone 已写 credits_cost 用实际值；否则按管理后台单价估算（基础+配音档+数字人档）
+        let actual = job.creditsCost > 0 ? job.creditsCost : DEFAULT_ESTIMATED_CREDITS;
+        if (job.creditsCost <= 0) {
+          actual = await this.estimateCredits({
+            voiceModelVersion: job.voiceModelVersion ?? undefined,
+            dhModelVersion: job.dhModelVersion ?? undefined,
+          });
+        }
         await this.billing.settleActualCost(job.userId, job.frozenTxnId, actual);
       }
     } else {

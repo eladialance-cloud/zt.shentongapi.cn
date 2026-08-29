@@ -21,6 +21,7 @@ import { deriveTitle, ensureBadgeImage, segmentScript, segmentScriptBilingual, t
 import { loadTemplate } from './template-loader';
 import { VoiceCloneAdapter } from './adapters/voice.adapter';
 import { DigitalHumanAdapter } from './adapters/digital-human.adapter';
+import { HeyGenAdapter } from './adapters/heygen.adapter';
 import { sapiTts } from './local-tts';
 import { SystemConfigEntity } from '../admin-system/entities/system-config.entity';
 import { VoiceAssetEntity } from './entities/voice-asset.entity';
@@ -34,8 +35,8 @@ import { defaultFfmpegRunner, downloadTo, resolveLocalMediaPath, type FfmpegRunn
 export interface OralWorkshopEngineConfig {
   /** 声音引擎：volcano=火山方舟 / local=本地 SAPI / auto=自动降级 */
   voiceEngine: 'volcano' | 'local' | 'auto';
-  /** 数字人引擎：volcano=火山方舟 / local=本地卡片视频 / auto=自动降级 */
-  digitalHumanEngine: 'volcano' | 'local' | 'auto';
+  /** 数字人引擎：volcano=火山方舟 / heygen=HeyGen 数字人 / local=本地卡片视频 / auto=自动降级 */
+  digitalHumanEngine: 'volcano' | 'local' | 'auto' | 'heygen';
   /** 品牌水印开关（免费档叠加；AI 角标为合规强制，独立于此） */
   watermarkEnabled: boolean;
   /** 品牌水印文案 */
@@ -98,6 +99,17 @@ export interface OralWorkshopEngineConfig {
     /** 官方音色池（管理后台维护，桌面端展示） */
     voicePool: Array<{ speakerId: string; name?: string; resourceId?: string }>;
   };
+  /** HeyGen（M4+）配置组：替换火山数字人（第三方 SaaS，需公网音频 URL 与 API 套餐） */
+  heygen: {
+    /** HeyGen API Key（X-Api-Key，管理后台配置，环境变量 HEYGEN_API_KEY 兜底） */
+    apiKey: string;
+    /** API 端点（默认 https://api.heygen.com） */
+    endpoint: string;
+    /** 生成质量：720 / 1080（默认 1080） */
+    quality: '720' | '1080';
+    /** 默认预置形象 ID（用户未选形象时兜底） */
+    defaultAvatarId: string;
+  };
 }
 
 /** 单档配音配置（V1/V2 分别配对模型/音色/积分） */
@@ -130,10 +142,10 @@ const IMPLEMENTED_STEPS = new Set([
 /** 每轮最多处理的任务数 */
 const BATCH_LIMIT = 5;
 
-/** 引擎名归一化（非法值回退 auto） */
-function normalizeEngine(v: string): OralWorkshopEngineConfig['voiceEngine'] {
+/** 引擎名归一化（非法值回退 fallback；voice 与 digitalHuman 共用） */
+function normalizeEngine<T extends string>(v: string, allowed: readonly T[], fallback: T): T {
   const s = String(v ?? '').toLowerCase();
-  return s === 'volcano' || s === 'local' || s === 'auto' ? s : 'auto';
+  return (allowed as readonly string[]).includes(s) ? (s as T) : fallback;
 }
 
 /** 从 URL/路径推断扩展名（无扩展名返回空串） */
@@ -273,6 +285,16 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
     return { rewritten_script: rewritten };
   }
 
+  /** 档位积分成本：基础费 + 配音档价 + 数字人档价（管理后台可配，替换固定 21 分） */
+  private creditsCostOf(config: OralWorkshopEngineConfig, job: OralWorkshopJobEntity): number {
+    const base = config.volcano.baseCredits || 0;
+    const vv = job.voiceModelVersion || 'V2';
+    const vt = vv === 'V1' ? config.volcano.voiceTierV1 : config.volcano.voiceTierV2;
+    const dv = job.dhModelVersion || 'V2';
+    const dt = dv === 'V1' ? config.volcano.dhTierV1 : config.volcano.dhTierV2;
+    return Math.max(base + (vt.creditsCost || 0) + (dt.creditsCost || 0), 1);
+  }
+
   /**
    * voiceClone：人声轨产出（优先级：用户音频 → 火山克隆/TTS → 本地 SAPI 兜底）
    * 引擎选择读 system_config.oral_workshop（voiceEngine），环境变量可覆盖。
@@ -289,7 +311,7 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       const dest = path.join(outputDir, 'voice' + (extnameOf(job.audioUrl) || '.mp3'));
       await downloadTo(job.audioUrl, dest);
       this.logger.log(`[oral-workshop] 任务 ${job.id} voiceClone 采用用户音频`);
-      return { audio_path: dest, source: 'uploaded', engine: 'upload' };
+      return { audio_path: dest, source: 'uploaded', engine: 'upload', credits_cost: this.creditsCostOf(config, job) };
     }
 
     // 2) 火山方舟：声音复刻（参考音频）→ TTS
@@ -375,7 +397,7 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
         engine: 'volcano',
         speaker_id: res.speakerId ?? null,
         tier: voiceVersion,
-        credits_cost: config.volcano.baseCredits + tierCost + dhCost,
+        credits_cost: this.creditsCostOf(config, job),
       };
     }
 
@@ -386,14 +408,14 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       const dest = path.join(outputDir, 'voice.wav');
       await sapiTts(script, dest);
       this.logger.log(`[oral-workshop] 任务 ${job.id} voiceClone 本地 SAPI TTS 完成`);
-      return { audio_path: dest, source: 'sapi', engine: 'local' };
+      return { audio_path: dest, source: 'sapi', engine: 'local', credits_cost: this.creditsCostOf(config, job) };
     }
 
     throw new Error('声音引擎不可用：请配置火山（VOLCANO_ARK_API_KEY/VOLCANO_VOICE_MODEL + 参考音频）或提供 audioUrl');
   }
 
   /**
-   * digitalHuman：数字人视频产出（优先级：用户视频 → 火山合成 → 本地卡片视频兜底）
+   * digitalHuman：数字人视频产出（优先级：用户视频 → HeyGen/火山合成 → 本地卡片视频兜底）
    * 本地兜底 = 静态背景 + 语音轨，字幕由 videoEdit 叠加（纯字幕口播视频，抖音常见形态）。
    */
   private async runDigitalHuman(job: OralWorkshopJobEntity): Promise<Record<string, unknown>> {
@@ -421,14 +443,70 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       return this.runMultiShot(job, shots, mode, engine, config, outputDir);
     }
 
-    // 2) 火山数字人：提交 + 轮询 → 下载成片
+    // 2) HeyGen 数字人（M4+）：预置形象/talking photo 图片 + 公网音频 → 提交/轮询 → 下载成片
+    let heygenSkipped = false;
+    const useHeygen = mode === 'local'
+      ? false
+      : engine === 'heygen' || (engine === 'auto' && this.hasHeygen(config));
+    if (useHeygen) {
+      if (!this.hasHeygen(config)) {
+        throw new Error('数字人引擎配置为 heygen，但缺少 HeyGen API Key（请在管理后台-口播工坊-HeyGen 配置 填写）');
+      }
+      if (!audioPath) throw new Error('数字人合成需要语音（voiceClone 产物 audio_path）');
+      if (!/^https?:\/\//.test(audioPath)) {
+        // HeyGen 为第三方 SaaS，无法拉取本地文件：auto 模式降级本地卡片视频，显式 heygen 才报错
+        if (engine !== 'auto' || mode === 'cloud') {
+          throw new Error('HeyGen 数字人要求音频为公网 URL（当前为本地文件，请先上传素材到公网）');
+        }
+        this.logger.warn(`[oral-workshop] 任务 ${job.id} HeyGen 数字人需要公网音频 URL，auto 降级本地卡片视频`);
+        heygenSkipped = true;
+      } else {
+        // 形象：我的形象资产优先（kind=image → talking photo 图片；kind=avatar/cloud → 预置形象 ID）
+        let imageUrl: string | undefined;
+        let avatarId: string | undefined;
+        if (job.digitalHumanId && this.dhAssetRepo) {
+          const asset = await this.dhAssetRepo.findOne({ where: { id: job.digitalHumanId, userId: job.userId } });
+          if (asset) {
+            if (asset.kind === 'image' && asset.imageUrl) imageUrl = asset.imageUrl;
+            else avatarId = asset.cloudId || undefined;
+          } else {
+            throw new Error('数字人形象不存在或不属于当前用户（digitalHumanId=' + job.digitalHumanId + '）');
+          }
+        }
+        if (!imageUrl && !avatarId) avatarId = config.heygen.defaultAvatarId || undefined;
+        if (!imageUrl && !avatarId) {
+          throw new Error('未选择 HeyGen 形象（请选择预置形象/上传图片，或在管理后台配置默认形象）');
+        }
+        if (imageUrl && !/^https?:\/\//.test(imageUrl)) {
+          throw new Error('HeyGen talking photo 要求图片为公网 URL（当前为本地路径，请先上传到公网）');
+        }
+        const adapter = new HeyGenAdapter({
+          endpoint: config.heygen.endpoint || 'https://api.heygen.com',
+          apiKey: config.heygen.apiKey,
+          quality: config.heygen.quality,
+          pollIntervalMs: Number(process.env.HEYGEN_POLL_INTERVAL_MS || 5000),
+          maxAttempts: Number(process.env.HEYGEN_MAX_ATTEMPTS || 120),
+          timeoutMs: Number(process.env.HEYGEN_REQUEST_TIMEOUT_MS || 60000),
+        });
+        const { videoUrl } = await adapter.generate({ audioUrl: audioPath, imageUrl, avatarId });
+        const dest = path.join(outputDir, 'human.mp4');
+        await downloadTo(videoUrl, dest);
+        this.logger.log(`[oral-workshop] 任务 ${job.id} digitalHuman HeyGen 合成成功`);
+        return { video_path: dest, video_url: videoUrl, source: 'heygen', engine: 'heygen' };
+      }
+    }
+
+    // 3) 火山数字人：提交 + 轮询 → 下载成片
     let volcanoSkipped = false;
     const useVolcano = mode === 'local'
       ? false
       : mode === 'cloud' || engine === 'volcano' || (engine === 'auto' && this.hasVolcanoDigitalHuman(config));
     if (useVolcano) {
       if (!this.hasVolcanoDigitalHuman(config)) {
-        throw new Error('数字人引擎配置为 volcano，但缺少火山方舟密钥 / 数字人 endpoint（请在管理后台-口播工坊-火山方舟配置 填写）');
+        const hint = this.hasHeygen(config)
+          ? '检测到已配置 HeyGen，请将数字人引擎切换为 heygen（管理后台-口播工坊-数字人引擎），或在火山方舟配置补齐密钥/endpoint'
+          : '请在管理后台-口播工坊-火山方舟配置 填写';
+        throw new Error('数字人引擎配置为 volcano，但缺少火山方舟密钥 / 数字人 endpoint（' + hint + '）');
       }
       if (!audioPath) throw new Error('数字人合成需要语音（voiceClone 产物 audio_path）');
       if (!/^https?:\/\//.test(audioPath)) {
@@ -468,8 +546,8 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    // 3) 本地兜底：纯字幕卡片视频（模板背景色 + 语音轨）
-    const useLocal = mode === 'local' || !useVolcano || volcanoSkipped;
+    // 4) 本地兜底：纯字幕卡片视频（模板背景色 + 语音轨）
+    const useLocal = mode === 'local' || (!useVolcano && !useHeygen) || volcanoSkipped || heygenSkipped;
     if (useLocal) {
       if (!audioPath) throw new Error('本地数字人模式需要语音（voiceClone 产物 audio_path）');
       const template = loadTemplate(this.templateIdOf(job));
@@ -487,7 +565,7 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       return { video_path: dest, source: 'card', engine: 'local' };
     }
 
-    throw new Error('数字人引擎不可用：请配置火山（VOLCANO_ARK_API_KEY/VOLCANO_DIGITAL_HUMAN_ENDPOINT）或提供 videoUrl');
+    throw new Error('数字人引擎不可用：请配置 HeyGen（HEYGEN_API_KEY）或火山（VOLCANO_ARK_API_KEY/VOLCANO_DIGITAL_HUMAN_ENDPOINT）或提供 videoUrl');
   }
 
 
@@ -510,7 +588,13 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       throw new Error('多镜头数字人合成需要语音（voiceClone 产物 audio_path）');
     }
     const template = loadTemplate(this.templateIdOf(job));
-    const canCloud = mode === 'cloud' || engine === 'volcano' || (mode === 'auto' && this.hasVolcanoDigitalHuman(config));
+    // HeyGen 多镜头暂不支持（分镜音频为本地文件，HeyGen 需公网 URL）：heygen 引擎降级本地卡片视频
+    if (engine === 'heygen' || (engine === 'auto' && this.hasHeygen(config))) {
+      this.logger.warn(`[oral-workshop] 任务 ${job.id} 多镜头模式暂不支持 HeyGen 云合成，降级本地卡片视频`);
+    }
+    const canCloud = engine === 'heygen'
+      ? false
+      : mode === 'cloud' || engine === 'volcano' || (mode === 'auto' && this.hasVolcanoDigitalHuman(config));
     const audioPublic = /^https?:\/\//.test(audioPath);
     const segments: string[] = [];
     let cursor = 0;
@@ -812,8 +896,12 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       return v === 'V1' || v === 'V2' ? v : undefined;
     };
     return {
-      voiceEngine: normalizeEngine(str('ORAL_WORKSHOP_VOICE_ENGINE', 'voiceEngine', 'auto')),
-      digitalHumanEngine: normalizeEngine(str('ORAL_WORKSHOP_DIGITAL_HUMAN_ENGINE', 'digitalHumanEngine', 'auto')),
+      voiceEngine: normalizeEngine(str('ORAL_WORKSHOP_VOICE_ENGINE', 'voiceEngine', 'auto'), ['volcano', 'local', 'auto'] as const, 'auto'),
+      digitalHumanEngine: normalizeEngine(
+        str('ORAL_WORKSHOP_DIGITAL_HUMAN_ENGINE', 'digitalHumanEngine', 'auto'),
+        ['volcano', 'local', 'auto', 'heygen'] as const,
+        'auto',
+      ),
       watermarkEnabled: bool('ORAL_WORKSHOP_WATERMARK_ENABLED', 'watermarkEnabled', true),
       watermarkText: str('ORAL_WORKSHOP_WATERMARK_TEXT', 'watermarkText', '深瞳AI'),
       maxConcurrentJobs: num('ORAL_WORKSHOP_MAX_CONCURRENT_JOBS', 'maxConcurrentJobs', 5),
@@ -856,6 +944,12 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
         dhTierV2: { creditsCost: num('ORAL_WORKSHOP_DH_TIER_V2_CREDITS', 'dhTierV2.creditsCost', 0) },
         voicePool,
       },
+      heygen: {
+        apiKey: str('HEYGEN_API_KEY', 'heygenApiKey', ''),
+        endpoint: str('HEYGEN_ENDPOINT', 'heygenEndpoint', 'https://api.heygen.com'),
+        quality: str('HEYGEN_QUALITY', 'heygenQuality', '1080') === '720' ? '720' : '1080',
+        defaultAvatarId: str('ORAL_WORKSHOP_HEYGEN_AVATAR_ID', 'heygenDefaultAvatarId', ''),
+      },
     };
   }
 
@@ -871,6 +965,10 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
 
   private hasVolcanoDigitalHuman(cfg: OralWorkshopEngineConfig): boolean {
     return Boolean(cfg.volcano.apiKey && cfg.volcano.dhEndpoint);
+  }
+
+  private hasHeygen(cfg: OralWorkshopEngineConfig): boolean {
+    return Boolean(cfg.heygen.apiKey);
   }
 
   /** 将 composePlan 生成的 ASS 内容写入临时文件（供 subtitles 滤镜引用） */

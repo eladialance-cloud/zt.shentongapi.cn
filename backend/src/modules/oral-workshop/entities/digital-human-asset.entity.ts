@@ -21,9 +21,9 @@ export class DigitalHumanAssetEntity {
   @Column({ length: 128 })
   name: string;
 
-  /** 形象类型（D2）：cloud=火山数字人形象 ID / video=本地上传真人视频 */
+  /** 形象类型（D2/M4+）：cloud=火山数字人形象 ID / video=本地上传真人视频 / image=HeyGen talking photo 图片 / avatar=HeyGen 预置形象 */
   @Column({ length: 8, default: 'cloud' })
-  kind: 'cloud' | 'video';
+  kind: 'cloud' | 'video' | 'image' | 'avatar';
 
   /** 火山数字人形象 ID（digital_human_id，kind=cloud 时必填） */
   @Column({ name: 'cloud_id', length: 128 })
@@ -32,6 +32,10 @@ export class DigitalHumanAssetEntity {
   /** 本地视频形象 URL（D2：kind=video 时使用，转码后的 MP4 公网/上传直链） */
   @Column({ name: 'video_url', type: 'varchar', length: 512, nullable: true })
   videoUrl?: string | null;
+
+  /** HeyGen talking photo 图片 URL（M4+：kind=image 时使用，需公网 URL 供 HeyGen 拉取） */
+  @Column({ name: 'image_url', type: 'varchar', length: 512, nullable: true })
+  imageUrl?: string | null;
 
   /** 形象预览图/样片 URL（可选） */
   @Column({ name: 'preview_url', type: 'varchar', length: 512, nullable: true })

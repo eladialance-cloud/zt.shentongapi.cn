@@ -189,17 +189,28 @@ export interface VoiceAsset {
 export interface DigitalHumanAsset {
   id: number
   name: string
-  /** 形象类型（D2）：cloud=火山形象 ID / video=本地上传真人视频 */
-  kind: 'cloud' | 'video'
+  /** 形象类型（D2/M4+）：cloud=火山形象 ID / video=本地上传真人视频 / image=HeyGen talking photo 图片 / avatar=HeyGen 预置形象 */
+  kind: 'cloud' | 'video' | 'image' | 'avatar'
   cloudId: string
   /** 本地视频形象 URL（D2，kind=video 时使用） */
   videoUrl: string | null
+  /** HeyGen talking photo 图片 URL（M4+，kind=image 时使用） */
+  imageUrl: string | null
   previewUrl: string | null
   /** 形象描述（D1，添加时填写） */
   description: string | null
   authorized: boolean
   status: string
   createdAt: string
+}
+
+/** HeyGen 官方预置形象（GET /oral-workshop/heygen/avatars） */
+export interface HeyGenAvatarItem {
+  avatar_id: string
+  avatar_name?: string
+  /** 形象缩略图（桌面端选择展示） */
+  avatar_url?: string
+  preview_avatar_url?: string
 }
 
 /** 发布账号（F4a：GET/POST /oral-workshop/publish-accounts） */

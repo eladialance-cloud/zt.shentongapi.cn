@@ -78,7 +78,7 @@ export interface OralWorkshopConfig {
   /** 声音克隆引擎 */
   voiceEngine: 'volcano' | 'local'
   /** 数字人合成引擎 */
-  digitalHumanEngine: 'volcano' | 'local'
+  digitalHumanEngine: 'volcano' | 'local' | 'heygen'
   /** 免费档水印开关 */
   watermarkEnabled: boolean
   /** 并发任务上限 */
@@ -173,6 +173,16 @@ export interface OralWorkshopConfig {
   dhModelVersion?: 'V1' | 'V2'
   /** 默认数字人形象 ID */
   dhDefaultImageId?: string
+
+  // ===== HeyGen 数字人（M4+，替换火山）=====
+  /** HeyGen API Key（X-Api-Key，https://app.heygen.com/settings API 获取） */
+  heygenApiKey?: string
+  /** HeyGen API 端点（默认 https://api.heygen.com） */
+  heygenEndpoint?: string
+  /** HeyGen 生成质量：720 / 1080（默认 1080） */
+  heygenQuality?: '720' | '1080'
+  /** HeyGen 默认预置形象 ID（用户未选形象时兜底） */
+  heygenDefaultAvatarId?: string
 
   // ===== 语音识别 / 向量检索 =====
   /** 语音识别引擎：openai=whisper（默认）/ volcano=火山 ASR */

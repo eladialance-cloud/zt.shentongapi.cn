@@ -24,6 +24,7 @@ import type {
   TopicItem,
   VoiceAsset,
   DigitalHumanAsset,
+  HeyGenAvatarItem,
   PublishAccount,
   PublishPlatformItem,
   PublishJobResult,
@@ -179,12 +180,14 @@ export async function listMyDigitalHumans(): Promise<DigitalHumanAsset[]> {
  */
 export async function createMyDigitalHuman(payload: {
   name: string
-  /** 火山数字人形象 ID（kind=cloud 时必填） */
+  /** 数字人形象 ID（kind=cloud/avatar 时必填，火山形象 ID 或 HeyGen 预置形象 ID） */
   cloudId?: string
-  /** 形象类型（D2）：cloud=火山形象 ID / video=本地上传真人视频 */
-  kind?: 'cloud' | 'video'
+  /** 形象类型（D2/M4+）：cloud=火山形象 ID / video=本地上传真人视频 / image=HeyGen talking photo 图片 */
+  kind?: 'cloud' | 'video' | 'image'
   /** 本地视频形象 URL（D2，kind=video 时后端会生成） */
   videoUrl?: string
+  /** HeyGen talking photo 图片 URL（M4+，kind=image 时必填，需公网地址） */
+  imageUrl?: string
   description?: string
   previewUrl?: string
 }): Promise<DigitalHumanAsset> {
@@ -202,6 +205,28 @@ export async function uploadDigitalHumanVideo(file: File | Blob): Promise<Digita
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 600000,
   })
+}
+
+/**
+ * 上传图片供 HeyGen talking photo 使用（M4+）
+ * POST /oral-workshop/digital-humans/upload-image  formData: { file }
+ * 返回 uploads 相对 URL；前端需 resolveMediaUrl 转公网地址后 createMyDigitalHuman(kind='image')
+ */
+export async function uploadDigitalHumanImage(file: File | Blob): Promise<{ imageUrl: string; previewUrl: string; fileName: string }> {
+  const formData = new FormData()
+  formData.append('file', file)
+  return httpClient.post<{ imageUrl: string; previewUrl: string; fileName: string }>('/oral-workshop/digital-humans/upload-image', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  })
+}
+
+/**
+ * HeyGen 官方预置形象列表
+ * GET /oral-workshop/heygen/avatars  返回 { configured, avatars, message? }
+ */
+export async function listHeygenAvatars(): Promise<{ configured: boolean; avatars: HeyGenAvatarItem[]; message?: string }> {
+  return httpClient.get<{ configured: boolean; avatars: HeyGenAvatarItem[]; message?: string }>('/oral-workshop/heygen/avatars')
 }
 
 /**
@@ -485,6 +510,8 @@ export default {
   listMyDigitalHumans,
   createMyDigitalHuman,
   uploadDigitalHumanVideo,
+  uploadDigitalHumanImage,
+  listHeygenAvatars,
   deleteMyDigitalHuman,
   listPublishAccounts,
   createPublishAccount,

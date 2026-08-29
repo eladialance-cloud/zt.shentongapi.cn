@@ -183,6 +183,13 @@ export class OralWorkshopController {
     return this.oralWorkshopService.deleteVoice(user.userId, voiceId);
   }
 
+  // ===== HeyGen 官方形象 =====
+  @Get('heygen/avatars')
+  @ApiOperation({ summary: 'HeyGen 官方预置形象列表（管理后台配置 API Key 后可用）' })
+  listHeygenAvatars() {
+    return this.oralWorkshopService.listHeygenAvatars();
+  }
+
   // ===== 我的数字人形象 =====
   @Get('digital-humans')
   @ApiOperation({ summary: '我的数字人形象列表' })
@@ -210,6 +217,14 @@ export class OralWorkshopController {
   uploadDigitalHuman(@CurrentUser() user: ICurrentUser, @UploadedFile() file?: Express.Multer.File) {
     if (!file) throw new BadRequestException('请选择要上传的视频文件');
     return this.oralWorkshopService.uploadDigitalHumanVideo(user.userId, file);
+  }
+
+  @Post('digital-humans/upload-image')
+  @ApiOperation({ summary: 'M4+：上传图片供 HeyGen talking photo 使用（保存到 uploads 并返回 URL，不建资产；由前端转公网 URL 后走新增形象）' })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024 } }))
+  uploadDigitalHumanImage(@CurrentUser() user: ICurrentUser, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('请选择要上传的图片文件');
+    return this.oralWorkshopService.uploadDigitalHumanImage(user.userId, file);
   }
 
     // ===== 发布账号（G：桌面端扫码绑定 + 管理后台平台开关；对标 aigc-human platform_accounts） =====

@@ -71,6 +71,8 @@ import {
   listOralWorkshopTemplates,
   getOralWorkshopMeta,
   uploadDigitalHumanVideo,
+  uploadDigitalHumanImage,
+  listHeygenAvatars,
   listPublishAccounts,
   createPublishAccount,
   bindPublishAccount,
@@ -84,6 +86,7 @@ import {
   SUBTITLE_LANG_OPTIONS,
   subtitleLangLabel,
   type DigitalHumanAsset,
+  type HeyGenAvatarItem,
   type OralWorkshopTemplateMeta,
   type StyleAnalysisResult,
   type TopicItem,
@@ -347,6 +350,11 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
   const [shots, setShots] = useState<Array<{ digitalHumanId?: number; seconds: number }>>([])
   // D2：上传视频建形象（服务端 ffmpeg 转码中）
   const [dhVideoUploading, setDhVideoUploading] = useState(false)
+  // M4+：HeyGen 预置形象（管理后台配置 Key 后可用）
+  const [heygenAvatars, setHeygenAvatars] = useState<HeyGenAvatarItem[]>([])
+  const [heygenConfigured, setHeygenConfigured] = useState(false)
+  const [heygenAvatarsLoading, setHeygenAvatarsLoading] = useState(false)
+  const [dhImageUploading, setDhImageUploading] = useState(false)
   // E7：字幕轨 / BGM 轨开关（默认开）
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(true)
   const [bgmEnabled, setBgmEnabled] = useState(true)
@@ -381,6 +389,12 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
       .finally(() => setTemplatesLoading(false))
     void listMyVoices().then(setVoices).catch(() => setVoices([]))
     void listMyDigitalHumans().then(setDhAssets).catch(() => setDhAssets([]))
+    void listHeygenAvatars()
+      .then((res) => {
+        setHeygenConfigured(res.configured)
+        setHeygenAvatars(res.avatars || [])
+      })
+      .catch(() => setHeygenConfigured(false))
     void listPublishAccounts().then(setPublishAccounts).catch(() => setPublishAccounts([]))
     void listPublishPlatforms().then(setPublishPlatforms).catch(() => setPublishPlatforms([]))
     void getOralWorkshopMeta()
@@ -717,6 +731,69 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
       message.error('视频形象上传失败: ' + (err as Error).message)
     } finally {
       setDhVideoUploading(false)
+    }
+    return false
+  }
+
+  /** M4+：拉取 HeyGen 官方预置形象（管理后台配置 Key 后可用） */
+  const loadHeygenAvatars = async () => {
+    setHeygenAvatarsLoading(true)
+    try {
+      const res = await listHeygenAvatars()
+      setHeygenConfigured(res.configured)
+      setHeygenAvatars(res.avatars || [])
+    } catch (err) {
+      setHeygenConfigured(false)
+      console.error('[Workbench] load heygen avatars failed:', err)
+    } finally {
+      setHeygenAvatarsLoading(false)
+    }
+  }
+
+  /** M4+：选中 HeyGen 预置形象——已存在则直接选中，否则保存为「我的形象」（kind=cloud，cloudId=预置形象 ID） */
+  const handlePickHeygenAvatar = async (avatar: HeyGenAvatarItem) => {
+    try {
+      const existed = dhAssets.find((d) => (d.kind === 'cloud' || d.kind === 'avatar') && d.cloudId === avatar.avatar_id)
+      if (existed) {
+        form.setFieldValue('digitalHumanId', existed.id)
+        message.success('已选择 HeyGen 形象：' + (avatar.avatar_name || avatar.avatar_id))
+        return
+      }
+      const asset = await createMyDigitalHuman({
+        name: avatar.avatar_name || avatar.avatar_id,
+        cloudId: avatar.avatar_id,
+        kind: 'cloud',
+        previewUrl: avatar.avatar_url || avatar.preview_avatar_url || undefined,
+        description: 'HeyGen 官方预置形象',
+      })
+      setDhAssets((prev) => [asset, ...prev.filter((a) => a.id !== asset.id)])
+      form.setFieldValue('digitalHumanId', asset.id)
+      message.success('已选择 HeyGen 形象：' + (avatar.avatar_name || avatar.avatar_id))
+    } catch (err) {
+      message.error('选择 HeyGen 形象失败: ' + (err as Error).message)
+    }
+  }
+
+  /** M4+：上传图片建 HeyGen talking photo 形象（上传后转公网 URL，保存为 kind=image 资产） */
+  const handleUploadDhImage = async (file: File) => {
+    setDhImageUploading(true)
+    try {
+      const up = await uploadDigitalHumanImage(file)
+      const absoluteUrl = resolveMediaUrl(up.imageUrl)
+      const asset = await createMyDigitalHuman({
+        name: (file.name || 'HeyGen 图片形象').replace(/\.[^.]+$/, '') || 'HeyGen 图片形象',
+        kind: 'image',
+        imageUrl: absoluteUrl,
+        previewUrl: up.previewUrl,
+        description: 'HeyGen talking photo 图片形象（公网地址，已可调用）',
+      })
+      setDhAssets((prev) => [asset, ...prev.filter((a) => a.id !== asset.id)])
+      form.setFieldValue('digitalHumanId', asset.id)
+      message.success('图片形象已添加并选中（HeyGen talking photo）')
+    } catch (err) {
+      message.error('图片形象上传失败: ' + (err as Error).message)
+    } finally {
+      setDhImageUploading(false)
     }
     return false
   }
@@ -1311,10 +1388,74 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                 allowClear
                 options={dhAssets.map((d) => ({
                   value: d.id,
-                  label: (d.kind === 'video' ? '🎬 ' : '') + d.name + (d.authorized ? '' : '（未授权）'),
+                  label: (d.kind === 'video' ? '🎬 ' : d.kind === 'image' ? '🖼️ ' : d.kind === 'avatar' ? '🤖 ' : '') + d.name + (d.authorized ? '' : '（未授权）'),
                 }))}
               />
             </Form.Item>
+            <div className={styles.uploadGroup} style={{ marginTop: 8 }}>
+              <div className={styles.uploadRow} style={{ alignItems: 'center' }}>
+                <span className={styles.uploadLabel}>HeyGen 预置形象（官方形象库）</span>
+                {heygenConfigured && (
+                  <Button size="small" type="text" icon={<RefreshCw size={12} />} onClick={() => void loadHeygenAvatars()} loading={heygenAvatarsLoading}>
+                    刷新
+                  </Button>
+                )}
+              </div>
+              {!heygenConfigured ? (
+                <div className={styles.uploadHint}>未配置 HeyGen API Key——请在管理后台「口播工坊-HeyGen 配置」填写后刷新</div>
+              ) : heygenAvatarsLoading ? (
+                <Spin size="small" />
+              ) : heygenAvatars.length === 0 ? (
+                <div className={styles.uploadHint}>暂无可用形象（管理后台可用「测试 HeyGen 服务」验证 Key）</div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginTop: 4 }}>
+                  {heygenAvatars.map((av) => {
+                    const thumb = av.avatar_url || av.preview_avatar_url
+                    const selected = dhAssets.some(
+                      (d) => (d.kind === 'cloud' || d.kind === 'avatar') && d.cloudId === av.avatar_id && d.id === form.getFieldValue('digitalHumanId'),
+                    )
+                    return (
+                      <div
+                        key={av.avatar_id}
+                        title={av.avatar_name || av.avatar_id}
+                        onClick={() => void handlePickHeygenAvatar(av)}
+                        style={{
+                          cursor: 'pointer',
+                          borderRadius: 8,
+                          overflow: 'hidden',
+                          border: selected ? '2px solid var(--color-primary, #1677ff)' : '2px solid transparent',
+                          opacity: selected ? 1 : 0.85,
+                        }}
+                      >
+                        {thumb ? (
+                          <img
+                            src={resolveMediaUrl(thumb)}
+                            alt={av.avatar_name || av.avatar_id}
+                            style={{ width: '100%', aspectRatio: '3/4', objectFit: 'cover', display: 'block' }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              aspectRatio: '3/4',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              background: 'var(--color-bg-secondary, #f5f5f5)',
+                              fontSize: 11,
+                              textAlign: 'center',
+                              padding: 4,
+                              wordBreak: 'break-all',
+                            }}
+                          >
+                            {av.avatar_name || av.avatar_id}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
             {(() => {
               const cur = dhAssets.find((d) => d.id === form.getFieldValue('digitalHumanId'))
               if (!cur) return null
@@ -1348,6 +1489,11 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                   上传视频建形象
                 </Button>
               </Upload>
+              <Upload accept="image/*" showUploadList={false} beforeUpload={(f) => handleUploadDhImage(f)}>
+                <Button size="small" type="dashed" icon={<UploadIcon size={12} />} loading={dhImageUploading}>
+                  上传图片建形象（HeyGen）
+                </Button>
+              </Upload>
               {dhAssets.some((d) => d.id === form.getFieldValue('digitalHumanId')) && (
                 <Button
                   size="small"
@@ -1373,15 +1519,15 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                 onClear={() => setVideoUrl(undefined)}
               />
             </div>
-            <div className={styles.panelHint}>未配置火山数字人时自动使用上传视频或本地卡片兜底。</div>
+            <div className={styles.panelHint}>云端：HeyGen（预置形象/图片 talking photo）/火山；未配置云端 Key 时自动使用上传视频或本地卡片兜底。</div>
             <Form.Item
               label="数字人生成方式"
-              tooltip="自动=按后台配置（已配火山走云端，否则本地）；云端=强制火山数字人合成；本地=只用本地卡片/上传视频"
+              tooltip="自动=按后台配置（已配 HeyGen/火山走云端，否则本地卡片）；云端=强制云端合成（HeyGen/火山）；本地=只用本地卡片/上传视频"
               style={{ marginTop: 14 }}
             >
               <Radio.Group value={dhGenerationMode} onChange={(e) => setDhGenerationMode(e.target.value)} optionType="button" buttonStyle="solid">
                 <Radio.Button value="auto">自动</Radio.Button>
-                <Radio.Button value="cloud">云端（火山）</Radio.Button>
+                <Radio.Button value="cloud">云端（火山/HeyGen）</Radio.Button>
                 <Radio.Button value="local">本地</Radio.Button>
               </Radio.Group>
             </Form.Item>
@@ -1404,7 +1550,7 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                       style={{ minWidth: 170 }}
                       value={s.digitalHumanId}
                       onChange={(v) => updateShot(i, { digitalHumanId: v as number })}
-                      options={dhAssets.map((d) => ({ value: d.id, label: (d.kind === 'video' ? '🎬 ' : '') + d.name }))}
+                      options={dhAssets.map((d) => ({ value: d.id, label: (d.kind === 'video' ? '🎬 ' : d.kind === 'image' ? '🖼️ ' : d.kind === 'avatar' ? '🤖 ' : '') + d.name }))}
                     />
                     <InputNumber
                       size="small"

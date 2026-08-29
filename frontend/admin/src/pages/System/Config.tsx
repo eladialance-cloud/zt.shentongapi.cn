@@ -303,6 +303,10 @@ export default function SystemConfigPage() {
         dhQueryPath: cfgv.dhQueryPath || '/digital-human/query',
         dhModelVersion: cfgv.dhModelVersion || 'V1',
         dhDefaultImageId: cfgv.dhDefaultImageId || '',
+        heygenApiKey: cfgv.heygenApiKey || '',
+        heygenEndpoint: cfgv.heygenEndpoint || 'https://api.heygen.com',
+        heygenQuality: cfgv.heygenQuality || '1080',
+        heygenDefaultAvatarId: cfgv.heygenDefaultAvatarId || '',
         sttProvider: cfgv.sttProvider || 'openai',
         sttModel: cfgv.sttModel || '',
         sttEndpoint: cfgv.sttEndpoint || '',
@@ -515,6 +519,10 @@ export default function SystemConfigPage() {
         dhQueryPath: values.dhQueryPath || '/digital-human/query',
         dhModelVersion: values.dhModelVersion || 'V1',
         dhDefaultImageId: values.dhDefaultImageId || '',
+        heygenApiKey: values.heygenApiKey || '',
+        heygenEndpoint: values.heygenEndpoint || 'https://api.heygen.com',
+        heygenQuality: values.heygenQuality === '720' ? '720' : '1080',
+        heygenDefaultAvatarId: values.heygenDefaultAvatarId || '',
         sttProvider: values.sttProvider || 'openai',
         sttModel: values.sttModel || '',
         sttEndpoint: values.sttEndpoint || '',
@@ -579,7 +587,7 @@ export default function SystemConfigPage() {
     message.info('用途模型已清空，保存后各用途将自动使用默认模型')
   }
 
-  const handleTestCapability = async (type: 'tts' | 'clone' | 'dh' | 'stt' | 'embedding') => {
+  const handleTestCapability = async (type: 'tts' | 'clone' | 'dh' | 'heygen' | 'stt' | 'embedding') => {
     try {
       const cfg = oralForm.getFieldsValue() as unknown as Record<string, unknown>
       setTestingCap((p) => ({ ...p, [type]: true }))
@@ -925,12 +933,13 @@ export default function SystemConfigPage() {
                   name="digitalHumanEngine"
                   label="数字人合成引擎"
                   rules={[{ required: true, message: '请选择' }]}
-                  extra="volcano=火山方舟（云端，默认）；local=本地引擎（预留）"
+                  extra="volcano=火山方舟（云端）；heygen=HeyGen 数字人（云端，需配置下方 API Key）；local=本地卡片兜底；auto=自动降级（默认）"
                 >
                   <Select
                     options={[
                       { value: 'volcano', label: '火山方舟（volcano，云端）' },
-                      { value: 'local', label: '本地引擎（local，预留）' }
+                      { value: 'heygen', label: 'HeyGen 数字人（heygen，云端）' },
+                      { value: 'local', label: '本地引擎（local，卡片兜底）' }
                     ]}
                   />
                 </Form.Item>
@@ -1238,6 +1247,40 @@ export default function SystemConfigPage() {
                     loading={testingCap.dh}
                   >
                     测试数字人服务（探测提交接口连通性）
+                  </Button>
+                </div>
+              </div>
+
+              <div className={styles.sectionTitle} style={{ marginTop: 16 }}>
+                <ThunderboltOutlined /> HeyGen 数字人（M4+ · 替换火山，需公网音频 URL）
+              </div>
+              <div className={styles.levelGrid} style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                <Form.Item name="heygenApiKey" label="HeyGen API Key（X-Api-Key）" extra="https://app.heygen.com/settings 获取（需开通 API 套餐）">
+                  <Input.Password placeholder="HeyGen API Key" autoComplete="new-password" allowClear />
+                </Form.Item>
+                <Form.Item name="heygenEndpoint" label="HeyGen API 端点" extra="官方默认 https://api.heygen.com">
+                  <Input placeholder="https://api.heygen.com" allowClear />
+                </Form.Item>
+                <Form.Item name="heygenQuality" label="HeyGen 生成质量" extra="1080=高清（默认）；720=标清（更省配额）">
+                  <Select
+                    options={[
+                      { value: '1080', label: '1080（高清，默认）' },
+                      { value: '720', label: '720（标清，更省配额）' }
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item name="heygenDefaultAvatarId" label="HeyGen 默认预置形象 ID" extra="用户未选“我的形象”时的兜底形象（桌面端可从形象列表选择后保存）">
+                  <Input placeholder="预置形象 ID（如 60ee9467c5d9854f4a19d2ba）" allowClear />
+                </Form.Item>
+                <div style={{ marginBottom: 12 }}>
+                  <Button
+                    type="dashed"
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    onClick={() => void handleTestCapability('heygen')}
+                    loading={testingCap.heygen}
+                  >
+                    测试 HeyGen 服务（拉取形象列表验证 Key）
                   </Button>
                 </div>
               </div>

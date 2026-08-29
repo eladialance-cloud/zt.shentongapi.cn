@@ -1427,6 +1427,9 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
         user_id BIGINT NOT NULL,
         name VARCHAR(128) NOT NULL,
         cloud_id VARCHAR(128) NOT NULL,
+        kind VARCHAR(8) NOT NULL DEFAULT 'cloud',
+        video_url VARCHAR(512),
+        image_url VARCHAR(512),
         preview_url VARCHAR(512),
         authorized TINYINT(1) NOT NULL DEFAULT 1,
         status VARCHAR(16) NOT NULL DEFAULT 'ready',
@@ -1435,6 +1438,16 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
         KEY idx_dha_user_id (user_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='口播工坊-我的数字人形象'`);
       logger.log('Created table: digital_human_assets');
+    }
+
+    // 既有表加列（幂等）：digital_human_assets 支持 HeyGen（image_url 列）
+    const [dhAssetsImageUrlCol] = await queryRunner.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'digital_human_assets' AND COLUMN_NAME = 'image_url'`
+    );
+    if (!dhAssetsImageUrlCol) {
+      await queryRunner.query(`ALTER TABLE digital_human_assets ADD COLUMN image_url VARCHAR(512) DEFAULT NULL COMMENT 'HeyGen talking photo 图片 URL(kind=image)' AFTER preview_url`);
+      logger.log('Added column: digital_human_assets.image_url');
     }
 
     // 既有表加列（幂等）：team_tasks 关联 briefs 需求单
