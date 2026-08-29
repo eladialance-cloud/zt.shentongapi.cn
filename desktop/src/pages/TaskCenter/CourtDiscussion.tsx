@@ -258,7 +258,7 @@ export default function CourtDiscussion() {
   // ═══ 设置页 ═══
   if (phase === "setup") {
     return (
-      <div className="edictPanels" style={{ maxWidth: 980, margin: "0 auto", padding: "4px 0 24px" }}>
+      <div className="edictPanels" style={{ maxWidth: "none", width: "100%", margin: "0 auto", padding: "4px 0 24px" }}>
         <div className="text-center py-4">
           <div className="text-xl font-bold" style={{ background: "linear-gradient(90deg,#f5c842,#a07aff)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
             🏛 朝堂议政
@@ -339,7 +339,7 @@ export default function CourtDiscussion() {
   const messages = session?.messages || [];
 
   return (
-    <div className="edictPanels" style={{ maxWidth: 1100, margin: "0 auto", padding: "4px 0 24px" }}>
+    <div className="edictPanels" style={{ maxWidth: "none", width: "100%", margin: "0 auto", padding: "4px 0 24px" }}>
       {/* 顶部控制栏 */}
       <div className="flex items-center justify-between flex-wrap gap-2 rounded-xl px-4 py-2 border" style={{ background: "var(--panel)", borderColor: "var(--line)", marginBottom: 12 }}>
         <div className="flex items-center gap-2">
@@ -394,7 +394,7 @@ export default function CourtDiscussion() {
       <div className="text-xs text-center py-1" style={{ color: "var(--muted)" }}>📜 {session?.topic || ""}</div>
 
       {/* 主内容：朝堂布局 + 聊天记录 */}
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-3">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,380px)_1fr] gap-3">
         {/* 左侧：朝堂可视化 */}
         <div className="rounded-xl p-3 border relative overflow-hidden" style={{ background: "var(--panel)", borderColor: "var(--line)", minHeight: 320 }}>
           <div className="text-center mb-2">
