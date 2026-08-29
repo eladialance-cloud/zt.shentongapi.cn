@@ -1,4 +1,5 @@
 import {
+  appendOfficialOutput,
   edictApprove,
   edictBoard,
   edictComplete,
@@ -371,5 +372,46 @@ describe("buildNodePrompt", () => {
     expect(p).toContain("调研竞品");
     expect(p).toContain("中书省");
     expect(p).toContain("禁止输出看板命令");
+  });
+});
+
+describe("官署完整输出落盘（official_outputs）", () => {
+  it("appendOfficialOutput 追加完整输出并按时间排序", () => {
+    const { deps, store } = makeDeps();
+    store.push({
+      id: "JJC-20260827-001", title: "测试", state: "Zhongshu", org: "中书省",
+      flow_log: [], progress_log: [], todos: [],
+      createdAt: "2026-08-27T00:00:00Z", updatedAt: "2026-08-27T00:00:00Z",
+    });
+    appendOfficialOutput(deps, "JJC-20260827-001", { agent: "zhongshu", agentLabel: "中书省", state: "Zhongshu", output: "完整方案全文（超过 90 字也应该完整保存）" });
+    appendOfficialOutput(deps, "JJC-20260827-001", { agent: "hubu", agentLabel: "户部", state: "Doing", output: "![封面](https://cos.example.com/a.png)\nhttps://cos.example.com/v.mp4" });
+    expect(store[0].official_outputs).toHaveLength(2);
+    expect(store[0].official_outputs?.[0]?.agent).toBe("zhongshu");
+    expect(store[0].official_outputs?.[1]?.output).toContain("https://cos.example.com/v.mp4");
+    expect(store[0].official_outputs?.[0]?.at).toBeTruthy();
+  });
+
+  it("编排完成后每条官署完整输出都落盘（不被 90 字摘要截断）", async () => {
+    const { deps, store } = makeDeps({
+      runHermes: async (p) => {
+        if (p === "zhongshu") return "方案：" + "中".repeat(300);
+        if (p === "menxia") return "准奏。";
+        if (p === "shangshu") return "户部。任务令：交付数据分析报告。";
+        return "交付：" + "文".repeat(500);
+      },
+    });
+    await edictIssue(deps, { title: "测试任务" });
+    const r = await edictRunPipeline(deps, "JJC-20260827-001");
+    expect(r.ok).toBe(true);
+    const task = store.find((t) => t.id === "JJC-20260827-001");
+    expect(task?.official_outputs?.length).toBeGreaterThanOrEqual(4);
+    // 六部交付完整落盘，不被截断
+    const doing = task?.official_outputs?.find((o) => o.state === "Doing");
+    expect(doing).toBeTruthy();
+    expect(doing?.output).toContain("文".repeat(500));
+    expect(task?.output).toContain("文".repeat(500));
+    // 中书方案完整落盘
+    const zhongshu = task?.official_outputs?.find((o) => o.agent === "zhongshu");
+    expect(zhongshu?.output).toContain("中".repeat(300));
   });
 });

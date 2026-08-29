@@ -3,6 +3,8 @@
  * 数据源：edict:board（已完成/已取消任务 + flow_log 流转记录），onBoardUpdated 实时刷新
  */
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import MediaRenderer from "@/components/MediaRenderer";
 import { isEdictAvailable, edictBoard, onEdictBoardUpdated } from "@/api/edict-api";
 import type { EdictTask as Task, EdictFlowLogEntry as FlowEntry } from "@shared/edict-types";
 import { STATE_LABEL, isEdictTask as isEdict, toast, fmtBoardTime } from "./panels-data";
@@ -133,7 +135,10 @@ function MemorialDetailModal({
   onClose: () => void;
   onExport: (t: Task) => void;
 }) {
+  const navigate = useNavigate();
   const fl = t.flow_log || [];
+  const lastOfficial = t.official_outputs?.length ? t.official_outputs[t.official_outputs.length - 1] : undefined;
+  const deliverText = (lastOfficial?.output || (t.output && t.output !== "-" ? t.output : "")).trim();
   const st = t.state || "Unknown";
   const stIcon = st === "Done" ? "✅" : st === "Cancelled" ? "🚫" : "🔄";
   const depts = [...new Set(fl.map((f) => f.from).concat(fl.map((f) => f.to)).filter((x) => x && x !== "皇上"))];
@@ -206,10 +211,17 @@ function MemorialDetailModal({
           {renderPhase("六部执行", "⚔️", execLog)}
           {renderPhase("汇总回奏", "📨", resultLog)}
 
-          {t.output && t.output !== "-" && (
+          {deliverText && (
             <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-              <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>📦 产出物</div>
-              <code style={{ fontSize: 11, wordBreak: "break-all" }}>{t.output}</code>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 600 }}>📦 产出物（完整交付）</span>
+                <button className="btn btn-g" onClick={() => navigate("/assets")} style={{ fontSize: 11, padding: "4px 10px" }}>
+                  🗂 去素材库
+                </button>
+              </div>
+              <div style={{ fontSize: 12, lineHeight: 1.7, color: "var(--muted)", wordBreak: "break-word" }}>
+                <MediaRenderer content={deliverText} />
+              </div>
             </div>
           )}
 

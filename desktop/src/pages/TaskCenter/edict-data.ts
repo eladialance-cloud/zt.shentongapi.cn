@@ -8,6 +8,7 @@ import type {
   EdictTask as BoardTask,
   EdictFlowLogEntry,
   EdictOfficial,
+  EdictOfficialOutput,
   EdictTodo,
 } from "@shared/edict-types";
 
@@ -239,6 +240,8 @@ export interface UiEdictTask {
   flowLog: EdictFlowLogEntry[];
   progressLog: { at: string; agent: string; agentLabel?: string; text: string; todos?: string[] }[];
   todos: EdictTodo[];
+  /** 官署完整输出（详情抽屉/回奏展示） */
+  officialOutputs: EdictOfficialOutput[];
 }
 
 export function toUiTask(t: BoardTask): UiEdictTask {
@@ -268,6 +271,7 @@ export function toUiTask(t: BoardTask): UiEdictTask {
     flowLog: t.flow_log || [],
     progressLog: t.progress_log || [],
     todos: t.todos || [],
+    officialOutputs: t.official_outputs || [],
   };
 }
 

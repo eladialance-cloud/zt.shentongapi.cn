@@ -18,6 +18,7 @@ import {
   onEdictBoardUpdated,
   onEdictTaskUpdated,
 } from "@/api/edict-api";
+import MediaRenderer from "@/components/MediaRenderer";
 import {
   EDICT_COLUMNS,
   EDICT_STATE_LABEL,
@@ -79,6 +80,11 @@ export default function EdictView({ orgFilter, onClearOrgFilter }: { orgFilter?:
         : tasks,
     [tasks, orgFilter]
   );
+
+  /** 抽屉内任务实时跟随看板更新（运行中官署输出持续追加，无需重开抽屉） */
+  useEffect(() => {
+    setSelected((cur) => (cur ? tasks.find((t) => t.id === cur.id) ?? null : null));
+  }, [tasks]);
 
   useEffect(() => {
     if (!available) {
@@ -511,10 +517,11 @@ export default function EdictView({ orgFilter, onClearOrgFilter }: { orgFilter?:
                   borderRadius: 8,
                   padding: 10,
                   fontSize: 12,
-                  lineHeight: 1.6,
+                  lineHeight: 1.7,
                 }}
               >
-                📦 产出：{selected.output}
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>📦 产出（完整交付）</div>
+                <MediaRenderer content={selected.output} />
               </div>
             )}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -586,6 +593,41 @@ export default function EdictView({ orgFilter, onClearOrgFilter }: { orgFilter?:
                     ✅ 完成回奏
                   </button>
                 )}
+              </div>
+            )}
+
+            {/* 官署输出（完整内容：文案直出，图片/视频预览，不显示链接） */}
+            {selected.officialOutputs.length > 0 && (
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+                  官署输出
+                  <span style={{ fontSize: 11, fontWeight: 400, color: "var(--color-text-tertiary)" }}>
+                    （完整内容 · 共 {selected.officialOutputs.length} 条）
+                  </span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {selected.officialOutputs.map((o, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        border: "1px solid var(--color-border-secondary)",
+                        borderRadius: 8,
+                        padding: 10,
+                        background: "var(--color-bg-subtle, rgba(0,0,0,0.02))",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600 }}>{o.agentLabel || o.agent}</span>
+                        <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
+                          {o.at ? new Date(o.at).toLocaleTimeString("zh-CN", { hour12: false, hour: "2-digit", minute: "2-digit" }) : ""}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 12.5, lineHeight: 1.7, color: "var(--color-text-secondary)", wordBreak: "break-word" }}>
+                        <MediaRenderer content={o.output} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

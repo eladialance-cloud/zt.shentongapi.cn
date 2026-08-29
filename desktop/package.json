@@ -1,6 +1,6 @@
 {
   "name": "shentong-ai-desktop",
-  "version": "1.8.5",
+  "version": "1.8.6",
   "description": "shentong AI desktop app",
   "license": "MIT",
   "main": "dist/main/index.js",

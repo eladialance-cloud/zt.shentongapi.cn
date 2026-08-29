@@ -55,10 +55,10 @@ export class CreateMediaAssetDto {
   @IsString({ each: true })
   tags?: string[];
 
-  @ApiPropertyOptional({ description: '素材描述（参与语义检索）', example: '产品宣传海报，科技蓝风格' })
+  @ApiPropertyOptional({ description: '素材描述（参与语义检索；支持长文案全文）', example: '产品宣传海报，科技蓝风格' })
   @IsOptional()
   @IsString()
-  @MaxLength(2000)
+  @MaxLength(20000)
   description?: string;
 
   @ApiPropertyOptional({ description: '扩展元数据（时长/分辨率/封面/字幕摘要）', example: { duration: 12.5 } })
@@ -87,10 +87,10 @@ export class UpdateMediaAssetDto {
   @IsBoolean()
   archived?: boolean;
 
-  @ApiPropertyOptional({ description: '素材描述（参与语义检索）', maxLength: 2000 })
+  @ApiPropertyOptional({ description: '素材描述（参与语义检索；支持长文案全文）', maxLength: 20000 })
   @IsOptional()
   @IsString()
-  @MaxLength(2000)
+  @MaxLength(20000)
   description?: string;
 }
 

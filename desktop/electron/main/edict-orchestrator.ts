@@ -13,6 +13,7 @@ import type {
   EdictStats,
   EdictTask,
   EdictTodo,
+  EdictOfficialOutput,
 } from "../shared/edict-types";
 
 export type {
@@ -24,6 +25,7 @@ export type {
   EdictStats,
   EdictTask,
   EdictTodo,
+  EdictOfficialOutput,
 };
 
 // ===== 依赖 =====
@@ -174,7 +176,19 @@ export async function edictApprove(deps: EdictDeps, taskId: string): Promise<Edi
 export async function edictComplete(deps: EdictDeps, taskId: string, output: string, summary: string, actorAgentId?: string): Promise<EdictOp> {
   const task = deps.readBoard().find((t) => t.id === taskId);
   const agentId = actorAgentId || (task?.assigneeOrg ? ORG_AGENT_MAP[task.assigneeOrg] : undefined) || "hubu";
-  return kanban(deps, agentId, ["done", taskId, output?.slice(0, 200) || "", summary?.slice(0, 200) || ""]);
+  const op = await kanban(deps, agentId, ["done", taskId, output?.slice(0, 200) || "", summary?.slice(0, 200) || ""]);
+  if (!op.ok) return op;
+  // 手动回奏：完整产出落盘（official_outputs + output 全文，供回奏展示与素材入库）
+  if (output?.trim()) {
+    appendOfficialOutput(deps, taskId, { agent: agentId, agentLabel: PROFILE_LABEL[agentId] || agentId, state: "Doing", output });
+    try {
+      const allTasks = deps.readBoard();
+      deps.writeBoard(allTasks.map((t2) => (t2.id === taskId ? { ...t2, output } : t2)));
+    } catch (err) {
+      deps.log?.(`产出落盘失败: ${(err as Error).message}`);
+    }
+  }
+  return op;
 }
 
 /** 阻塞/解阻 */
@@ -348,9 +362,9 @@ export async function edictRunPipeline(deps: EdictDeps, taskId: string, opts: Ed
           if (!confirmOp.ok) return confirmOp;
           const flow = await kanban(deps, "shangshu", ["flow", taskId, "尚书省", "完成", "✅ 尚书省复核通过，任务完成"]);
           if (!flow.ok) return flow;
-          // 最终产出写回看板 output 字段（UI「产出」区可见；六部交付即最终产出）
+          // 最终产出写回看板 output 字段（UI「产出」区可见；六部交付即最终产出，全文保留供回奏/素材入库）
           if (previousOutput) {
-            const finalOutput = previousOutput.slice(0, 2000);
+            const finalOutput = previousOutput.slice(0, 50000);
             try {
               const allTasks = deps.readBoard();
               deps.writeBoard(allTasks.map((t2) => (t2.id === taskId ? { ...t2, output: finalOutput } : t2)));
@@ -378,6 +392,14 @@ export async function edictRunPipeline(deps: EdictDeps, taskId: string, opts: Ed
       }
       steps.push({ state, output: output.slice(0, 500) });
       previousOutput = output;
+      // 官署完整输出落盘（official_outputs：详情抽屉/回奏完整展示 + 素材入库数据源）
+      const officialOp = appendOfficialOutput(deps, taskId, {
+        agent: profile,
+        agentLabel: PROFILE_LABEL[profile] || profile,
+        state,
+        output,
+      });
+      if (!officialOp.ok) deps.log?.(`官署产出落盘失败（${profile}）: ${officialOp.error}`);
       // 产出写回看板 progress_log（UI「进展」区实时可见该官署回答）
       const progOk = await kanban(deps, profile, ["progress", taskId, `${PROFILE_LABEL[profile] || profile}产出：${output.slice(0, 90)}`]);
       if (!progOk.ok) deps.log?.(`产出回写看板失败（${profile}）: ${progOk.error}`);
@@ -497,6 +519,16 @@ export function appendFlowLog(deps: EdictDeps, taskId: string, entry: Omit<Edict
   if (!task) return { ok: false, error: `任务不存在: ${taskId}` };
   const flow_log = [...(task.flow_log || []), { at: new Date(deps.now()).toISOString(), ...entry }];
   deps.writeBoard(tasks.map((t) => (t.id === taskId ? { ...t, flow_log } : t)));
+  return { ok: true };
+}
+
+/** 官署完整输出落盘（official_outputs：详情抽屉/回奏完整展示 + 素材入库数据源；原子读-追加-写） */
+export function appendOfficialOutput(deps: EdictDeps, taskId: string, entry: Omit<EdictOfficialOutput, "at">): EdictOp {
+  const tasks = deps.readBoard();
+  const task = tasks.find((t) => t.id === taskId);
+  if (!task) return { ok: false, error: `任务不存在: ${taskId}` };
+  const official_outputs = [...(task.official_outputs || []), { at: new Date(deps.now()).toISOString(), ...entry }];
+  deps.writeBoard(tasks.map((t) => (t.id === taskId ? { ...t, official_outputs } : t)));
   return { ok: true };
 }
 

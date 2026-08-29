@@ -382,6 +382,186 @@ export function createEdictDeps(): EdictDeps {
   };
 }
 
+// ===== 任务完成自动入库素材库（C 方案：自动入库 + 手动可改） =====
+
+/** 素材入库幂等标记（task.meta） */
+const EDICT_ASSETS_IMPORTED = "edict_assets_imported";
+const EDICT_ASSETS_IMPORTING = "edict_assets_importing";
+const EDICT_ASSETS_ATTEMPTS = "edict_assets_attempts";
+/** 入库重试上限（后端未就绪/超长文案被拒等场景防无限重试） */
+const EDICT_ASSETS_MAX_ATTEMPTS = 5;
+
+/** 取任务最终产出全文：优先 output 字段，缺省回退最后一个官署输出（六部交付） */
+export function edictFinalOutputText(task: EdictTask): string {
+  const out = (task.output || "").trim();
+  if (out) return out;
+  const outputs = task.official_outputs || [];
+  const last = outputs[outputs.length - 1];
+  return (last?.output || "").trim();
+}
+
+/** 解析产出文本中的图片/视频链接（含 markdown 图片，去重；COS 直链直接入库，桌面端 MediaRenderer 预览） */
+export function parseEdictMediaLinks(text: string): { images: string[]; videos: string[] } {
+  const images = new Set<string>();
+  const videos = new Set<string>();
+  const markdownImg = /!\[([^\]]*)\]\(([^)\s]+)\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = markdownImg.exec(text)) !== null) {
+    const url = m[2].trim();
+    if (url) images.add(url.slice(0, 1024));
+  }
+  const videoRe = /((?:https?:\/\/)[^\s)]+\.(?:mp4|webm|mov|m4v|ogv)(?:\?[^\s)]*)?)/gi;
+  while ((m = videoRe.exec(text)) !== null) videos.add(m[1].slice(0, 1024));
+  const imageRe = /((?:https?:\/\/)[^\s)]+\.(?:png|jpe?g|gif|webp|svg|avif|bmp)(?:\?[^\s)]*)?)/gi;
+  while ((m = imageRe.exec(text)) !== null) images.add(m[1].slice(0, 1024));
+  return { images: [...images], videos: [...videos] };
+}
+
+/** 按 URL 后缀推断 MIME（素材详情展示用） */
+export function guessAssetMime(url: string): string {
+  const ext = url.split("?")[0].split("#")[0].toLowerCase();
+  const map: Record<string, string> = {
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+    ".webp": "image/webp", ".svg": "image/svg+xml", ".avif": "image/avif", ".bmp": "image/bmp",
+    ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime", ".m4v": "video/mp4",
+    ".ogv": "video/ogg",
+  };
+  return map[ext] || "";
+}
+
+/** 标记任务 meta（best-effort） */
+function setTaskMetaFlag(deps: EdictDeps, taskId: string, key: string, value: boolean | number): void {
+  try {
+    const tasks = deps.readBoard();
+    deps.writeBoard(tasks.map((t) => (t.id === taskId ? { ...t, meta: { ...(t.meta || {}), [key]: value } } : t)));
+  } catch (err) {
+    deps.log?.(`素材入库标记失败: ${(err as Error).message}`);
+  }
+}
+
+function isTaskMetaFlag(task: EdictTask, key: string): boolean {
+  const m = (task.meta || {}) as Record<string, unknown>;
+  return m[key] === true;
+}
+
+/**
+ * 任务完成自动入库素材库（best-effort，幂等）：
+ * - 最终文案 → 文案素材（file + text/markdown，进素材库「文案」Tab，全文放描述）
+ * - 产出文本里的图片/视频链接 → 逐条图片/视频素材（COS 直链，桌面端直接预览）
+ * 入库后用户可在素材库手动改标题/标签/描述/归档。
+ */
+export async function importTaskAssetsToLibrary(deps: EdictDeps, taskId: string): Promise<void> {
+  const task = deps.readBoard().find((t) => t.id === taskId);
+  if (!task || task.state !== "Done") return;
+  if (isTaskMetaFlag(task, EDICT_ASSETS_IMPORTED)) return;
+  if (isTaskMetaFlag(task, EDICT_ASSETS_IMPORTING)) return;
+  // 入库重试上限（后端未就绪/超长文案被拒等场景防无限重试）
+  const attempts = ((task.meta || {}) as Record<string, unknown>)[EDICT_ASSETS_ATTEMPTS];
+  const attemptCount = typeof attempts === "number" ? attempts : Number(attempts || 0);
+  if (attemptCount >= EDICT_ASSETS_MAX_ATTEMPTS) {
+    deps.log?.(`[edict] 素材入库放弃 ${taskId}（重试 ${EDICT_ASSETS_MAX_ATTEMPTS} 次仍失败，可在素材库手动登记）`);
+    setTaskMetaFlag(deps, taskId, EDICT_ASSETS_IMPORTED, true);
+    return;
+  }
+  // 未登录（无 token）→ 不标记，随轮询/重启重试
+  const authFile = path.join(app.getPath("userData"), "openclaw-chat", "auth.json");
+  let token = "";
+  try {
+    if (fs.existsSync(authFile)) {
+      const auth = JSON.parse(fs.readFileSync(authFile, "utf-8"));
+      token = typeof auth?.token === "string" ? auth.token : "";
+    }
+  } catch {
+    // 读取失败按未登录处理
+  }
+  if (!token) {
+    deps.log?.(`[edict] 素材入库跳过 ${taskId}（未登录，稍后重试）`);
+    return;
+  }
+  setTaskMetaFlag(deps, taskId, EDICT_ASSETS_IMPORTING, true);
+  setTaskMetaFlag(deps, taskId, EDICT_ASSETS_ATTEMPTS, attemptCount + 1);
+  let text = "";
+  let images: string[] = [];
+  let videos: string[] = [];
+  let anyOk = false;
+  try {
+    text = edictFinalOutputText(task);
+    const parsed = parseEdictMediaLinks(text);
+    images = parsed.images;
+    videos = parsed.videos;
+    const tags = ["三省六部", taskId];
+    const results: string[] = [];
+    const post = async (body: Record<string, unknown>): Promise<void> => {
+      const res = await fetch(`${ST_API_BASE}/media-assets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    };
+    // 1) 文案全文入库（url 为占位符，正文在描述；素材库「文案」Tab 展示）
+    if (text) {
+      try {
+        await post({
+          title: `三省六部产出 ${taskId}`,
+          url: `edict://text/${taskId}`,
+          assetType: "file",
+          mimeType: "text/markdown",
+          description: text.slice(0, 20000),
+          tags,
+        });
+        results.push("文案");
+        anyOk = true;
+      } catch (err) {
+        deps.log?.(`[edict] 文案入库失败 ${taskId}: ${(err as Error).message}`);
+      }
+    }
+    // 2) 图片链接入库
+    for (const url of images) {
+      try {
+        await post({
+          title: `三省六部图片 ${taskId}`,
+          url,
+          assetType: "image",
+          mimeType: guessAssetMime(url) || "image/*",
+          description: text ? text.slice(0, 200) : "",
+          tags,
+        });
+        results.push("图片");
+        anyOk = true;
+      } catch (err) {
+        deps.log?.(`[edict] 图片入库失败 ${taskId} (${url.slice(0, 60)}): ${(err as Error).message}`);
+      }
+    }
+    // 3) 视频链接入库
+    for (const url of videos) {
+      try {
+        await post({
+          title: `三省六部视频 ${taskId}`,
+          url,
+          assetType: "video",
+          mimeType: guessAssetMime(url) || "video/*",
+          description: text ? text.slice(0, 200) : "",
+          tags,
+        });
+        results.push("视频");
+        anyOk = true;
+      } catch (err) {
+        deps.log?.(`[edict] 视频入库失败 ${taskId} (${url.slice(0, 60)}): ${(err as Error).message}`);
+      }
+    }
+    if (results.length) deps.log?.(`[edict] 素材入库完成 ${taskId}: ${results.join("、")}`);
+    else deps.log?.(`[edict] 素材入库 ${taskId}: 无产出内容可入库`);
+  } finally {
+    setTaskMetaFlag(deps, taskId, EDICT_ASSETS_IMPORTING, false);
+    // 全部失败（网络/后端异常）→ 不标记，随轮询重试；部分成功或无可入库内容 → 标记收口
+    if (anyOk || (!text && images.length === 0 && videos.length === 0)) {
+      setTaskMetaFlag(deps, taskId, EDICT_ASSETS_IMPORTED, true);
+    }
+  }
+}
+
 // ===== 结果回传通知（P5：照搬 edict 原版 feishu.py / wecom.py 负载格式） =====
 
 function getEdictNotifyConfigFile(): string {
@@ -570,6 +750,14 @@ export function registerEdictIpc(deps: EdictDeps, opts: EdictIpcOptions = {}): (
     }
   };
   lastRaw = readRaw();
+  // 启动补扫：历史已完成任务未入库 → 自动补入素材库（幂等）
+  try {
+    for (const t of JSON.parse(lastRaw) as EdictTask[]) {
+      if (t.state === "Done") void importTaskAssetsToLibrary(deps, t.id);
+    }
+  } catch {
+    /* 初始扫描失败忽略 */
+  }
   const timer = setInterval(() => {
     const raw = readRaw();
     if (raw === lastRaw) return;
@@ -593,6 +781,10 @@ export function registerEdictIpc(deps: EdictDeps, opts: EdictIpcOptions = {}): (
         if (isNew && canRun && !runningTasks.has(t.id)) {
           runPipelineSafe(t.id);
         }
+      }
+      // 任务完成 → 自动整理产出入素材库（幂等：meta.edict_assets_imported 标记）
+      for (const t of curTasks) {
+        if (t.state === "Done") void importTaskAssetsToLibrary(deps, t.id);
       }
     } catch {
       /* 解析失败仅广播 board-updated */

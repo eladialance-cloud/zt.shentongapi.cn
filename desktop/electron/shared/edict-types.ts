@@ -39,6 +39,20 @@ export interface EdictTodo {
   detail?: string;
 }
 
+/** 官署单轮完整输出（编排器把 Hermes 每节点完整回答落盘，供详情抽屉/回奏展示与素材入库） */
+export interface EdictOfficialOutput {
+  /** Hermes profile id（zhongshu/menxia/shangshu/hubu/libu/...） */
+  agent: string;
+  /** 官署中文名（中书省/门下省/尚书省/户部/...） */
+  agentLabel: string;
+  /** 执行节点状态（Zhongshu/Menxia/Assigned/Doing/...） */
+  state: EdictState;
+  /** 完整输出文本（含图片/视频链接，UI 用 MediaRenderer 预览） */
+  output: string;
+  /** ISO 时间 */
+  at: string;
+}
+
 /** 看板任务（照搬 tasks_source.json 单条结构） */
 export interface EdictTask {
   id: string;
@@ -61,6 +75,8 @@ export interface EdictTask {
   flow_log: EdictFlowLogEntry[];
   progress_log: { at: string; agent: string; agentLabel?: string; text: string; todos?: string[] }[];
   todos: EdictTodo[];
+  /** 官署完整输出记录（编排落盘，按时间追加） */
+  official_outputs?: EdictOfficialOutput[];
   createdAt?: string;
   updatedAt?: string;
 }
