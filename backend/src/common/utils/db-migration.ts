@@ -1686,6 +1686,37 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       logger.log('Added column: media_assets.meta');
     }
 
+
+    // 套餐管理：membership_plans 补齐实体字段列（description/credits/duration_days/features）
+    // 历史表由 init.sql 建表（name/price/level/period/benefits/is_active），实体字段需补齐；幂等补列
+    try {
+      const hasMpCol = async (col: string): Promise<boolean> => {
+        const [row] = await queryRunner.query(
+          `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'membership_plans' AND COLUMN_NAME = '${col}'`
+        );
+        return !!row;
+      };
+      if (!(await hasMpCol('description'))) {
+        await queryRunner.query(`ALTER TABLE membership_plans ADD COLUMN description VARCHAR(512) DEFAULT NULL COMMENT '套餐描述'`);
+        logger.log('Added column: membership_plans.description');
+      }
+      if (!(await hasMpCol('credits'))) {
+        await queryRunner.query(`ALTER TABLE membership_plans ADD COLUMN credits INT NOT NULL DEFAULT 0 COMMENT '积分额度'`);
+        logger.log('Added column: membership_plans.credits');
+      }
+      if (!(await hasMpCol('duration_days'))) {
+        await queryRunner.query(`ALTER TABLE membership_plans ADD COLUMN duration_days INT NOT NULL DEFAULT 30 COMMENT '有效期(天)'`);
+        logger.log('Added column: membership_plans.duration_days');
+      }
+      if (!(await hasMpCol('features'))) {
+        await queryRunner.query(`ALTER TABLE membership_plans ADD COLUMN features JSON DEFAULT NULL COMMENT '权益列表(JSON)'`);
+        logger.log('Added column: membership_plans.features');
+      }
+    } catch (err) {
+      logger.warn('membership_plans 列迁移跳过: ' + (err as Error).message);
+    }
+
     // 顺序执行 migrations/*.sql（幂等台账 schema_migrations；存量库自动标记已应用）
     await runSqlMigrations(queryRunner, logger);
 

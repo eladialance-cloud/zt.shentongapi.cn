@@ -1,5 +1,6 @@
-﻿import { Injectable } from '@nestjs/common';
+﻿import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { RechargeOrderEntity } from '../../payment/entities/recharge-order.entity';
 import { PaymentRecordEntity } from '../../payment/entities/payment-record.entity';
@@ -17,11 +18,46 @@ import { PaymentGatewayService } from '../../payment/services/payment-gateway.se
  * - POST /credits/recharge        创建充值订单（返回支付链接/二维码）
  */
 @Injectable()
-export class RechargeService {
+export class RechargeService implements OnModuleInit {
+  private readonly logger = new Logger(RechargeService.name);
+  /** 未支付订单超时时间（分钟），默认 15 分钟 */
+  private readonly orderTtlMinutes: number;
+  private sweepTimer: NodeJS.Timeout | null = null;
+
   constructor(
     @InjectDataSource() private dataSource: DataSource,
     private readonly gateway: PaymentGatewayService,
-  ) {}
+    config: ConfigService,
+  ) {
+    const ttl = Number(config.get('RECHARGE_ORDER_TTL_MINUTES', 15));
+    this.orderTtlMinutes = Number.isFinite(ttl) && ttl > 0 ? ttl : 15;
+  }
+
+  onModuleInit() {
+    // 每 60 秒清扫一次超时未支付订单（幂等：仅 pending 且超过 TTL 的订单）
+    this.sweepExpiredOrders();
+    this.sweepTimer = setInterval(() => this.sweepExpiredOrders(), 60 * 1000);
+    this.sweepTimer.unref?.();
+  }
+
+  /** 将超过 TTL 仍未支付的订单标记为 failed（支付回调仍可入账，见 payment-callback 幂等逻辑） */
+  private async sweepExpiredOrders(): Promise<void> {
+    try {
+      const result = await this.dataSource
+        .getRepository(RechargeOrderEntity)
+        .createQueryBuilder()
+        .update()
+        .set({ status: 'failed' })
+        .where("status = 'pending'")
+        .andWhere('created_at < DATE_SUB(NOW(), INTERVAL ' + this.orderTtlMinutes + ' MINUTE)')
+        .execute();
+      if (result.affected && result.affected > 0) {
+        this.logger.log(`超时未支付订单已标记失败: ${result.affected} 单（TTL=${this.orderTtlMinutes} 分钟）`);
+      }
+    } catch (err) {
+      this.logger.warn(`超时订单清扫失败: ${(err as Error).message}`);
+    }
+  }
 
   /** 获取启用中的充值档位列表 */
   async getRechargePlans() {

@@ -35,6 +35,7 @@ import { syncHermesConfig } from './hermes-config'
 import { resolveModelDefaults } from './model-defaults'
 import treeKill from 'tree-kill'
 import { getRuntimeRoot } from './runtime-config'
+import { getCredential, setCredential } from './services/credential-store'
 import { getEdictDataRoot } from './edict-bridge'
 
 interface ServiceDef {
@@ -79,14 +80,21 @@ function buildN8nEnv(): NodeJS.ProcessEnv {
  */
 function getOrCreateHermesServerKey(): string {
   try {
+    // 优先从安全凭据存储读取（safeStorage 加密，凭据仅主进程使用）
+    const stored = getCredential('hermes.serverKey')
+    if (stored) return stored
+    // 兼容旧版本：明文 key 曾直接写在 userData/hermes-server-key，读到后迁移到安全存储
     const keyFile = path.join(app.getPath('userData'), 'hermes-server-key')
     if (fs.existsSync(keyFile)) {
       const existing = fs.readFileSync(keyFile, 'utf-8').trim()
-      if (existing) return existing
+      if (existing) {
+        setCredential('hermes.serverKey', existing)
+        try { fs.rmSync(keyFile, { force: true }) } catch { /* 忽略删除失败 */ }
+        return existing
+      }
     }
     const key = 'shentong-' + crypto.randomBytes(24).toString('hex')
-    fs.mkdirSync(path.dirname(keyFile), { recursive: true })
-    fs.writeFileSync(keyFile, key, 'utf-8')
+    setCredential('hermes.serverKey', key)
     return key
   } catch (err) {
     console.error('[service-manager] generate hermes server key failed:', err)

@@ -1,7 +1,9 @@
 ﻿import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
@@ -20,13 +22,43 @@ import { Server, Socket } from 'socket.io';
   cors: { origin: true, credentials: true },
   namespace: 'sync',
 })
-export class SyncGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class SyncGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
   private readonly logger = new Logger(SyncGateway.name);
 
-  constructor(private jwtService: JwtService) {}
+  constructor(private jwtService: JwtService, private readonly config: ConfigService) {}
 
   @WebSocketServer()
   server: Server;
+
+  /**
+   * 多实例部署：挂载 socket.io Redis adapter（依赖 @socket.io/redis-adapter，未安装/Redis 不可用则回退内存模式）
+   * 单实例部署无需 Redis，此逻辑自动跳过。
+   */
+  afterInit(server: Server): void {
+    const url = this.config.get<string>('REDIS_URL', '');
+    if (!url) {
+      this.logger.log('[sync] REDIS_URL 未配置，单实例模式（不挂载 Redis adapter）');
+      return;
+    }
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { createAdapter } = require('@socket.io/redis-adapter');
+      const Redis = require('ioredis').default || require('ioredis');
+      const pubClient = new Redis(url, { lazyConnect: true, maxRetriesPerRequest: 3, enableOfflineQueue: false });
+      const subClient = pubClient.duplicate();
+      Promise.all([pubClient.connect(), subClient.connect()])
+        .then(() => {
+          server.adapter(createAdapter(pubClient, subClient));
+          this.logger.log('[sync] socket.io Redis adapter 已挂载（多实例广播可用）');
+        })
+        .catch((err: Error) => {
+          this.logger.warn(`[sync] Redis 连接失败，回退内存模式: ${err.message}`);
+          Promise.all([pubClient.disconnect().catch(() => undefined), subClient.disconnect().catch(() => undefined)]);
+        });
+    } catch (err) {
+      this.logger.warn(`[sync] @socket.io/redis-adapter 未安装，回退内存模式: ${(err as Error).message}（安装：cd backend && npm install）`);
+    }
+  }
 
   handleConnection(client: Socket) {
     try {

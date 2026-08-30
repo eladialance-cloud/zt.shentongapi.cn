@@ -2,6 +2,7 @@
 
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { hardenIpc, initIpcGuard } from './ipc-guard'
+import { installIpcRegistry } from './ipc-registry'
 import log from 'electron-log'
 import { getRuntimeDirInfo, setRuntimeRoot, defaultRuntimeRoot, getRuntimeRoot } from './runtime-config'
 import { join } from 'node:path'
@@ -33,6 +34,9 @@ app.commandLine.appendSwitch('disable-features', 'ThirdPartyCookies,ThirdPartySt
 if (!app.isPackaged) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
 }
+// IPC 通道清单审计：必须在任何 ipcMain.handle/on 注册之前安装
+installIpcRegistry()
+
 import { createMainWindow, getMainWindow, setQuitting } from './windows/main-window'
 import { createTray, destroyTray } from './tray'
 import { ServiceManager, ST_API_BASE } from './service-manager'

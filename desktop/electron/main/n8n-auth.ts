@@ -15,6 +15,7 @@ import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { request as httpRequest, get as httpGet } from 'node:http'
 import { getRuntimeRoot } from './runtime-config'
+import { getCredential, setCredential } from './services/credential-store'
 
 const N8N_ORIGIN = 'http://127.0.0.1:5678'
 
@@ -36,10 +37,19 @@ function readCredentials(): { email: string; password: string } | null {
     const file = credentialsFile()
     if (!existsSync(file)) return null
     const parsed = JSON.parse(readFileSync(file, 'utf8'))
-    if (parsed && typeof parsed.email === 'string' && typeof parsed.password === 'string') {
-      return { email: parsed.email, password: parsed.password }
+    if (parsed && typeof parsed.email !== 'string') return null
+    // 密码优先从安全凭据存储读取（safeStorage 加密）
+    let password = getCredential('n8n.password')
+    // 兼容旧版本：明文密码曾直接写在 n8n-credentials.json 中，读到后迁移到安全存储
+    const legacyPassword = typeof parsed.password === 'string' ? parsed.password : ''
+    if (!password && legacyPassword) {
+      password = legacyPassword
+      setCredential('n8n.password', legacyPassword)
+      const { password: _omit, ...rest } = parsed
+      writeFileSync(file, JSON.stringify(rest, null, 2), 'utf8')
     }
-    return null
+    if (!password) return null
+    return { email: parsed.email, password }
   } catch {
     return null
   }
@@ -47,7 +57,9 @@ function readCredentials(): { email: string; password: string } | null {
 
 function saveCredentials(email: string, password: string): void {
   try {
-    writeFileSync(credentialsFile(), JSON.stringify({ email, password }, null, 2), 'utf8')
+    // 密码存入安全凭据存储（safeStorage 加密），文件仅保留非敏感的邮箱
+    setCredential('n8n.password', password)
+    writeFileSync(credentialsFile(), JSON.stringify({ email }, null, 2), 'utf8')
   } catch (err) {
     console.error('[n8n-auth] 保存本地凭据失败:', err)
   }

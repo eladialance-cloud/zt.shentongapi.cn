@@ -11,7 +11,12 @@ export class AdminPlanService {
   ) {}
 
   async list(): Promise<MembershipPlanEntity[]> {
-    return this.planRepo.find({ order: { price: "ASC" } });
+    const rows = await this.planRepo.find({ order: { price: "ASC" } });
+    // 前端类型使用 benefits 字段；旧数据存在 features 列时回填，保证页面可展示
+    for (const row of rows) {
+      if (!row.benefits && row.features) row.benefits = row.features;
+    }
+    return rows;
   }
 
   async create(dto: {
@@ -33,6 +38,9 @@ export class AdminPlanService {
       credits: dto.credits,
       durationDays: dto.durationDays,
       features: dto.features || dto.benefits || [],
+      benefits: dto.benefits || dto.features || [],
+      level: dto.level ?? 0,
+      period: dto.period || 'month',
       isActive: dto.isActive ?? true,
     });
     return this.planRepo.save(plan);
