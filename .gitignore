@@ -103,3 +103,24 @@ backend/uploads/
 
 # 本地备份文件
 *.bak-v*
+
+# Scratch/temp artifacts (never commit)
+$null
+0
+_app.asar
+_b_list.json
+_con-test.txt
+_edict_ref/
+_fn_old.txt
+_n8n_*
+_patch_test.txt
+_zip_*.py
+.tmp-n8n-trans-1/
+fix-n8n-password.js
+set-n8n-credentials.js
+backend/archive/
+desktop/archive/
+backend/database/archive_opc_tables.sql
+backend/database/archive_rag_documents.sql
+backend/database/create_publish_channels.sql
+backend/database/inspect_conflict_tables.sql
