@@ -32,6 +32,7 @@ import {
   pickPlatformModels,
 } from './video-claw-config'
 import { syncHermesConfig } from './hermes-config'
+import { relocateHermesRuntime } from './hermes-runtime-relocate'
 import { resolveModelDefaults } from './model-defaults'
 import treeKill from 'tree-kill'
 import { getRuntimeRoot } from './runtime-config'
@@ -1149,7 +1150,19 @@ export class ServiceManager extends EventEmitter {
         // 等待 config.yaml 写完再启动 ST-Claw（避免 fetchPlatformModels 异步竞态导致进程读到旧/缺失配置）
         await ensureVideoClawConfigSafe()
       }
-      if (name === 'hermes') {
+      if (name === 'hermes' && resolved.source !== 'host') {
+        // 修复便携运行时内嵌构建机绝对路径（uv trampoline / pyvenv.cfg / editable finder），
+        // 幂等执行，失败不阻断启动（错误信息会在启动失败时暴露）
+        try {
+          const relocateResult = relocateHermesRuntime(path.dirname(resolved.cmd))
+          if (relocateResult.relocated) {
+            console.log(`[service-manager] hermes 运行时已重定位（venv python: ${relocateResult.venvPython}）`)
+          } else if (relocateResult.reason) {
+            console.warn(`[service-manager] hermes 运行时重定位跳过: ${relocateResult.reason}`)
+          }
+        } catch (err) {
+          console.warn('[service-manager] hermes 运行时重定位失败（继续尝试启动）: ' + (err instanceof Error ? err.message : String(err)))
+        }
         // 同步内置技能（st-claw-controller 等）到 HERMES_HOME/skills，再等待 config.yaml 写完再启动 Hermes
         syncHermesSkills()
         await ensureHermesConfigSafe()
