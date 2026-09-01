@@ -58,8 +58,8 @@ CREATE TABLE IF NOT EXISTS ai_model_pricing (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_ai_model_pricing_model_id (model_id),
-  KEY idx_ai_model_pricing_min_user_level (min_user_level),
-  CONSTRAINT fk_ai_model_pricing_model_id FOREIGN KEY (model_id) REFERENCES ai_models (id) ON DELETE CASCADE
+  KEY idx_ai_model_pricing_min_user_level (min_user_level)
+
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='模型计费/能力配置表（P5 拆分）';
 `;
 
@@ -72,8 +72,8 @@ CREATE TABLE IF NOT EXISTS ai_model_credentials (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_ai_model_credentials_model_id (model_id),
-  CONSTRAINT fk_ai_model_credentials_model_id FOREIGN KEY (model_id) REFERENCES ai_models (id) ON DELETE CASCADE
+  UNIQUE KEY uq_ai_model_credentials_model_id (model_id)
+
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='模型级连接凭据表（P5 拆分，api_key 应用层 AES-256-GCM 加密）';
 `;
 
