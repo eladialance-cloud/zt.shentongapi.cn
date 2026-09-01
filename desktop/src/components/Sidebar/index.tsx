@@ -1,7 +1,7 @@
-﻿/**
+/**
  * Sidebar — v5.0 Kimi 风格极简导航
- * 主导航（工作台/需求对话/任务中心/素材库/发布中心/数据分析/知识库/ST-Claw/口播工坊），固定展开不折叠
- * 次级入口（技能市场/工作流/渠道/积分/设置/服务）收纳到左下角「更多」弹出菜单
+ * 主导航 10 项（工作台/需求对话/任务中心/素材库/发布中心/数据分析/知识库/ST-Claw/口播工坊/AI办公室），固定展开不折叠
+ * 次级入口 6 项（技能市场/工作流/渠道/积分/设置/服务）收纳到左下角「更多」弹出菜单
  */
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Avatar, Dropdown, type MenuProps } from 'antd'
@@ -14,6 +14,7 @@ import {
   BarChart3,
   BookOpen,
   Clapperboard,
+  Building2,
   Store,
   Workflow,
   Coins,
@@ -44,6 +45,7 @@ const PRIMARY_NAV: NavItem[] = [
   { key: 'knowledge',   label: '知识库',   icon: BookOpen,          path: '/knowledge' },
   { key: 'video-claw',  label: 'ST-Claw',  icon: Clapperboard,      path: '/video-claw' },
   { key: 'oral-workshop', label: '口播工坊', icon: Mic,               path: '/oral-workshop' },
+  { key: 'office',      label: 'AI 办公室',icon: Building2,         path: '/office' },
 ]
 
 /** 次级入口（隐藏收纳，通过左下角「更多」展开） */
@@ -62,6 +64,8 @@ export default function Sidebar() {
   const user = useAuthStore((s) => s.user)
 
   const isActive = (path: string): boolean => {
+    // /office 不参与前缀匹配（避免成为默认激活项）
+    if (path === '/office') return location.pathname === '/office'
     return location.pathname === path || location.pathname.startsWith(path + '/')
   }
 

@@ -33,6 +33,7 @@ import SkillMarket from "@/pages/SkillMarket";
 import LocalDetail from "@/pages/SkillMarket/LocalDetail";
 import TeamList from "@/pages/Team";
 import TeamDetail from "@/pages/Team/Detail";
+import Office from "@/pages/Office";
 import ChannelDetail from "@/pages/Channels/Detail";
 import ChannelList from "@/pages/Channels";
 import PublishList from "@/pages/Channels/Publish";
@@ -118,6 +119,7 @@ const router = createHashRouter([
       { path: "/creator/create", element: <AgentCreatorCreate /> },
       { path: "/creator/:id/edit", element: <AgentCreatorCreate /> },
       { path: "/creator/revenue", element: <AgentCreatorRevenue /> },
+      { path: "/office", element: <Office /> },
       { path: "/channels", element: <ChannelList /> },
       { path: "/channels/:id", element: <ChannelDetail /> },
       { path: "/publish", element: <PublishList /> },

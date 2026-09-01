@@ -46,6 +46,9 @@ extraResources:
   # 内置 OpenClaw 技能目录（缺失会导致 openclaw.json extraDirs 指向失效路径、OpenClaw 启动校验失败）
   - from: resources/openclaw/skills
     to: openclaw/skills
+  # edict blueprints (official SOUL / kanban state machine / agents / scripts): missing breaks all Hermes features
+  - from: resources/edict
+    to: edict
 win:
   target:
     - target: nsis

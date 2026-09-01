@@ -218,3 +218,131 @@ export function syncHermesConfig(hermesHome: string, opts: HermesConfigOptions):
   }
   return cfgPath
 }
+
+/** 三省六部 11 个官署 profile id（不含太子：太子=OpenClaw 入口，非 Hermes profile） */
+export const EDICT_PROFILE_IDS = [
+  'zhongshu', 'menxia', 'shangshu', 'libu', 'hubu', 'libu_hr',
+  'bingbu', 'xingbu', 'gongbu', 'zaochao', 'qintianjian',
+] as const;
+
+/**
+ * 把全局 $HERMES_HOME/config.yaml 同步到每个官署 profile 目录。
+ * 原因：Hermes CLI 的 -p <profile> 会把 HERMES_HOME 切到 <root>/profiles/<id>，
+ * profile 是独立 HERMES_HOME，必须各自持有 config.yaml（否则报 No inference provider configured）。
+ * 幂等：内容一致时跳过。返回本次实际写入的 profile id 列表。
+ */
+export function syncHermesProfileConfigs(hermesHome: string, profileIds: readonly string[] = EDICT_PROFILE_IDS): string[] {
+  const cfgPath = join(hermesHome, 'config.yaml')
+  if (!existsSync(cfgPath)) return []
+  let content = ''
+  try {
+    content = readFileSync(cfgPath, 'utf-8')
+  } catch {
+    return []
+  }
+  const written: string[] = []
+  for (const id of profileIds) {
+    const profileDir = join(hermesHome, 'profiles', id)
+    const target = join(profileDir, 'config.yaml')
+    try {
+      if (existsSync(target) && readFileSync(target, 'utf-8') === content) continue
+      mkdirSync(profileDir, { recursive: true })
+      writeFileSync(target, content, 'utf-8')
+      written.push(id)
+    } catch (err) {
+      console.warn('[hermes-config] 同步 profile config 失败（' + id + '）: ' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+  return written
+}
+
+
+// ===== 官署模型持久化（军机处模型配置）=====
+// 背景：启动时 ensureHermesConfigSafe 会把全局 config.yaml 的 model 重置为平台默认，
+// 且 ensureEdictHermesProfiles 会把全局 config 同步覆盖到每个官署 profile，
+// 因此官署模型不能只写在 profile config.yaml（会被洗掉）。这里持久化到独立文件，
+// 启动同步后由 applyAgentModels 回灌回各官署 profile（幂等）。
+
+/** 官署模型持久化文件（放 profiles/ 下，独立于全局 config.yaml） */
+function agentModelsFile(hermesHome: string): string {
+  return join(hermesHome, 'profiles', '.agent_models.json')
+}
+
+/** 读取持久化的官署模型选择（容错：文件缺失/损坏返回空） */
+export function readAgentModels(hermesHome: string): Record<string, string> {
+  try {
+    const f = agentModelsFile(hermesHome)
+    if (!existsSync(f)) return {}
+    const data = JSON.parse(readFileSync(f, 'utf-8'))
+    return data && typeof data === 'object' ? (data as Record<string, string>) : {}
+  } catch {
+    return {}
+  }
+}
+
+/** 持久化某官署选择的模型 */
+export function writeAgentModel(hermesHome: string, agentId: string, model: string): void {
+  const models = readAgentModels(hermesHome)
+  models[agentId] = model
+  const f = agentModelsFile(hermesHome)
+  mkdirSync(join(hermesHome, 'profiles'), { recursive: true })
+  writeFileSync(f, JSON.stringify(models, null, 2), 'utf-8')
+}
+
+/** 删除某官署的模型记录（回退跟随全局默认） */
+export function removeAgentModel(hermesHome: string, agentId: string): void {
+  const models = readAgentModels(hermesHome)
+  if (!(agentId in models)) return
+  delete models[agentId]
+  const f = agentModelsFile(hermesHome)
+  mkdirSync(join(hermesHome, 'profiles'), { recursive: true })
+  writeFileSync(f, JSON.stringify(models, null, 2), 'utf-8')
+}
+
+/** 把 profile config.yaml 的 model.default 替换为指定模型（保留 provider/max_tokens） */
+function patchProfileModelDefault(content: string, model: string): string {
+  const lines = content.split(/\r?\n/)
+  const mi = lines.findIndex((l) => /^model:\s*$/.test(l))
+  if (mi < 0) {
+    // 无 model 块 → 按标准块追加到末尾
+    return content.replace(/\s*$/, '') + '\n' + buildModelBlock({ llmModel: model } as HermesConfigOptions).join('\n') + '\n'
+  }
+  let di = -1
+  for (let x = mi + 1; x < lines.length; x++) {
+    const l = lines[x]
+    if (!l.trim() || /^\S/.test(l)) break
+    if (/^(\s*)default:/.test(l)) {
+      di = x
+      break
+    }
+  }
+  if (di < 0) {
+    lines.splice(mi + 1, 0, '  default: ' + yamlScalar(model))
+  } else {
+    lines[di] = lines[di].replace(/^(\s*default:)(.*)$/, '$1 ' + yamlScalar(model))
+  }
+  return lines.join('\n')
+}
+
+/** 启动同步全局 config → 官署 profile 后，把持久化的官署模型回灌回各自 profile（幂等） */
+export function applyAgentModels(hermesHome: string, profileIds: readonly string[] = EDICT_PROFILE_IDS): string[] {
+  const models = readAgentModels(hermesHome)
+  const written: string[] = []
+  for (const id of profileIds) {
+    const model = models[id]
+    if (!model) continue
+    const target = join(hermesHome, 'profiles', id, 'config.yaml')
+    try {
+      if (!existsSync(target)) continue
+      const cur = readFileSync(target, 'utf-8')
+      const patched = patchProfileModelDefault(cur, model)
+      if (patched !== cur) {
+        writeFileSync(target, patched, 'utf-8')
+        written.push(id)
+      }
+    } catch (err) {
+      console.warn('[hermes-config] 回灌官署模型失败（' + id + '）: ' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+  return written
+}

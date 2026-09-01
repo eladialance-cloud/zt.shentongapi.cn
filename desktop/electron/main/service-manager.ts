@@ -37,6 +37,7 @@ import { resolveModelDefaults } from './model-defaults'
 import treeKill from 'tree-kill'
 import { getRuntimeRoot } from './runtime-config'
 import { getCredential, setCredential } from './services/credential-store'
+import { getEdictDataRoot } from './edict-bridge'
 
 interface ServiceDef {
   displayName: string
@@ -160,11 +161,13 @@ function buildHermesEnv(): NodeJS.ProcessEnv {
     // 需将 HERMES_API_SERVER_KEY 映射到 CUSTOM_API_KEY，否则 spawnService 中的检查永远失败
     CUSTOM_API_KEY: key,
     MCP_BACKEND_URL: 'http://127.0.0.1:' + SERVICE_DEFS.mcp.port,
-    // n8n-run-workflow 读取 N8N/ST 系列变量；Hermes 长驻服务同样注入，保证技能脚本可运行
+    // 官署技能所需环境变量（与 OpenClaw 进程对齐）：n8n-run-workflow 读取 N8N/ST 系列变量，
+    // 看板工具卡读取 EDICT_HOME；Hermes 长驻服务同样注入，保证技能脚本可运行
     N8N_BASE_URL: 'http://127.0.0.1:' + SERVICE_DEFS.n8n.port,
     ST_API_BASE,
     ST_AUTH_FILE: path.join(accountingDir, 'auth.json'),
     ST_ACCOUNTING_FILE: path.join(accountingDir, 'current-accounting.json'),
+    EDICT_HOME: getEdictDataRoot(),
   }
 }
 
@@ -263,6 +266,9 @@ function buildOpenClawEnv(): NodeJS.ProcessEnv {
     ST_API_BASE,
     ST_ACCOUNTING_FILE: path.join(accountingDir, 'current-accounting.json'),
     ST_AUTH_FILE: path.join(accountingDir, 'auth.json'),
+    // 三省六部看板：edict-create 工具卡读取（kanban 脚本解释器 + 可写运行时根）
+    EDICT_HOME: getEdictDataRoot(),
+    EDICT_PYTHON: hermesRoot ? path.join(hermesRoot, 'python', 'python.exe') : '',
   }
 }
 
@@ -356,6 +362,19 @@ function deepMergeConfig(base: Record<string, unknown>, patch: Record<string, un
 }
 
 
+/** 五层协作方法论系统提示（AGENTS.md + SOUL.md）写入 OpenClaw workspace *//** 太子人设文件（OpenClaw = 太子：分拣/传旨/回奏） */
+function getTaiziSoul(): string {
+  try {
+    const p = app.isPackaged
+      ? path.join(process.resourcesPath, 'edict', 'profiles', 'taizi-openclaw.md')
+      : path.join(process.cwd(), 'resources', 'edict', 'profiles', 'taizi-openclaw.md')
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf-8') : ''
+  } catch {
+    return ''
+  }
+}
+
+
 function ensureOpenClawWorkspace(): void {
   try {
     const workspaceDir = path.join(getOpenClawHome(), '.openclaw', 'workspace')
@@ -382,9 +401,12 @@ function ensureOpenClawWorkspace(): void {
 收到用户消息后，按以下顺序判断：
 
 1. **闲聊/简单问答** → 你直接回答，不调用任何工具
-2. **复杂任务**（「帮我做XX」「调研XX」「写一份XX」「部署XX」等需要多步骤执行/长期记忆）→ 调用 hermes-agent 工具
-3. **确定性操作**（发邮件、查数据、同步文件、生成报表等明确操作指令）→ 调用 n8n-run-workflow 工具
-4. **涉及业务知识/规则/模板/历史案例/行业术语** → 先调用 knowledge-query 查知识库，再回答
+2. **正式旨意/复杂任务**（「帮我做XX」「调研XX」「写一份XX」「部署XX」，或以「传旨」「下旨」开头）
+   → 调用 edict-create 工具传旨建任务（三省六部：中书→门下→尚书→六部执行），标题 10-30 字中文概括
+3. **确定性操作**（发邮件、查数据、同步文件、生成报表等明确操作指令）
+   → 调用 n8n-run-workflow 工具
+4. **需要多步骤编排/长期记忆的复杂任务**（用户明确不走三省六部时）→ 调用 hermes-agent 工具
+5. **涉及业务知识/规则/模板/历史案例/行业术语** → 先调用 knowledge-query 查知识库，再回答
 
 ## 知识库检索（必须遵守）
 
@@ -416,7 +438,7 @@ function ensureOpenClawWorkspace(): void {
 - 任何失败都要透明告知用户，不静默吞错
 `
 
-    const soulMd = `# SOUL.md — 深瞳AI Agent 行为准则
+    const soulMd = getTaiziSoul() || `# SOUL.md — 深瞳AI Agent 行为准则
 
 ## 核心原则
 
@@ -453,7 +475,7 @@ function ensureOpenClawWorkspace(): void {
 - 回答前不确定，先查证再回答
 `
 
-    // 蓝本同步：每次启动从蓝本覆盖（人设/方法论由应用管理，用户自定义走技能市场）
+    // 蓝本同步：每次启动从蓝本覆盖（官署人设/方法论由应用管理，用户自定义走技能市场）
     fs.writeFileSync(agentsPath, agentsMd, 'utf-8')
     fs.writeFileSync(soulPath, soulMd, 'utf-8')
     console.log('[service-manager] OpenClaw workspace 蓝本已同步: ' + workspaceDir)

@@ -65,6 +65,7 @@ const ROUTE_LABEL_MAP: Record<string, string> = {
   '/settings': '设置',
   '/profile': '个人信息',
   '/services': '服务管理',
+  '/office': 'AI 办公室',
   '/automation': '自动化',
   '/automation-editor': '编辑器',
   '/automation-editor/:id': '编辑',

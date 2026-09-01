@@ -81,6 +81,8 @@ import {
   testLogin,
 } from './platform-login'
 import { registerVideoParserIpc } from './video-parser'
+import { createEdictDeps, createEdictExtraDeps, ensureEdictHermesProfiles, registerEdictIpc } from './edict-bridge'
+import { registerEdictExtraIpc } from './edict-extra'
 
 // ===== Hermes 编排依赖（团队驱动执行） =====
 
@@ -552,6 +554,35 @@ function registerIpcHandlers(): void {
       openClawChat.syncAuthToken(token.trim())
     }
   })
+
+  const edictDeps = createEdictDeps()
+  const disposeEdictIpc = registerEdictIpc(edictDeps, { pollIntervalMs: 3000 })
+  const disposeEdictExtraIpc = registerEdictExtraIpc(
+    createEdictExtraDeps(edictDeps, {
+      // P1：Hermes 真实运行状态（serviceManager 服务状态 + 端口监听），替代 config.yaml 假状态
+      getHermesRuntimeStatus: async () => {
+        const st = await serviceManager.getServiceStatus("hermes");
+        const alive = st === "running";
+        return {
+          alive,
+          probe: alive,
+          status: alive ? "Hermes 运行时正常" : st === "unknown" ? "Hermes 状态未知（未启动）" : "Hermes 运行时未启动",
+          checkedAt: new Date().toISOString(),
+        };
+      },
+    }),
+    {}
+  )
+  // 引导 11 个官署 Hermes profiles（幂等：缺失创建 + SOUL.md 注入 + config.yaml 同步），失败不影响启动
+  ensureEdictHermesProfiles().then((r) => {
+    if (r.created.length) console.log('[edict-bridge] 已引导官署 profiles: ' + r.created.join(','))
+    else if (!r.ok) console.warn('[edict-bridge] 官署 profiles 引导跳过: ' + (r.reason || '未知'))
+  })
+  app.on('will-quit', () => {
+    disposeEdictIpc()
+    disposeEdictExtraIpc()
+  })
+
 
   // 注入用户 llm-proxy 静态 Key（登录后由渲染层调用；OpenClaw 的 openai provider 指向云端 llm-proxy）
   ipcMain.on('openclaw-chat:set-proxy-key', (_event, key: string) => {

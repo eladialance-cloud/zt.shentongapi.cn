@@ -33,6 +33,24 @@ import type {
   OrchestrateStepActionPayload,
   PlatformAccountApi,
   PlatformInfo,
+  EdictAPI,
+  EdictBoard,
+  EdictTask,
+  EdictOp,
+  EdictOfficial,
+  EdictStats,
+  EdictPipelineResult,
+  EdictAgentConfig,
+  EdictAgentsStatusData,
+  EdictCourtDiscussResult,
+  EdictModelChangeEntry,
+  EdictMorningBrief,
+  EdictNotifyConfig,
+  EdictRemoteSkillsResult,
+  EdictSkillLibraryResult,
+  EdictSessionItem,
+  EdictSkillContentResult,
+  EdictSubConfig,
 } from '../shared/types'
 
 const electronAPI: ElectronAPI = {
@@ -84,6 +102,7 @@ const electronAPI: ElectronAPI = {
     checkUpdate: () => ipcRenderer.invoke('app:checkUpdate'),
     quitAndInstall: () => ipcRenderer.invoke('app:quitAndInstall'),
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+    disableHardwareAcceleration: () => ipcRenderer.invoke('office:disable-hardware-acceleration')
   },
   updater: {
     check: () => ipcRenderer.invoke('update:check'),
@@ -238,6 +257,98 @@ const electronAPI: ElectronAPI = {
     test: (baseUrl: string, apiKey: string, model: string) =>
       ipcRenderer.invoke('llm-integrations:test', { baseUrl, apiKey, model }) as Promise<{ ok: boolean; message?: string }>,
   },
+  edict: {
+    issue: (input) =>
+      ipcRenderer.invoke('edict:issue', input) as Promise<EdictOp<{ taskId: string }>>,
+    board: () => ipcRenderer.invoke('edict:board') as Promise<EdictBoard>,
+    task: (taskId: string) =>
+      ipcRenderer.invoke('edict:task', taskId) as Promise<EdictOp<EdictTask | null>>,
+    transition: (taskId: string, to: string, note?: string) =>
+      ipcRenderer.invoke('edict:transition', taskId, to, note) as Promise<EdictOp>,
+    veto: (taskId: string, reason: string) =>
+      ipcRenderer.invoke('edict:veto', taskId, reason) as Promise<EdictOp>,
+    approve: (taskId: string) =>
+      ipcRenderer.invoke('edict:approve', taskId) as Promise<EdictOp>,
+    complete: (taskId: string, output?: string, summary?: string, actorAgentId?: string) =>
+      ipcRenderer.invoke('edict:complete', taskId, output, summary, actorAgentId) as Promise<EdictOp>,
+    block: (taskId: string, reason: string) =>
+      ipcRenderer.invoke('edict:block', taskId, reason) as Promise<EdictOp>,
+    progress: (taskId: string, text: string, plan?: string) =>
+      ipcRenderer.invoke('edict:progress', taskId, text, plan) as Promise<EdictOp>,
+    run: (taskId: string, opts?: { maxVetoRounds?: number }) =>
+      ipcRenderer.invoke('edict:run', taskId, opts) as Promise<EdictOp<EdictPipelineResult>>,
+    officials: () => ipcRenderer.invoke('edict:officials') as Promise<EdictOfficial[]>,
+    stats: () => ipcRenderer.invoke('edict:stats') as Promise<EdictStats>,
+    models: () => ipcRenderer.invoke('edict:models'),
+    cancel: (taskId: string) => ipcRenderer.invoke('edict:cancel', taskId) as Promise<EdictOp>,
+    advance: (taskId: string) => ipcRenderer.invoke('edict:advance', taskId) as Promise<EdictOp>,
+    retry: (taskId: string) => ipcRenderer.invoke('edict:retry', taskId) as Promise<EdictOp>,
+    escalate: (taskId: string) => ipcRenderer.invoke('edict:escalate', taskId) as Promise<EdictOp>,
+    unblock: (taskId: string) => ipcRenderer.invoke('edict:unblock', taskId) as Promise<EdictOp>,
+    notifyConfig: () => ipcRenderer.invoke('edict:notify-config') as Promise<EdictNotifyConfig>,
+    saveNotifyConfig: (config: EdictNotifyConfig) => ipcRenderer.invoke('edict:save-notify-config', config) as Promise<EdictOp>,
+    testNotify: () => ipcRenderer.invoke('edict:test-notify') as Promise<EdictOp>,
+    onBoardUpdated: (callback: (board: EdictBoard) => void) => {
+      const handler = (_event: IpcRendererEvent, board: EdictBoard): void => callback(board)
+      ipcRenderer.on('edict:board-updated', handler)
+      return () => {
+        ipcRenderer.removeListener('edict:board-updated', handler)
+      }
+    },
+    onTaskUpdated: (callback: (task: EdictTask) => void) => {
+      const handler = (_event: IpcRendererEvent, task: EdictTask): void => callback(task)
+      ipcRenderer.on('edict:task-updated', handler)
+      return () => {
+        ipcRenderer.removeListener('edict:task-updated', handler)
+      }
+    },
+    // ===== 补齐面板（edict-extra）：省部调度/模型/技能/朝堂议政/天下要闻/小任务/旨库 =====
+    agentsStatus: () => ipcRenderer.invoke('edict:agents-status') as Promise<EdictAgentsStatusData>,
+    agentWake: (agentId: string) => ipcRenderer.invoke('edict:agent-wake', agentId) as Promise<EdictOp>,
+    agentConfig: () => ipcRenderer.invoke('edict:agent-config') as Promise<EdictAgentConfig>,
+    setModel: (agentId: string, model: string) => ipcRenderer.invoke('edict:set-model', agentId, model) as Promise<EdictOp>,
+    modelChangeLog: () => ipcRenderer.invoke('edict:model-change-log') as Promise<EdictModelChangeEntry[]>,
+    skillContent: (agentId: string, skillName: string) =>
+      ipcRenderer.invoke('edict:skill-content', agentId, skillName) as Promise<EdictSkillContentResult>,
+    addSkill: (agentId: string, skillName: string, description: string, trigger: string) =>
+      ipcRenderer.invoke('edict:add-skill', agentId, skillName, description, trigger) as Promise<EdictOp>,
+    remoteSkillsList: () => ipcRenderer.invoke('edict:remote-skills-list') as Promise<EdictRemoteSkillsResult>,
+    addRemoteSkill: (agentId: string, skillName: string, sourceUrl: string, description?: string) =>
+      ipcRenderer.invoke('edict:add-remote-skill', agentId, skillName, sourceUrl, description) as Promise<EdictOp>,
+    updateRemoteSkill: (agentId: string, skillName: string) =>
+      ipcRenderer.invoke('edict:update-remote-skill', agentId, skillName) as Promise<EdictOp>,
+    removeRemoteSkill: (agentId: string, skillName: string) =>
+      ipcRenderer.invoke('edict:remove-remote-skill', agentId, skillName) as Promise<EdictOp>,
+    skillLibrary: () => ipcRenderer.invoke('edict:skill-library') as Promise<EdictSkillLibraryResult>,
+    copySkill: (agentId: string, source: string, skillName: string) =>
+      ipcRenderer.invoke('edict:copy-skill', agentId, source, skillName) as Promise<EdictOp>,
+    removeSkill: (agentId: string, skillName: string) =>
+      ipcRenderer.invoke('edict:remove-skill', agentId, skillName) as Promise<EdictOp>,
+    courtDiscussStart: (topic: string, officials: string[], taskId?: string) =>
+      ipcRenderer.invoke('edict:court-discuss/start', topic, officials, taskId) as Promise<EdictCourtDiscussResult>,
+    courtDiscussAdvance: (sessionId: string, userMessage?: string, decree?: string) =>
+      ipcRenderer.invoke('edict:court-discuss/advance', sessionId, userMessage, decree) as Promise<EdictCourtDiscussResult>,
+    courtDiscussConclude: (sessionId: string) =>
+      ipcRenderer.invoke('edict:court-discuss/conclude', sessionId) as Promise<EdictOp & { summary?: string }>,
+    courtDiscussDestroy: (sessionId: string) =>
+      ipcRenderer.invoke('edict:court-discuss/destroy', sessionId) as Promise<EdictOp>,
+    courtDiscussFate: () => ipcRenderer.invoke('edict:court-discuss/fate') as Promise<{ ok: boolean; event: string }>,
+    morningBrief: () => ipcRenderer.invoke('edict:morning-brief') as Promise<EdictMorningBrief>,
+    morningConfig: () => ipcRenderer.invoke('edict:morning-config') as Promise<EdictSubConfig>,
+    saveMorningConfig: (config: EdictSubConfig) => ipcRenderer.invoke('edict:save-morning-config', config) as Promise<EdictOp>,
+    refreshMorning: () => ipcRenderer.invoke('edict:refresh-morning') as Promise<EdictOp>,
+    sessions: () => ipcRenderer.invoke('edict:sessions') as Promise<EdictSessionItem[]>,
+    createTask: (input: { title: string; body?: string; priority?: string; dept?: string }) =>
+      ipcRenderer.invoke('edict:create-task', input) as Promise<EdictOp<{ taskId: string }>>,
+    onMorningUpdated: (callback: (brief: EdictMorningBrief) => void) => {
+      const handler = (_event: IpcRendererEvent, brief: EdictMorningBrief): void => callback(brief)
+      ipcRenderer.on('edict:morning-updated', handler)
+      return () => {
+        ipcRenderer.removeListener('edict:morning-updated', handler)
+      }
+    },
+  },
+
   openclawChat: {
     /** 注入用户 llm-proxy 静态 Key（登录后调用；OpenClaw openai provider 指向云端 llm-proxy） */
     setProxyKey: (key: string) => {

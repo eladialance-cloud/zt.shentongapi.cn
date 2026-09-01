@@ -8,6 +8,7 @@ import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Tooltip } from 'antd'
 import {
+  Building2,
   MessageSquare,
   BookOpen,
   Bot,
@@ -25,6 +26,7 @@ interface DockItem {
 }
 
 const DOCK_ITEMS: DockItem[] = [
+  { key: 'office',    icon: Building2,     label: 'AI 办公室',  shortcut: '⌘1', path: '/office'      },
   { key: 'chat',      icon: MessageSquare,  label: '对话',       shortcut: '⌘2', path: '/chat'        },
   { key: 'knowledge', icon: BookOpen,       label: '知识库',     shortcut: '⌘4', path: '/knowledge'   },
   { key: 'agents',    icon: Bot,            label: '智能体',     shortcut: '⌘5', path: '/agent-market' },
@@ -36,6 +38,7 @@ export default function IconDock() {
   const location = useLocation()
 
   const isActive = (path: string): boolean => {
+    if (path === '/office') return location.pathname === '/office'
     return location.pathname === path || location.pathname.startsWith(path + '/')
   }
 
