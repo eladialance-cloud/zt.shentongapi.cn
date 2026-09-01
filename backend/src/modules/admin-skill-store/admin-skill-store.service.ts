@@ -349,7 +349,7 @@ export class AdminSkillStoreService {
     return stats;
   }
 
-  /** 技能包上架时同步到用户端 Hermes 技能市场（hermes_skills） */
+  /** 技能包上架时同步到用户端 Hermes 技能市场（create_hermes_skills） */
   private async syncSkillToMarket(pkg: SkillPackageEntity) {
     const existing = await this.hermesSkillRepo.findOne({
       where: { sourcePackageId: pkg.id },

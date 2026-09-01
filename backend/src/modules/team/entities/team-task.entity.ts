@@ -4,7 +4,7 @@ import {
 } from "typeorm";
 
 /** 团队任务 — 替换 opc_tasks，新增 failed 状态 */
-@Entity("team_tasks")
+@Entity("task_team_tasks")
 export class TeamTaskEntity {
   @PrimaryGeneratedColumn({ type: "bigint", name: "id" })
   id: number;
@@ -34,7 +34,7 @@ export class TeamTaskEntity {
   @Column({ name: "execute_mode", type: "enum", enum: ["team", "auto", "agent"], default: "team" })
   executeMode: "team" | "auto" | "agent";
 
-  /** 指定单个 Agent 执行（execute_mode=agent 时指向 agents.id） */
+  /** 指定单个 Agent 执行（execute_mode=agent 时指向 eco_agents.id） */
   @Column({ name: "agent_id", type: "bigint", nullable: true })
   agentId?: number;
 
@@ -54,7 +54,7 @@ export class TeamTaskEntity {
   @Column({ name: "result", type: "json", nullable: true })
   result?: unknown;
 
-  /** 关联需求单 ID（briefs.id；T1 DB 已加列，实体补列） */
+  /** 关联需求单 ID（create_briefs.id；T1 DB 已加列，实体补列） */
   @Column({ name: "brief_id", type: "bigint", nullable: true })
   briefId?: number;
 

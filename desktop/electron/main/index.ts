@@ -71,6 +71,7 @@ import { buildMemberProfiles, type MemberRow } from './hermes-member-profile'
 import { listSkills, searchSkills, installSkill, updateSkills, uninstallSkill, checkSkills, installSkillLocal } from './hermes-skills'
 import { getEvolution } from './hermes-evolution'
 import { handleMemoryOp } from './hermes-memory'
+import { HermesClient } from './hermes-client'
 import {
   getSupportedPlatforms,
   openAccount,
@@ -332,6 +333,24 @@ function buildStepRunnerDeps(token: string, taskKey: string, input: OrchestrateI
         error: null,
         durationMs: 0,
       })
+    },
+    // 沉淀闭环（P0.5）：Hermes 任务成功收尾 → 云端知识库（sedimentation/apply；taskId/executionRef 溯源）
+    sedimentToCloud: async (payload) => {
+      try {
+        const res = await fetch(`${ST_API_BASE}/sedimentation/apply`, {
+          method: 'POST',
+          headers: auth,
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(20000),
+        })
+        if (!res.ok) {
+          const text = await res.text().catch(() => '')
+          return { ok: false, error: 'HTTP ' + res.status + ': ' + text.slice(0, 200) }
+        }
+        return { ok: true }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
     },
     isAutoConfirm: () => stepAutoConfirm.get(taskKey) ?? false,
     now: () => Date.now(),
@@ -596,7 +615,49 @@ function registerIpcHandlers(): void {
     if (res.canceled || !res.filePaths[0]) return { ok: false, error: '已取消选择' }
     return installSkillLocal(res.filePaths[0])
   })
-  ipcMain.handle('hermes-evolution:get', () => getEvolution())
+  ipcMain.handle('hermes-evolution:get', async () => {
+    try {
+      return await getEvolution(new HermesClient())
+    } catch (err) {
+      // 原生客户端初始化失败（极端情况）降级 CLI，不阻断进化页
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn('[hermes-evolution] 原生客户端初始化失败，降级 CLI:', msg)
+      return getEvolution()
+    }
+  })
+  // ===== Hermes 原生策展（P1：curator 状态 / 暂停恢复 / 立即运行；未接入时返回降级结果，不抛错） =====
+  ipcMain.handle('hermes-curator:get', async () => {
+    try {
+      const state = await new HermesClient().getCurator()
+      return { ok: true, state }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+  ipcMain.handle('hermes-curator:set-paused', async (_e, paused: unknown) => {
+    try {
+      const res = await new HermesClient().setCuratorPaused(!!paused)
+      return { ok: res.ok !== false }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+  ipcMain.handle('hermes-curator:run', async () => {
+    try {
+      return await new HermesClient().runCurator()
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+  // ===== Hermes 官方状态（P1：/api/status + /api/system/stats，面板只读；各失败独立降级为 null） =====
+  ipcMain.handle('hermes-status:get', async () => {
+    const client = new HermesClient()
+    const [status, stats] = await Promise.all([
+      client.status().catch(() => null),
+      client.getSystemStats().catch(() => null),
+    ])
+    return { status, stats }
+  })
   // ===== Hermes 记忆本地读写桥（MEMORY.md/USER.md；add/replace/remove/list） =====
   ipcMain.handle('hermes-memory:list', (_e, target) => handleMemoryOp('list', target))
   ipcMain.handle('hermes-memory:add', (_e, target, text) => handleMemoryOp('add', target, text))

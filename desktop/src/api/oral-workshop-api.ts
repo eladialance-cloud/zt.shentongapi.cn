@@ -5,7 +5,7 @@
 //   GET    /oral-workshop/jobs            我的任务列表（分页 + 状态筛选）
 //   GET    /oral-workshop/jobs/:id        任务详情（含 7 步状态）
 //   POST   /oral-workshop/jobs/:id/cancel 取消任务（退还预扣 Credits）
-//   POST   /oral-workshop/jobs/:id/export 导出发布包（生成 publish_plans，幂等）
+//   POST   /oral-workshop/jobs/:id/export 导出发布包（生成 create_publish_plans，幂等）
 //   GET    /oral-workshop/templates       可用模板列表
 //   GET/POST/DELETE /oral-workshop/voices  我的声音资产（参考音频 → 火山克隆）
 //   GET/POST/DELETE /oral-workshop/digital-humans  我的数字人形象
@@ -111,7 +111,7 @@ export async function cancelOralWorkshopJob(id: number): Promise<OralWorkshopJob
 }
 
 /**
- * 导出发布包（幂等，生成 publish_plans 记录）
+ * 导出发布包（幂等，生成 create_publish_plans 记录）
  * POST /oral-workshop/jobs/:id/export
  */
 export async function exportOralWorkshopPackage(id: number): Promise<PublishPackage> {

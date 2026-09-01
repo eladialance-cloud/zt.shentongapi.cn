@@ -83,13 +83,17 @@ function newService(voiceRows: any[] = [], dhRows: any[] = []) {
   const service = new OralWorkshopService(
     fakeJobRepo() as any,
     fakeStepRepo() as any,
-    voiceRepo as any,
     dhRepo as any,
     makeRepo<any>() as any,
     makeRepo<any>() as any,
     fakeBilling() as any,
     fakeLlm as unknown as OralWorkshopLlmService,
     fakeSystemLlm as any,
+    undefined as any,
+    undefined as any,
+    undefined as any,
+    undefined as any,
+    voiceRepo as any,
   );
   return { service, voiceRepo, dhRepo };
 }
@@ -119,8 +123,8 @@ describe('OralWorkshopService 声音资产', () => {
 
   it('listVoices：只返回当前用户的声音', async () => {
     const { service, voiceRepo } = newService();
-    voiceRepo.rows.push({ id: 1, userId: 7, name: 'a', refAudioUrl: 'u1', status: 'ready' } as any);
-    voiceRepo.rows.push({ id: 2, userId: 8, name: 'b', refAudioUrl: 'u2', status: 'ready' } as any);
+    voiceRepo.rows.push({ id: 1, userId: 7, bizType: 'voice_asset', title: 'a', url: 'u1', meta: { status: 'ready' } } as any);
+    voiceRepo.rows.push({ id: 2, userId: 8, bizType: 'voice_asset', title: 'b', url: 'u2', meta: { status: 'ready' } } as any);
     const list = await service.listVoices(7);
     assert.equal(list.length, 1);
     assert.equal(list[0].id, 1);
@@ -166,7 +170,7 @@ describe('OralWorkshopExecutor 资产接线', () => {
   it('voiceClone：voiceId 指向不存在的声音 → markStepFailed（可读错误，不发起 HTTP）', async () => {
     process.env.VOLCANO_ARK_API_KEY = 'k';
     process.env.VOLCANO_VOICE_MODEL = 'm';
-    const voiceAssetRepo = { findOne: async () => null };
+    const mediaAssetRepo = { findOne: async () => null };
     const service: any = {
       nextPendingStepOf: async () => 'voiceClone',
       getStepResults: async () => ({}),
@@ -175,7 +179,7 @@ describe('OralWorkshopExecutor 资产接线', () => {
       markStepFailed: async (_id: number, _step: string, error: string) => { failed = error; },
     };
     let failed = '';
-    const exec = new OralWorkshopExecutor(service, null as unknown as OralWorkshopLlmService, undefined as any, undefined as any, voiceAssetRepo as any);
+    const exec = new OralWorkshopExecutor(service, null as unknown as OralWorkshopLlmService, undefined as any, undefined as any, mediaAssetRepo as any);
     await exec.processJob({ id: 1, userId: 7, voiceId: 99, scriptInput: 'x' } as any);
     assert.ok(failed.includes('声音资产不存在'));
   });
@@ -230,13 +234,17 @@ function newBatchService() {
   const service = new OralWorkshopService(
     jobRepo as any,
     stepRepo as any,
-    voiceRepo as any,
     dhRepo as any,
     makeRepo<any>() as any,
     makeRepo<any>() as any,
     fakeBilling() as any,
     fakeLlm as unknown as OralWorkshopLlmService,
     fakeSystemLlm as any,
+    undefined as any,
+    undefined as any,
+    undefined as any,
+    undefined as any,
+    voiceRepo as any,
   );
   return { service, jobRepo };
 }
@@ -309,10 +317,14 @@ describe('OralWorkshopService 批量矩阵化建单', () => {
       makeRepo<any>() as any,
       makeRepo<any>() as any,
       makeRepo<any>() as any,
-      makeRepo<any>() as any,
       failingBilling as any,
       fakeLlm as unknown as OralWorkshopLlmService,
       fakeSystemLlm as any,
+      undefined as any,
+      undefined as any,
+      undefined as any,
+      undefined as any,
+      makeRepo<any>() as any,
     );
     const res = await service.createBatch(7, { topics: ['A', 'B'], templateIds: [1] });
     assert.equal(res.created.length, 1);

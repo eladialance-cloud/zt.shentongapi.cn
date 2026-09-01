@@ -4,7 +4,7 @@
 -- ============================================================
 
 -- 全局工作流库
-CREATE TABLE IF NOT EXISTS `n8n_workflow_lib` (
+CREATE TABLE IF NOT EXISTS `task_n8n_workflow_lib` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(128) NOT NULL COMMENT '工作流名称',
   `description` TEXT NULL COMMENT '工作流描述',
@@ -25,13 +25,13 @@ CREATE TABLE IF NOT EXISTS `n8n_workflow_lib` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='全局N8N工作流库';
 
 -- 工作流执行日志
-CREATE TABLE IF NOT EXISTS `n8n_workflow_exec_log` (
+CREATE TABLE IF NOT EXISTS `task_n8n_workflow_exec_log` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `user_id` BIGINT NOT NULL COMMENT '用户ID',
-  `workflow_lib_id` BIGINT NULL COMMENT '关联 n8n_workflow_lib.id',
+  `workflow_lib_id` BIGINT NULL COMMENT '关联 task_n8n_workflow_lib.id',
   `n8n_instance_id` BIGINT NULL COMMENT 'N8N实例ID',
   `n8n_execution_id` VARCHAR(64) NULL COMMENT 'N8N执行ID',
-  `task_id` BIGINT NULL COMMENT '关联 agent_task.id',
+  `task_id` BIGINT NULL COMMENT '关联 task_agent_tasks.id',
   `status` ENUM('queued','running','success','failed','cancelled') DEFAULT 'queued' COMMENT '执行状态',
   `input_data` JSON NULL COMMENT '输入数据',
   `output_data` JSON NULL COMMENT '输出数据',
@@ -48,10 +48,10 @@ CREATE TABLE IF NOT EXISTS `n8n_workflow_exec_log` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='N8N工作流执行日志';
 
 -- 工作流-MCP资源映射
-CREATE TABLE IF NOT EXISTS `workflow_mcp_bind` (
+CREATE TABLE IF NOT EXISTS `eco_workflow_mcp_bind` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `workflow_lib_id` BIGINT NOT NULL COMMENT '关联 n8n_workflow_lib.id',
-  `mcp_resource_id` BIGINT NOT NULL COMMENT '关联 mcp_resource_registry.id',
+  `workflow_lib_id` BIGINT NOT NULL COMMENT '关联 task_n8n_workflow_lib.id',
+  `mcp_resource_id` BIGINT NOT NULL COMMENT '关联 ai_mcp_resource_registry.id',
   `bind_type` ENUM('input','output','trigger') DEFAULT 'input' COMMENT '绑定类型',
   `config` JSON NULL COMMENT '绑定配置',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,

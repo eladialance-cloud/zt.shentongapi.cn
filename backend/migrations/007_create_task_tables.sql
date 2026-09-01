@@ -4,10 +4,10 @@
 -- ============================================================
 
 -- 通用任务主表
-CREATE TABLE IF NOT EXISTS `agent_task` (
+CREATE TABLE IF NOT EXISTS `task_agent_tasks` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `user_id` BIGINT NOT NULL COMMENT '用户ID',
-  `agent_id` BIGINT NULL COMMENT '关联 agents.id',
+  `agent_id` BIGINT NULL COMMENT '关联 eco_agents.id',
   `task_type` ENUM('chat','workflow','skill','multi_agent','codex') DEFAULT 'chat' COMMENT '任务类型',
   `title` VARCHAR(256) NULL COMMENT '任务标题',
   `input_text` TEXT NULL COMMENT '用户输入',
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS `agent_task` (
 -- 任务输出项
 CREATE TABLE IF NOT EXISTS `task_output_item` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `task_id` BIGINT NOT NULL COMMENT '关联 agent_task.id',
+  `task_id` BIGINT NOT NULL COMMENT '关联 task_agent_tasks.id',
   `output_type` ENUM('text','form','image','audio','video') DEFAULT 'text' COMMENT '输出类型',
   `content` TEXT NULL COMMENT '文本内容或文件URL',
   `content_json` JSON NULL COMMENT '结构化数据，如表格',

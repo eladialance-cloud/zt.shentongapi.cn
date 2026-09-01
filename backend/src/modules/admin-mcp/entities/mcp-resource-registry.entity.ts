@@ -5,7 +5,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
  * MCP 资源注册实体
  * 记录每个 MCP Server 暴露的资源信息
  */
-@Entity('mcp_resource_registry')
+@Entity('ai_mcp_resource_registry')
 export class McpResourceRegistryEntity extends BaseEntity {
   @Index()
   @Column({ name: 'server_id', type: 'bigint' })

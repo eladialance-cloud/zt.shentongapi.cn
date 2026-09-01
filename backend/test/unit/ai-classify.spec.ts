@@ -80,7 +80,7 @@ test('classifyAndUpdate: AI 回退 other 时不写回', async () => {
   assert.equal(updated, 0);
 });
 
-test('reclassify: plugin 类型读 plugins 表并仅写回 category（无 tags 列）', async () => {
+test('reclassify: plugin 类型读 eco_plugins 表并仅写回 category（无 tags 列）', async () => {
   mock.method(globalThis, 'fetch', async () => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '{"category":"database","tags":["db"]}' } }] }) }) as never);
   const updated: Array<{ criteria: { id: number }; data: { category?: string } }> = [];
   const svc = new AiClassifyService(

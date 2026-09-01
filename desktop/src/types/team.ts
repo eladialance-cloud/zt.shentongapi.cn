@@ -172,3 +172,7 @@ export interface TeamWorkflowNode {
   order: number
   assigneeIds?: number[]
 }
+
+/** 团队成员角色（复用 OPC 时代的角色枚举） */
+export type MemberRole = 'leader' | 'member' | 'observer' | 'reviewer'
+

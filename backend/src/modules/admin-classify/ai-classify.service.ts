@@ -94,7 +94,7 @@ export class AiClassifyService {
       const parsed = this.parseJson(text);
       if (!parsed) return fb;
       const category = String(parsed.category ?? '').trim();
-      // agents.category 等是 DB enum，非枚举值写回会 500，非法即回退
+      // eco_agents.category 等是 DB enum，非枚举值写回会 500，非法即回退
       if (!this.enumFor(assetType).split(', ').includes(category)) return fb;
       return { category, tags: normalizeTags(parsed.tags).slice(0, 5) };
     } catch (e) {
@@ -179,7 +179,7 @@ export class AiClassifyService {
     }
   }
 
-  /** 分类成功后写回 category/tags（skill_packages/plugins 无 tags 列，仅写 category） */
+  /** 分类成功后写回 category/tags（eco_skill_packages/eco_plugins 无 tags 列，仅写 category） */
   private async writeBack(assetType: string, id: number, result: ClassifyResult): Promise<void> {
     switch (assetType) {
       case 'agent':

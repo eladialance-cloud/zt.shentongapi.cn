@@ -4,7 +4,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
 /**
  * 工作流执行日志实体
  */
-@Entity('n8n_workflow_exec_log')
+@Entity('task_n8n_workflow_exec_log')
 export class N8nWorkflowExecLogEntity extends BaseEntity {
   /** 用户 ID */
   @Index()
@@ -24,7 +24,7 @@ export class N8nWorkflowExecLogEntity extends BaseEntity {
   @Column({ name: 'n8n_execution_id', length: 64, nullable: true })
   n8nExecutionId?: string;
 
-  /** 关联任务 ID（agent_task.id） */
+  /** 关联任务 ID（task_agent_tasks.id） */
   @Index()
   @Column({ name: 'task_id', type: 'bigint', nullable: true })
   taskId?: number;

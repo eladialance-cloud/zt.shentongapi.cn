@@ -5,7 +5,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
  * 全局工作流库实体
  * 存储 N8N 工作流模板，支持 GitHub 导入
  */
-@Entity('n8n_workflow_lib')
+@Entity('task_n8n_workflow_lib')
 export class N8nWorkflowLibEntity extends BaseEntity {
   /** 工作流名称 */
   @Column({ length: 128 })

@@ -12,10 +12,10 @@ const jobIdColumnOptions = {
 export type OralWorkshopJobStatus = 'pending' | 'processing' | 'done' | 'failed' | 'cancelled';
 
 /**
- * 口播工坊任务表（oral_workshop_jobs）
+ * 口播工坊任务表（create_oral_workshop_jobs）
  * 7 步流水线：extract → rewrite → voiceClone → digitalHuman → videoEdit → titleCover → publishReady
  */
-@Entity('oral_workshop_jobs')
+@Entity('create_oral_workshop_jobs')
 export class OralWorkshopJobEntity {
   @PrimaryGeneratedColumn(jobIdColumnOptions)
   id: number;
@@ -142,7 +142,7 @@ export class OralWorkshopJobEntity {
   /** 封面设计配置（模板/背景/字体/颜色，JSON 字符串） */
   @Column({ name: 'cover_config', type: 'text', nullable: true })
   coverConfig?: string | null;
-/** 关联 channel.publish_plans（导出发布包后回填） */
+/** 关联 channel.create_publish_plans（导出发布包后回填） */
   @Column({ name: 'publish_plan_id', type: 'bigint', nullable: true, transformer: bigintTransformer })
   publishPlanId?: number | null;
 

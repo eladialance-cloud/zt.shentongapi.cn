@@ -96,8 +96,14 @@ function buildAdminService() {
   const providerRepo: any = { findOne: async () => null, save: async (e: any) => e, update: async () => ({ affected: 1 }) };
   const encryption: any = { encryptAes: (s: string) => s, decryptAes: (s: string) => s, maskKey: () => '****' };
   const generationClient: any = { submitVideo: async () => ({ taskId: 't1' }) };
-  const svc = new AdminModelService(modelRepo, providerRepo, encryption, generationClient);
-  return { svc, modelRepo, providerRepo, generationClient };
+  const pricingSetPatches: any[] = [];
+  const pricingRepo: any = {
+    createQueryBuilder: () => ({ update: () => ({ set: (patch: any) => { pricingSetPatches.push(patch); return { where: () => ({ execute: async () => ({ affected: 1 }) }) }; } }) }),
+    create: (o: any) => o, save: async (e: any) => e, upsert: async () => ({ affected: 1 }),
+  };
+  const credentialsRepo: any = { create: (o: any) => o, save: async (e: any) => e, upsert: async () => ({ affected: 1 }) };
+  const svc = new AdminModelService(modelRepo, providerRepo, pricingRepo, credentialsRepo, encryption, generationClient);
+  return { svc, modelRepo, providerRepo, pricingRepo, pricingSetPatches, generationClient };
 }
 
 describe('AdminModelService P2 落库与自动归类', () => {
@@ -116,15 +122,15 @@ describe('AdminModelService P2 落库与自动归类', () => {
     const e = saved[0];
     assert.equal(e.callMode, 'image');
     assert.equal(e.modelType, 'image');
-    assert.deepEqual(e.inputTypes, ['text']);
-    assert.ok(e.advancedCapabilities.includes('prompt_rewrite'));
-    assert.deepEqual(e.scenarioTags, ['文生图']);
-    assert.equal(e.pricingMode, 'per_image');
+    assert.deepEqual(e.pricing.inputTypes, ['text']);
+    assert.ok(e.pricing.advancedCapabilities.includes('prompt_rewrite'));
+    assert.deepEqual(e.pricing.scenarioTags, ['文生图']);
+    assert.equal(e.pricing.pricingMode, 'per_image');
     assert.deepEqual(e.specs, { resolutions: ['720P', '1080P'] });
     assert.equal(e.iconUrl, 'https://x/icon.png');
-    assert.equal(e.costPrice, 0.5);
+    assert.equal(e.pricing.costPrice, 0.5);
     assert.equal(e.remark, '测试');
-    assert.equal(e.pricePerMinute, 3);
+    assert.equal(e.pricing.pricePerMinute, 3);
   });
   it('未知 callMode 创建被拒', async () => {
     const { svc } = buildAdminService();
@@ -149,8 +155,8 @@ describe('AdminModelService P2 更新路径（callMode 自动归类）', () => {
     await svc.update(1, dto);
     assert.equal(model.callMode, 'video');
     assert.equal(model.modelType, 'video');
-    assert.deepEqual(model.inputTypes, ['text', 'image']);
-    assert.deepEqual(model.advancedCapabilities, [
+    assert.deepEqual(model.pricing.inputTypes, ['text', 'image']);
+    assert.deepEqual(model.pricing.advancedCapabilities, [
       'prompt_rewrite', 'multi_shot', 'audio_sync', 'custom_audio',
     ]);
     assert.equal(model.supportsVision, true);
@@ -170,8 +176,8 @@ describe('AdminModelService P2 更新路径（callMode 自动归类）', () => {
     await svc.update(1, dto);
     assert.equal(model.callMode, 'image');
     assert.equal(model.modelType, 'image');
-    assert.deepEqual(model.inputTypes, ['text']);
-    assert.deepEqual(model.advancedCapabilities, ['function_calling', 'streaming']);
+    assert.deepEqual(model.pricing.inputTypes, ['text']);
+    assert.deepEqual(model.pricing.advancedCapabilities, ['function_calling', 'streaming']);
     assert.equal(model.supportsFunctions, true);
   });
 
@@ -196,22 +202,24 @@ describe('AdminModelService P2 视图契约（toAdminModelItem）', () => {
     model.modelId = 'img-1';
     model.upstreamModelId = 'img-1';
     model.modelType = 'image';
-    model.inputTypes = ['text'];
-    model.advancedCapabilities = ['prompt_rewrite'];
     model.name = '图像模型';
-    model.pricePer1kInput = 0;
-    model.pricePer1kOutput = 0;
-    model.minUserLevel = 0;
     model.isActive = true;
     model.callMode = 'image';
-    model.scenarioTags = ['文生图'];
-    model.pricingMode = 'per_image';
-    model.videoPerSecond = { '720P': 2, '1080P': 4 };
     model.specs = { resolutions: ['720P', '1080P'] };
     model.iconUrl = 'https://x/icon.png';
-    model.costPrice = 0.5;
     model.remark = '测试';
-    model.pricePerMinute = 3;
+    model.pricing = {
+      inputTypes: ['text'],
+      advancedCapabilities: ['prompt_rewrite'],
+      pricePer1kInput: 0,
+      pricePer1kOutput: 0,
+      minUserLevel: 0,
+      scenarioTags: ['文生图'],
+      pricingMode: 'per_image',
+      videoPerSecond: { '720P': 2, '1080P': 4 },
+      costPrice: 0.5,
+      pricePerMinute: 3,
+    };
     modelRepo.findOne = async () => model;
     const item: any = await svc.detail(1);
     assert.equal(item.callMode, 'image');
@@ -288,7 +296,7 @@ describe('模板库接口', () => {
     assert.equal(saved[0].callMode, 'ocr');
     assert.equal(saved[0].modelType, 'vision');
     assert.deepEqual(saved[0].specs, { fileFormats: ['jpg', 'png', 'pdf'], maxPages: 10 });
-    assert.equal(saved[0].pricePerImage, 2);
+    assert.equal(saved[0].pricing.pricePerImage, 2);
     assert.equal(saved[0].isActive, false);
     assert.equal(item.callMode, 'ocr');
   });
@@ -301,8 +309,8 @@ describe('模板库接口', () => {
       modelId: 't2v-1',
       displayName: '自定义视频模型',
     });
-    assert.deepEqual(saved[0].videoPerSecond, { '720P': 2, '1080P': 4 });
-    assert.deepEqual(saved[0].generationParams, {
+    assert.deepEqual(saved[0].pricing.videoPerSecond, { '720P': 2, '1080P': 4 });
+    assert.deepEqual(saved[0].pricing.generationParams, {
       video_resolutions: ['720P', '1080P'],
       video_durations: [5, 10, 15],
       video_fps: [24],
@@ -313,8 +321,8 @@ describe('模板库接口', () => {
     assert.equal(saved[0].isActive, false);
     assert.equal(item.displayName, '自定义视频模型');
     const tpl: any = (await svc.templateList()).find((t: any) => t.key === 'wan2.2-t2v');
-    assert.notStrictEqual(saved[0].videoPerSecond, tpl.referencePrice.videoPerSecond);
-    assert.notStrictEqual(saved[0].generationParams, tpl.generationParams);
+    assert.notStrictEqual(saved[0].pricing.videoPerSecond, tpl.referencePrice.videoPerSecond);
+    assert.notStrictEqual(saved[0].pricing.generationParams, tpl.generationParams);
   });
   it('未知模板创建被拒', async () => {
     const { svc } = buildAdminService();
@@ -337,13 +345,11 @@ describe('批量操作', () => {
     assert.equal(updated[0][1].isActive, false);
   });
   it('batchUpdatePrice 按 DTO 字段批量改价', async () => {
-    const { svc, modelRepo } = buildAdminService();
-    const updated: Array<[any, any]> = [];
-    modelRepo.update = async (where: any, patch: any) => { updated.push([where, patch]); return { affected: 1 }; };
+    const { svc, pricingSetPatches } = buildAdminService();
     const r = await svc.batchUpdatePrice({ ids: [3], pricePerMinute: 5, videoPerSecond: { '720P': 2 } });
     assert.equal(r.updated, 1);
-    assert.equal(updated[0][1].pricePerMinute, 5);
-    assert.deepEqual(updated[0][1].videoPerSecond, { '720P': 2 });
+    assert.equal(pricingSetPatches[0].pricePerMinute, 5);
+    assert.deepEqual(pricingSetPatches[0].videoPerSecond, { '720P': 2 });
   });
   it('importModelsJson 批量导入并返回数量', async () => {
     const { svc, modelRepo } = buildAdminService();
@@ -362,12 +368,13 @@ describe('批量操作（质量补强）', () => {
   it('exportModels 导出筛选条件下全部模型（不分页）', async () => {
     const { svc, modelRepo } = buildAdminService();
     const models: any[] = [
-      { id: 1, provider: 'aliyun', modelId: 'm1', name: '模型1', modelType: 'chat', pricePer1kInput: 0, pricePer1kOutput: 0, minUserLevel: 0, isActive: true },
-      { id: 2, provider: 'aliyun', modelId: 'm2', name: '模型2', modelType: 'image', pricePer1kInput: 0, pricePer1kOutput: 0, minUserLevel: 0, isActive: true, callMode: 'image', videoPerSecond: { '720P': 2 } },
+      { id: 1, provider: 'aliyun', modelId: 'm1', name: '模型1', modelType: 'chat', isActive: true, pricing: { pricePer1kInput: 0, pricePer1kOutput: 0, minUserLevel: 0 } },
+      { id: 2, provider: 'aliyun', modelId: 'm2', name: '模型2', modelType: 'image', isActive: true, callMode: 'image', pricing: { pricePer1kInput: 0, pricePer1kOutput: 0, minUserLevel: 0, videoPerSecond: { '720P': 2 } } },
     ];
     let getManyCalled = false;
     const qbMock: any = {
       andWhere: () => { throw new Error('无筛选时不应调用 andWhere'); },
+      leftJoinAndSelect: () => qbMock,
       orderBy: () => qbMock,
       addOrderBy: () => qbMock,
       getMany: async () => { getManyCalled = true; return models; },
@@ -390,13 +397,15 @@ describe('批量操作（质量补强）', () => {
     existing.upstreamModelId = 'm1';
     existing.name = '旧名字';
     existing.modelType = 'chat';
-    existing.inputTypes = ['text'];
-    existing.advancedCapabilities = [];
-    existing.pricePer1kInput = 99;
-    existing.pricePer1kOutput = 88;
-    existing.minUserLevel = 0;
     existing.isActive = true;
     existing.callMode = 'text_chat';
+    existing.pricing = {
+      inputTypes: ['text'],
+      advancedCapabilities: [],
+      pricePer1kInput: 99,
+      pricePer1kOutput: 88,
+      minUserLevel: 0,
+    };
     let saved: any = null;
     modelRepo.findOne = async () => existing;
     modelRepo.save = async (e: any) => { saved = e; return e; };
@@ -407,11 +416,11 @@ describe('批量操作（质量补强）', () => {
     assert.equal(r.updated, 1);
     assert.equal(r.errors.length, 0);
     assert.equal(saved.isActive, true);
-    assert.equal(saved.pricePer1kInput, 99);
-    assert.equal(saved.pricePer1kOutput, 88);
+    assert.equal(saved.pricing.pricePer1kInput, 99);
+    assert.equal(saved.pricing.pricePer1kOutput, 88);
     assert.equal(saved.name, '新名字');
-    assert.deepEqual(saved.videoPerSecond, { '720P': 3 });
-    assert.deepEqual(saved.videoPrices, { '720P': { '5': 10 } });
+    assert.deepEqual(saved.pricing.videoPerSecond, { '720P': 3 });
+    assert.deepEqual(saved.pricing.videoPrices, { '720P': { '5': 10 } });
   });
 
   it('importModelsJson 缺 provider 收集到 errors，其余行继续导入', async () => {
@@ -653,7 +662,13 @@ describe('AdminModelService 重复添加模型去重保护', () => {
     };
     const encryption: any = { encryptAes: (s: string) => 'enc:' + s };
     const generationClient: any = {};
-    return new AdminModelService(modelRepo, providerRepo, encryption, generationClient);
+    const pricingSetPatches: any[] = [];
+  const pricingRepo: any = {
+    createQueryBuilder: () => ({ update: () => ({ set: (patch: any) => { pricingSetPatches.push(patch); return { where: () => ({ execute: async () => ({ affected: 1 }) }) }; } }) }),
+    create: (o: any) => o, save: async (e: any) => e, upsert: async () => ({ affected: 1 }),
+  };
+    const credentialsRepo: any = { create: (o: any) => o, save: async (e: any) => e, upsert: async () => ({ affected: 1 }) };
+    return new AdminModelService(modelRepo, providerRepo, pricingRepo, credentialsRepo, encryption, generationClient);
   }
 
   const baseDto: any = {

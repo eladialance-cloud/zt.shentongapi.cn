@@ -26,6 +26,9 @@ import type {
   OpenClawChatErrorPayload,
   HermesMemoryTarget,
   HermesMemoryOpResult,
+  HermesCuratorResult,
+  HermesCuratorOpResult,
+  HermesStatusResult,
   OrchestrateSubmitResult,
   OrchestrateInput,
   TeamMemberProfileItem,
@@ -166,6 +169,15 @@ const electronAPI: ElectronAPI = {
   },
   hermesEvolution: {
     get: () => ipcRenderer.invoke('hermes-evolution:get'),
+  },
+  hermesCurator: {
+    get: () => ipcRenderer.invoke('hermes-curator:get') as Promise<HermesCuratorResult>,
+    setPaused: (paused: boolean) =>
+      ipcRenderer.invoke('hermes-curator:set-paused', paused) as Promise<HermesCuratorOpResult>,
+    run: () => ipcRenderer.invoke('hermes-curator:run') as Promise<HermesCuratorOpResult>,
+  },
+  hermesStatus: {
+    get: () => ipcRenderer.invoke('hermes-status:get') as Promise<HermesStatusResult>,
   },
   hermesMemory: {
     list: (target: HermesMemoryTarget) =>

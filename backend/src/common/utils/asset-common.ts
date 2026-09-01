@@ -1,11 +1,11 @@
 /** 资产市场公共字段工具：六类资产统一 source_type/github_topics/pricing 规范化（Phase 1） */
 
 /** 资产添加方式：github=GitHub 导入，manual=手工创建。
- *  注意：agents 表现有 source_type(official/user/imported) 语义为「归属」，不迁移，
- *  本类型仅用于其余五表（workflows/mcp_catalog/skill_packages/hermes_skills/plugins）。 */
+ *  注意：eco_agents 表现有 source_type(official/user/imported) 语义为「归属」，不迁移，
+ *  本类型仅用于其余五表（workflows/eco_mcp_catalog/eco_skill_packages/create_hermes_skills/eco_plugins）。 */
 export type AssetSourceType = 'github' | 'manual';
 
-/** 智能体/技能/技能包分类（与 agents.category 枚举一致，设计文档 3.1/3.4/3.5） */
+/** 智能体/技能/技能包分类（与 eco_agents.category 枚举一致，设计文档 3.1/3.4/3.5） */
 export const AGENT_CATEGORIES = [
   'office',
   'programming',

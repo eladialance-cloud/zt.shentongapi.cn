@@ -1,4 +1,4 @@
-﻿-- =============================================================================
+-- =============================================================================
 -- 深瞳 AI 智能中台 - 数据库初始化脚本
 -- 数据库：ai_agent
 -- MySQL 版本：8.0+
@@ -92,9 +92,9 @@ CREATE TABLE `user_roles` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户角色关联表';
 
 -- -----------------------------------------------------------------------------
--- 4. 团队表 (teams) - 文档 3.1.4
+-- 4. 团队表 (task_teams) - 文档 3.1.4
 -- -----------------------------------------------------------------------------
-CREATE TABLE `teams` (
+CREATE TABLE `task_teams` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '团队 ID',
   `name` VARCHAR(128) NOT NULL COMMENT '团队名称',
   `owner_id` BIGINT UNSIGNED NOT NULL COMMENT '团队所有者 ID',
@@ -107,9 +107,9 @@ CREATE TABLE `teams` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='团队表';
 
 -- -----------------------------------------------------------------------------
--- 5. 团队成员表 (team_members) - 文档 3.1.5
+-- 5. 团队成员表 (task_team_members) - 文档 3.1.5
 -- -----------------------------------------------------------------------------
-CREATE TABLE `team_members` (
+CREATE TABLE `task_team_members` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '关联 ID',
   `team_id` BIGINT UNSIGNED NOT NULL COMMENT '团队 ID',
   `user_id` BIGINT UNSIGNED NOT NULL COMMENT '用户 ID',
@@ -119,7 +119,7 @@ CREATE TABLE `team_members` (
   UNIQUE KEY `uniq_team_members` (`team_id`, `user_id`),
   KEY `idx_team_members_team_id` (`team_id`),
   KEY `idx_team_members_user_id` (`user_id`),
-  CONSTRAINT `fk_team_members_team_id` FOREIGN KEY (`team_id`) REFERENCES `teams` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_team_members_team_id` FOREIGN KEY (`team_id`) REFERENCES `task_teams` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_team_members_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='团队成员表';
 
@@ -128,17 +128,17 @@ CREATE TABLE `team_members` (
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- 6. Agent 表 (agents) - 文档 3.2.1
+-- 6. Agent 表 (eco_agents) - 文档 3.2.1
 --    包含 OpenClaw 集成字段
 -- -----------------------------------------------------------------------------
-CREATE TABLE `agents` (
+CREATE TABLE `eco_agents` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'Agent ID',
   `name` VARCHAR(64) NOT NULL COMMENT 'Agent 名称',
   `description` VARCHAR(512) DEFAULT NULL COMMENT 'Agent 描述',
   `avatar` VARCHAR(512) DEFAULT NULL COMMENT '头像 URL',
   `system_prompt` TEXT NOT NULL COMMENT '系统提示词',
   `usage_example` TEXT DEFAULT NULL COMMENT '使用示例 (Markdown)',
-  `model_id` VARCHAR(64) NOT NULL COMMENT '绑定模型 ID (关联 models.model_id)',
+  `model_id` VARCHAR(64) NOT NULL COMMENT '绑定模型 ID (关联 ai_models.model_id)',
   `price_per_call` INT NOT NULL DEFAULT 0 COMMENT '每次调用价格 (积分)',
   `price_per_token` JSON DEFAULT NULL COMMENT 'Token 单价 JSON (input/output)',
   `creator_id` BIGINT UNSIGNED NOT NULL COMMENT '创建者用户 ID',
@@ -189,10 +189,10 @@ CREATE TABLE `agents` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 表';
 
 -- -----------------------------------------------------------------------------
--- 6.1 Agent 批量导入任务表 (agent_import_tasks)
+-- 6.1 Agent 批量导入任务表 (eco_agent_import_tasks)
 --    持久化 GitHub 仓库批量导入任务进度与统计
 -- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `agent_import_tasks` (
+CREATE TABLE IF NOT EXISTS `eco_agent_import_tasks` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `task_id` VARCHAR(64) NOT NULL,
   `repo_url` VARCHAR(512) NOT NULL,
@@ -209,9 +209,9 @@ CREATE TABLE IF NOT EXISTS `agent_import_tasks` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- -----------------------------------------------------------------------------
--- 7. Agent 版本表 (agent_versions) - 文档 3.2.2
+-- 7. Agent 版本表 (eco_agent_versions) - 文档 3.2.2
 -- -----------------------------------------------------------------------------
-CREATE TABLE `agent_versions` (
+CREATE TABLE `eco_agent_versions` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '版本 ID',
   `agent_id` BIGINT UNSIGNED NOT NULL COMMENT 'Agent ID',
   `version` VARCHAR(32) NOT NULL COMMENT '版本号',
@@ -222,7 +222,7 @@ CREATE TABLE `agent_versions` (
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
   KEY `idx_agent_versions_agent_id` (`agent_id`),
-  CONSTRAINT `fk_agent_versions_agent_id` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_agent_versions_agent_id` FOREIGN KEY (`agent_id`) REFERENCES `eco_agents` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 版本表';
 
 -- -----------------------------------------------------------------------------
@@ -245,15 +245,15 @@ CREATE TABLE `agent_call_logs` (
   KEY `idx_agent_call_logs_user_id` (`user_id`),
   KEY `idx_agent_call_logs_session_id` (`session_id`),
   KEY `idx_agent_call_logs_created_at` (`created_at`),
-  CONSTRAINT `fk_agent_call_logs_agent_id` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_agent_call_logs_agent_id` FOREIGN KEY (`agent_id`) REFERENCES `eco_agents` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_agent_call_logs_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 调用日志表';
 
 -- -----------------------------------------------------------------------------
--- 9. Agent 审核记录表 (agent_reviews) - 文档 3.2.4
+-- 9. Agent 审核记录表 (eco_agent_reviews) - 文档 3.2.4
 --    日志表，无 updated_at
 -- -----------------------------------------------------------------------------
-CREATE TABLE `agent_reviews` (
+CREATE TABLE `eco_agent_reviews` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '记录 ID',
   `agent_id` BIGINT UNSIGNED NOT NULL COMMENT 'Agent ID',
   `reviewer_id` BIGINT UNSIGNED NOT NULL COMMENT '审核员 ID',
@@ -263,7 +263,7 @@ CREATE TABLE `agent_reviews` (
   PRIMARY KEY (`id`),
   KEY `idx_agent_reviews_agent_id` (`agent_id`),
   KEY `idx_agent_reviews_reviewer_id` (`reviewer_id`),
-  CONSTRAINT `fk_agent_reviews_agent_id` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_agent_reviews_agent_id` FOREIGN KEY (`agent_id`) REFERENCES `eco_agents` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_agent_reviews_reviewer_id` FOREIGN KEY (`reviewer_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 审核记录表';
 
@@ -480,9 +480,9 @@ CREATE TABLE `files` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文件表';
 
 -- -----------------------------------------------------------------------------
--- 19. 模型配置表 (models) - 文档 3.6.2
+-- 19. 模型配置表 (ai_models) - 文档 3.6.2
 -- -----------------------------------------------------------------------------
-CREATE TABLE `models` (
+CREATE TABLE `ai_models` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '模型 ID',
   `provider` VARCHAR(64) NOT NULL COMMENT '提供商 (openai/anthropic/google/local)',
   `model_id` VARCHAR(64) NOT NULL COMMENT '模型标识符',
@@ -504,9 +504,52 @@ CREATE TABLE `models` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='模型配置表';
 
 -- -----------------------------------------------------------------------------
--- 20. 插件表 (plugins) - 文档 3.6.3
+-- 19b. 模型计费/能力配置表 (ai_model_pricing) - P5 从 ai_models 拆出
 -- -----------------------------------------------------------------------------
-CREATE TABLE `plugins` (
+CREATE TABLE `ai_model_pricing` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `model_id` BIGINT UNSIGNED NOT NULL COMMENT '模型 ID（ai_models.id）',
+  `input_types` JSON DEFAULT NULL COMMENT '输入类型(多选): text/image/video/audio',
+  `advanced_capabilities` JSON DEFAULT NULL COMMENT '高级能力(多选): function_calling/streaming/reasoning/json_mode',
+  `min_user_level` INT NOT NULL DEFAULT 0 COMMENT '最低用户等级',
+  `price_per_1k_input` DECIMAL(10,4) DEFAULT NULL COMMENT '输入价格(积分/千token)',
+  `price_per_1k_output` DECIMAL(10,4) DEFAULT NULL COMMENT '输出价格(积分/千token)',
+  `price_per_image` DECIMAL(10,4) DEFAULT NULL COMMENT '图片生成固定积分(积分/张)',
+  `video_prices` JSON DEFAULT NULL COMMENT '视频生成价格矩阵: {分辨率:{时长:积分}}',
+  `price_per_call` DECIMAL(10,4) DEFAULT NULL COMMENT '按次计费积分',
+  `price_per_minute` DECIMAL(10,4) DEFAULT NULL COMMENT '按分钟计费积分(stt/tts)',
+  `pricing_mode` VARCHAR(16) DEFAULT NULL COMMENT '计费方式: token/per_image/per_call/per_minute/per_second',
+  `video_per_second` JSON DEFAULT NULL COMMENT '视频按分辨率档积分/秒',
+  `scenario_tags` JSON DEFAULT NULL COMMENT '场景标签(固定字典多选)',
+  `generation_params` JSON DEFAULT NULL COMMENT '生成参数选项',
+  `cost_price` DECIMAL(10,4) DEFAULT NULL COMMENT '成本价(元)',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_ai_model_pricing_model_id` (`model_id`),
+  KEY `idx_ai_model_pricing_min_user_level` (`min_user_level`),
+  CONSTRAINT `fk_ai_model_pricing_model_id` FOREIGN KEY (`model_id`) REFERENCES `ai_models` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='模型计费/能力配置表 (P5 拆分)';
+
+-- -----------------------------------------------------------------------------
+-- 19c. 模型级连接凭据表 (ai_model_credentials) - P5 从 ai_models 拆出
+-- -----------------------------------------------------------------------------
+CREATE TABLE `ai_model_credentials` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `model_id` BIGINT UNSIGNED NOT NULL COMMENT '模型 ID（ai_models.id）',
+  `api_key` VARCHAR(1024) DEFAULT NULL COMMENT 'AES 加密的 API Key（模型级直连凭据）',
+  `api_endpoint` VARCHAR(512) DEFAULT NULL COMMENT 'API 地址',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_ai_model_credentials_model_id` (`model_id`),
+  CONSTRAINT `fk_ai_model_credentials_model_id` FOREIGN KEY (`model_id`) REFERENCES `ai_models` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='模型级连接凭据表 (P5 拆分)';
+
+-- -----------------------------------------------------------------------------
+-- 20. 插件表 (eco_plugins) - 文档 3.6.3
+-- -----------------------------------------------------------------------------
+CREATE TABLE `eco_plugins` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '插件 ID',
   `name` VARCHAR(64) NOT NULL COMMENT '插件名称',
   `description` VARCHAR(512) DEFAULT NULL COMMENT '插件描述',
@@ -522,98 +565,13 @@ CREATE TABLE `plugins` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='插件表 (MCP)';
 
 -- =============================================================================
--- 七、OPC 团队协作模块表 (4 张) - 前端需要，设计文档中缺失
--- =============================================================================
-
--- -----------------------------------------------------------------------------
--- 21. OPC 团队表 (opc_teams)
--- -----------------------------------------------------------------------------
-CREATE TABLE `opc_teams` (
-  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'OPC 团队 ID',
-  `name` VARCHAR(128) NOT NULL COMMENT '团队名称',
-  `avatar` VARCHAR(512) DEFAULT NULL COMMENT '团队头像 URL',
-  `description` VARCHAR(512) DEFAULT NULL COMMENT '团队描述',
-  `member_count` INT NOT NULL DEFAULT 0 COMMENT '成员数量',
-  `creator_id` BIGINT UNSIGNED NOT NULL COMMENT '创建者用户 ID',
-  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (`id`),
-  KEY `idx_opc_teams_creator_id` (`creator_id`),
-  CONSTRAINT `fk_opc_teams_creator_id` FOREIGN KEY (`creator_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OPC 团队表';
-
--- -----------------------------------------------------------------------------
--- 22. OPC 任务表 (opc_tasks)
--- -----------------------------------------------------------------------------
-CREATE TABLE `opc_tasks` (
-  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'OPC 任务 ID',
-  `team_id` BIGINT UNSIGNED NOT NULL COMMENT '所属团队 ID',
-  `title` VARCHAR(256) NOT NULL COMMENT '任务标题',
-  `description` TEXT DEFAULT NULL COMMENT '任务描述',
-  `status` ENUM('pending', 'in_progress', 'completed') NOT NULL DEFAULT 'pending' COMMENT '任务状态 (pending待处理/in_progress进行中/completed已完成)',
-  `priority` ENUM('low', 'medium', 'high') NOT NULL DEFAULT 'medium' COMMENT '任务优先级 (low低/medium中/high高)',
-  `assignee_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '指派人 ID',
-  `creator_id` BIGINT UNSIGNED NOT NULL COMMENT '创建者 ID',
-  `due_date` DATETIME DEFAULT NULL COMMENT '截止时间',
-  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (`id`),
-  KEY `idx_opc_tasks_team_id` (`team_id`),
-  KEY `idx_opc_tasks_assignee_id` (`assignee_id`),
-  KEY `idx_opc_tasks_creator_id` (`creator_id`),
-  KEY `idx_opc_tasks_status` (`status`),
-  CONSTRAINT `fk_opc_tasks_team_id` FOREIGN KEY (`team_id`) REFERENCES `opc_teams` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_opc_tasks_assignee_id` FOREIGN KEY (`assignee_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_opc_tasks_creator_id` FOREIGN KEY (`creator_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OPC 任务表';
-
--- -----------------------------------------------------------------------------
--- 23. OPC 团队成员表 (opc_team_members)
--- -----------------------------------------------------------------------------
-CREATE TABLE `opc_team_members` (
-  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'OPC 成员关联 ID',
-  `team_id` BIGINT UNSIGNED NOT NULL COMMENT '团队 ID',
-  `user_id` BIGINT UNSIGNED NOT NULL COMMENT '用户 ID',
-  `role` ENUM('owner', 'admin', 'member') NOT NULL DEFAULT 'member' COMMENT '团队角色 (owner创建者/admin管理员/member成员)',
-  `joined_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '加入时间',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uniq_opc_team_members` (`team_id`, `user_id`),
-  KEY `idx_opc_team_members_team_id` (`team_id`),
-  KEY `idx_opc_team_members_user_id` (`user_id`),
-  CONSTRAINT `fk_opc_team_members_team_id` FOREIGN KEY (`team_id`) REFERENCES `opc_teams` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_opc_team_members_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OPC 团队成员表';
-
--- -----------------------------------------------------------------------------
--- 24. OPC Agent 仓库表 (opc_agent_repos)
--- -----------------------------------------------------------------------------
-CREATE TABLE `opc_agent_repos` (
-  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'OPC Agent 仓库项 ID',
-  `team_id` BIGINT UNSIGNED NOT NULL COMMENT '团队 ID',
-  `agent_id` BIGINT UNSIGNED NOT NULL COMMENT 'Agent ID',
-  `agent_name` VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Agent 名称快照',
-  `agent_avatar` VARCHAR(512) DEFAULT NULL COMMENT 'Agent 头像快照',
-  `description` VARCHAR(512) DEFAULT NULL COMMENT 'Agent 描述快照',
-  `version` VARCHAR(32) NOT NULL DEFAULT '1' COMMENT 'Agent 版本快照',
-  `added_by` BIGINT UNSIGNED NOT NULL COMMENT '添加人 ID',
-  `added_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '添加时间',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uniq_opc_agent_repos` (`team_id`, `agent_id`),
-  KEY `idx_opc_agent_repos_team_id` (`team_id`),
-  KEY `idx_opc_agent_repos_agent_id` (`agent_id`),
-  CONSTRAINT `fk_opc_agent_repos_team_id` FOREIGN KEY (`team_id`) REFERENCES `opc_teams` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_opc_agent_repos_agent_id` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_opc_agent_repos_added_by` FOREIGN KEY (`added_by`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OPC Agent 仓库表';
-
--- =============================================================================
 -- 八、前端补充表 (5 张) - 收藏 / 评分 / 会员套餐 / 收益 / 提现
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- 25. Agent 收藏表 (agent_favorites)
+-- 25. Agent 收藏表 (eco_agent_favorites)
 -- -----------------------------------------------------------------------------
-CREATE TABLE `agent_favorites` (
+CREATE TABLE `eco_agent_favorites` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '收藏 ID',
   `user_id` BIGINT UNSIGNED NOT NULL COMMENT '用户 ID',
   `agent_id` BIGINT UNSIGNED NOT NULL COMMENT 'Agent ID',
@@ -623,13 +581,13 @@ CREATE TABLE `agent_favorites` (
   KEY `idx_agent_favorites_user_id` (`user_id`),
   KEY `idx_agent_favorites_agent_id` (`agent_id`),
   CONSTRAINT `fk_agent_favorites_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_agent_favorites_agent_id` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_agent_favorites_agent_id` FOREIGN KEY (`agent_id`) REFERENCES `eco_agents` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 收藏表';
 
 -- -----------------------------------------------------------------------------
--- 26. Agent 评分表 (agent_ratings)
+-- 26. Agent 评分表 (eco_agent_ratings)
 -- -----------------------------------------------------------------------------
-CREATE TABLE `agent_ratings` (
+CREATE TABLE `eco_agent_ratings` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '评分 ID',
   `user_id` BIGINT UNSIGNED NOT NULL COMMENT '用户 ID',
   `agent_id` BIGINT UNSIGNED NOT NULL COMMENT 'Agent ID',
@@ -643,7 +601,7 @@ CREATE TABLE `agent_ratings` (
   KEY `idx_agent_ratings_agent_id` (`agent_id`),
   CONSTRAINT `chk_agent_ratings_rating` CHECK (`rating` BETWEEN 1 AND 5),
   CONSTRAINT `fk_agent_ratings_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_agent_ratings_agent_id` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_agent_ratings_agent_id` FOREIGN KEY (`agent_id`) REFERENCES `eco_agents` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 评分表';
 
 -- -----------------------------------------------------------------------------
@@ -730,7 +688,7 @@ CREATE TABLE `operation_logs` (
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ==================== skill-store 三表（v0.6.0 补齐，与 backend/src/common/utils/db-migration.ts 一致）====================
-CREATE TABLE IF NOT EXISTS `skill_packages` (
+CREATE TABLE IF NOT EXISTS `eco_skill_packages` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(64) NOT NULL,
   `display_name` VARCHAR(512) NOT NULL,
@@ -765,7 +723,7 @@ CREATE TABLE IF NOT EXISTS `skill_packages` (
   KEY `idx_skill_packages_is_official` (`is_official`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技能商店-技能包';
 
-CREATE TABLE IF NOT EXISTS `skill_sources` (
+CREATE TABLE IF NOT EXISTS `eco_skill_sources` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `source_url` VARCHAR(512) NOT NULL,
   `source_type` VARCHAR(32) NOT NULL DEFAULT 'github',
@@ -785,7 +743,7 @@ CREATE TABLE IF NOT EXISTS `skill_sources` (
   KEY `idx_skill_sources_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技能商店-技能来源';
 
-CREATE TABLE IF NOT EXISTS `skill_install_logs` (
+CREATE TABLE IF NOT EXISTS `eco_skill_install_logs` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `package_id` BIGINT UNSIGNED NOT NULL,
   `user_id` BIGINT UNSIGNED DEFAULT NULL,
@@ -803,9 +761,9 @@ CREATE TABLE IF NOT EXISTS `skill_install_logs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技能商店-安装/执行日志';
 
 -- -----------------------------------------------------------------------------
--- 36. Agent 安装记录表 (agent_installs) - 桌面端安装/卸载闭环
+-- 36. Agent 安装记录表 (eco_agent_installs) - 桌面端安装/卸载闭环
 -- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `agent_installs` (
+CREATE TABLE IF NOT EXISTS `eco_agent_installs` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '安装记录 ID',
   `user_id` BIGINT UNSIGNED NOT NULL COMMENT '用户 ID',
   `agent_id` BIGINT UNSIGNED NOT NULL COMMENT 'Agent ID',
@@ -817,7 +775,7 @@ CREATE TABLE IF NOT EXISTS `agent_installs` (
   KEY `idx_agent_installs_user_id` (`user_id`),
   KEY `idx_agent_installs_agent_id` (`agent_id`),
   CONSTRAINT `fk_agent_installs_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_agent_installs_agent_id` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_agent_installs_agent_id` FOREIGN KEY (`agent_id`) REFERENCES `eco_agents` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 安装记录表';
 
 -- -----------------------------------------------------------------------------

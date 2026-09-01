@@ -1,4 +1,4 @@
-﻿/**
+/**
  * MediaAssetService.list() usage 推导字段单元测试
  * 覆盖：无引用 → unused / 草稿、待审引用 → selected / 批准、已发布引用 → in_use /
  *       多计划引用时取最高优先级（in_use > selected > unused）/ 仅统计本人 userId 的计划
@@ -14,6 +14,7 @@ function makeAsset(overrides: Partial<MediaAssetEntity> = {}): MediaAssetEntity 
     userId: 1,
     sourceType: 'manual',
     sourceId: null,
+    bizType: 'media',
     title: '测试素材',
     assetType: 'file',
     url: 'https://example.com/asset.png',

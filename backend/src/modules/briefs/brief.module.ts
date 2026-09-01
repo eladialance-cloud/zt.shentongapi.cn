@@ -15,7 +15,7 @@ import { CommonModule } from '../../common/common.module';
 /**
  * 需求单模块
  * 提供需求单 CRUD 与状态流转（create/list/history/getOne/update/confirm/cancel）
- * confirm 接线 BriefDispatchService：AI 拆解需求单并派发 team_tasks
+ * confirm 接线 BriefDispatchService：AI 拆解需求单并派发 task_team_tasks
  */
 @Module({
   imports: [

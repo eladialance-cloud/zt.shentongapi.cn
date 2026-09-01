@@ -2,7 +2,7 @@
 -- 对应实体：backend/src/modules/oral-workshop/entities/*.entity.ts
 -- 说明：生产环境 DB_SYNCHRONIZE=false，由本 migration 管理表结构
 
-CREATE TABLE IF NOT EXISTS oral_workshop_jobs (
+CREATE TABLE IF NOT EXISTS create_oral_workshop_jobs (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   user_id BIGINT NOT NULL,
   client_txn_id VARCHAR(64) NULL UNIQUE,
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS oral_workshop_jobs (
   INDEX idx_owj_user_id (user_id, created_at)
 );
 
-CREATE TABLE IF NOT EXISTS oral_workshop_steps (
+CREATE TABLE IF NOT EXISTS create_oral_workshop_steps (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   job_id BIGINT NOT NULL,
   step VARCHAR(32) NOT NULL,

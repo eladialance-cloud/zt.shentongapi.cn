@@ -5,7 +5,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
  * 通用任务实体
  * 记录用户发起的各类任务（聊天、工作流、技能、多智能体）
  */
-@Entity('agent_task')
+@Entity('task_agent_tasks')
 export class AgentTaskEntity extends BaseEntity {
   @Index()
   @Column({ name: 'user_id', type: 'bigint' })

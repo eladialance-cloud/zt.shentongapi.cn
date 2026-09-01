@@ -20,7 +20,7 @@ export enum PostStatus {
  * 帖子表
  * 数据合同真源：Community 模块 - 帖子管理
  */
-@Entity('posts')
+@Entity('social_posts')
 @Index(['channelId'])
 @Index(['authorId'])
 @Index(['status'])

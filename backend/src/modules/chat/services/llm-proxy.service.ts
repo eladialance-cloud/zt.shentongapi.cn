@@ -79,6 +79,7 @@ export class LlmProxyService {
     const models = await this.modelRepository.find({
       where: { isActive: true },
       order: { sortOrder: 'ASC', id: 'ASC' },
+      relations: { pricing: true },
     });
     return [
       { id: 'deep-shentong', object: 'model', owned_by: 'shentong-ai', type: 'chat' },
@@ -144,8 +145,8 @@ export class LlmProxyService {
     // v0.7.0 供应商体系：优先使用模型所属供应商的 Base URL + API Key + upstreamModelId 直连上游，
     // 费用在第三方 API 侧扣除；未配置供应商时回退到 API Key 池
     // 专用文本模型适配：读取模型 generationParams（qwen-long 两步式 / 翻译 / 联网等）
-    const chatModel = await this.modelRepository.findOne({ where: { modelId, isActive: true } });
-    const gen = ((chatModel?.generationParams ?? {}) as Record<string, unknown>);
+    const chatModel = await this.modelRepository.findOne({ where: { modelId, isActive: true }, relations: { pricing: true } });
+    const gen = ((chatModel?.pricing?.generationParams ?? {}) as Record<string, unknown>);
     const extraBody: Record<string, unknown> = {};
     if (gen.chat_body_extra && typeof gen.chat_body_extra === 'object') {
       Object.assign(extraBody, gen.chat_body_extra as Record<string, unknown>);
@@ -592,6 +593,7 @@ export class LlmProxyService {
           : requested;
       const model = await this.modelRepository.findOne({
         where: { modelId: id, isActive: true },
+        relations: { pricing: true },
       });
       if (model && this.typeMatches(model.modelType, type)) return model;
       throw new BadRequestException(`生成模型不存在或类型不匹配: ${requested}`);
@@ -611,6 +613,7 @@ export class LlmProxyService {
       if (defaultId) {
         const model = await this.modelRepository.findOne({
           where: { modelId: defaultId, isActive: true },
+          relations: { pricing: true },
         });
         if (model && this.typeMatches(model.modelType, type)) return model;
       }
@@ -618,6 +621,7 @@ export class LlmProxyService {
     const models = await this.modelRepository.find({
       where: { isActive: true },
       order: { sortOrder: 'ASC', id: 'ASC' },
+      relations: { pricing: true },
     });
     const model = models.find((m) => this.typeMatches(m.modelType, type));
     if (!model) throw new BadRequestException(`未上架可用的${type}生成模型`);
@@ -662,7 +666,7 @@ export class LlmProxyService {
       decryptedKey = this.encryptionService.decryptAes(provider.apiKey as string);
     } catch { /* 解密失败走下方报错 */ }
     if (!decryptedKey) throw new BadRequestException('供应商 API Key 解密失败');
-    const adapter = buildMediaGenerationAdapter(provider, model.generationParams ?? {});
+    const adapter = buildMediaGenerationAdapter(provider, model.pricing?.generationParams ?? {});
     return { provider, decryptedKey, adapter };
   }
 
@@ -675,7 +679,7 @@ export class LlmProxyService {
     const model = await this.resolveMediaModel('image', body.model, userId);
     const { provider, decryptedKey, adapter } = await this.resolveMediaUpstream(model);
     const sourceId = `proxy-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const { price, frozenTxnId } = await this.freezePerCall(userId, model.pricePerImage ?? 10, sourceId);
+    const { price, frozenTxnId } = await this.freezePerCall(userId, model.pricing?.pricePerImage ?? 10, sourceId);
     try {
       const result = await this.genClient.generateImage({
         endpoint: provider.baseUrl,
@@ -719,7 +723,7 @@ export class LlmProxyService {
     const target = await this.resolveUpstreamTarget(model.modelId);
     if (!target) throw new BadRequestException('模型无可用中转凭据（Base URL / API Key）');
     const sourceId = `proxy-tts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const { price, frozenTxnId } = await this.freezePerCall(userId, model.pricePerCall ?? 1, sourceId);
+    const { price, frozenTxnId } = await this.freezePerCall(userId, model.pricing?.pricePerCall ?? 1, sourceId);
     try {
       const url = target.endpoint.replace(/\/+$/, '') + '/audio/speech';
       const reqBody: Record<string, unknown> = { model: target.upstreamModelId, input: body.input };
@@ -777,9 +781,9 @@ export class LlmProxyService {
     file: Express.Multer.File,
   ): Promise<{ id: string; object: 'file'; bytes: number; filename: string; created_at: number }> {
     const modelId = await this.resolveModelId(modelName || '', userId);
-    const model = await this.modelRepository.findOne({ where: { modelId, isActive: true } });
+    const model = await this.modelRepository.findOne({ where: { modelId, isActive: true }, relations: { pricing: true } });
     if (!model) throw new BadRequestException('模型不存在或未上架');
-    const gen = (model.generationParams ?? {}) as Record<string, unknown>;
+    const gen = (model.pricing?.generationParams ?? {}) as Record<string, unknown>;
     const submitPath = gen.submit_path ? String(gen.submit_path) : '';
     if (!submitPath) {
       throw new BadRequestException('该模型未配置文件上传接口（请在模型高级参数 generationParams.submit_path 中配置）');

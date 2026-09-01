@@ -143,8 +143,8 @@ describe('MaterialSearchService 语义检索', () => {
   it('search：Qdrant 不可用降级 LIKE（title/description 模糊匹配）', async () => {
     const { svc } = newService(
       [
-        { id: 1, userId: 7, title: '科技风宣传片', assetType: 'video' },
-        { id: 2, userId: 7, title: '美食探店', assetType: 'video' },
+        { id: 1, userId: 7, bizType: 'media', title: '科技风宣传片', assetType: 'video' },
+        { id: 2, userId: 7, bizType: 'media', title: '美食探店', assetType: 'video' },
       ],
       'down',
     );

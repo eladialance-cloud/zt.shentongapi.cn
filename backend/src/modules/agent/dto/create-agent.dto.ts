@@ -50,7 +50,7 @@ export class CreateAgentDto {
   @IsString({ each: true })
   usageExamples?: string[];
 
-  @ApiProperty({ description: '绑定模型 ID（models.id）' })
+  @ApiProperty({ description: '绑定模型 ID（ai_models.id）' })
   @IsInt()
   @Min(1)
   modelId: number;

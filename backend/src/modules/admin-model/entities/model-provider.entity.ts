@@ -5,7 +5,7 @@ export type ProviderStatus = 'active' | 'disabled';
 export type ProviderConnectionStatus = 'untested' | 'connected' | 'failed';
 
 /** 大模型第三方 API 供应商 */
-@Entity('model_providers')
+@Entity('ai_model_providers')
 export class ModelProviderEntity extends BaseEntity {
   @Column({ length: 64 })
   name: string;

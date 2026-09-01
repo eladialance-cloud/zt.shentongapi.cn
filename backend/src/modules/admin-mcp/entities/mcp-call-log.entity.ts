@@ -5,7 +5,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
  * MCP 调用日志实体
  * 记录工具调用与资源访问的审计日志
  */
-@Entity('mcp_call_log')
+@Entity('ai_mcp_call_logs')
 export class McpCallLogEntity extends BaseEntity {
   @Index()
   @Column({ name: 'user_id', type: 'bigint', nullable: true })

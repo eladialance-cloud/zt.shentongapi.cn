@@ -10,7 +10,7 @@ import {
  * N8N Webhook 回调日志实体
  * 记录每次 webhook 回调的验证结果与请求/响应数据
  */
-@Entity('n8n_webhook_logs')
+@Entity('eco_n8n_webhook_logs')
 export class N8nWebhookLogEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })
   id: number;

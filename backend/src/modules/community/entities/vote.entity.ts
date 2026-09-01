@@ -10,7 +10,7 @@ export enum VoteTargetType {
  * 投票表
  * 数据合同真源：Community 模块 - 投票/踩赞管理
  */
-@Entity('votes')
+@Entity('social_votes')
 @Index(['userId'])
 @Unique(['userId', 'targetType', 'targetId'])
 export class VoteEntity extends BaseEntity {

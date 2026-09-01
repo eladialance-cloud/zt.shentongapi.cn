@@ -138,12 +138,12 @@ export class PricingService {
   ): Promise<number> {
     const model = await this.getModelCached(modelId);
     // 模型未配置价格(null/undefined)时回退默认 5 积分；0 是合法价格(免费模型)
-    if (!model || model.pricePer1kInput == null || model.pricePer1kOutput == null) {
+    if (!model || model.pricing?.pricePer1kInput == null || model.pricing?.pricePer1kOutput == null) {
       return 5; // 默认费用
     }
 
-    const inputPrice = Number(model.pricePer1kInput);
-    const outputPrice = Number(model.pricePer1kOutput);
+    const inputPrice = Number(model.pricing?.pricePer1kInput);
+    const outputPrice = Number(model.pricing?.pricePer1kOutput);
 
     // v0.7.0 后模型表价格已按「积分/千token」存储，不再乘汇率（CREDITS_RATE）
     const inputCost = (tokens.input / 1000) * inputPrice;
@@ -206,13 +206,13 @@ export class PricingService {
     }
     const model = await this.modelRepo.findOne({
       where: { modelId },
+      relations: { pricing: true },
     });
     if (model) {
       // 只缓存价格相关字段（避免泄露 apiKey）
       const safeModel = {
         ...model,
-        apiKey: undefined,
-        apiEndpoint: undefined,
+        credentials: undefined,
       } as ModelEntity;
       await this.redis.set(cacheKey, JSON.stringify(safeModel), PricingService.CACHE_TTL);
     }

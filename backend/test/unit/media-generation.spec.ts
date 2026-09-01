@@ -116,14 +116,14 @@ describe('MediaGenerationService.charge 定价与冻结', () => {
 
   it('图片：未配置单价使用默认 10 积分', async () => {
     const { svc } = buildService();
-    const res = await (svc as any).charge(1, { modelType: 'image', pricePerImage: null, videoPrices: null }, {}, 'src-1');
+    const res = await (svc as any).charge(1, { modelType: 'image', pricing: { pricePerImage: null, videoPrices: null } }, {}, 'src-1');
     assert.equal(res.price, 10);
     assert.ok(res.frozenTxnId);
   });
 
   it('图片：配置单价 25.5 积分/张 → 四舍五入 26', async () => {
     const { svc } = buildService();
-    const res = await (svc as any).charge(1, { modelType: 'image', pricePerImage: 25.5, videoPrices: null }, {}, 'src-1');
+    const res = await (svc as any).charge(1, { modelType: 'image', pricing: { pricePerImage: 25.5, videoPrices: null } }, {}, 'src-1');
     assert.equal(res.price, 26);
     assert.ok(res.frozenTxnId);
   });
@@ -132,7 +132,7 @@ describe('MediaGenerationService.charge 定价与冻结', () => {
     const { svc, credits } = buildService();
     let freezeCalled = false;
     credits.freezeCredits = async () => { freezeCalled = true; return { id: 777 }; };
-    const res = await (svc as any).charge(1, { modelType: 'image', pricePerImage: 0, videoPrices: null }, {}, 'src-1');
+    const res = await (svc as any).charge(1, { modelType: 'image', pricing: { pricePerImage: 0, videoPrices: null } }, {}, 'src-1');
     assert.equal(res.price, 0);
     assert.equal(res.frozenTxnId, null);
     assert.equal(freezeCalled, false);
@@ -140,7 +140,7 @@ describe('MediaGenerationService.charge 定价与冻结', () => {
 
   it('视频：per_second 档位归一化（配置 720P/1080P，用户传 720p 也能命中）', async () => {
     const { svc } = buildService();
-    const res = await (svc as any).charge(1, { modelType: 'video', pricingMode: 'per_second', videoPerSecond: { '720P': 2, '1080P': 4 }, videoPrices: null }, { resolution: '720p', duration: 10 }, 'src-1');
+    const res = await (svc as any).charge(1, { modelType: 'video', pricing: { pricingMode: 'per_second', videoPerSecond: { '720P': 2, '1080P': 4 }, videoPrices: null } }, { resolution: '720p', duration: 10 }, 'src-1');
     assert.equal(res.price, 20);
     assert.ok(res.frozenTxnId);
   });
@@ -148,7 +148,7 @@ describe('MediaGenerationService.charge 定价与冻结', () => {
   it('视频：per_second 矩阵未配置的规格直接拒绝', async () => {
     const { svc } = buildService();
     await assert.rejects(
-      (svc as any).charge(1, { modelType: 'video', pricingMode: 'per_second', videoPerSecond: { '720P': 2 }, videoPrices: null }, { resolution: '4k', duration: 10 }, 'src-1'),
+      (svc as any).charge(1, { modelType: 'video', pricing: { pricingMode: 'per_second', videoPerSecond: { '720P': 2 }, videoPrices: null } }, { resolution: '4k', duration: 10 }, 'src-1'),
       (e: any) => e instanceof BadRequestException && /未配置/.test(e.message || ''),
     );
   });
@@ -156,7 +156,7 @@ describe('MediaGenerationService.charge 定价与冻结', () => {
   it('视频：矩阵命中 1080p/10s=36', async () => {
     const { svc } = buildService();
     const videoPrices = { '720p': { '5': 10, '10': 18 }, '1080p': { '5': 20, '10': 36 } };
-    const res = await (svc as any).charge(1, { modelType: 'video', pricePerImage: null, videoPrices }, { resolution: '1080p', duration: 10 }, 'src-1');
+    const res = await (svc as any).charge(1, { modelType: 'video', pricing: { pricePerImage: null, videoPrices } }, { resolution: '1080p', duration: 10 }, 'src-1');
     assert.equal(res.price, 36);
     assert.ok(res.frozenTxnId);
   });
@@ -165,7 +165,7 @@ describe('MediaGenerationService.charge 定价与冻结', () => {
     const { svc } = buildService();
     const videoPrices = { '720p': { '5': 10 } };
     await assert.rejects(
-      (svc as any).charge(1, { modelType: 'video', pricePerImage: null, videoPrices }, { resolution: '4k', duration: 30 }, 'src-1'),
+      (svc as any).charge(1, { modelType: 'video', pricing: { pricePerImage: null, videoPrices } }, { resolution: '4k', duration: 30 }, 'src-1'),
       (e: any) => e instanceof BadRequestException && /未配置/.test(e.message || ''),
     );
   });
@@ -173,7 +173,7 @@ describe('MediaGenerationService.charge 定价与冻结', () => {
   it('视频：未配置价格矩阵同样拒绝', async () => {
     const { svc } = buildService();
     await assert.rejects(
-      (svc as any).charge(1, { modelType: 'video', pricePerImage: null, videoPrices: null }, { resolution: '720p', duration: 5 }, 'src-1'),
+      (svc as any).charge(1, { modelType: 'video', pricing: { pricePerImage: null, videoPrices: null } }, { resolution: '720p', duration: 5 }, 'src-1'),
       (e: any) => e instanceof BadRequestException,
     );
   });
@@ -182,7 +182,7 @@ describe('MediaGenerationService.charge 定价与冻结', () => {
     const { svc } = buildService();
     const res = await (svc as any).charge(
       1,
-      { modelType: 'image_edit', pricePerImage: 25.5, videoPrices: null, videoPerSecond: null },
+      { modelType: 'image_edit', pricing: { pricePerImage: 25.5, videoPrices: null, videoPerSecond: null } },
       {},
       'src-1',
     );
@@ -215,7 +215,7 @@ describe('MediaGenerationService.resolveModel 类型校验（image_edit）', () 
 
   it("image_edit 模型在 type='image' 下解析通过", async () => {
     const { svc, modelRepo } = buildResolveService();
-    modelRepo.findOne = async () => ({ modelId: 'edit-1', modelType: 'image_edit', isActive: true, providerId: 1, generationParams: null });
+    modelRepo.findOne = async () => ({ modelId: 'edit-1', modelType: 'image_edit', isActive: true, providerId: 1, pricing: { generationParams: null } });
     const r = await (svc as any).resolveModel('edit-1', 'image');
     assert.equal(r.model.modelType, 'image_edit');
     assert.ok(r.decryptedKey);
@@ -973,10 +973,12 @@ describe('MediaGenerationService image_edit 适配合入与传参', () => {
     modelRepo.findOne = async () => ({
       modelId: 'sketch-1', modelType: 'image_edit', isActive: true,
       providerId: 5, upstreamModelId: 'wanx-sketch',
-      generationParams: {
-        images_style: 'json', images_path: '/images/edits',
-        image_fields: ['sketch'], prompt_field: 'prompt', model_field: 'model',
-        multipart_fields: { negative_prompt: 'blurry' },
+      pricing: {
+        generationParams: {
+          images_style: 'json', images_path: '/images/edits',
+          image_fields: ['sketch'], prompt_field: 'prompt', model_field: 'model',
+          multipart_fields: { negative_prompt: 'blurry' },
+        },
       },
     });
     providerRepo.findOne = async () => ({ id: 5, status: 'active', slug: 'qwen', baseUrl: 'https://x.com/v1', apiKey: 'enc', config: {} });
@@ -994,7 +996,7 @@ describe('MediaGenerationService image_edit 适配合入与传参', () => {
     modelRepo.findOne = async () => ({
       modelId: 'sketch-1', modelType: 'image_edit', isActive: true,
       providerId: 5, upstreamModelId: 'wanx-sketch',
-      pricePerImage: 10, generationParams: { images_style: 'multipart' },
+      pricing: { pricePerImage: 10, generationParams: { images_style: 'multipart' } },
     });
     providerRepo.findOne = async () => ({ id: 5, status: 'active', slug: 'qwen', baseUrl: 'https://x.com/v1', apiKey: 'enc', config: {} });
     const created: any[] = [];
@@ -1080,7 +1082,7 @@ describe('图像编辑参考图校验与 OSS 上传', () => {
     const m = buildEditSvc2();
     m.modelRepo.findOne = async () => ({
       modelId: 'sketch', modelType: 'image_edit', isActive: true, providerId: 5,
-      upstreamModelId: 'wanx-sketch', pricePerImage: 10,
+      upstreamModelId: 'wanx-sketch', pricing: { pricePerImage: 10 },
     });
     m.providerRepo.findOne = async () => ({ id: 5, status: 'active', slug: 'qwen', baseUrl: 'https://x.com/v1', apiKey: 'enc', config: {} });
     const svc = makeSvc({ upload: async () => null }, m.genClient, m.modelRepo, m.providerRepo, m.jobRepo, m.fileRepo, m.credits, m.pricing, m.encryption);
@@ -1097,8 +1099,8 @@ describe('图像编辑参考图校验与 OSS 上传', () => {
     m.genClient.generateImage = async (cfg: any) => { captured.cfg = cfg; return { url: 'https://x/1.png' }; };
     m.modelRepo.findOne = async () => ({
       modelId: 'sketch', modelType: 'image_edit', isActive: true, providerId: 5,
-      upstreamModelId: 'wanx-sketch', pricePerImage: 10,
-      generationParams: { images_style: 'json', image_request_template: { input: { base_image_url: '{imageUrl0}' } } },
+      upstreamModelId: 'wanx-sketch',
+      pricing: { pricePerImage: 10, generationParams: { images_style: 'json', image_request_template: { input: { base_image_url: '{imageUrl0}' } } } },
     });
     m.providerRepo.findOne = async () => ({ id: 5, status: 'active', slug: 'qwen', baseUrl: 'https://x.com/v1', apiKey: 'enc', config: { vendorKey: 'aliyun-dashscope' } });
     let ossCalls = 0;
@@ -1194,8 +1196,8 @@ describe('MediaGenerationService.listGenerationModels 桌面端模型列表', ()
   it('模型绑定有效供应商 → 出现在列表', async () => {
     const { svc, modelRepo, providerRepo } = buildListService();
     modelRepo.find = async () => [
-      { modelId: 'vid-1', name: '视频模型', modelType: 'video', isActive: true, providerId: 7, generationParams: {}, pricePerImage: null, videoPrices: {} },
-      { modelId: 'img-edit-1', name: '图生图', modelType: 'image_edit', isActive: true, providerId: 7, generationParams: {}, pricePerImage: 12, videoPrices: {} },
+      { modelId: 'vid-1', name: '视频模型', modelType: 'video', isActive: true, providerId: 7, pricing: { generationParams: {}, pricePerImage: null, videoPrices: {} } },
+      { modelId: 'img-edit-1', name: '图生图', modelType: 'image_edit', isActive: true, providerId: 7, pricing: { generationParams: {}, pricePerImage: 12, videoPrices: {} } },
     ];
     providerRepo.findOne = async () => ({ id: 7, status: 'active', baseUrl: 'https://x/v1', apiKey: 'enc', slug: 'dashscope' });
     const list = await (svc as any).listGenerationModels();
@@ -1208,7 +1210,7 @@ describe('MediaGenerationService.listGenerationModels 桌面端模型列表', ()
   it('模型未绑定供应商但存在全局中转 → relay 兜底出现在列表（与生成时一致）', async () => {
     const { svc, modelRepo, providerRepo } = buildListService();
     modelRepo.find = async () => [
-      { modelId: 'img-1', name: '图片模型', modelType: 'image', isActive: true, providerId: null, generationParams: {}, pricePerImage: 10, videoPrices: {} },
+      { modelId: 'img-1', name: '图片模型', modelType: 'image', isActive: true, providerId: null, pricing: { generationParams: {}, pricePerImage: 10, videoPrices: {} } },
     ];
     let calls = 0;
     providerRepo.findOne = async () => {
@@ -1224,7 +1226,7 @@ describe('MediaGenerationService.listGenerationModels 桌面端模型列表', ()
   it('无任何可用供应商 → 列表为空', async () => {
     const { svc, modelRepo } = buildListService();
     modelRepo.find = async () => [
-      { modelId: 'vid-2', name: 'V', modelType: 'video', isActive: true, providerId: null, generationParams: {} },
+      { modelId: 'vid-2', name: 'V', modelType: 'video', isActive: true, providerId: null, pricing: { generationParams: {} } },
     ];
     const list = await (svc as any).listGenerationModels();
     assert.deepEqual(list, []);

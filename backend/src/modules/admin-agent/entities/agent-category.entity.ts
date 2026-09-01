@@ -13,9 +13,9 @@ import {
  *
  * 存储 5 个固定分类的显示名与排序：
  *   office / programming / copywriting / data_analysis / other
- * agents 表的 category 字段为 enum，本表仅维护显示元数据。
+ * eco_agents 表的 category 字段为 enum，本表仅维护显示元数据。
  */
-@Entity('agent_categories')
+@Entity('eco_agent_categories')
 export class AgentCategoryEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })
   id: number;

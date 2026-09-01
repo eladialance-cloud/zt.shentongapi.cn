@@ -76,7 +76,7 @@ INSERT INTO landing_blocks (id, name, type, sort_order, is_enabled, data) VALUES
 -- ============================================================
 -- 2. 社区频道表
 -- ============================================================
-CREATE TABLE IF NOT EXISTS channels (
+CREATE TABLE IF NOT EXISTS social_channels (
   id VARCHAR(32) PRIMARY KEY COMMENT '频道标识',
   name VARCHAR(64) NOT NULL COMMENT '频道名称',
   slug VARCHAR(64) UNIQUE NOT NULL COMMENT 'URL标识',
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS channels (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-INSERT INTO channels (id, name, slug, description, icon, sort_order) VALUES
+INSERT INTO social_channels (id, name, slug, description, icon, sort_order) VALUES
 ('discussion', '综合讨论', 'discussion', 'AI相关话题自由讨论', 'chat', 1),
 ('question', '问答求助', 'question', '技术问答与悬赏求助', 'question', 2),
 ('showcase', '作品展示', 'showcase', '分享你的AI应用作品', 'showcase', 3),
@@ -99,7 +99,7 @@ INSERT INTO channels (id, name, slug, description, icon, sort_order) VALUES
 -- ============================================================
 -- 3. 帖子表
 -- ============================================================
-CREATE TABLE IF NOT EXISTS posts (
+CREATE TABLE IF NOT EXISTS social_posts (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   channel_id VARCHAR(32) NOT NULL,
   author_id BIGINT UNSIGNED NOT NULL,
@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS posts (
 -- ============================================================
 -- 4. 回复表
 -- ============================================================
-CREATE TABLE IF NOT EXISTS replies (
+CREATE TABLE IF NOT EXISTS social_replies (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   post_id BIGINT UNSIGNED NOT NULL,
   author_id BIGINT UNSIGNED NOT NULL,
@@ -160,7 +160,7 @@ CREATE TABLE IF NOT EXISTS replies (
 -- ============================================================
 -- 5. 投票表
 -- ============================================================
-CREATE TABLE IF NOT EXISTS votes (
+CREATE TABLE IF NOT EXISTS social_votes (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT UNSIGNED NOT NULL,
   target_type ENUM('post', 'reply') NOT NULL,
@@ -175,7 +175,7 @@ CREATE TABLE IF NOT EXISTS votes (
 -- ============================================================
 -- 6. 收藏表
 -- ============================================================
-CREATE TABLE IF NOT EXISTS bookmarks (
+CREATE TABLE IF NOT EXISTS social_bookmarks (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT UNSIGNED NOT NULL,
   post_id BIGINT UNSIGNED NOT NULL,
@@ -187,7 +187,7 @@ CREATE TABLE IF NOT EXISTS bookmarks (
 -- ============================================================
 -- 7. 标签表
 -- ============================================================
-CREATE TABLE IF NOT EXISTS tags (
+CREATE TABLE IF NOT EXISTS social_tags (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(32) UNIQUE NOT NULL,
   description VARCHAR(200),
@@ -199,7 +199,7 @@ CREATE TABLE IF NOT EXISTS tags (
 -- ============================================================
 -- 8. 帖子-标签关联
 -- ============================================================
-CREATE TABLE IF NOT EXISTS post_tags (
+CREATE TABLE IF NOT EXISTS social_post_tags (
   post_id BIGINT UNSIGNED NOT NULL,
   tag_id BIGINT UNSIGNED NOT NULL,
   PRIMARY KEY (post_id, tag_id)
@@ -208,7 +208,7 @@ CREATE TABLE IF NOT EXISTS post_tags (
 -- ============================================================
 -- 9. 用户社区档案表
 -- ============================================================
-CREATE TABLE IF NOT EXISTS user_profiles (
+CREATE TABLE IF NOT EXISTS social_user_profiles (
   user_id BIGINT UNSIGNED PRIMARY KEY,
   reputation INT DEFAULT 0,
   level INT DEFAULT 1,
@@ -229,7 +229,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 -- ============================================================
 -- 10. 积分流水表
 -- ============================================================
-CREATE TABLE IF NOT EXISTS coin_transactions (
+CREATE TABLE IF NOT EXISTS social_coin_transactions (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT UNSIGNED NOT NULL,
   type ENUM('post', 'reply', 'accepted', 'daily', 'bounty', 'other') NOT NULL,

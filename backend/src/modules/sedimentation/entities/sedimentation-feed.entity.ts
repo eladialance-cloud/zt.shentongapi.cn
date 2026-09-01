@@ -43,6 +43,10 @@ export class SedimentationFeedEntity {
   @Column({ name: "undo_token", type: "varchar", length: 64, nullable: true })
   undoToken?: string | null;
 
+  /** Hermes 任务溯源（P0：编排任务成功收尾沉淀时回填 taskId） */
+  @Column({ name: "task_id", type: "varchar", length: 64, nullable: true })
+  taskId?: string | null;
+
   @CreateDateColumn({ name: "created_at" })
   createdAt: Date;
 }

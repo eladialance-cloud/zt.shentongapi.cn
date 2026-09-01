@@ -18,7 +18,7 @@ export function buildUniqueModelId(
   existing: Set<string>,
 ): string {
   const MAX = 64;  const make = (id: string, suffix: string): string => {
-    // 后缀截断到 63 位以内，保证 head+suffix 总长 ≤ 64（models.model_id varchar(64)）
+    // 后缀截断到 63 位以内，保证 head+suffix 总长 ≤ 64（ai_models.model_id varchar(64)）
     const capped = suffix.slice(0, Math.max(1, MAX - 1));
     const keep = Math.max(1, MAX - capped.length);
     const head = id.length > keep ? id.slice(0, keep) : id;

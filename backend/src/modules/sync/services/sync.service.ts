@@ -99,7 +99,7 @@ export class SyncService {
     if (want('agent')) {
       try {
         result.agents = await this.dataSource.query(
-          `SELECT * FROM agents WHERE updated_at > ? ORDER BY updated_at ASC`,
+          `SELECT * FROM eco_agents WHERE updated_at > ? ORDER BY updated_at ASC`,
           [sinceStr],
         );
       } catch (e) {
@@ -119,7 +119,7 @@ export class SyncService {
     if (want('plugin')) {
       try {
         result.plugins = await this.dataSource.query(
-          `SELECT * FROM plugins WHERE updated_at > ? ORDER BY updated_at ASC`,
+          `SELECT * FROM eco_plugins WHERE updated_at > ? ORDER BY updated_at ASC`,
           [sinceStr],
         );
       } catch (e) {
@@ -129,7 +129,7 @@ export class SyncService {
     if (want('model')) {
       try {
         result.models = await this.dataSource.query(
-          `SELECT * FROM models WHERE updated_at > ? ORDER BY updated_at ASC`,
+          `SELECT * FROM ai_models WHERE updated_at > ? ORDER BY updated_at ASC`,
           [sinceStr],
         );
       } catch (e) {

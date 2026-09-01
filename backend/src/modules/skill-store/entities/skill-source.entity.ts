@@ -1,7 +1,7 @@
 import { Entity, Column, Index } from 'typeorm';
 import { BaseEntity, bigintTransformer } from '../../../common/entities/base.entity';
 
-@Entity('skill_sources')
+@Entity('eco_skill_sources')
 export class SkillSourceEntity extends BaseEntity {
   @Index({ unique: true })
   @Column({ name: 'source_url', length: 512 })

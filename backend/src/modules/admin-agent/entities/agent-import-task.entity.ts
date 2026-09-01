@@ -11,7 +11,7 @@ export interface ImportTaskStats {
   errors?: Array<{ filePath: string; error: string }>;
 }
 
-@Entity('agent_import_tasks')
+@Entity('eco_agent_import_tasks')
 export class AgentImportTaskEntity extends BaseEntity {
   @Index({ unique: true })
   @Column({ name: 'task_id', length: 64 })

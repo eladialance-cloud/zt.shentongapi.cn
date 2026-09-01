@@ -5,7 +5,7 @@ import { BaseEntity, bigintTransformer } from '../../../common/entities/base.ent
  * Hermes 实例实体
  * 每个实例对应一个 Hermes 编排进程，管理技能包挂载和任务分发
  */
-@Entity('hermes_instances')
+@Entity('create_hermes_instances')
 export class HermesInstanceEntity extends BaseEntity {
   @Index()
   @Column({ name: 'user_id', type: 'bigint', transformer: bigintTransformer })

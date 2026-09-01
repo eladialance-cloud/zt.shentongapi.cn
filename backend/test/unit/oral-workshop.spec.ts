@@ -240,13 +240,17 @@ function newService(f: FakeRepos): OralWorkshopService {
   return new OralWorkshopService(
     f.jobRepo,
     f.stepRepo,
-    fakeVoiceRepo() as any,
     fakeDhRepo() as any,
     fakeAccountRepo() as any,
     fakeMediaRepo() as any,
     f.billing,
     fakeLlm() as any,
     fakeSystemLlm() as any,
+    undefined as any,
+    undefined as any,
+    undefined as any,
+    undefined as any,
+    fakeVoiceRepo() as any,
   );
 }
 

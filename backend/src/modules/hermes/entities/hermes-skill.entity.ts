@@ -38,7 +38,7 @@ export interface SkillExecConfig {
  * Hermes 技能包目录
  * 技能市场中的可用技能包，可挂载到 Hermes 实例上
  */
-@Entity('hermes_skills')
+@Entity('create_hermes_skills')
 export class HermesSkillEntity extends BaseEntity {
   @Column({ length: 128 })
   name: string;
@@ -83,7 +83,7 @@ export class HermesSkillEntity extends BaseEntity {
   /** 标签（JSON 数组） */
   @Column({ type: 'json', nullable: true })
   tags?: string[];
-  /** 挂载的技能 ID 数组（skill_packages.id，设计文档 3.5） */
+  /** 挂载的技能 ID 数组（eco_skill_packages.id，设计文档 3.5） */
   @Column({ name: 'skill_ids', type: 'json', nullable: true })
   skillIds?: number[];
 
@@ -106,7 +106,7 @@ export class HermesSkillEntity extends BaseEntity {
   @Column({ name: 'changelog', type: 'text', nullable: true })
   changelog?: string;
 
-  /** 关联管理端技能包 ID（skill_packages.id），发布时同步生成 */
+  /** 关联管理端技能包 ID（eco_skill_packages.id），发布时同步生成 */
   @Index()
   @Column({ name: 'source_package_id', type: 'bigint', nullable: true })
   sourcePackageId?: number;

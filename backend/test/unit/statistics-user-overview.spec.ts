@@ -1,4 +1,4 @@
-﻿/**
+/**
  * StatisticsService.getUserOverview 单元测试
  * 覆盖：weekPublished 边界（近 7 天含/不含、publishedAt 空回退 createdAt）、
  *       weekCompletedTasks 双源聚合（agent_task success + team_tasks completed）、
@@ -113,6 +113,7 @@ function asset(overrides: Partial<MediaAssetEntity> = {}): MediaAssetEntity {
     id: 1,
     userId: 1,
     sourceType: 'manual',
+    bizType: 'media',
     title: '素材',
     assetType: 'file',
     url: 'https://example.com/a.png',

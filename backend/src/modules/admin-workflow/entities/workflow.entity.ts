@@ -2,7 +2,7 @@ import { Entity, Column, Index } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 
 /**
- * 工作流模板实体（合并 workflows + n8n_workflow_lib）
+ * 工作流模板实体（合并 workflows + task_n8n_workflow_lib）
  *
  * 一张表承载：管理端手动创建 + GitHub 批量导入 + 审核流 + 定价
  */

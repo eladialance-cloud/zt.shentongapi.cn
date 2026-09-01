@@ -75,6 +75,17 @@ export interface OrchestrateDeps {
   now: () => number;
 }
 
+/** 云端知识库沉淀负载（P0.5：Hermes 任务完成 → sedimentation/apply，taskId/executionRef 溯源） */
+export interface SedimentPayload {
+  type: "enterprise_doc" | "customer_profile" | "data_update";
+  target: "knowledge_base" | "hermes_memory";
+  title: string;
+  content: string;
+  kbId?: number;
+  taskId?: string;
+  executionRef?: string;
+}
+
 /** 把团队成员花名册注入任务描述；无成员则原样返回（触发 Hermes 子代理降级） */
 export function buildTaskPrompt(
   task: string,
@@ -178,6 +189,8 @@ export interface StepRunnerDeps {
   patchTask: (teamId: number | null | undefined, taskId: number, payload: { status: string; result?: unknown }) => Promise<void>;
   reportExecution: (payload: Record<string, unknown>) => Promise<void>;
   persistOutputs: (taskId: number, outputs: HermesOutput[]) => Promise<void>;
+  /** 沉淀闭环（P0.5）：任务成功收尾把产出写入云端知识库（taskId/executionRef 溯源）；失败仅告警不阻断任务 */
+  sedimentToCloud?: (payload: SedimentPayload) => Promise<{ ok: boolean; error?: string }>;
   /** 自动确认开关（调用时实时读取，便于中途切换） */
   isAutoConfirm: () => boolean;
   /** 按节点检索知识库（SOP/标准），返回可直接注入 prompt 的文本；返回空串 = 无参考 */
@@ -616,6 +629,25 @@ export function createStepRunner(input: OrchestrateInput, deps: StepRunnerDeps):
         error: result.error, durationMs: result.durationMs,
       });
       await deps.persistOutputs(input.teamTaskId, finalOutputs);
+      // 沉淀闭环（P0.5）：任务成功收尾 → 云端知识库沉淀（taskId/executionRef 溯源；失败仅告警，不阻断任务）
+      if (deps.sedimentToCloud) {
+        const content = [result.summary, ...finalOutputs.map((o) => o.content ?? o.url ?? "").filter(Boolean)]
+          .join("\n")
+          .trim();
+        if (content) {
+          const sed = await deps
+            .sedimentToCloud({
+              type: "enterprise_doc",
+              target: "knowledge_base",
+              title: (input.task || "Hermes 任务产出").trim().slice(0, 200),
+              content,
+              taskId: String(input.teamTaskId),
+              executionRef: input.executionRef,
+            })
+            .catch((err) => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+          if (!sed.ok) console.warn("[hermes-orchestrator] 沉淀到云端知识库失败（不影响任务）: " + sed.error);
+        }
+      }
       return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

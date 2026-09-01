@@ -5,7 +5,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
  * MCP 工具注册实体
  * 记录每个 MCP Server 暴露的工具信息
  */
-@Entity('mcp_tool_registry')
+@Entity('ai_mcp_tool_registry')
 @Unique('uk_server_tool', ['serverId', 'toolName'])
 export class McpToolRegistryEntity extends BaseEntity {
   @Index()

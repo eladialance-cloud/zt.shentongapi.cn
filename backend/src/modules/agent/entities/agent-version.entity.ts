@@ -6,7 +6,7 @@ import {
   Index,
 } from 'typeorm';
 
-@Entity('agent_versions')
+@Entity('eco_agent_versions')
 export class AgentVersionEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })
   id: number;

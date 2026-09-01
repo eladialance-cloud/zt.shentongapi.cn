@@ -4,7 +4,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
 /**
  * Agent-标签关联实体
  */
-@Entity('agent_tag_map')
+@Entity('eco_agent_tag_map')
 @Unique('uk_agent_tag', ['agentId', 'tagId'])
 export class AgentTagMapEntity extends BaseEntity {
   /** Agent ID */

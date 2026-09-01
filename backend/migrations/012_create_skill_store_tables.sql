@@ -1,9 +1,9 @@
 -- 012_create_skill_store_tables.sql
--- 深瞳AI v0.6.0：技能商店三表（skill_packages / skill_sources / skill_install_logs）
+-- 深瞳AI v0.6.0：技能商店三表（eco_skill_packages / eco_skill_sources / eco_skill_install_logs）
 -- 幂等：IF NOT EXISTS，可重复执行
 -- 执行：bash update_db_0.6.0.sh
 
-CREATE TABLE IF NOT EXISTS `skill_packages` (
+CREATE TABLE IF NOT EXISTS `eco_skill_packages` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(64) NOT NULL,
   `display_name` VARCHAR(512) NOT NULL,
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS `skill_packages` (
   KEY `idx_skill_packages_is_official` (`is_official`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技能商店-技能包';
 
-CREATE TABLE IF NOT EXISTS `skill_sources` (
+CREATE TABLE IF NOT EXISTS `eco_skill_sources` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `source_url` VARCHAR(512) NOT NULL,
   `source_type` VARCHAR(32) NOT NULL DEFAULT 'github',
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS `skill_sources` (
   KEY `idx_skill_sources_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技能商店-技能来源';
 
-CREATE TABLE IF NOT EXISTS `skill_install_logs` (
+CREATE TABLE IF NOT EXISTS `eco_skill_install_logs` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `package_id` BIGINT UNSIGNED NOT NULL,
   `user_id` BIGINT UNSIGNED DEFAULT NULL,

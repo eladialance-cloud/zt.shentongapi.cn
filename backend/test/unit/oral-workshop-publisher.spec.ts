@@ -50,7 +50,7 @@ function makeJob(overrides: Record<string, unknown> = {}) {
 }
 
 describe('OralWorkshopPublisher', () => {
-  it('exportPackage：任务 done 时生成发布包并创建 publish_plans 记录', async () => {
+  it('exportPackage：任务 done 时生成发布包并创建 create_publish_plans 记录', async () => {
     const job = makeJob();
     const { repo: jobRepo, saved } = makeJobRepo(job);
     const stepRepo = makeStepRepo([{ step: 'titleCover', resultJson: { title_h1: '主标题', title_h2: '副标题' } }]);

@@ -130,7 +130,7 @@ export class DashboardStatsService {
     try {
       const rows: any[] = await this.dataSource.query(
         `SELECT a.id, a.name, a.rating, COUNT(l.id) AS call_count
-         FROM agents a LEFT JOIN agent_call_logs l ON l.agent_id = a.id
+         FROM eco_agents a LEFT JOIN agent_call_logs l ON l.agent_id = a.id
          WHERE l.created_at IS NULL OR l.created_at BETWEEN ? AND ?
          GROUP BY a.id, a.name, a.rating ORDER BY call_count DESC LIMIT 20`,
         [start, end],

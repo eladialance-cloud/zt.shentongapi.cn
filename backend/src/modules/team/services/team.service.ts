@@ -469,10 +469,10 @@ export class TeamService {
   async listSelectableAgents(): Promise<Array<{ id: number; name: string; description?: string }>> {
     // 查询所有已发布的 Agent
     try {
-      const result = await this.dataSource.query(`SELECT id, name, description FROM agents WHERE status = 'published' ORDER BY name ASC LIMIT 50`);
+      const result = await this.dataSource.query(`SELECT id, name, description FROM eco_agents WHERE status = 'published' ORDER BY name ASC LIMIT 50`);
       return result;
     } catch {
-      // agents 表可能不存在，返回空列表
+      // eco_agents 表可能不存在，返回空列表
       return [];
     }
   }
@@ -545,7 +545,7 @@ export class TeamService {
     if (agentIds.length > 0) {
       try {
         const agents = await this.dataSource.query(
-          `SELECT id, name FROM agents WHERE id IN (?)`,
+          `SELECT id, name FROM eco_agents WHERE id IN (?)`,
           [agentIds],
         );
         for (const a of agents as Array<{ id: number | string; name: string }>) {

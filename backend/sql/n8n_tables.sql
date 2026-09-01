@@ -1,12 +1,12 @@
 -- =====================================================
 -- N8N 模块数据库迁移
--- 表：n8n_instances, n8n_workflows
+-- 表：eco_n8n_instances, n8n_workflows
 -- =====================================================
 
 -- ---------------------------------------------------
 -- N8N 实例配置表
 -- ---------------------------------------------------
-CREATE TABLE IF NOT EXISTS `n8n_instances` (
+CREATE TABLE IF NOT EXISTS `eco_n8n_instances` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `user_id` BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
   `name` VARCHAR(128) NOT NULL COMMENT '实例名称',
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS `n8n_workflows` (
 -- ---------------------------------------------------
 -- N8N Webhook 回调日志表
 -- ---------------------------------------------------
-CREATE TABLE IF NOT EXISTS `n8n_webhook_logs` (
+CREATE TABLE IF NOT EXISTS `eco_n8n_webhook_logs` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `instance_id` BIGINT UNSIGNED NOT NULL COMMENT '关联实例ID',
   `workflow_id` VARCHAR(64) NOT NULL COMMENT '工作流ID',

@@ -8,7 +8,7 @@
 //   version     VARCHAR(32)  NOT NULL DEFAULT '1.0.0'   -- 资源版本号
 // 列表查询接口需支持 ?ownerType=official|team|user 过滤参数。
 
-import type { MemberRole } from '@/types/opc'
+import type { MemberRole } from '@/types/team'
 
 /** 资源归属类型 */
 export type OwnerType = 'official' | 'team' | 'user'

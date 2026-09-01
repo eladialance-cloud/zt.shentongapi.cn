@@ -5,7 +5,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
  * 工作流-MCP资源映射实体
  * 将工作流暴露为 MCP 资源，或绑定 MCP 资源作为输入/触发器
  */
-@Entity('workflow_mcp_bind')
+@Entity('eco_workflow_mcp_bind')
 @Unique('uk_workflow_resource', ['workflowLibId', 'mcpResourceId'])
 export class WorkflowMcpBindEntity extends BaseEntity {
   /** 工作流库 ID */

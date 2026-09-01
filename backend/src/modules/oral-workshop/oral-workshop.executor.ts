@@ -1,7 +1,7 @@
 /**
  * 口播工坊流水线执行器（M2-4 起逐步接入各步骤）
  *
- * 轮询 oral_workshop_jobs（pending/processing），按状态机推进当前 pending 步骤：
+ * 轮询 create_oral_workshop_jobs（pending/processing），按状态机推进当前 pending 步骤：
  *   extract（已接入）→ rewrite（已接入，LLM）→ voiceClone（已接入：火山克隆/本地 SAPI/用户音频）
  *   → digitalHuman（已接入：火山合成/本地卡片视频/用户视频）→ videoEdit（已接入，ffmpeg 合成）
  *   → titleCover（已接入，封面+标题）→ publishReady（已接入，终态）。
@@ -24,7 +24,7 @@ import { DigitalHumanAdapter } from './adapters/digital-human.adapter';
 import { HeyGenAdapter } from './adapters/heygen.adapter';
 import { sapiTts } from './local-tts';
 import { SystemConfigEntity } from '../admin-system/entities/system-config.entity';
-import { VoiceAssetEntity } from './entities/voice-asset.entity';
+import { MediaAssetEntity } from '../media-assets/entities/media-asset.entity';
 import { DigitalHumanAssetEntity } from './entities/digital-human-asset.entity';
 import { OralWorkshopService } from './oral-workshop.service';
 import { OralWorkshopLlmService } from './llm';
@@ -167,8 +167,8 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly runFfmpeg: FfmpegRunner = defaultFfmpegRunner,
     @Optional() @InjectRepository(SystemConfigEntity)
     private readonly configRepo?: Repository<SystemConfigEntity>,
-    @Optional() @InjectRepository(VoiceAssetEntity)
-    private readonly voiceAssetRepo?: Repository<VoiceAssetEntity>,
+    @Optional() @InjectRepository(MediaAssetEntity)
+    private readonly mediaAssetRepo?: Repository<MediaAssetEntity>,
     @Optional() @InjectRepository(DigitalHumanAssetEntity)
     private readonly dhAssetRepo?: Repository<DigitalHumanAssetEntity>,
   ) {}
@@ -340,11 +340,12 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       let resourceId = tier.resourceId || config.volcano.voiceResourceId || 'seed-icl-2.0';
       const model = tier.model || config.volcano.voiceModel || undefined;
       const refAudioText = tier.refAudioText || '';
-      if (job.voiceId && this.voiceAssetRepo) {
-        const asset = await this.voiceAssetRepo.findOne({ where: { id: job.voiceId, userId: job.userId } });
+      if (job.voiceId && this.mediaAssetRepo) {
+        const asset = await this.mediaAssetRepo.findOne({ where: { id: job.voiceId, userId: job.userId, bizType: 'voice_asset' } });
         if (asset) {
-          refAudioUrl = asset.refAudioUrl;
-          if (asset.speakerId && !job.voiceSpeakerId) speakerId = asset.speakerId;
+          const meta = (asset.meta ?? {}) as Record<string, unknown>;
+          refAudioUrl = asset.url;
+          if (meta.speakerId && !job.voiceSpeakerId) speakerId = String(meta.speakerId);
         } else {
           throw new Error('声音资产不存在或不属于当前用户（voiceId=' + job.voiceId + '）');
         }

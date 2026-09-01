@@ -128,9 +128,9 @@ function makeQuery(seed: any) {
     const taskQ = countQ(segs[1] ?? '');
     const hermesQ = countQ(segs[2] ?? '');
 
-    const includeTeam = sql.includes('FROM team_tasks');
-    const includeTask = sql.includes('FROM agent_task');
-    const includeHermes = sql.includes('FROM hermes_call_logs');
+    const includeTeam = sql.includes('FROM task_team_tasks');
+    const includeTask = sql.includes('FROM task_agent_tasks');
+    const includeHermes = sql.includes('FROM create_hermes_call_logs');
 
     // SQL 参数顺序: 按分支合并 [teamIds..., uid, teamVals..., uid, taskVals..., uid, hermesVals...]
     let cursor = 0;

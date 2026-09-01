@@ -29,7 +29,7 @@ const RETRY_HINT =
   '\n\n注意：上一次输出未能解析为合法 JSON 数组。请只输出 JSON 数组本身，不要任何解释、前缀、后缀或 Markdown 代码块标记。';
 
 /**
- * 需求单任务拆解派发服务（一人公司：AI 拆解 → 派发 team_tasks）
+ * 需求单任务拆解派发服务（一人公司：AI 拆解 → 派发 task_team_tasks）
  * - LLM 调用复用管理后台全局中转 + 默认 chat 模型（思路同 AiClassifyService.classify）
  * - 清洗：priority 白名单（非法回 medium）/ roleTitle 白名单（不在列表跳过）/
  *         taskTitle 非空 / 最多保留 20 条

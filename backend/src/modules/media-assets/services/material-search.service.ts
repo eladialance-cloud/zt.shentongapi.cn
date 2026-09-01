@@ -110,8 +110,8 @@ export class MaterialSearchService {
     const escapedQ = q.replace(/[\\%_]/g, (m) => '\\' + m);
     const like = Like('%' + escapedQ + '%');
     const conditions: FindOptionsWhere<MediaAssetEntity>[] = [
-      { userId, title: like },
-      { userId, description: like },
+      { userId, bizType: 'media', title: like },
+      { userId, bizType: 'media', description: like },
     ];
     if (typeFilter) {
       conditions.forEach((c) => (c.assetType = typeFilter));

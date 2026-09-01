@@ -10,7 +10,7 @@ export enum ReplyStatus {
  * 回复表
  * 数据合同真源：Community 模块 - 回复管理
  */
-@Entity('replies')
+@Entity('social_replies')
 @Index(['postId'])
 @Index(['authorId'])
 @Index(['parentId'])

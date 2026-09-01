@@ -2,7 +2,7 @@
 import { PROVIDER_TEMPLATES } from '../admin-model/constants/model-templates';
 import { normalizeResolutionTier, upstreamResolution } from './billing';
 
-/** 生成适配模板（存于 model_providers.config.generation） */
+/** 生成适配模板（存于 ai_model_providers.config.generation） */
 export interface GenerationAdapterConfig {
   imagesPath?: string;
   videosPath?: string;

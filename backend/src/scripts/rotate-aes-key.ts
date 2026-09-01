@@ -14,7 +14,7 @@
  *   - sys_oss_config.access_key / secret_key
  *   - system_config 中 payment/notification 敏感路径
  *   - api_key_pool.api_key
- *   - model_providers.api_key
+ *   - ai_model_providers.api_key
  *   - model.api_key
  *   - channel.credentials（JSON 加密串）
  *   - oral_workshop publish_account.cookies
@@ -109,14 +109,14 @@ async function bootstrap() {
   }
   report.push(`api_key_pool: ${poolCount} 条`);
 
-  // 4. model_providers.api_key
-  const provRepo = dataSource.getRepository('model_providers');
+  // 4. ai_model_providers.api_key
+  const provRepo = dataSource.getRepository('ai_model_providers');
   const provRows = (await provRepo.find()) as any[];
   let provCount = 0;
   for (const r of provRows) {
     if (r.api_key) { await provRepo.update(r.id, { api_key: reencrypt(r.api_key) }); provCount++; }
   }
-  report.push(`model_providers: ${provCount} 条`);
+  report.push(`ai_model_providers: ${provCount} 条`);
 
   // 5. model.api_key
   const modelRepo = dataSource.getRepository('model');

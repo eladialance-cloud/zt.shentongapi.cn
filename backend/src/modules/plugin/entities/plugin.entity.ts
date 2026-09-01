@@ -1,7 +1,7 @@
 ﻿import { Entity, Column, Index } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 
-@Entity('plugins')
+@Entity('eco_plugins')
 export class PluginEntity extends BaseEntity {
   @Index({ unique: true })
   @Column({ length: 64 })

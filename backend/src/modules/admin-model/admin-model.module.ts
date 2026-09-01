@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ModelEntity } from '../model/entities/model.entity';
 import { ModelProviderEntity } from './entities/model-provider.entity';
+import { ModelPricingEntity } from './entities/model-pricing.entity';
+import { ModelCredentialEntity } from './entities/model-credential.entity';
 import { AdminAuthModule } from '../admin-auth/admin-auth.module';
 import { CommonModule } from '../../common/common.module';
 import { AdminModelController } from './admin-model.controller';
@@ -17,10 +19,10 @@ import { GenerationClientService } from '../media-generation/generation-client.s
  *   - /admin/models/providers      供应商列表
  *
  * 导入 AdminAuthModule 以复用 AdminGuard；
- * 复用现有 ModelEntity（models 表），不新增实体。
+ * 复用现有 ModelEntity（ai_models 表），不新增实体。
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([ModelEntity, ModelProviderEntity]), AdminAuthModule, CommonModule],
+  imports: [TypeOrmModule.forFeature([ModelEntity, ModelProviderEntity, ModelPricingEntity, ModelCredentialEntity]), AdminAuthModule, CommonModule],
   controllers: [AdminModelController],
   providers: [AdminModelService, GenerationClientService],
   exports: [AdminModelService],

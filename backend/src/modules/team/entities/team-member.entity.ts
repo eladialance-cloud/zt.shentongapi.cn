@@ -1,10 +1,10 @@
-﻿import {
+import {
   Entity, Column, PrimaryGeneratedColumn,
   CreateDateColumn, Index,
 } from "typeorm";
 
 /** 团队成员 — 核心变化：绑定 Agent + 自定义职能 */
-@Entity("team_members")
+@Entity("task_team_members")
 @Index("uniq_team_member_agent", ["teamId", "agentId"], { unique: true })
 export class TeamMemberEntity {
   @PrimaryGeneratedColumn({ type: "bigint", name: "id" })

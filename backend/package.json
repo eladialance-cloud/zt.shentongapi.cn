@@ -14,7 +14,8 @@
     "typeorm": "typeorm-ts-node-commonjs -d src/config/data-source.ts",
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/config/data-source.ts",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/config/data-source.ts",
-    "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/config/data-source.ts"
+    "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/config/data-source.ts",
+    "migration:gate": "node scripts/check-migration-gate.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",

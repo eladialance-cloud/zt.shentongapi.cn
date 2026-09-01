@@ -64,10 +64,6 @@ const ROUTE_LABEL_MAP: Record<string, string> = {
   '/skill-market': '技能市场',
   '/agents': 'AI 员工',
   '/agents/:id': '详情',
-  // ===== OPC =====
-  '/opc': 'OPC',
-  '/opc/:id': '详情',
-  '/opc/:id/board': '看板',
   // ===== 其他用户端路由 =====
   '/settings': '设置',
   '/profile': '个人信息',

@@ -28,6 +28,7 @@ export class ModelService {
     const models = await this.modelRepo.find({
       where: { isActive: true },
       order: { sortOrder: 'ASC', id: 'ASC' },
+      relations: { pricing: true },
     });
     const excluded = new Set(['image', 'image_edit', 'video', 'tts', 'embedding', 'audio']);
     return models
@@ -37,8 +38,8 @@ export class ModelService {
         name: m.name,
         provider: m.provider,
         modelType: m.modelType || 'chat',
-        inputPricePer1k: m.pricePer1kInput != null ? Number(m.pricePer1kInput) : null,
-        outputPricePer1k: m.pricePer1kOutput != null ? Number(m.pricePer1kOutput) : null,
+        inputPricePer1k: m.pricing?.pricePer1kInput != null ? Number(m.pricing?.pricePer1kInput) : null,
+        outputPricePer1k: m.pricing?.pricePer1kOutput != null ? Number(m.pricing?.pricePer1kOutput) : null,
       }));
   }
 

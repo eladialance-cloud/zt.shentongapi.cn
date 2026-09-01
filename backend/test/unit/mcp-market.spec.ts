@@ -292,7 +292,7 @@ describe('MarketService.getDownloadPackage mcp 分支', () => {
   it('首次下载创建记录并递增 downloadCount', async () => {
     const { service, increments } = makeService({ existing: false });
     const result = await service.getDownloadPackage(1, 'mcp', 5);
-    assert.ok(result.mcpServerId, '应创建 mcp_servers 记录');
+    assert.ok(result.mcpServerId, '应创建 eco_mcp_servers 记录');
     assert.equal(increments.length, 1);
     assert.equal(increments[0], 1);
   });

@@ -7,6 +7,9 @@ export type MediaAssetSourceType = 'task' | 'media_job' | 'manual';
 /** 素材类型 */
 export type MediaAssetType = 'image' | 'video' | 'audio' | 'file';
 
+/** 素材业务类型：media=素材库常规素材；voice_asset=我的声音；ip_archive=IP 大脑档案 */
+export type MediaAssetBizType = 'media' | 'voice_asset' | 'ip_archive';
+
 /**
  * 素材资产
  * 字段与 db-migration.ts 的 media_assets 表一致
@@ -63,6 +66,11 @@ export class MediaAssetEntity extends BaseEntity {
   /** 扩展元数据（时长/分辨率/封面/字幕摘要等） */
   @Column({ type: 'json', nullable: true })
   meta?: Record<string, unknown> | null;
+
+  /** 业务类型（P3 合并：voice_asset=我的声音 / ip_archive=IP 大脑档案，素材库常规素材为 media） */
+  @Index('idx_media_assets_biz')
+  @Column({ name: 'biz_type', length: 32, default: 'media' })
+  bizType: MediaAssetBizType;
 
   @Column({ type: 'boolean', default: false })
   archived: boolean;

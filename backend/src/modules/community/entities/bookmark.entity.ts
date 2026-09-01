@@ -5,7 +5,7 @@ import { BaseEntity, bigintTransformer } from '../../../common/entities/base.ent
  * 收藏表
  * 数据合同真源：Community 模块 - 收藏管理
  */
-@Entity('bookmarks')
+@Entity('social_bookmarks')
 @Unique(['userId', 'postId'])
 export class BookmarkEntity extends BaseEntity {
   @Column({ name: 'user_id', type: 'bigint', transformer: bigintTransformer })

@@ -10,9 +10,9 @@ USE `ai_agent`;
 SET NAMES utf8mb4;
 
 -- -----------------------------------------------------------------------------
--- mcp_servers - MCP Server 配置表
+-- eco_mcp_servers - MCP Server 配置表
 -- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `mcp_servers` (
+CREATE TABLE IF NOT EXISTS `eco_mcp_servers` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键 ID',
   `user_id` BIGINT UNSIGNED NOT NULL COMMENT '用户 ID',
   `name` VARCHAR(128) NOT NULL COMMENT '服务器名称',

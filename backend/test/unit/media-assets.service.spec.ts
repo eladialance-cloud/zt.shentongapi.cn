@@ -107,6 +107,7 @@ function makeAsset(overrides: Partial<MediaAssetEntity> = {}): MediaAssetEntity 
     userId: 1,
     sourceType: 'manual',
     sourceId: null,
+    bizType: 'media',
     title: '测试素材',
     assetType: 'file',
     url: 'https://example.com/asset.png',

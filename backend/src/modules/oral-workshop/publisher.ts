@@ -3,7 +3,7 @@
  *
  * 入参：已 done 的任务
  * 产出：发布包 JSON（video_url / 主标题 / 副标题 / 发布描述 / 话题标签 / cover_url / 建议发布时间）
- *      + 创建 channel.publish_plans 记录（target_platforms=[douyin]，mode=manual，media_urls=产物）
+ *      + 创建 channel.create_publish_plans 记录（target_platforms=[douyin]，mode=manual，media_urls=产物）
  * 幂等：任务已有 publish_plan_id 时直接返回既有发布包，不重复建单。
  */
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';

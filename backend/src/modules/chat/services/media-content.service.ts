@@ -38,7 +38,7 @@ export class MediaContentService {
     private readonly videoFrameService: VideoFrameService,
   ) {}
 
-  /** 模型是否支持视觉（查 models.supports_vision；模型不存在视为不支持，避免默认模型发图报错） */
+  /** 模型是否支持视觉（查 ai_models.supports_vision；模型不存在视为不支持，避免默认模型发图报错） */
   async modelSupportsVision(modelId: string): Promise<boolean> {
     try {
       const model = await this.modelRepo.findOne({ where: { modelId } });

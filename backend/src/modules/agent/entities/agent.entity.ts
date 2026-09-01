@@ -1,7 +1,7 @@
 import { Entity, Column, Index } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 
-@Entity('agents')
+@Entity('eco_agents')
 export class AgentEntity extends BaseEntity {
   @Column({ length: 64 })
   name: string;

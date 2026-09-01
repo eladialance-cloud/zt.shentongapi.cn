@@ -1,7 +1,7 @@
 import { Entity, Column } from 'typeorm';
 import { BaseEntity, bigintTransformer } from '../../../common/entities/base.entity';
 
-@Entity('skill_install_logs')
+@Entity('eco_skill_install_logs')
 export class SkillInstallLogEntity extends BaseEntity {
   @Column({ name: 'package_id', type: 'bigint', transformer: bigintTransformer })
   packageId: number;

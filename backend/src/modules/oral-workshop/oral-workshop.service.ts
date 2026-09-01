@@ -6,9 +6,7 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { OralWorkshopJobEntity, OralWorkshopJobStatus } from './entities/oral-workshop-job.entity';
 import { OralWorkshopStepEntity } from './entities/oral-workshop-step.entity';
-import { VoiceAssetEntity } from './entities/voice-asset.entity';
 import { DigitalHumanAssetEntity } from './entities/digital-human-asset.entity';
-import { IpArchiveEntity } from './entities/ip-archive.entity';
 import { PublishAccountEntity } from './entities/publish-account.entity';
 import { PublishPlatformEntity } from './entities/publish-platform.entity';
 import { EncryptionService } from '../../common/services/encryption.service';
@@ -133,8 +131,6 @@ export class OralWorkshopService implements OnModuleInit {
     private readonly jobRepo: Repository<OralWorkshopJobEntity>,
     @InjectRepository(OralWorkshopStepEntity)
     private readonly stepRepo: Repository<OralWorkshopStepEntity>,
-    @InjectRepository(VoiceAssetEntity)
-    private readonly voiceAssetRepo: Repository<VoiceAssetEntity>,
     @InjectRepository(DigitalHumanAssetEntity)
     private readonly dhAssetRepo: Repository<DigitalHumanAssetEntity>,
     @InjectRepository(PublishAccountEntity)
@@ -151,8 +147,6 @@ export class OralWorkshopService implements OnModuleInit {
     @Optional() private readonly publishService?: PublishService,
     @Optional() @Inject(forwardRef(() => MaterialSearchService))
     private readonly materialSearch?: MaterialSearchService,
-    @Optional() @InjectRepository(IpArchiveEntity)
-    private readonly ipArchiveRepo?: Repository<IpArchiveEntity>,
     @Optional() @InjectRepository(MediaAssetEntity)
     private readonly mediaAssetRepo?: Repository<MediaAssetEntity>,
     @Optional() @Inject(forwardRef(() => MediaAssetService))
@@ -697,19 +691,23 @@ export class OralWorkshopService implements OnModuleInit {
 
   // ===== 我的声音资产（对标参考软件"声音克隆/训练/预览"） =====
 
-  /** 我的声音列表 */
+  /** 我的声音列表（P3 合并：voice_assets → media_assets，biz_type='voice_asset'，专有字段存 meta） */
   async listVoices(userId: number): Promise<Array<{ id: number; name: string; refAudioUrl: string; speakerId: string | null; demoAudio: string | null; emotionRefAudio: string | null; status: string; createdAt: Date }>> {
-    const rows = await this.voiceAssetRepo.find({ where: { userId }, order: { createdAt: 'DESC' } });
-    return rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      refAudioUrl: r.refAudioUrl,
-      speakerId: r.speakerId ?? null,
-      demoAudio: r.demoAudio ?? null,
-      emotionRefAudio: r.emotionRefAudio ?? null,
-      status: r.status,
-      createdAt: r.createdAt,
-    }));
+    if (!this.mediaAssetRepo) return [];
+    const rows = await this.mediaAssetRepo.find({ where: { userId, bizType: 'voice_asset' }, order: { createdAt: 'DESC' } });
+    return rows.map((r) => {
+      const meta = (r.meta ?? {}) as Record<string, unknown>;
+      return {
+        id: r.id,
+        name: r.title,
+        refAudioUrl: r.url,
+        speakerId: (meta.speakerId as string | undefined) ?? null,
+        demoAudio: (meta.demoAudio as string | undefined) ?? null,
+        emotionRefAudio: (meta.emotionRefAudio as string | undefined) ?? null,
+        status: (meta.status as string | undefined) ?? 'ready',
+        createdAt: r.createdAt,
+      };
+    });
   }
 
   /** 新增声音（参考音频 URL；创建后后台异步克隆回填 speaker_id/demo_audio，对标参考软件「声音训练/预览」） */
@@ -717,20 +715,33 @@ export class OralWorkshopService implements OnModuleInit {
     if (!dto.name?.trim() || !dto.refAudioUrl?.trim()) {
       throw new BadRequestException('声音名称与参考音频 URL 不能为空');
     }
-    const entity = this.voiceAssetRepo.create({
+    if (!this.mediaAssetRepo) throw new BadRequestException('声音资产存储未初始化');
+    const entity = this.mediaAssetRepo.create({
       userId,
-      name: dto.name.trim().slice(0, 128),
-      refAudioUrl: dto.refAudioUrl.trim().slice(0, 512),
-      emotionRefAudio: dto.emotionRefAudio?.trim()?.slice(0, 512) || null,
-      status: 'training',
-    });
-    const saved = await this.voiceAssetRepo.save(entity);
+      bizType: 'voice_asset',
+      sourceType: 'manual',
+      title: dto.name.trim().slice(0, 128),
+      assetType: 'audio',
+      url: dto.refAudioUrl.trim().slice(0, 512),
+      meta: {
+        kind: 'voice_asset',
+        speakerId: null,
+        demoAudio: null,
+        emotionRefAudio: dto.emotionRefAudio?.trim()?.slice(0, 512) || null,
+        status: 'training',
+      },
+      vectorStatus: 'none',
+      archived: false,
+    } as unknown as MediaAssetEntity);
+    const saved = await this.mediaAssetRepo.save(entity);
     void this.cloneVoiceInBackground(saved);
-    return { id: saved.id, name: saved.name, refAudioUrl: saved.refAudioUrl, status: saved.status };
+    const savedMeta = (saved.meta ?? {}) as Record<string, unknown>;
+    return { id: saved.id, name: saved.title, refAudioUrl: saved.url, status: (savedMeta.status as string | undefined) ?? 'training' };
   }
 
   /** 后台异步克隆：火山声音复刻 → 回填 speaker_id / demo_audio / status（失败置 failed，不阻塞建声音） */
-  private async cloneVoiceInBackground(asset: VoiceAssetEntity): Promise<void> {
+  private async cloneVoiceInBackground(asset: MediaAssetEntity): Promise<void> {
+    if (!this.mediaAssetRepo) return;
     try {
       let apiKey = process.env.VOLCANO_ARK_API_KEY || '';
       let cloneEndpoint = process.env.VOLCANO_VOICE_CLONE_ENDPOINT || '';
@@ -746,29 +757,35 @@ export class OralWorkshopService implements OnModuleInit {
         cloneEndpoint: cloneEndpoint || undefined,
         resourceId: 'seed-icl-2.0',
       });
+      const meta = (asset.meta ?? {}) as Record<string, unknown>;
       const res = await adapter.cloneSpeaker({
-        refAudioUrl: asset.refAudioUrl,
-        emotionRefAudio: asset.emotionRefAudio ?? undefined,
+        refAudioUrl: asset.url,
+        emotionRefAudio: typeof meta.emotionRefAudio === 'string' ? meta.emotionRefAudio : undefined,
         text: '你好',
         userId: asset.userId,
       });
-      asset.speakerId = res.speakerId;
-      asset.demoAudio = res.demoAudio ?? null;
-      asset.status = 'ready';
-      await this.voiceAssetRepo.save(asset);
+      asset.meta = {
+        ...meta,
+        speakerId: res.speakerId,
+        demoAudio: res.demoAudio ?? null,
+        status: 'ready',
+      };
+      await this.mediaAssetRepo.save(asset);
       this.logger.log('[oral-workshop] 声音 ' + asset.id + ' 克隆完成（speaker=' + res.speakerId + '）');
     } catch (err) {
-      asset.status = 'failed';
-      await this.voiceAssetRepo.save(asset).catch(() => undefined);
+      const meta = (asset.meta ?? {}) as Record<string, unknown>;
+      asset.meta = { ...meta, status: 'failed' };
+      await this.mediaAssetRepo.save(asset).catch(() => undefined);
       this.logger.error('[oral-workshop] 声音 ' + asset.id + ' 克隆失败: ' + (err as Error).message);
     }
   }
 
   /** 删除声音 */
   async deleteVoice(userId: number, id: number): Promise<void> {
-    const row = await this.voiceAssetRepo.findOne({ where: { id, userId } });
+    if (!this.mediaAssetRepo) throw new NotFoundException('声音不存在');
+    const row = await this.mediaAssetRepo.findOne({ where: { id, userId, bizType: 'voice_asset' } });
     if (!row) throw new NotFoundException('声音不存在');
-    await this.voiceAssetRepo.remove(row);
+    await this.mediaAssetRepo.remove(row);
   }
 
   // ===== 我的数字人形象（对标参考软件"形象库/授权状态"） =====
@@ -1091,7 +1108,7 @@ export class OralWorkshopService implements OnModuleInit {
 
   /** IP 大脑：解析对标链接（yt-dlp）→ 风格分析 + 选题 → 存档（对标 aigc-human ip-brain） */
   async analyzeIpArchive(userId: number, url: string): Promise<IpArchiveItem> {
-    if (!this.ipArchiveRepo) throw new BadRequestException('IP 大脑存储未初始化');
+    if (!this.mediaAssetRepo) throw new BadRequestException('IP 大脑存储未初始化');
     let target = String(url ?? '').trim();
     const extracted = target.match(/https?:\/\/[^\s"'<>，。！？]+/i)?.[0];
     if (extracted) target = extracted.trim();
@@ -1133,15 +1150,23 @@ export class OralWorkshopService implements OnModuleInit {
         this.logger.warn(`[oral-workshop] IP 大脑风格分析失败，使用标题兜底: ${(err as Error).message}`);
       }
     }
-    const entity = this.ipArchiveRepo.create({
+    const entity = this.mediaAssetRepo.create({
       userId,
-      url: target.slice(0, 512),
+      bizType: 'ip_archive',
+      sourceType: 'manual',
       title: (titles[0] || target).slice(0, 255),
-      styleAnalysis,
-      topics: JSON.stringify(topics),
-      sourceJson: JSON.stringify(entries),
-    });
-    const saved = await this.ipArchiveRepo.save(entity);
+      assetType: 'file',
+      url: target.slice(0, 512),
+      meta: {
+        kind: 'ip_archive',
+        styleAnalysis,
+        topics: JSON.stringify(topics),
+        sourceJson: JSON.stringify(entries),
+      },
+      vectorStatus: 'none',
+      archived: false,
+    } as unknown as MediaAssetEntity);
+    const saved = await this.mediaAssetRepo.save(entity);
     return this.toIpArchiveItem(saved);
   }
 
@@ -1187,31 +1212,32 @@ export class OralWorkshopService implements OnModuleInit {
 
   /** IP 大脑档案列表（按创建时间倒序） */
   async listIpArchives(userId: number): Promise<IpArchiveItem[]> {
-    if (!this.ipArchiveRepo) return [];
-    const rows = await this.ipArchiveRepo.find({ where: { userId }, order: { createdAt: 'DESC' } });
+    if (!this.mediaAssetRepo) return [];
+    const rows = await this.mediaAssetRepo.find({ where: { userId, bizType: 'ip_archive' }, order: { createdAt: 'DESC' } });
     return rows.map((r) => this.toIpArchiveItem(r));
   }
 
   /** 删除 IP 大脑档案 */
   async deleteIpArchive(userId: number, id: number): Promise<void> {
-    if (!this.ipArchiveRepo) throw new NotFoundException('IP 大脑档案不存在');
-    const row = await this.ipArchiveRepo.findOne({ where: { id, userId } });
+    if (!this.mediaAssetRepo) throw new NotFoundException('IP 大脑档案不存在');
+    const row = await this.mediaAssetRepo.findOne({ where: { id, userId, bizType: 'ip_archive' } });
     if (!row) throw new NotFoundException('IP 大脑档案不存在');
-    await this.ipArchiveRepo.remove(row);
+    await this.mediaAssetRepo.remove(row);
   }
 
   /** 档案实体 → API 返回对象（解析 topics/sourceJson） */
-  private toIpArchiveItem(r: IpArchiveEntity): IpArchiveItem {
+  private toIpArchiveItem(r: MediaAssetEntity): IpArchiveItem {
+    const meta = (r.meta ?? {}) as Record<string, unknown>;
     let topics: string[] = [];
     try {
-      const parsed = JSON.parse(r.topics ?? '[]');
+      const parsed = JSON.parse(typeof meta.topics === 'string' ? meta.topics : '[]');
       if (Array.isArray(parsed)) topics = parsed.map(String);
     } catch {
       topics = [];
     }
     let sourceJson: unknown = [];
     try {
-      sourceJson = JSON.parse(r.sourceJson ?? '[]');
+      sourceJson = JSON.parse(typeof meta.sourceJson === 'string' ? meta.sourceJson : '[]');
     } catch {
       sourceJson = [];
     }
@@ -1220,7 +1246,7 @@ export class OralWorkshopService implements OnModuleInit {
       userId: r.userId,
       url: r.url,
       title: r.title ?? null,
-      styleAnalysis: r.styleAnalysis ?? null,
+      styleAnalysis: typeof meta.styleAnalysis === 'string' ? meta.styleAnalysis : null,
       topics,
       sourceJson,
       createdAt: r.createdAt,

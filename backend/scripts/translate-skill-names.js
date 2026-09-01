@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * translate-skill-names.js - 技能源(skill_sources)名称批量翻译成简体中文
+ * translate-skill-names.js - 技能源(eco_skill_sources)名称批量翻译成简体中文
  * 用法: node scripts/translate-skill-names.js [--batch 40]
  * 模型/中转: 默认复用「默认激活 chat 模型 + 带 api_key 的 active 中转」，也可环境变量覆盖:
  *   SKILL_TRANSLATE_BASE_URL / SKILL_TRANSLATE_API_KEY / SKILL_TRANSLATE_MODEL
@@ -156,13 +156,13 @@ async function main() {
   let model = env.SKILL_TRANSLATE_MODEL;
   if (!baseUrl || !model) {
     const [providers] = await conn.execute(
-      "SELECT base_url, api_key FROM model_providers WHERE status='active' AND api_key IS NOT NULL AND TRIM(api_key) != '' ORDER BY (is_global=1) DESC, id ASC LIMIT 1",
+      "SELECT base_url, api_key FROM ai_model_providers WHERE status='active' AND api_key IS NOT NULL AND TRIM(api_key) != '' ORDER BY (is_global=1) DESC, id ASC LIMIT 1",
     );
     const [models] = await conn.execute(
-      "SELECT upstream_model_id, model_id FROM models WHERE is_active=1 AND model_type='chat' ORDER BY id ASC LIMIT 1",
+      "SELECT upstream_model_id, model_id FROM ai_models WHERE is_active=1 AND model_type='chat' ORDER BY id ASC LIMIT 1",
     );
     if (!baseUrl) {
-      if (!providers.length || !providers[0].base_url) throw new Error('未找到可用中转(model_providers)，请设置 SKILL_TRANSLATE_BASE_URL');
+      if (!providers.length || !providers[0].base_url) throw new Error('未找到可用中转(ai_model_providers)，请设置 SKILL_TRANSLATE_BASE_URL');
       baseUrl = String(providers[0].base_url).replace(/\/v1\/?$/, '').replace(/\/+$/, '');
     }
     if (!apiKey) {
@@ -181,7 +181,7 @@ async function main() {
 
   // 2) 取待翻译条目（跳过已含中文的，支持断点续跑）
   const [rows] = await conn.execute(
-    "SELECT id, skill_name, analyze_result FROM skill_sources WHERE status='analyzed' ORDER BY id",
+    "SELECT id, skill_name, analyze_result FROM eco_skill_sources WHERE status='analyzed' ORDER BY id",
   );
   const todo = rows.filter((r) => !CJK_RE.test(String(r.skill_name || '')));
   console.log('待翻译: ' + todo.length + '/' + rows.length);
@@ -212,7 +212,7 @@ async function main() {
           try { ar = typeof ar === 'string' ? JSON.parse(ar) : (ar || {}); } catch { ar = {}; }
           const newAr = Object.assign({}, ar || {}, { enName: row.skill_name });
           await conn.execute(
-            'UPDATE skill_sources SET skill_name=?, analyze_result=? WHERE id=?',
+            'UPDATE eco_skill_sources SET skill_name=?, analyze_result=? WHERE id=?',
             [zh.trim().slice(0, 64), JSON.stringify(newAr), row.id],
           );
           ok++;

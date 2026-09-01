@@ -48,6 +48,15 @@ export class ApplyDto {
   @IsOptional()
   @IsNumber()
   sessionId?: number;
+
+  /** Hermes 编排任务溯源（可选）：云端沉淀回填 taskId + executionRef */
+  @IsOptional()
+  @IsString()
+  taskId?: string;
+
+  @IsOptional()
+  @IsString()
+  executionRef?: string;
 }
 
 /** 撤回请求 */

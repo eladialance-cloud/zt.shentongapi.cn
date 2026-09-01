@@ -34,7 +34,7 @@ const DEFAULT_MODEL_BY_SLUG: Record<string, string> = {
 
 /**
  * Agent 名称/介绍自动翻译为简体中文（导入时调用）
- * 复用管理后台已配置的模型供应商（model_providers 表，AES 加密的 key 解密后直连）
+ * 复用管理后台已配置的模型供应商（ai_model_providers 表，AES 加密的 key 解密后直连）
  * 单次调用同时翻译 name + description，失败返回 null，由调用方保留原文
  */
 @Injectable()
@@ -57,6 +57,7 @@ export class AgentTranslateService {
     try {
       const model = await this.modelRepo.findOne({
         where: { modelId: preferredModel, isActive: true },
+        relations: { credentials: true },
       });
       if (!model) {
         this.logger.warn(`翻译模型不存在或未启用: ${preferredModel}`);
@@ -81,11 +82,11 @@ export class AgentTranslateService {
         }
       }
       // 2) 模型自身直连配置（老数据）
-      if (model.apiEndpoint && model.apiKey) {
+      if (model.credentials?.apiEndpoint && model.credentials.apiKey) {
         try {
           return {
-            endpoint: model.apiEndpoint.replace(/\/+$/, ''),
-            apiKey: this.encryptionService.decryptAes(model.apiKey),
+            endpoint: model.credentials.apiEndpoint.replace(/\/+$/, ''),
+            apiKey: this.encryptionService.decryptAes(model.credentials.apiKey),
             model: upstream,
           };
         } catch (e) {

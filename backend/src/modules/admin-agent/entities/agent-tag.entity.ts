@@ -4,7 +4,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
 /**
  * Agent 标签库实体
  */
-@Entity('agent_tag')
+@Entity('eco_agent_tag')
 export class AgentTagEntity extends BaseEntity {
   /** 标签名称 */
   @Column({ length: 64 })

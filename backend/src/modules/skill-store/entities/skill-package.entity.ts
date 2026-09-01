@@ -1,7 +1,7 @@
 import { Entity, Column, Index } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 
-@Entity('skill_packages')
+@Entity('eco_skill_packages')
 export class SkillPackageEntity extends BaseEntity {
   @Index({ unique: true })
   @Column({ length: 64 })

@@ -1,7 +1,7 @@
-﻿import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index } from "typeorm";
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index } from "typeorm";
 
 /** 定时任务 — 对话创建，软件开着时由桌面端调度器触发，经 Hermes 编排执行团队任务 */
-@Entity("scheduled_tasks")
+@Entity("task_scheduled_tasks")
 export class ScheduledTaskEntity {
   @PrimaryGeneratedColumn({ type: "bigint", name: "id" })
   id: number;

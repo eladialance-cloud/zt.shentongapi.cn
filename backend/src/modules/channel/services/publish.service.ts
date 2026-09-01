@@ -54,7 +54,7 @@ export class PublishService {
     return this.planRepo.save(plan);
   }
 
-  /** F4a：设置发布账号（publish_accounts.id） */
+  /** F4a：设置发布账号（create_publish_accounts.id） */
   async setAccount(userId: number, planId: number, accountId: number): Promise<PublishPlanEntity> {
     const plan = await this.getPlan(userId, planId);
     plan.accountId = accountId;

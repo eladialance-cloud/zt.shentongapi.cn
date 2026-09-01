@@ -5,7 +5,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
  * 运行时引擎版本实体
  * 数据合同真源：深瞳AI_全栈部署方案_20260708.md 第 3.3 节
  */
-@Entity('runtime_versions')
+@Entity('eco_runtime_versions')
 @Index('idx_service_active', ['serviceName', 'isActive'])
 export class RuntimeVersionEntity extends BaseEntity {
   @Index()

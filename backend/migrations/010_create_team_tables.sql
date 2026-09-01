@@ -3,7 +3,7 @@
 -- 设计文档: team_module_design_20260730.md
 
 -- 1. 团队表
-CREATE TABLE IF NOT EXISTS teams (
+CREATE TABLE IF NOT EXISTS task_teams (
   id BIGINT NOT NULL AUTO_INCREMENT,
   name VARCHAR(128) NOT NULL COMMENT '团队名称',
   avatar VARCHAR(512) NULL COMMENT '团队头像',
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS teams (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='团队表';
 
 -- 2. 团队成员表
-CREATE TABLE IF NOT EXISTS team_members (
+CREATE TABLE IF NOT EXISTS task_team_members (
   id BIGINT NOT NULL AUTO_INCREMENT,
   team_id BIGINT NOT NULL COMMENT '团队 ID',
   agent_id BIGINT NOT NULL COMMENT '关联的 Agent ID',
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS team_members (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='团队成员表';
 
 -- 3. 团队任务表
-CREATE TABLE IF NOT EXISTS team_tasks (
+CREATE TABLE IF NOT EXISTS task_team_tasks (
   id BIGINT NOT NULL AUTO_INCREMENT,
   team_id BIGINT NOT NULL COMMENT '团队 ID',
   title VARCHAR(128) NOT NULL COMMENT '任务标题',

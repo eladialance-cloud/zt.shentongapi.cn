@@ -1,8 +1,8 @@
-﻿import { Entity, Column, Index } from "typeorm";
+import { Entity, Column, Index } from "typeorm";
 import { BaseEntity } from "../../../common/entities/base.entity";
 
 /** 团队 — 替换 opc_teams */
-@Entity("teams")
+@Entity("task_teams")
 export class TeamEntity extends BaseEntity {
   @Column({ length: 128 })
   name: string;

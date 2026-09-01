@@ -200,7 +200,7 @@ describe('LlmProxyService.uploadLlmFile 两步式文件上传', () => {
     const { svc, modelRepo, llmFileRepo } = buildService();
     modelRepo.findOne = async () => ({
       modelId: 'qwen-long', modelType: 'chat', callMode: 'text_chat', isActive: true,
-      generationParams: { file_id_required: true, submit_path: '/compatible-mode/v1/file-uploads', file_id_path: 'file_id' },
+      pricing: { generationParams: { file_id_required: true, submit_path: '/compatible-mode/v1/file-uploads', file_id_path: 'file_id' } },
     });
     (svc as any).resolveModelId = async () => 'qwen-long';
     (svc as any).resolveUpstreamTarget = async () => ({ endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1', upstreamModelId: 'qwen-long', apiKey: 'k', providerSlug: 'qwen' });
@@ -225,7 +225,7 @@ describe('LlmProxyService.uploadLlmFile 两步式文件上传', () => {
 
   it('模型未配置 submit_path 时明确报错', async () => {
     const { svc, modelRepo } = buildService();
-    modelRepo.findOne = async () => ({ modelId: 'qwen-plus', generationParams: {}, isActive: true });
+    modelRepo.findOne = async () => ({ modelId: 'qwen-plus', pricing: { generationParams: {} }, isActive: true });
     (svc as any).resolveModelId = async () => 'qwen-plus';
     await assert.rejects(
       (svc as any).uploadLlmFile(1, 'qwen-plus', dummyFile()),
@@ -235,7 +235,7 @@ describe('LlmProxyService.uploadLlmFile 两步式文件上传', () => {
 
   it('上游未返回 file_id 时报错', async () => {
     const { svc, modelRepo } = buildService();
-    modelRepo.findOne = async () => ({ modelId: 'qwen-long', generationParams: { submit_path: '/file-uploads' }, isActive: true });
+    modelRepo.findOne = async () => ({ modelId: 'qwen-long', pricing: { generationParams: { submit_path: '/file-uploads' } }, isActive: true });
     (svc as any).resolveModelId = async () => 'qwen-long';
     (svc as any).resolveUpstreamTarget = async () => ({ endpoint: 'https://x.com', upstreamModelId: 'qwen-long', apiKey: 'k', providerSlug: 'qwen' });
     stubFetch(() => ({ ok: true, status: 200, text: async () => '{"name":"a.pdf"}', json: async () => ({ name: 'a.pdf' }), headers: new Headers() }));
@@ -315,7 +315,7 @@ describe('LlmProxyService.chatCompletions 专用参数注入', () => {
       if (where.modelId === 'qwen-long') {
         return {
           modelId: 'qwen-long', modelType: 'chat', isActive: true, supportsVision: false,
-          generationParams: { file_id_required: true, chat_files_field: 'files', chat_body_extra: { target_lang: 'zh' } },
+          pricing: { generationParams: { file_id_required: true, chat_files_field: 'files', chat_body_extra: { target_lang: 'zh' } } },
         };
       }
       if (where.id === 1) return { id: 1, status: 'active', llmProxyKey: 'sk-shentong-test' };
@@ -348,7 +348,7 @@ describe('LlmProxyService.chatCompletions 专用参数注入', () => {
     const { svc, modelRepo, llmFileRepo } = buildChatService();
     modelRepo.findOne = async ({ where }: any) => {
       if (where.modelId === 'qwen-long') {
-        return { modelId: 'qwen-long', modelType: 'chat', isActive: true, supportsVision: false, generationParams: {} };
+        return { modelId: 'qwen-long', modelType: 'chat', isActive: true, supportsVision: false, pricing: { generationParams: {} } };
       }
       if (where.id === 1) return { id: 1, status: 'active', llmProxyKey: 'sk-shentong-test' };
       return null;
@@ -369,7 +369,7 @@ describe('LlmProxyService.chatCompletions 专用参数注入', () => {
     const { svc, modelRepo } = buildChatService();
     modelRepo.findOne = async ({ where }: any) => {
       if (where.modelId === 'qwen-long') {
-        return { modelId: 'qwen-long', modelType: 'chat', isActive: true, supportsVision: false, generationParams: { file_id_required: true } };
+        return { modelId: 'qwen-long', modelType: 'chat', isActive: true, supportsVision: false, pricing: { generationParams: { file_id_required: true } } };
       }
       if (where.id === 1) return { id: 1, status: 'active', llmProxyKey: 'sk-shentong-test' };
       return null;
@@ -388,7 +388,7 @@ describe('LlmProxyService.chatCompletions 专用参数注入', () => {
     const { svc, modelRepo, llmFileRepo, llmClient } = buildChatService();
     modelRepo.findOne = async ({ where }: any) => {
       if (where.modelId === 'qwen-long') {
-        return { modelId: 'qwen-long', modelType: 'chat', isActive: true, supportsVision: false, generationParams: { file_id_required: true, chat_files_field: 'files' } };
+        return { modelId: 'qwen-long', modelType: 'chat', isActive: true, supportsVision: false, pricing: { generationParams: { file_id_required: true, chat_files_field: 'files' } } };
       }
       if (where.id === 1) return { id: 1, status: 'active', llmProxyKey: 'sk-shentong-test' };
       return null;
@@ -419,7 +419,7 @@ describe('LlmProxyService.chatCompletions 专用参数注入', () => {
     const { svc, modelRepo } = buildChatService();
     modelRepo.findOne = async ({ where }: any) => {
       if (where.modelId === 'qwen-long') {
-        return { modelId: 'qwen-long', modelType: 'chat', isActive: true, supportsVision: false, generationParams: {} };
+        return { modelId: 'qwen-long', modelType: 'chat', isActive: true, supportsVision: false, pricing: { generationParams: {} } };
       }
       if (where.id === 1) return { id: 1, status: 'active', llmProxyKey: 'sk-shentong-test' };
       return null;
@@ -494,8 +494,7 @@ describe('LlmProxyService.imagesGeneration 网关图片生成（适配模板路�
           isActive: true,
           providerId: 12,
           upstreamModelId: 'qwen-image-3.0',
-          pricePerImage: 10,
-          generationParams: {},
+          pricing: { pricePerImage: 10, generationParams: {} },
         }),
       } as any,
       {
@@ -561,8 +560,7 @@ describe('LlmProxyService.imagesGeneration 网关图片生成（适配模板路�
           modelType: 'image',
           isActive: true,
           providerId: null,
-          pricePerImage: 10,
-          generationParams: {},
+          pricing: { pricePerImage: 10, generationParams: {} },
         }),
       } as any,
       { findOne: async () => null } as any,

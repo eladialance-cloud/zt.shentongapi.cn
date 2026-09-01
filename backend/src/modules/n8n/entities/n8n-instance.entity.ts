@@ -7,7 +7,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
  */
 export type N8nInstanceStatus = 'pending' | 'running' | 'stopped' | 'error';
 
-@Entity('n8n_instances')
+@Entity('eco_n8n_instances')
 export class N8nInstanceEntity extends BaseEntity {
   @Index()
   @Column({ name: 'user_id', type: 'bigint', unsigned: true })

@@ -3,9 +3,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Alert, Button, Card, Collapse, Empty, List, Space, Spin, Tag, Typography } from "antd";
+import { Alert, Button, Card, Empty, List, message, Space, Spin, Tag, Typography } from "antd";
 import { ArrowLeftOutlined, RiseOutlined } from "@ant-design/icons";
-import type { HermesEvolutionResult } from "@shared/types";
+import type { HermesCuratorState, HermesEvolutionResult } from "@shared/types";
 import HermesRuntimeInstallAlert from "@/components/HermesRuntimeInstallAlert";
 import styles from "./styles.module.css";
 
@@ -16,6 +16,9 @@ export default function HermesEvolution() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<HermesEvolutionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [curator, setCurator] = useState<HermesCuratorState | null>(null);
+  const [curatorError, setCuratorError] = useState<string | null>(null);
+  const [curatorBusy, setCuratorBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -32,6 +35,20 @@ export default function HermesEvolution() {
     } catch (err) {
       setError((err as Error).message || "加载失败");
       setData(null);
+    }
+    // P1：原生策展状态（独立于进化快照，未接入时降级展示 data.curator 原文）
+    try {
+      const cur = await window.electronAPI?.hermesCurator.get();
+      if (cur?.ok) {
+        setCurator(cur.state ?? null);
+        setCuratorError(null);
+      } else {
+        setCurator(null);
+        setCuratorError(cur?.error ?? "策展状态获取失败");
+      }
+    } catch {
+      setCurator(null);
+      setCuratorError("策展状态获取失败");
     } finally {
       setLoading(false);
     }
@@ -42,6 +59,39 @@ export default function HermesEvolution() {
   }, [load]);
 
   const journeyNodes = (data?.journey?.nodes as Array<{ id?: string; label?: string; kind?: string; date?: string }> | undefined) ?? [];
+
+  const fmtLastRun = (value?: string | null): string => {
+    if (!value) return "从未";
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? value : d.toLocaleString("zh-CN", { hour12: false });
+  };
+
+  const togglePaused = async () => {
+    setCuratorBusy(true);
+    try {
+      const res = await window.electronAPI?.hermesCurator.setPaused(!(curator?.paused ?? false));
+      if (res?.ok) {
+        message.success(curator?.paused ? "策展已恢复" : "策展已暂停");
+        const cur = await window.electronAPI?.hermesCurator.get();
+        if (cur?.state) setCurator(cur.state);
+      } else {
+        message.warning(res?.error ?? "操作失败");
+      }
+    } finally {
+      setCuratorBusy(false);
+    }
+  };
+
+  const runCuratorNow = async () => {
+    setCuratorBusy(true);
+    try {
+      const res = await window.electronAPI?.hermesCurator.run();
+      if (res?.ok) message.success("策展已触发（后台执行）");
+      else message.warning(res?.error ?? "触发失败");
+    } finally {
+      setCuratorBusy(false);
+    }
+  };
 
   return (
     <div className={styles.pageContainer}>
@@ -125,27 +175,50 @@ export default function HermesEvolution() {
             )}
           </Card>
 
-          <Collapse
+          <Card
             size="small"
-            items={[
-              {
-                key: "curator",
-                label: "技能策展（curator）与记忆 provider（memory status）",
-                children: (
-                  <Space direction="vertical" style={{ width: "100%" }}>
-                    {data?.curator ? (
-                      <Paragraph style={{ marginBottom: 0, whiteSpace: "pre-wrap" }}>{data.curator}</Paragraph>
-                    ) : (
-                      <Empty description="curator 无输出" />
-                    )}
-                    {data?.memoryStatus ? (
-                      <Paragraph style={{ marginBottom: 0, whiteSpace: "pre-wrap" }}>{data.memoryStatus}</Paragraph>
-                    ) : null}
-                  </Space>
-                ),
-              },
-            ]}
-          />
+            title={
+              <Space>
+                <span>技能策展（curator）</span>
+                {curator ? (
+                  <Tag color={curator.paused ? "orange" : curator.enabled ? "green" : "default"}>
+                    {curator.paused ? "已暂停" : curator.enabled ? "运行中" : "未启用"}
+                  </Tag>
+                ) : null}
+              </Space>
+            }
+            extra={
+              <Space>
+                <Button size="small" loading={curatorBusy} disabled={!curator} onClick={() => void togglePaused()}>
+                  {curator?.paused ? "恢复策展" : "暂停策展"}
+                </Button>
+                <Button size="small" type="primary" loading={curatorBusy} disabled={!curator} onClick={() => void runCuratorNow()}>
+                  立即运行
+                </Button>
+              </Space>
+            }
+          >
+            <Space direction="vertical" style={{ width: "100%" }}>
+              {curator ? (
+                <Space wrap>
+                  <Text type="secondary">检查间隔：{curator.interval_hours != null ? `${curator.interval_hours} 小时` : "-"}</Text>
+                  <Text type="secondary">上次运行：{fmtLastRun(curator.last_run_at)}</Text>
+                  {curatorError ? <Text type="danger">{curatorError}</Text> : null}
+                </Space>
+              ) : (
+                <>
+                  {data?.curator ? (
+                    <Paragraph style={{ marginBottom: 0, whiteSpace: "pre-wrap" }}>{data.curator}</Paragraph>
+                  ) : (
+                    <Empty description={curatorError ?? "curator 无输出（原生 API 未接入）"} />
+                  )}
+                </>
+              )}
+              {data?.memoryStatus ? (
+                <Paragraph style={{ marginBottom: 0, whiteSpace: "pre-wrap" }}>记忆 provider：{data.memoryStatus}</Paragraph>
+              ) : null}
+            </Space>
+          </Card>
         </Space>
       </Spin>
     </div>

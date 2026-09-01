@@ -5,7 +5,7 @@ import { BaseEntity, bigintTransformer } from '../../../common/entities/base.ent
  * OpenClaw 运行时实例注册表
  * 管理后端 Agent 与 OpenClaw 运行时实例的双向映射
  */
-@Entity('openclaw_instances')
+@Entity('eco_openclaw_instances')
 export class OpenClawInstanceEntity extends BaseEntity {
   @Index()
   @Column({ name: 'user_id', type: 'bigint', transformer: bigintTransformer })

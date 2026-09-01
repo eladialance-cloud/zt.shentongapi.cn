@@ -1,8 +1,8 @@
 ﻿import { Entity, Column, Index } from "typeorm";
 import { BaseEntity } from "../../../common/entities/base.entity";
 
-/** 渠道配置 — 设计文档: channel_integration_design_20260730.md */
-@Entity("channels")
+/** 渠道配置（P2 拆分：独立 create_publish_channels 表，channels 归 community 社区频道） — 设计文档: channel_integration_design_20260730.md */
+@Entity("create_publish_channels")
 export class ChannelEntity extends BaseEntity {
   @Column({ length: 64 })
   name: string;

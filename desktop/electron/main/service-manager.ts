@@ -103,6 +103,28 @@ function getOrCreateHermesServerKey(): string {
 }
 
 /**
+ * Hermes Dashboard 会话 token（P0 原生能力接入）
+ * - 桌面端 mint 并注入 HERMES_DASHBOARD_SESSION_TOKEN，Hermes web_server _resolve_session_token 同源读取；
+ *   原生 API 请求头 X-Hermes-Session-Token 与本 token 一致，防止未授权访问
+ * - 首次生成随机 token 写入安全凭据存储（hermes.sessionToken），后续复用保证服务端与客户端一致
+ */
+function getOrCreateHermesSessionToken(): string {
+  try {
+    const stored = getCredential('hermes.sessionToken')
+    if (stored) return stored
+  } catch (err) {
+    console.warn('[service-manager] 读取 hermes session token 失败:', err)
+  }
+  const token = 'shentong-session-' + crypto.randomBytes(24).toString('hex')
+  try {
+    setCredential('hermes.sessionToken', token)
+  } catch (err) {
+    console.warn('[service-manager] 保存 hermes session token 失败（仅本次会话有效）:', err)
+  }
+  return token
+}
+
+/**
  * Hermes 数据目录
  * - 固定指向 userData/hermes-home，避免使用 %LOCALAPPDATA%\\hermes（该目录可能残留损坏的
  *   hermes-agent 链接/ACL，导致 Hermes 启动时 banner 的 git 探测抛 PermissionError 直接崩溃）
@@ -132,6 +154,8 @@ function buildHermesEnv(): NodeJS.ProcessEnv {
     PORT: String(SERVICE_DEFS.hermes.port),
     HERMES_HOME: home,
     HERMES_API_SERVER_KEY: key,
+    // P0 原生能力接入：桌面端 mint 会话 token 注入 Hermes 进程（web_server 鉴权同源，X-Hermes-Session-Token）
+    HERMES_DASHBOARD_SESSION_TOKEN: getOrCreateHermesSessionToken(),
     // K1 修复：Hermes 进程实际读取的环境变量名是 CUSTOM_API_KEY，
     // 需将 HERMES_API_SERVER_KEY 映射到 CUSTOM_API_KEY，否则 spawnService 中的检查永远失败
     CUSTOM_API_KEY: key,

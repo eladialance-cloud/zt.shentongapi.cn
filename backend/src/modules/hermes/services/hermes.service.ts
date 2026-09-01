@@ -70,7 +70,7 @@ export class HermesService {
 
   /**
    * 本地 Hermes 编排结果上报（桌面端主进程回写）
-   * 归属校验：团队必须存在且为当前用户创建；写 hermes_call_logs（call_type=orchestrate，无实例）
+   * 归属校验：团队必须存在且为当前用户创建；写 create_hermes_call_logs（call_type=orchestrate，无实例）
    */
   async reportLocalExecution(userId: number, dto: HermesReportDto) {
     // auto/agent 模式任务无团队归属：跳过团队校验

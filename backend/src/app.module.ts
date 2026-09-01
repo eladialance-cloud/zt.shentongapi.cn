@@ -1,4 +1,4 @@
-﻿import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -32,7 +32,6 @@ import { RagModule } from './modules/rag/rag.module';
 import { McpModule } from './modules/mcp/mcp.module';
 import { N8nModule } from './modules/n8n/n8n.module';
 import { SkillStoreModule } from './modules/skill-store/skill-store.module';
-import { OpcModule } from './modules/opc/opc.module';
 import { LandingModule } from './modules/landing/landing.module';
 import { ChannelModule } from './modules/channel/channel.module';
 import { TeamModule } from './modules/team/team.module';
@@ -149,7 +148,6 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     AdminSystemModule,
     AdminCommunityModule,
     AdminPlanModule,
-    OpcModule,
     StatisticsModule,
     SystemModule,
     TenantModule,

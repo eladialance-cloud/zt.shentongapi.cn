@@ -5,7 +5,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
  * MCP 服务配置实体
  * 存储 MCP Server 的连接配置与运行状态
  */
-@Entity('mcp_server_config')
+@Entity('ai_mcp_server_config')
 export class McpServerConfigEntity extends BaseEntity {
   @Column({ length: 128 })
   name: string;

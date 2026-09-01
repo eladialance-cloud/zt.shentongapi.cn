@@ -60,7 +60,7 @@ test('app.module.js 编译产物存在', () => {
 console.log('\n--- 模块完整性检查 ---');
 const expectedModules = [
   'auth', 'user', 'agent', 'chat', 'payment', 'credits',
-  'file', 'storage', 'rag', 'mcp', 'n8n', 'opc',
+  'file', 'storage', 'rag', 'mcp', 'n8n',
   'skill-store', 'statistics', 'system', 'tenant', 'device',
   'reconciliation', 'sync', 'api-key-pool', 'version', 'runtime',
   'admin-auth', 'admin-role', 'admin-log', 'admin-user', 'admin-agent',

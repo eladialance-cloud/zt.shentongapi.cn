@@ -141,11 +141,6 @@ const router = createHashRouter([
       { path: "/automation", element: <Navigate to="/workflow" replace /> },
       // 兼容旧链接：复数 /workflows 别名指向单数路由
       { path: "/workflows", element: <Navigate to="/workflow" replace /> },
-      // ===== Task 14: OPC =====
-      // OPC 路径重定向到团队
-      { path: "/opc", element: <Navigate to="/team" replace /> },
-      { path: "/opc/:id", element: <Navigate to="/team" replace /> },
-      { path: "/opc/:id/board", element: <Navigate to="/team" replace /> },
       { path: "/team", element: <TeamList /> },
       { path: "/team/:id", element: <TeamDetail /> },
       { path: "/team/:id/board", element: <TeamBoard /> },

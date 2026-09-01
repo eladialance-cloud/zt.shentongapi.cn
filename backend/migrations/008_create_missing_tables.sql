@@ -6,9 +6,9 @@
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- 1. agent_categories - Agent 分类表
+-- 1. eco_agent_categories - Agent 分类表
 -- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `agent_categories` (
+CREATE TABLE IF NOT EXISTS `eco_agent_categories` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `category` VARCHAR(64) NOT NULL COMMENT '分类标识',
   `display_name` VARCHAR(64) NOT NULL COMMENT '分类显示名称',
@@ -19,9 +19,9 @@ CREATE TABLE IF NOT EXISTS `agent_categories` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 分类表';
 
 -- -----------------------------------------------------------------------------
--- 2. ai_audit_config - AI 审核配置表
+-- 2. create_ai_audit_config - AI 审核配置表
 -- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `ai_audit_config` (
+CREATE TABLE IF NOT EXISTS `create_ai_audit_config` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `config` JSON NOT NULL COMMENT 'AI 审核配置 JSON',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -240,9 +240,9 @@ CREATE TABLE IF NOT EXISTS `credits_config` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='积分配置表';
 
 -- -----------------------------------------------------------------------------
--- 14. user_plugins - 用户插件关联表
+-- 14. eco_user_plugins - 用户插件关联表
 -- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `user_plugins` (
+CREATE TABLE IF NOT EXISTS `eco_user_plugins` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `user_id` INT NOT NULL COMMENT '用户 ID',
   `plugin_id` INT NOT NULL COMMENT '插件 ID',
@@ -274,9 +274,9 @@ CREATE TABLE IF NOT EXISTS `reconciliation_diff` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='对账差异表';
 
 -- -----------------------------------------------------------------------------
--- 16. runtime_versions - 运行时版本表
+-- 16. eco_runtime_versions - 运行时版本表
 -- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `runtime_versions` (
+CREATE TABLE IF NOT EXISTS `eco_runtime_versions` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `service_name` VARCHAR(32) NOT NULL COMMENT '服务名称',
   `version` VARCHAR(32) NOT NULL COMMENT '版本号',

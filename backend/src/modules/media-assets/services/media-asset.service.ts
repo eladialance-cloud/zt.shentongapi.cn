@@ -99,7 +99,8 @@ export class MediaAssetService {
     const page = Math.max(1, Number(query.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 10));
 
-    const where: FindOptionsWhere<MediaAssetEntity> = { userId };
+    // P3 合并后：media_assets 含我的声音/IP 档案等业务型资产，素材库列表只展示常规素材
+    const where: FindOptionsWhere<MediaAssetEntity> = { userId, bizType: 'media' };
     if (query.type) {
       where.assetType = query.type;
     }
@@ -199,7 +200,7 @@ export class MediaAssetService {
 
   /**
    * 从 task_output_item 导入
-   * 归属校验：先校验 agent_task.userId === 当前用户，防跨用户读取他人任务输出（IDOR）
+   * 归属校验：先校验 task_agent_tasks.userId === 当前用户，防跨用户读取他人任务输出（IDOR）
    */
   private async importFromTask(userId: number, taskId: number): Promise<ImportResult> {
     const task = await this.agentTaskRepo.findOne({ where: { id: taskId, userId } });

@@ -12,7 +12,7 @@ import { bigintTransformer } from '../../../common/entities/base.entity';
  * 技能包评分记录
  * 每个用户对每个技能包只能评一次分
  */
-@Entity('hermes_skill_ratings')
+@Entity('create_hermes_skill_ratings')
 @Unique('uk_user_skill', ['userId', 'skillId'])
 export class HermesSkillRatingEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })

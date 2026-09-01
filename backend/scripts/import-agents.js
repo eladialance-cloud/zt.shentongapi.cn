@@ -156,7 +156,7 @@ async function main() {
 
       // 检查是否已导入（通过 source_file_path 去重）
       const [existing] = await conn.execute(
-        'SELECT id FROM agents WHERE source_file_path = ? LIMIT 1',
+        'SELECT id FROM eco_agents WHERE source_file_path = ? LIMIT 1',
         [sourceFilePath]
       );
 
@@ -199,7 +199,7 @@ async function main() {
     console.log(`\n💾 批量插入 ${batchValues.length} 个 Agent...`);
 
     const sql = `
-      INSERT INTO agents (
+      INSERT INTO eco_agents (
         name, description, system_prompt, model_id, price_per_call,
         creator_id, creator_type, status, category,
         source_type, source_name, source_repo_url, source_file_path,
@@ -225,7 +225,7 @@ async function main() {
 
   // 6. 统计
   const [countRows] = await conn.execute(
-    "SELECT category, COUNT(*) as cnt FROM agents WHERE source_type = 'imported' GROUP BY category"
+    "SELECT category, COUNT(*) as cnt FROM eco_agents WHERE source_type = 'imported' GROUP BY category"
   );
   console.log('\n📊 导入统计:');
   for (const row of countRows) {
@@ -233,7 +233,7 @@ async function main() {
   }
 
   const [totalRows] = await conn.execute(
-    "SELECT COUNT(*) as total FROM agents WHERE source_type = 'imported'"
+    "SELECT COUNT(*) as total FROM eco_agents WHERE source_type = 'imported'"
   );
   console.log(`  总计: ${totalRows[0].total} 个导入 Agent`);
 

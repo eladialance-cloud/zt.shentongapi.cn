@@ -4,7 +4,7 @@
 -- ============================================================
 
 -- 全局MCP服务配置
-CREATE TABLE IF NOT EXISTS `mcp_server_config` (
+CREATE TABLE IF NOT EXISTS `ai_mcp_server_config` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(128) NOT NULL COMMENT '服务名称',
   `description` VARCHAR(512) NULL COMMENT '服务描述',
@@ -25,9 +25,9 @@ CREATE TABLE IF NOT EXISTS `mcp_server_config` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='全局MCP服务配置';
 
 -- MCP工具注册表
-CREATE TABLE IF NOT EXISTS `mcp_tool_registry` (
+CREATE TABLE IF NOT EXISTS `ai_mcp_tool_registry` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `server_id` BIGINT NOT NULL COMMENT '关联 mcp_server_config.id',
+  `server_id` BIGINT NOT NULL COMMENT '关联 ai_mcp_server_config.id',
   `tool_name` VARCHAR(128) NOT NULL COMMENT '工具名称',
   `display_name` VARCHAR(128) NULL COMMENT '显示名称',
   `description` TEXT NULL COMMENT '工具描述',
@@ -42,9 +42,9 @@ CREATE TABLE IF NOT EXISTS `mcp_tool_registry` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MCP工具注册表';
 
 -- MCP资源注册表
-CREATE TABLE IF NOT EXISTS `mcp_resource_registry` (
+CREATE TABLE IF NOT EXISTS `ai_mcp_resource_registry` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `server_id` BIGINT NOT NULL COMMENT '关联 mcp_server_config.id',
+  `server_id` BIGINT NOT NULL COMMENT '关联 ai_mcp_server_config.id',
   `resource_uri` VARCHAR(256) NOT NULL COMMENT '资源URI，如 agent://xxx',
   `resource_type` ENUM('agent','workflow','data','file','prompt') DEFAULT 'agent' COMMENT '资源类型',
   `display_name` VARCHAR(128) NULL COMMENT '显示名称',
@@ -58,10 +58,10 @@ CREATE TABLE IF NOT EXISTS `mcp_resource_registry` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='MCP资源注册表';
 
 -- MCP调用日志
-CREATE TABLE IF NOT EXISTS `mcp_call_log` (
+CREATE TABLE IF NOT EXISTS `ai_mcp_call_logs` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `user_id` BIGINT NULL COMMENT '用户ID',
-  `server_id` BIGINT NULL COMMENT '关联 mcp_server_config.id',
+  `server_id` BIGINT NULL COMMENT '关联 ai_mcp_server_config.id',
   `tool_name` VARCHAR(128) NULL COMMENT '工具名称',
   `resource_uri` VARCHAR(256) NULL COMMENT '资源URI',
   `call_type` ENUM('tool','resource') DEFAULT 'tool' COMMENT '调用类型',

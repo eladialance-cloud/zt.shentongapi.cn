@@ -5,7 +5,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
  * MCP Server 配置实体
  * 存储用户配置的 MCP Server 信息，支持 stdio / http / streamable-http 三种传输方式
  */
-@Entity('mcp_servers')
+@Entity('eco_mcp_servers')
 export class McpServerEntity extends BaseEntity {
   /** 用户 ID */
   @Index()

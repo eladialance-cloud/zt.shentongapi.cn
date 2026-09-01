@@ -351,7 +351,7 @@ test('remove: 任务不存在抛异常', async () => {
   await assert.rejects(() => service.remove(999, true));
 });
 
-test('run: 技能目录仓库（categories/*.md）→ 条目写入技能源 skill_sources（中文分类 + 下载候选）', async () => {
+test('run: 技能目录仓库（categories/*.md）→ 条目写入技能源 eco_skill_sources（中文分类 + 下载候选）', async () => {
   const jobRepo = makeJobRepo();
   jobRepo.set(makePendingJob('skill'));
   const agentRepo = makeRepo<AgentEntity>();

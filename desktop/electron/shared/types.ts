@@ -426,6 +426,53 @@ export interface HermesEvolutionResult {
   memoryStatus?: string;
 }
 
+/** Hermes 原生策展状态（P1：GET /api/curator） */
+export interface HermesCuratorState {
+  enabled?: boolean;
+  paused?: boolean;
+  interval_hours?: number;
+  last_run_at?: string | null;
+  min_idle_hours?: number;
+  stale_after_days?: number;
+  archive_after_days?: number;
+  [key: string]: unknown;
+}
+
+export interface HermesCuratorResult {
+  ok: boolean;
+  state?: HermesCuratorState;
+  error?: string;
+}
+
+export interface HermesCuratorOpResult {
+  ok: boolean;
+  pid?: number;
+  error?: string;
+}
+
+/** Hermes 官方状态（P1：GET /api/status + /api/system/stats，面板只读） */
+export interface HermesStatusPayload {
+  version?: string;
+  overall?: string;
+  active_agents?: number;
+  active_sessions?: number;
+  [key: string]: unknown;
+}
+
+export interface HermesSystemStatsPayload {
+  hermes_version?: string;
+  cpu_percent?: number;
+  memory?: Record<string, unknown>;
+  disk?: Record<string, unknown>;
+  process?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface HermesStatusResult {
+  status: HermesStatusPayload | null;
+  stats: HermesSystemStatsPayload | null;
+}
+
 export interface HermesSkillsOpResult {
   ok: boolean;
   error?: string;
@@ -677,6 +724,18 @@ export interface ElectronAPI {
   /** Hermes 进化可视化（记忆 + journey + curator） */
   hermesEvolution: {
     get(): Promise<HermesEvolutionResult>;
+  };
+
+  /** Hermes 原生策展（P1：状态 / 暂停恢复 / 立即运行） */
+  hermesCurator: {
+    get(): Promise<HermesCuratorResult>;
+    setPaused(paused: boolean): Promise<HermesCuratorOpResult>;
+    run(): Promise<HermesCuratorOpResult>;
+  };
+
+  /** Hermes 官方状态（P1：/api/status + /api/system/stats，只读） */
+  hermesStatus: {
+    get(): Promise<HermesStatusResult>;
   };
 
   /** Hermes 记忆本地读写桥（MEMORY.md/USER.md，§ 分隔，幂等去重） */

@@ -1,5 +1,5 @@
--- 027: publish_plans 增加发布状态跟踪（F5）；E3 BGM 库表（系统级，管理后台维护）
-ALTER TABLE publish_plans ADD COLUMN publish_status VARCHAR(16) NOT NULL DEFAULT 'unpublish' COMMENT '发布状态: unpublish/publishing/success/failed/partial' AFTER status;
+-- 027: create_publish_plans 增加发布状态跟踪（F5）；E3 BGM 库表（系统级，管理后台维护）
+ALTER TABLE create_publish_plans ADD COLUMN publish_status VARCHAR(16) NOT NULL DEFAULT 'unpublish' COMMENT '发布状态: unpublish/publishing/success/failed/partial' AFTER status;
 
 CREATE TABLE IF NOT EXISTS oral_workshop_bgm (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,

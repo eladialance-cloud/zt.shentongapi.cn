@@ -1,9 +1,9 @@
-﻿-- Migration: 011_create_channel_tables
+-- Migration: 011_create_channel_tables
 -- 创建渠道对接模块表
 -- 设计文档: channel_integration_design_20260730.md
 
 -- 1. 渠道配置表
-CREATE TABLE IF NOT EXISTS `channels` (
+CREATE TABLE IF NOT EXISTS `create_publish_channels` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(64) NOT NULL COMMENT '渠道名称',
   `platform` ENUM('wechat_mp', 'wechat_work', 'feishu_bot', 'dingtalk_bot', 'telegram_bot') NOT NULL COMMENT '平台类型',
@@ -19,13 +19,13 @@ CREATE TABLE IF NOT EXISTS `channels` (
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
-  INDEX `idx_channels_user_id` (`user_id`),
-  INDEX `idx_channels_team_id` (`team_id`),
-  INDEX `idx_channels_agent_id` (`agent_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='渠道配置表';
+  INDEX `idx_publish_channels_user_id` (`user_id`),
+  INDEX `idx_publish_channels_team_id` (`team_id`),
+  INDEX `idx_publish_channels_agent_id` (`agent_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='发布渠道配置表';
 
 -- 2. 渠道消息记录表
-CREATE TABLE IF NOT EXISTS `channel_messages` (
+CREATE TABLE IF NOT EXISTS `social_channel_messages` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `channel_id` BIGINT NOT NULL COMMENT '渠道 ID',
   `direction` ENUM('inbound', 'outbound') NOT NULL COMMENT '消息方向',
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS `channel_messages` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='渠道消息记录表';
 
 -- 3. 发布计划表
-CREATE TABLE IF NOT EXISTS `publish_plans` (
+CREATE TABLE IF NOT EXISTS `create_publish_plans` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `title` VARCHAR(128) NOT NULL COMMENT '发布标题',
   `content` TEXT NULL COMMENT '发布内容',

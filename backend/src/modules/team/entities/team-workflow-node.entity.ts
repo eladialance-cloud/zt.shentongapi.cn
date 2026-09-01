@@ -1,9 +1,9 @@
-﻿import {
+import {
   Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index,
 } from "typeorm";
 
 /** 团队协作流程节点（按 sortOrder 排序；Hermes 编排时作为任务主干模板） */
-@Entity("team_workflow_nodes")
+@Entity("task_team_workflow_nodes")
 export class TeamWorkflowNodeEntity {
   @PrimaryGeneratedColumn({ type: "bigint", name: "id" })
   id: number;
@@ -24,7 +24,7 @@ export class TeamWorkflowNodeEntity {
   @Column({ name: "sort_order", type: "int", default: 0 })
   sortOrder: number;
 
-  /** 负责成员 ID（team_members.id）列表；空数组 = Hermes 自动指派 */
+  /** 负责成员 ID（task_team_members.id）列表；空数组 = Hermes 自动指派 */
   @Column({ name: "assignee_member_ids", type: "json", nullable: true })
   assigneeMemberIds?: number[];
 

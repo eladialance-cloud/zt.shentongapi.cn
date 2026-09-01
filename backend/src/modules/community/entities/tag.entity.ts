@@ -5,7 +5,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
  * 标签表
  * 数据合同真源：Community 模块 - 标签管理
  */
-@Entity('tags')
+@Entity('social_tags')
 @Index(['postCount'])
 export class TagEntity extends BaseEntity {
   @Column({ length: 64, unique: true })

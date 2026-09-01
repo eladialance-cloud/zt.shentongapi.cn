@@ -115,7 +115,7 @@ export class AgentService {
 
   // ============ 评价 ============
 
-  /** 评价列表（基于 agent_ratings 用户评分表） */
+  /** 评价列表（基于 eco_agent_ratings 用户评分表） */
   async listReviews(agentId: number) {
     await this.findPublished(agentId);
     const rows = await this.ratingRepo
@@ -234,7 +234,7 @@ export class AgentService {
   ): Promise<PaginatedResult<unknown>> {
     const qb = this.callLogRepo
       .createQueryBuilder('cl')
-      .leftJoin('agents', 'a', 'a.id = cl.agent_id')
+      .leftJoin('eco_agents', 'a', 'a.id = cl.agent_id')
       .select([
         'cl.id AS id',
         'cl.agent_id AS agentId',
@@ -518,7 +518,7 @@ export class AgentService {
 
     const totalRow = await this.callLogRepo
       .createQueryBuilder('cl')
-      .innerJoin('agents', 'a', 'a.id = cl.agent_id')
+      .innerJoin('eco_agents', 'a', 'a.id = cl.agent_id')
       .select('COALESCE(SUM(cl.credits_cost), 0)', 'revenue')
       .addSelect('COUNT(*)', 'calls')
       .where('a.creator_id = :userId', { userId })
@@ -526,7 +526,7 @@ export class AgentService {
 
     const monthRow = await this.callLogRepo
       .createQueryBuilder('cl')
-      .innerJoin('agents', 'a', 'a.id = cl.agent_id')
+      .innerJoin('eco_agents', 'a', 'a.id = cl.agent_id')
       .select('COALESCE(SUM(cl.credits_cost), 0)', 'revenue')
       .where('a.creator_id = :userId', { userId })
       .andWhere('cl.created_at >= :monthStart', { monthStart })
@@ -534,7 +534,7 @@ export class AgentService {
 
     const dailyRows = await this.callLogRepo
       .createQueryBuilder('cl')
-      .innerJoin('agents', 'a', 'a.id = cl.agent_id')
+      .innerJoin('eco_agents', 'a', 'a.id = cl.agent_id')
       .select("DATE_FORMAT(cl.created_at, '%Y-%m-%d')", 'date')
       .addSelect('COALESCE(SUM(cl.credits_cost), 0)', 'revenue')
       .addSelect('COUNT(*)', 'calls')

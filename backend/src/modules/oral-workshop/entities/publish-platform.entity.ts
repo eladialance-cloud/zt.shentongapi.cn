@@ -1,7 +1,7 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
 /** 发布平台开关（管理后台配置；账号绑定在桌面端扫码完成） */
-@Entity('oral_workshop_publish_platforms')
+@Entity('create_oral_workshop_publish_platforms')
 export class PublishPlatformEntity {
   @PrimaryGeneratedColumn()
   id: number;

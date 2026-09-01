@@ -7,6 +7,7 @@ import {
   parseReview,
   type OrchestrateInput,
   type StepRunnerDeps,
+  type SedimentPayload,
 } from "../../electron/main/hermes-orchestrator";
 import type { HermesOutput } from "../../electron/main/hermes-result";
 
@@ -33,6 +34,7 @@ interface StepDepsHarness {
   patches: Array<{ teamId: number; taskId: number; payload: Record<string, unknown> }>;
   reports: Array<Record<string, unknown>>;
   outputs: Array<{ taskId: number; outputs: HermesOutput[] }>;
+  sediments: Array<SedimentPayload>;
   setAuto: (v: boolean) => void;
   setPlan: (stdout: string) => void;
   nextStepResult: (json: string) => void;
@@ -45,6 +47,7 @@ function makeDeps(): StepDepsHarness {
   const patches: StepDepsHarness["patches"] = [];
   const reports: StepDepsHarness["reports"] = [];
   const outputs: StepDepsHarness["outputs"] = [];
+  const sediments: StepDepsHarness["sediments"] = [];
   let auto = false;
   let reviewEnabled = false;
   const reviewQueue: string[] = [];
@@ -80,6 +83,10 @@ function makeDeps(): StepDepsHarness {
     persistOutputs: jest.fn(async (taskId, outs) => {
       outputs.push({ taskId, outputs: outs });
     }),
+    sedimentToCloud: jest.fn(async (payload: SedimentPayload) => {
+      sediments.push(payload);
+      return { ok: true };
+    }),
     isAutoConfirm: jest.fn(() => auto),
     now: jest.fn(() => 1000),
     maxRetries: 2,
@@ -92,6 +99,7 @@ function makeDeps(): StepDepsHarness {
     patches,
     reports,
     outputs,
+    sediments,
     setAuto: (v) => {
       auto = v;
     },
@@ -219,6 +227,26 @@ describe("createStepRunner（子代理逐步执行 + 人工/自评确认 + 打�
     expect(h.reports).toHaveLength(1);
     expect(h.reports[0].status).toBe("completed");
     expect(h.outputs[0].outputs).toHaveLength(2);
+  });
+
+  it("任务成功收尾自动沉淀到云端知识库（溯源 taskId/executionRef，含产出内容）", async () => {
+    const h = makeDeps();
+    h.setAuto(true);
+    h.nextStepResult(stepPass("调研完成", "结论A"));
+    h.nextStepResult(stepPass("成稿完成", "正文B"));
+    const handle = createStepRunner(makeInput(), h.deps);
+    const result = await handle.wait();
+    expect(result.status).toBe("completed");
+    expect(h.sediments).toHaveLength(1);
+    expect(h.sediments[0]).toMatchObject({
+      type: "enterprise_doc",
+      target: "knowledge_base",
+      taskId: "5",
+      executionRef: "brief-1-x",
+    });
+    expect(String(h.sediments[0].content)).toContain("结论A");
+    expect(String(h.sediments[0].content)).toContain("正文B");
+    expect(String(h.sediments[0].title)).toContain("做一条宣传视频");
   });
 
   it("人工模式：节点 pending_review → confirmStep 通过 → completed", async () => {

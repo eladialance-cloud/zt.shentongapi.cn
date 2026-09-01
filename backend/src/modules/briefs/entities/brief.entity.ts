@@ -19,9 +19,9 @@ export interface DispatchTaskItem {
 
 /**
  * 需求单
- * 字段与 db-migration.ts 的 briefs 表一致
+ * 字段与 db-migration.ts 的 create_briefs 表一致
  */
-@Entity('briefs')
+@Entity('create_briefs')
 export class BriefEntity extends BaseEntity {
   @Column({ name: 'user_id', type: 'bigint', transformer: bigintTransformer })
   userId: number;

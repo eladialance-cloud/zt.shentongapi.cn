@@ -228,7 +228,7 @@ export class AdminImportsService implements OnModuleInit {
       let catalogEntries: SkillCatalogEntry[] = [];
       let catalogStats: ImportJobCatalogStats | undefined;
       if (isSkillCatalog) {
-        // 技能目录（索引）仓库：整库条目写入「技能源」skill_sources，由桌面端用户按条目直连 GitHub 下载
+        // 技能目录（索引）仓库：整库条目写入「技能源」eco_skill_sources，由桌面端用户按条目直连 GitHub 下载
         const catPaths = allPaths.filter(p => /^categories\/[^/]+\.md$/i.test(p)).slice(0, 50);
         this.logger.log('读取技能目录分类文件 ' + catPaths.length + ' 个（并发 12）');
         const catContents = await mapLimit(catPaths, 12, (p) => this.githubClient.getFileContent(owner, repo, p, job.branch));
@@ -461,7 +461,7 @@ export class AdminImportsService implements OnModuleInit {
     }
   }
 
-    /** 技能目录清单落库为「技能源」（skill_sources）：每条独立一行，status=analyzed，无需再解析。
+    /** 技能目录清单落库为「技能源」（eco_skill_sources）：每条独立一行，status=analyzed，无需再解析。
    *  条目下载地址候选写入 analyze_result.repoCandidates，桌面端直连 GitHub 下载 */
   private async saveCatalogSources(entries: SkillCatalogEntry[]): Promise<ImportJobResult> {
     const result: ImportJobResult = { created: [], skipped: 0 };

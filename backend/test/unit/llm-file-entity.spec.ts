@@ -1,4 +1,4 @@
-/** llm_files 实体字段契约测试
+/** ai_llm_files 实体字段契约测试
  * 运行: node -r ts-node/register --test test/unit/llm-file-entity.spec.ts
  */
 import 'reflect-metadata';
@@ -27,9 +27,9 @@ describe('LlmFileEntity', () => {
 describe('LlmFileEntity 列映射契约', () => {
   const storage = getMetadataArgsStorage();
 
-  it('表名 llm_files', () => {
+  it('表名 ai_llm_files', () => {
     const table = storage.tables.find((t) => t.target === LlmFileEntity);
-    assert.equal(table?.name, 'llm_files');
+    assert.equal(table?.name, 'ai_llm_files');
   });
 
   it('列名/类型/长度/nullable 映射', () => {

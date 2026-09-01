@@ -3,9 +3,9 @@ import { BaseEntity } from '../../../common/entities/base.entity';
 
 /**
  * Agent 部门分类实体
- * 动态部门分类，替代 agents 表中固定的 category enum
+ * 动态部门分类，替代 eco_agents 表中固定的 category enum
  */
-@Entity('agent_department')
+@Entity('eco_agent_department')
 export class AgentDepartmentEntity extends BaseEntity {
   /** 部门名称 */
   @Column({ length: 64 })

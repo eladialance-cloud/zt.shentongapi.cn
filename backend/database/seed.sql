@@ -1,4 +1,4 @@
-﻿-- =============================================================================
+-- =============================================================================
 -- 深瞳 AI 智能中台 - 种子数据脚本
 -- 数据库：ai_agent
 -- MySQL 版本：8.0+
@@ -17,14 +17,10 @@ SET FOREIGN_KEY_CHECKS = 0;
 DELETE FROM `withdrawal_records`;
 DELETE FROM `revenue_records`;
 DELETE FROM `membership_plans`;
-DELETE FROM `agent_ratings`;
-DELETE FROM `agent_favorites`;
-DELETE FROM `opc_agent_repos`;
-DELETE FROM `opc_team_members`;
-DELETE FROM `opc_tasks`;
-DELETE FROM `opc_teams`;
-DELETE FROM `plugins`;
-DELETE FROM `models`;
+DELETE FROM `eco_agent_ratings`;
+DELETE FROM `eco_agent_favorites`;
+DELETE FROM `eco_plugins`;
+DELETE FROM `ai_models`;
 DELETE FROM `files`;
 DELETE FROM `recharge_orders`;
 DELETE FROM `payment_records`;
@@ -34,12 +30,12 @@ DELETE FROM `knowledge_bases`;
 DELETE FROM `chat_groups`;
 DELETE FROM `chat_messages`;
 DELETE FROM `chat_sessions`;
-DELETE FROM `agent_reviews`;
+DELETE FROM `eco_agent_reviews`;
 DELETE FROM `agent_call_logs`;
-DELETE FROM `agent_versions`;
-DELETE FROM `agents`;
-DELETE FROM `team_members`;
-DELETE FROM `teams`;
+DELETE FROM `eco_agent_versions`;
+DELETE FROM `eco_agents`;
+DELETE FROM `task_team_members`;
+DELETE FROM `task_teams`;
 DELETE FROM `user_roles`;
 DELETE FROM `roles`;
 DELETE FROM `users`;
@@ -47,8 +43,8 @@ DELETE FROM `users`;
 -- 重置自增 ID
 ALTER TABLE `users` AUTO_INCREMENT = 1;
 ALTER TABLE `roles` AUTO_INCREMENT = 1;
-ALTER TABLE `models` AUTO_INCREMENT = 1;
-ALTER TABLE `plugins` AUTO_INCREMENT = 1;
+ALTER TABLE `ai_models` AUTO_INCREMENT = 1;
+ALTER TABLE `eco_plugins` AUTO_INCREMENT = 1;
 ALTER TABLE `membership_plans` AUTO_INCREMENT = 1;
 
 -- =============================================================================
@@ -144,7 +140,7 @@ INSERT INTO `user_roles` (`user_id`, `role_id`) VALUES
 -- 五、插入模型配置数据 (4 条)
 -- =============================================================================
 -- price_per_1k_input / price_per_1k_output 单位：元/千 token (参考公开定价)
-INSERT INTO `models`
+INSERT INTO `ai_models`
   (`provider`, `model_id`, `name`, `description`, `context_window`, `max_tokens`,
    `supports_vision`, `supports_functions`, `price_per_1k_input`, `price_per_1k_output`, `is_active`)
 VALUES
@@ -200,7 +196,7 @@ VALUES
 -- =============================================================================
 -- 六、插入插件数据 (4 条)
 -- =============================================================================
-INSERT INTO `plugins`
+INSERT INTO `eco_plugins`
   (`name`, `description`, `version`, `mcp_server_url`, `config`, `is_official`, `is_active`)
 VALUES
 (
@@ -299,8 +295,8 @@ VALUES
 -- SELECT ur.user_id, u.username, r.name AS role FROM user_roles ur
 --   JOIN users u ON ur.user_id = u.id
 --   JOIN roles r ON ur.role_id = r.id;
--- SELECT id, provider, model_id, name FROM models;
--- SELECT id, name, version, is_active FROM plugins;
+-- SELECT id, provider, model_id, name FROM ai_models;
+-- SELECT id, name, version, is_active FROM eco_plugins;
 -- SELECT id, name, price, level FROM membership_plans;
 
 -- =============================================================================

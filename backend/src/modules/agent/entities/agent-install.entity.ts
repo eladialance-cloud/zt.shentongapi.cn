@@ -6,8 +6,8 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
-/** 用户安装/下载 Agent 记录（新表 agent_installs，DDL 见上线报告） */
-@Entity('agent_installs')
+/** 用户安装/下载 Agent 记录（新表 eco_agent_installs，DDL 见上线报告） */
+@Entity('eco_agent_installs')
 @Index('uniq_agent_installs_user_agent', ['userId', 'agentId'], { unique: true })
 export class AgentInstallEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })

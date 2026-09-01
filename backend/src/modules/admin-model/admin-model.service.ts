@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Not, QueryDeepPartialEntity, Repository } from 'typeorm';
 import { ModelEntity } from '../model/entities/model.entity';
 import { ModelProviderEntity } from './entities/model-provider.entity';
+import { ModelPricingEntity } from './entities/model-pricing.entity';
+import { ModelCredentialEntity } from './entities/model-credential.entity';
 import { EncryptionService } from '../../common/services/encryption.service';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/constants/error.constant';
@@ -66,7 +68,7 @@ interface ModelQuery {
  * - 新增模型不再走"单模型表单"，改为：添加第三方供应商(名称+Base URL+API Key)
  *   -> 测试连接 -> 读取上游模型列表 -> 勾选 -> 逐模型定价(积分/千token) -> 确定模型类型 -> 导入
  * - 导入后的模型展示在模型管理页，可编辑(显示名/类型标签/积分单价/能力)、上下架、删除
- * - 上游真实调用凭据(baseUrl + apiKey)归属 model_providers，模型表只存 provider_id + upstream_model_id
+ * - 上游真实调用凭据(baseUrl + apiKey)归属 ai_model_providers，模型表只存 provider_id + upstream_model_id
  */
 @Injectable()
 export class AdminModelService implements OnModuleInit {
@@ -75,6 +77,10 @@ export class AdminModelService implements OnModuleInit {
     private modelRepo: Repository<ModelEntity>,
     @InjectRepository(ModelProviderEntity)
     private providerRepo: Repository<ModelProviderEntity>,
+    @InjectRepository(ModelPricingEntity)
+    private pricingRepo: Repository<ModelPricingEntity>,
+    @InjectRepository(ModelCredentialEntity)
+    private credentialsRepo: Repository<ModelCredentialEntity>,
     private encryption: EncryptionService,
     private generationClient: GenerationClientService,
   ) {}
@@ -126,7 +132,9 @@ export class AdminModelService implements OnModuleInit {
       }
     }
 
-    qb.orderBy('m.sort_order', 'ASC').addOrderBy('m.created_at', 'DESC')
+    qb.leftJoinAndSelect('m.pricing', 'pricing')
+      .leftJoinAndSelect('m.credentials', 'credentials')
+      .orderBy('m.sort_order', 'ASC').addOrderBy('m.created_at', 'DESC')
       .skip((page - 1) * pageSize)
       .take(pageSize);
 
@@ -143,7 +151,7 @@ export class AdminModelService implements OnModuleInit {
 
   /** 模型详情 */
   async detail(id: number) {
-    const model = await this.modelRepo.findOne({ where: { id } });
+    const model = await this.modelRepo.findOne({ where: { id }, relations: { pricing: true, credentials: true } });
     if (!model) {
       BusinessException.throw(ErrorCode.NOT_FOUND, '模型不存在');
     }
@@ -163,6 +171,8 @@ export class AdminModelService implements OnModuleInit {
       const entity = new ModelEntity();
       this.applyCreateDto(entity, dto);
       const saved = await this.saveModelOrDuplicate(entity, modelId);
+      saved.pricing = entity.pricing;
+      saved.credentials = entity.credentials;
       await this.refreshProviderModelCount(saved.providerId);
       return this.toAdminModelItem(saved);
     } catch (err: any) {
@@ -205,7 +215,7 @@ export class AdminModelService implements OnModuleInit {
 
   /** 编辑模型（显示名/类型标签/积分单价/能力/上下架等） */
   async update(id: number, dto: UpdateModelDto) {
-    const model = await this.modelRepo.findOne({ where: { id } });
+    const model = await this.modelRepo.findOne({ where: { id }, relations: { pricing: true, credentials: true } });
     if (!model) {
       BusinessException.throw(ErrorCode.NOT_FOUND, '模型不存在');
     }
@@ -250,7 +260,7 @@ export class AdminModelService implements OnModuleInit {
 
   /** 模型测试：优先使用供应商凭据(baseUrl+apiKey) + upstreamModelId 调上游 */
   async test(id: number, dto: TestModelDto) {
-    const model = await this.modelRepo.findOne({ where: { id } });
+    const model = await this.modelRepo.findOne({ where: { id }, relations: { pricing: true, credentials: true } });
     if (!model) {
       BusinessException.throw(ErrorCode.NOT_FOUND, '模型不存在');
     }
@@ -259,10 +269,10 @@ export class AdminModelService implements OnModuleInit {
       : null;
     const apiKey = provider?.apiKey
       ? this.encryption.decryptAes(provider.apiKey)
-      : model.apiKey
-        ? this.encryption.decryptAes(model.apiKey)
+      : model.credentials?.apiKey
+        ? this.encryption.decryptAes(model.credentials.apiKey)
         : '';
-    const endpoint = provider?.baseUrl || model.apiEndpoint || '';
+    const endpoint = provider?.baseUrl || model.credentials?.apiEndpoint || '';
     const callMode = model.callMode || callModeFromModelType(model.modelType);
     const def = CALL_MODES.find((m) => m.key === callMode);
     if (!def) {
@@ -328,7 +338,7 @@ export class AdminModelService implements OnModuleInit {
    * 返回 verdict：available / not_activated / config_error / skip
    */
   async probe(id: number) {
-    const model = await this.modelRepo.findOne({ where: { id } });
+    const model = await this.modelRepo.findOne({ where: { id }, relations: { pricing: true, credentials: true } });
     if (!model) {
       BusinessException.throw(ErrorCode.NOT_FOUND, '模型不存在');
     }
@@ -337,10 +347,10 @@ export class AdminModelService implements OnModuleInit {
       : null;
     const apiKey = provider?.apiKey
       ? this.encryption.decryptAes(provider.apiKey)
-      : model.apiKey
-        ? this.encryption.decryptAes(model.apiKey)
+      : model.credentials?.apiKey
+        ? this.encryption.decryptAes(model.credentials.apiKey)
         : '';
-    const endpoint = provider?.baseUrl || model.apiEndpoint || '';
+    const endpoint = provider?.baseUrl || model.credentials?.apiEndpoint || '';
     if (!apiKey || !endpoint) {
       return { verdict: 'config_error', message: '模型未关联供应商凭据，无法探测' };
     }
@@ -352,7 +362,7 @@ export class AdminModelService implements OnModuleInit {
     if (callMode === 'realtime') {
       return { verdict: 'skip', message: '实时音视频模式无法自动探测，请在桌面端验证' };
     }
-    if (probeNeedsFileInput(callMode, model.generationParams)) {
+    if (probeNeedsFileInput(callMode, model.pricing?.generationParams)) {
       return {
         verdict: 'skip',
         message:
@@ -409,7 +419,7 @@ export class AdminModelService implements OnModuleInit {
     const apiPath = useChatPath ? chatPath : def.apiPath;
     let response: string | Record<string, unknown>;
     if (callMode === 'video' || callMode === 'video_edit') {
-      const adapter = buildMediaGenerationAdapter(provider, model.generationParams);
+      const adapter = buildMediaGenerationAdapter(provider, model.pricing?.generationParams);
       // 图生视频（i2v）需要首帧图 input.media；把测试填的参考图 URL 传上去
       const { taskId } = await this.generationClient.submitVideo({
         endpoint,
@@ -422,7 +432,7 @@ export class AdminModelService implements OnModuleInit {
       });
       response = { taskId, message: `视频任务已提交（异步），taskId=${taskId}` };
     } else if (callMode === 'image' || callMode === 'image_edit') {
-      const adapter = buildMediaGenerationAdapter(provider, model.generationParams);
+      const adapter = buildMediaGenerationAdapter(provider, model.pricing?.generationParams);
       if (adapter.imagesPath || adapter.requestTemplate) {
         // 配置了生成适配（如 DashScope 原生图片端点）→ 走与运行时一致的 generateImage
         const result = await this.generationClient.generateImage({
@@ -587,25 +597,25 @@ export class AdminModelService implements OnModuleInit {
     entity.name = dto.displayName || tpl.name;
     entity.callMode = tpl.callMode;
     entity.modelType = CALL_MODE_TO_MODEL_TYPE[tpl.callMode];
-    entity.inputTypes = def.inputs;
-    entity.advancedCapabilities = normalizeAdvancedCapabilities(def.advancedCaps);
+    this.pricingOf(entity).inputTypes = def.inputs;
+    this.pricingOf(entity).advancedCapabilities = normalizeAdvancedCapabilities(def.advancedCaps);
     entity.supportsVision = def.inputs.includes('image');
-    entity.supportsFunctions = (entity.advancedCapabilities || []).includes('function_calling');
+    entity.supportsFunctions = (this.pricingOf(entity).advancedCapabilities || []).includes('function_calling');
     entity.specs = tpl.specValues ? structuredClone(tpl.specValues) : null;
-    entity.generationParams = tpl.generationParams ? structuredClone(tpl.generationParams) : null;
-    entity.scenarioTags = dto.scenarioTags
+    this.pricingOf(entity).generationParams = tpl.generationParams ? structuredClone(tpl.generationParams) : null;
+    this.pricingOf(entity).scenarioTags = dto.scenarioTags
       ? structuredClone(dto.scenarioTags)
       : tpl.recommendedScenarioTags
         ? structuredClone(tpl.recommendedScenarioTags)
         : [];
-    entity.pricingMode = def.recommendedBilling;
+    this.pricingOf(entity).pricingMode = def.recommendedBilling;
     const pricing = resolvePricing(tpl, dto.priceOverrides);
-    entity.pricePer1kInput = pricing.pricePer1kInput ?? 0;
-    entity.pricePer1kOutput = pricing.pricePer1kOutput ?? 0;
-    entity.pricePerImage = pricing.pricePerImage ?? undefined;
-    entity.pricePerCall = pricing.pricePerCall ?? undefined;
-    entity.pricePerMinute = pricing.pricePerMinute ?? undefined;
-    entity.videoPerSecond = pricing.videoPerSecond
+    this.pricingOf(entity).pricePer1kInput = pricing.pricePer1kInput ?? 0;
+    this.pricingOf(entity).pricePer1kOutput = pricing.pricePer1kOutput ?? 0;
+    this.pricingOf(entity).pricePerImage = pricing.pricePerImage ?? undefined;
+    this.pricingOf(entity).pricePerCall = pricing.pricePerCall ?? undefined;
+    this.pricingOf(entity).pricePerMinute = pricing.pricePerMinute ?? undefined;
+    this.pricingOf(entity).videoPerSecond = pricing.videoPerSecond
       ? structuredClone(pricing.videoPerSecond)
       : null;
     entity.isActive = dto.enabled ?? false;
@@ -613,6 +623,8 @@ export class AdminModelService implements OnModuleInit {
     try {
       await this.assertModelIdAvailable(entity.modelId, entity.upstreamModelId);
       const saved = await this.saveModelOrDuplicate(entity, entity.modelId);
+      saved.pricing = entity.pricing;
+      saved.credentials = entity.credentials;
       await this.refreshProviderModelCount(saved.providerId);
       return this.toAdminModelItem(saved);
     } catch (err: any) {
@@ -637,7 +649,7 @@ export class AdminModelService implements OnModuleInit {
     if (dto.ids.length === 0) {
       BusinessException.throw(ErrorCode.VALIDATION_FAILED, '请至少选择一个模型');
     }
-    const patch: QueryDeepPartialEntity<ModelEntity> = {};
+    const patch: QueryDeepPartialEntity<ModelPricingEntity> = {};
     if (dto.pricePerCall != null) patch.pricePerCall = Number(dto.pricePerCall);
     if (dto.pricePerImage != null) patch.pricePerImage = Number(dto.pricePerImage);
     if (dto.pricePerMinute != null) patch.pricePerMinute = Number(dto.pricePerMinute);
@@ -647,7 +659,11 @@ export class AdminModelService implements OnModuleInit {
     if (Object.keys(patch).length === 0) {
       BusinessException.throw(ErrorCode.VALIDATION_FAILED, '至少提供一个价格字段');
     }
-    const result = await this.modelRepo.update({ id: In(dto.ids) }, patch);
+    const result = await this.pricingRepo.createQueryBuilder()
+      .update()
+      .set(patch)
+      .where('model_id IN (:...ids)', { ids: dto.ids })
+      .execute();
     return { updated: result.affected ?? dto.ids.length };
   }
 
@@ -670,7 +686,9 @@ export class AdminModelService implements OnModuleInit {
     if (query.modelType) {
       qb.andWhere('m.model_type = :mt', { mt: String(query.modelType) });
     }
-    qb.orderBy('m.sort_order', 'ASC').addOrderBy('m.created_at', 'DESC');
+    qb.leftJoinAndSelect('m.pricing', 'pricing')
+      .leftJoinAndSelect('m.credentials', 'credentials')
+      .orderBy('m.sort_order', 'ASC').addOrderBy('m.created_at', 'DESC');
     const items = await qb.getMany();
     const providerMap = await this.loadProviderNameMap(items);
     return items.map((m) => this.toAdminModelItem(m, providerMap.get(m.providerId ?? -1)));
@@ -697,12 +715,12 @@ export class AdminModelService implements OnModuleInit {
         createDto.capabilities = createDto.capabilities ?? [];
         createDto.enabled = createDto.enabled ?? false;
         createDto.minUserLevel = createDto.minUserLevel ?? 0;
-        const exists = await this.modelRepo.findOne({ where: { modelId: createDto.modelId } });
+        const exists = await this.modelRepo.findOne({ where: { modelId: createDto.modelId }, relations: { pricing: true, credentials: true } });
         if (exists) {
           const updateDto = Object.assign(new UpdateModelDto(), item);
           this.applyUpdateDto(exists, updateDto);
           if (item.videoPrices !== undefined) {
-            exists.videoPrices = item.videoPrices as Record<string, Record<string, number>>;
+            this.pricingOf(exists).videoPrices = item.videoPrices as Record<string, Record<string, number>>;
           }
           const saved = await this.modelRepo.save(exists);
           await this.refreshProviderModelCount(saved.providerId);
@@ -711,7 +729,7 @@ export class AdminModelService implements OnModuleInit {
           const entity = new ModelEntity();
           this.applyCreateDto(entity, createDto);
           if (item.videoPrices !== undefined) {
-            entity.videoPrices = item.videoPrices as Record<string, Record<string, number>>;
+            this.pricingOf(entity).videoPrices = item.videoPrices as Record<string, Record<string, number>>;
           }
           const saved = await this.modelRepo.save(entity);
           await this.refreshProviderModelCount(saved.providerId);
@@ -1029,15 +1047,17 @@ export class AdminModelService implements OnModuleInit {
               : item.modelType || 'chat',
           modelId,
           name: item.displayName?.trim() || upstreamModelId,
-          pricePer1kInput: item.inputPricePer1k ?? 0,
-          pricePer1kOutput: item.outputPricePer1k ?? 0,
           isActive: item.enabled ?? true,
           connectionStatus: 'untested',
-          inputTypes,
-          advancedCapabilities,
           supportsVision: inputTypes.includes('image'),
           supportsFunctions: advancedCapabilities.includes('function_calling'),
-          minUserLevel: 1,
+          pricing: {
+            pricePer1kInput: item.inputPricePer1k ?? 0,
+            pricePer1kOutput: item.outputPricePer1k ?? 0,
+            inputTypes,
+            advancedCapabilities,
+            minUserLevel: 1,
+          },
         });
         await this.modelRepo.save(entity);
         imported.push(upstreamModelId);
@@ -1101,12 +1121,16 @@ export class AdminModelService implements OnModuleInit {
           upstreamModelId: item.modelId,
           modelType: 'chat',
           name: item.modelId,
-          apiEndpoint: dto.apiEndpoint,
-          apiKey: apiKeyEncrypted,
           connectionStatus: 'untested',
-          pricePer1kInput: inputPrice,
-          pricePer1kOutput: outputPrice,
           isActive: false,
+          pricing: {
+            pricePer1kInput: inputPrice,
+            pricePer1kOutput: outputPrice,
+          },
+          credentials: {
+            apiEndpoint: dto.apiEndpoint,
+            apiKey: apiKeyEncrypted,
+          },
         });
         await this.modelRepo.save(entity);
         imported.push(item.modelId);
@@ -1136,31 +1160,31 @@ export class AdminModelService implements OnModuleInit {
     entity.modelId = dto.modelId;
     entity.upstreamModelId = dto.upstreamModelId || dto.modelId;
     entity.name = dto.displayName;
-    entity.pricePer1kInput = dto.inputPricePerToken ?? 0;
-    entity.pricePer1kOutput = dto.outputPricePerToken ?? 0;
+    this.pricingOf(entity).pricePer1kInput = dto.inputPricePerToken ?? 0;
+    this.pricingOf(entity).pricePer1kOutput = dto.outputPricePerToken ?? 0;
     entity.isActive = dto.enabled;
     // 新语义：输出类型 × 输入类型 -> 路由分类；旧接口仍按 modelType + capabilities 兼容
     if (dto.outputType !== undefined || dto.inputTypes !== undefined) {
       const inputTypes = normalizeInputTypes(dto.inputTypes);
       entity.modelType = deriveModelType(dto.outputType, inputTypes);
-      entity.inputTypes = inputTypes;
-      entity.advancedCapabilities = normalizeAdvancedCapabilities(
+      this.pricingOf(entity).inputTypes = inputTypes;
+      this.pricingOf(entity).advancedCapabilities = normalizeAdvancedCapabilities(
         dto.advancedCapabilities,
       );
     } else {
       entity.modelType = dto.modelType || 'chat';
-      entity.inputTypes = inputTypesFromModelType(entity.modelType);
-      entity.advancedCapabilities = dto.capabilities?.includes('function_calling')
+      this.pricingOf(entity).inputTypes = inputTypesFromModelType(entity.modelType);
+      this.pricingOf(entity).advancedCapabilities = dto.capabilities?.includes('function_calling')
         ? ['function_calling']
         : [];
     }
-    entity.supportsVision = (entity.inputTypes || []).includes('image');
-    entity.supportsFunctions = (entity.advancedCapabilities || []).includes(
+    entity.supportsVision = (this.pricingOf(entity).inputTypes || []).includes('image');
+    entity.supportsFunctions = (this.pricingOf(entity).advancedCapabilities || []).includes(
       'function_calling',
     );
     if (dto.providerId) entity.providerId = dto.providerId;
-    if (dto.apiKey) entity.apiKey = this.encryption.encryptAes(dto.apiKey);
-    if (dto.apiEndpoint) entity.apiEndpoint = dto.apiEndpoint;
+    if (dto.apiKey) this.credOf(entity).apiKey = this.encryption.encryptAes(dto.apiKey);
+    if (dto.apiEndpoint) this.credOf(entity).apiEndpoint = dto.apiEndpoint;
     // P2：调用模式总开关 -> 自动归类（modelType/inputTypes/能力）
     if (dto.callMode !== undefined) {
       const def = CALL_MODES.find((m) => m.key === dto.callMode);
@@ -1169,21 +1193,21 @@ export class AdminModelService implements OnModuleInit {
       }
       entity.callMode = dto.callMode;
       entity.modelType = CALL_MODE_TO_MODEL_TYPE[def.key];
-      entity.inputTypes = def.inputs;
-      entity.advancedCapabilities = normalizeAdvancedCapabilities(
+      this.pricingOf(entity).inputTypes = def.inputs;
+      this.pricingOf(entity).advancedCapabilities = normalizeAdvancedCapabilities(
         dto.advancedCapabilities ?? def.advancedCaps,
       );
       entity.supportsVision = def.inputs.includes('image');
-      entity.supportsFunctions = (entity.advancedCapabilities || []).includes('function_calling');
+      entity.supportsFunctions = (this.pricingOf(entity).advancedCapabilities || []).includes('function_calling');
     }
-    if (dto.scenarioTags !== undefined) entity.scenarioTags = dto.scenarioTags;
-    if (dto.pricingMode !== undefined) entity.pricingMode = dto.pricingMode;
-    if (dto.videoPerSecond !== undefined) entity.videoPerSecond = dto.videoPerSecond ?? null;
+    if (dto.scenarioTags !== undefined) this.pricingOf(entity).scenarioTags = dto.scenarioTags;
+    if (dto.pricingMode !== undefined) this.pricingOf(entity).pricingMode = dto.pricingMode;
+    if (dto.videoPerSecond !== undefined) this.pricingOf(entity).videoPerSecond = dto.videoPerSecond ?? null;
     if (dto.specs !== undefined) entity.specs = dto.specs ?? null;
     if (dto.iconUrl !== undefined) entity.iconUrl = dto.iconUrl;
-    if (dto.costPrice !== undefined) entity.costPrice = Number(dto.costPrice);
+    if (dto.costPrice !== undefined) this.pricingOf(entity).costPrice = Number(dto.costPrice);
     if (dto.remark !== undefined) entity.remark = dto.remark;
-    if (dto.pricePerMinute !== undefined) entity.pricePerMinute = Number(dto.pricePerMinute);
+    if (dto.pricePerMinute !== undefined) this.pricingOf(entity).pricePerMinute = Number(dto.pricePerMinute);
   }
 
   /** 将 DTO 应用到已有实体（仅更新传入字段） */
@@ -1191,27 +1215,27 @@ export class AdminModelService implements OnModuleInit {
     if (dto.provider !== undefined) entity.provider = dto.provider;
     if (dto.modelId !== undefined) entity.modelId = dto.modelId;
     if (dto.upstreamModelId !== undefined) entity.upstreamModelId = dto.upstreamModelId;
-    if (dto.pricePerImage !== undefined) entity.pricePerImage = dto.pricePerImage;
-    if (dto.videoPrices !== undefined) entity.videoPrices = dto.videoPrices ?? null;
-    if (dto.generationParams !== undefined) entity.generationParams = dto.generationParams ?? null;
+    if (dto.pricePerImage !== undefined) this.pricingOf(entity).pricePerImage = dto.pricePerImage;
+    if (dto.videoPrices !== undefined) this.pricingOf(entity).videoPrices = dto.videoPrices ?? null;
+    if (dto.generationParams !== undefined) this.pricingOf(entity).generationParams = dto.generationParams ?? null;
     if (dto.sortOrder !== undefined) entity.sortOrder = dto.sortOrder;
-    if (dto.pricePerCall !== undefined) entity.pricePerCall = dto.pricePerCall;
+    if (dto.pricePerCall !== undefined) this.pricingOf(entity).pricePerCall = dto.pricePerCall;
     if (dto.displayName !== undefined) entity.name = dto.displayName;
-    if (dto.inputPricePerToken !== undefined) entity.pricePer1kInput = dto.inputPricePerToken;
-    if (dto.outputPricePerToken !== undefined) entity.pricePer1kOutput = dto.outputPricePerToken;
+    if (dto.inputPricePerToken !== undefined) this.pricingOf(entity).pricePer1kInput = dto.inputPricePerToken;
+    if (dto.outputPricePerToken !== undefined) this.pricingOf(entity).pricePer1kOutput = dto.outputPricePerToken;
     if (dto.enabled !== undefined) entity.isActive = dto.enabled;
     // 新语义：输出类型 × 输入类型 -> 路由分类（优先于旧的 modelType）
     if (dto.outputType !== undefined || dto.inputTypes !== undefined) {
       const inputTypes = normalizeInputTypes(dto.inputTypes);
       entity.modelType = deriveModelType(dto.outputType, inputTypes);
-      entity.inputTypes = inputTypes;
+      this.pricingOf(entity).inputTypes = inputTypes;
       entity.supportsVision = inputTypes.includes('image');
     }
     if (dto.advancedCapabilities !== undefined) {
-      entity.advancedCapabilities = normalizeAdvancedCapabilities(
+      this.pricingOf(entity).advancedCapabilities = normalizeAdvancedCapabilities(
         dto.advancedCapabilities,
       );
-      entity.supportsFunctions = (entity.advancedCapabilities || []).includes(
+      entity.supportsFunctions = (this.pricingOf(entity).advancedCapabilities || []).includes(
         'function_calling',
       );
     }
@@ -1222,7 +1246,7 @@ export class AdminModelService implements OnModuleInit {
       dto.inputTypes === undefined
     ) {
       entity.modelType = dto.modelType;
-      entity.inputTypes = inputTypesFromModelType(dto.modelType);
+      this.pricingOf(entity).inputTypes = inputTypesFromModelType(dto.modelType);
     }
     if (
       dto.capabilities !== undefined &&
@@ -1232,9 +1256,9 @@ export class AdminModelService implements OnModuleInit {
       entity.supportsVision = dto.capabilities.includes('vision');
       entity.supportsFunctions = dto.capabilities.includes('function_calling');
     }
-    if (dto.apiKey) entity.apiKey = this.encryption.encryptAes(dto.apiKey);
-    if (dto.apiEndpoint !== undefined) entity.apiEndpoint = dto.apiEndpoint;
-    if (dto.minUserLevel !== undefined) entity.minUserLevel = dto.minUserLevel;
+    if (dto.apiKey) this.credOf(entity).apiKey = this.encryption.encryptAes(dto.apiKey);
+    if (dto.apiEndpoint !== undefined) this.credOf(entity).apiEndpoint = dto.apiEndpoint;
+    if (dto.minUserLevel !== undefined) this.pricingOf(entity).minUserLevel = dto.minUserLevel;
     // P2：调用模式切换 -> 重新自动归类（未显式传能力时按新模式默认能力）
     if (dto.callMode !== undefined) {
       const def = CALL_MODES.find((m) => m.key === dto.callMode);
@@ -1243,31 +1267,31 @@ export class AdminModelService implements OnModuleInit {
       }
       entity.callMode = dto.callMode;
       entity.modelType = CALL_MODE_TO_MODEL_TYPE[def.key];
-      entity.inputTypes = def.inputs;
+      this.pricingOf(entity).inputTypes = def.inputs;
       entity.supportsVision = def.inputs.includes('image');
       if (dto.advancedCapabilities === undefined) {
-        entity.advancedCapabilities = normalizeAdvancedCapabilities(def.advancedCaps);
-        entity.supportsFunctions = (entity.advancedCapabilities || []).includes('function_calling');
+        this.pricingOf(entity).advancedCapabilities = normalizeAdvancedCapabilities(def.advancedCaps);
+        entity.supportsFunctions = (this.pricingOf(entity).advancedCapabilities || []).includes('function_calling');
       }
     }
-    if (dto.scenarioTags !== undefined) entity.scenarioTags = dto.scenarioTags;
-    if (dto.pricingMode !== undefined) entity.pricingMode = dto.pricingMode;
-    if (dto.videoPerSecond !== undefined) entity.videoPerSecond = dto.videoPerSecond ?? null;
+    if (dto.scenarioTags !== undefined) this.pricingOf(entity).scenarioTags = dto.scenarioTags;
+    if (dto.pricingMode !== undefined) this.pricingOf(entity).pricingMode = dto.pricingMode;
+    if (dto.videoPerSecond !== undefined) this.pricingOf(entity).videoPerSecond = dto.videoPerSecond ?? null;
     if (dto.specs !== undefined) entity.specs = dto.specs ?? null;
     if (dto.iconUrl !== undefined) entity.iconUrl = dto.iconUrl;
-    if (dto.costPrice !== undefined) entity.costPrice = Number(dto.costPrice);
+    if (dto.costPrice !== undefined) this.pricingOf(entity).costPrice = Number(dto.costPrice);
     if (dto.remark !== undefined) entity.remark = dto.remark;
-    if (dto.pricePerMinute !== undefined) entity.pricePerMinute = Number(dto.pricePerMinute);
+    if (dto.pricePerMinute !== undefined) this.pricingOf(entity).pricePerMinute = Number(dto.pricePerMinute);
   }
 
   /** 实体 -> 管理端契约视图对象 */
   private toAdminModelItem(m: ModelEntity, provider?: ModelProviderEntity | null) {
     const inputTypes =
-      Array.isArray(m.inputTypes) && m.inputTypes.length
-        ? m.inputTypes
+      Array.isArray(m.pricing?.inputTypes) && m.pricing.inputTypes.length
+        ? m.pricing.inputTypes
         : inputTypesFromModelType(m.modelType);
-    const advancedCapabilities = Array.isArray(m.advancedCapabilities)
-      ? m.advancedCapabilities
+    const advancedCapabilities = Array.isArray(m.pricing?.advancedCapabilities)
+      ? m.pricing.advancedCapabilities
       : m.supportsFunctions
         ? ['function_calling']
         : [];
@@ -1296,28 +1320,28 @@ export class AdminModelService implements OnModuleInit {
       outputType: outputTypeFromModelType(m.modelType),
       inputTypes,
       advancedCapabilities,
-      pricePerImage: m.pricePerImage ?? null,
-      videoPrices: m.videoPrices ?? {},
-      generationParams: m.generationParams ?? {},
+      pricePerImage: m.pricing?.pricePerImage ?? null,
+      videoPrices: m.pricing?.videoPrices ?? {},
+      generationParams: m.pricing?.generationParams ?? {},
       sortOrder: m.sortOrder ?? 0,
-      pricePerCall: m.pricePerCall ?? null,
+      pricePerCall: m.pricing?.pricePerCall ?? null,
       callMode: m.callMode ?? callModeFromModelType(m.modelType),
-      scenarioTags: m.scenarioTags ?? [],
-      pricingMode: m.pricingMode ?? null,
-      videoPerSecond: m.videoPerSecond ?? null,
+      scenarioTags: m.pricing?.scenarioTags ?? [],
+      pricingMode: m.pricing?.pricingMode ?? null,
+      videoPerSecond: m.pricing?.videoPerSecond ?? null,
       specs: m.specs ?? null,
       iconUrl: m.iconUrl ?? null,
-      costPrice: m.costPrice ?? null,
+      costPrice: m.pricing?.costPrice ?? null,
       remark: m.remark ?? null,
-      pricePerMinute: m.pricePerMinute ?? null,
+      pricePerMinute: m.pricing?.pricePerMinute ?? null,
       displayName: m.name,
-      apiKeyMasked: m.apiKey ? this.encryption.maskKey(m.apiKey) : undefined,
-      apiEndpoint: m.apiEndpoint,
+      apiKeyMasked: m.credentials?.apiKey ? this.encryption.maskKey(m.credentials.apiKey) : undefined,
+      apiEndpoint: m.credentials?.apiEndpoint,
       connectionStatus: m.connectionStatus || 'untested',
       lastTestedAt: m.lastTestedAt,
-      inputPricePerToken: m.pricePer1kInput ?? 0,
-      outputPricePerToken: m.pricePer1kOutput ?? 0,
-      minUserLevel: m.minUserLevel ?? 1,
+      inputPricePerToken: m.pricing?.pricePer1kInput ?? 0,
+      outputPricePerToken: m.pricing?.pricePer1kOutput ?? 0,
+      minUserLevel: m.pricing?.minUserLevel ?? 1,
       enabled: m.isActive,
       syncStatus: 'synced' as const,
       syncErrorMessage: undefined,
@@ -1358,6 +1382,22 @@ export class AdminModelService implements OnModuleInit {
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
     };
+  }
+
+  /** 获取/创建模型计费配置子实体（1:1，级联保存） */
+  private pricingOf(entity: ModelEntity): ModelPricingEntity {
+    if (!entity.pricing) {
+      entity.pricing = new ModelPricingEntity();
+    }
+    return entity.pricing;
+  }
+
+  /** 获取/创建模型凭据子实体（1:1，级联保存） */
+  private credOf(entity: ModelEntity): ModelCredentialEntity {
+    if (!entity.credentials) {
+      entity.credentials = new ModelCredentialEntity();
+    }
+    return entity.credentials;
   }
 
   /** 批量加载供应商名称映射（避免 N+1） */

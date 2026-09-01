@@ -47,6 +47,7 @@ import type {
   ServiceStatus,
   RuntimeDirInfo,
 } from "@/types/service-manager";
+import type { HermesStatusResult } from "@shared/types";
 import styles from "./styles.module.css";
 
 /** 服务图标映射 */
@@ -107,11 +108,20 @@ export default function ServiceManager() {
   const [runtimeDirError, setRuntimeDirError] = useState<string | null>(null);
   /** 正在选择目录 */
   const [choosingDir, setChoosingDir] = useState(false);
+  /** P1：Hermes 官方状态（/api/status + /api/system/stats，只读） */
+  const [hermesOfficial, setHermesOfficial] = useState<HermesStatusResult | null>(null);
 
   const loadData = useCallback(async () => {
     try {
       const list = await listServices();
       setServices(list || []);
+      // P1：Hermes 原生官方状态（未运行/未接入时降级为 null，不影响面板）
+      try {
+        const official = await window.electronAPI?.hermesStatus.get();
+        setHermesOfficial(official ?? null);
+      } catch {
+        setHermesOfficial(null);
+      }
     } catch (err) {
       console.error("[ServiceManager] load failed:", err);
       // electronAPI 不可用时给出空列表占位
@@ -415,6 +425,32 @@ export default function ServiceManager() {
                       </span>
                     </div>
                   </div>
+
+                  {/* P1：Hermes 官方状态（原生 API，面板只读） */}
+                  {svc.name === "hermes" && hermesOfficial?.status && (
+                    <div className={styles.metrics}>
+                      <div className={styles.metricItem}>
+                        <span className={styles.metricLabel}>Hermes 版本</span>
+                        <span className={styles.metricValue}>{hermesOfficial.status.version ?? "-"}</span>
+                      </div>
+                      <div className={styles.metricItem}>
+                        <span className={styles.metricLabel}>组件</span>
+                        <span className={styles.metricValue}>{hermesOfficial.status.overall ?? "-"}</span>
+                      </div>
+                      <div className={styles.metricItem}>
+                        <span className={styles.metricLabel}>活跃 Agent / 会话</span>
+                        <span className={styles.metricValue}>
+                          {hermesOfficial.status.active_agents ?? "-"} / {hermesOfficial.status.active_sessions ?? "-"}
+                        </span>
+                      </div>
+                      <div className={styles.metricItem}>
+                        <span className={styles.metricLabel}>进程 CPU</span>
+                        <span className={styles.metricValue}>
+                          {hermesOfficial.stats?.cpu_percent != null ? `${hermesOfficial.stats.cpu_percent.toFixed(1)}%` : "-"}
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   {/* 安装进度 */}
                   {installing.has(svc.name) && (

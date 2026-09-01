@@ -11,7 +11,7 @@ ALTER TABLE membership_plans ADD COLUMN IF NOT EXISTS benefits JSON;
 
 -- 2. AgentEntity 补充定价模型关联字段
 -- modelPricingStrategy: 'model' = 使用模型表价格, 'agent' = 使用 Agent 自身价格, 'hybrid' = 模型价格+Agent加价
-ALTER TABLE agents ADD COLUMN IF NOT EXISTS pricing_strategy VARCHAR(16) DEFAULT 'model';
+ALTER TABLE eco_agents ADD COLUMN IF NOT EXISTS pricing_strategy VARCHAR(16) DEFAULT 'model';
 
 -- 3. credit_transactions 补充 model_id 字段（记录计费关联的模型）
 ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS model_id VARCHAR(64);

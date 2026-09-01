@@ -48,7 +48,7 @@ export class StatisticsService {
   /**
    * 用户侧数据分析总览
    * 近 7 天口径与任务中心一致：当天 0 点往前推 6 天（含今天）。
-   * team_tasks 无 user_id 字段；按 team.service 的归属逻辑，任务由团队创建者创建
+   * task_team_tasks 无 user_id 字段；按 team.service 的归属逻辑，任务由团队创建者创建
    * （createTask 写入 creator_id = 团队创建者），故以 creator_id = userId 过滤，
    * 等价于统计本人直接创建 team 的任务。
    */
@@ -62,7 +62,7 @@ export class StatisticsService {
       this.publishPlanRepo.find({ where: { userId, status: 'pending_review' } }),
       this.agentTaskRepo.find({ where: { userId, status: 'success' } }),
       this.teamTaskRepo.find({ where: { creatorId: userId, status: 'completed' } }),
-      this.mediaAssetRepo.count({ where: { userId } }),
+      this.mediaAssetRepo.count({ where: { userId, bizType: 'media' } }),
     ]);
 
     const weekStartMs = weekStart.getTime();

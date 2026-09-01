@@ -11,7 +11,7 @@ import { bigintTransformer } from '../../../common/entities/base.entity';
  * Hermes 任务历史日志
  * 记录每次编排任务的调用类型、状态、耗时和积分消耗
  */
-@Entity('hermes_call_logs')
+@Entity('create_hermes_call_logs')
 export class HermesCallLogEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })
   id: number;

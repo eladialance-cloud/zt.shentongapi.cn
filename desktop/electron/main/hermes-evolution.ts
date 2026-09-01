@@ -1,9 +1,13 @@
-/** Hermes 进化可视化桥：记忆卡片（MEMORY.md/USER.md）+ 学习时间线（journey --json）+ 策展/记忆状态（curator/memory status） */
+/** Hermes 进化可视化桥：记忆卡片（MEMORY.md/USER.md）+ 学习时间线（journey --json / 原生 learning graph）+ 策展/记忆状态
+ * P0：优先走 Hermes 原生 API（HermesClient.getLearningGraph / getCurator / getMemoryProviders），
+ * 失败或未接入时降级 CLI（journey --json / curator status / memory status），各失败独立降级不阻断。
+ */
 import { spawn } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { app } from "electron";
 import { getRuntimeRoot } from "./runtime-config";
+import { HermesClient } from "./hermes-client";
 
 export interface MemoryCard {
   source: "memory" | "profile";
@@ -85,26 +89,89 @@ function readMemoryFile(name: string): string {
   }
 }
 
-/** 汇总：记忆卡片 + 学习时间线 + 策展/记忆状态（各失败独立降级，不阻断） */
-export async function getEvolution(): Promise<HermesEvolutionResult> {
-  const memoryCards = [
-    ...parseMemoryCards("memory", readMemoryFile("MEMORY.md")),
-    ...parseMemoryCards("profile", readMemoryFile("USER.md")),
-  ];
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** 原生路径：进化图谱 / 策展状态 / 记忆 provider 状态 */
+async function collectNative(client: HermesClient): Promise<{
+  journey: Record<string, unknown> | null;
+  journeyRaw?: string;
+  curator?: string;
+  memoryStatus?: string;
+  errors: string[];
+}> {
+  const errors: string[] = [];
+  let journey: Record<string, unknown> | null = null;
+  let journeyRaw: string | undefined;
+  let curator: string | undefined;
+  let memoryStatus: string | undefined;
+  try {
+    const graph = await client.getLearningGraph();
+    journey = graph as unknown as Record<string, unknown>;
+    journeyRaw = JSON.stringify(graph).slice(0, 4000) || undefined;
+  } catch (err) {
+    errors.push("journey: " + errMsg(err));
+  }
+  try {
+    const state = await client.getCurator();
+    curator = JSON.stringify(state, null, 2).slice(0, 4000);
+  } catch (err) {
+    errors.push("curator: " + errMsg(err));
+  }
+  try {
+    const providers = await client.getMemoryProviders();
+    memoryStatus = providers.length > 0
+      ? providers.map((p) => "- " + p.name + ": " + (p.status ?? "unknown") + (p.available ? "" : "（未就绪）")).join("\n")
+      : "（无记忆提供商）";
+  } catch (err) {
+    errors.push("memory: " + errMsg(err));
+  }
+  return { journey, journeyRaw, curator, memoryStatus, errors };
+}
+
+/** CLI 降级路径：journey --json / curator status / memory status */
+async function collectCli(): Promise<{
+  journey: Record<string, unknown> | null;
+  journeyRaw?: string;
+  curator?: string;
+  memoryStatus?: string;
+  errors: string[];
+}> {
+  const errors: string[] = [];
   const journeyRun = await runHermes(["journey", "--json"], 60000);
   const curatorRun = await runHermes(["curator", "status"], 60000);
   const memoryRun = await runHermes(["memory", "status"], 60000);
-  const errors: string[] = [];
   if (journeyRun.code !== 0 && !journeyRun.stdout) errors.push("journey: " + (journeyRun.stderr.trim() || "失败"));
   if (curatorRun.code !== 0 && !curatorRun.stdout) errors.push("curator: " + (curatorRun.stderr.trim() || "失败"));
   if (memoryRun.code !== 0 && !memoryRun.stdout) errors.push("memory: " + (memoryRun.stderr.trim() || "失败"));
   return {
-    ok: true,
-    error: errors.length > 0 ? errors.join("；") : undefined,
-    memory: memoryCards,
     journey: parseJourneyJson(journeyRun.stdout),
     journeyRaw: journeyRun.stdout.trim().slice(0, 4000) || undefined,
     curator: curatorRun.stdout.trim().slice(0, 4000) || undefined,
     memoryStatus: memoryRun.stdout.trim().slice(0, 2000) || undefined,
+    errors,
+  };
+}
+
+/** 汇总：记忆卡片 + 学习时间线 + 策展/记忆状态（各失败独立降级，不阻断）
+ * @param client Hermes 原生客户端；缺省时走 CLI 降级
+ */
+export async function getEvolution(client?: HermesClient): Promise<HermesEvolutionResult> {
+  const memoryCards = [
+    ...parseMemoryCards("memory", readMemoryFile("MEMORY.md")),
+    ...parseMemoryCards("profile", readMemoryFile("USER.md")),
+  ];
+  const collected = client
+    ? await collectNative(client)
+    : await collectCli();
+  return {
+    ok: true,
+    error: collected.errors.length > 0 ? collected.errors.join("；") : undefined,
+    memory: memoryCards,
+    journey: collected.journey,
+    journeyRaw: collected.journeyRaw,
+    curator: collected.curator,
+    memoryStatus: collected.memoryStatus,
   };
 }

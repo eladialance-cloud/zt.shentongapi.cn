@@ -272,8 +272,8 @@ export class TaskService {
         `  t.status AS raw_status,` + sqlNl +
         `  t.created_at AS created_at, t.completed_at AS finished_at,` + sqlNl +
         `  m.role_title AS assignee, t.brief_id AS brief_id, t.execution_ref AS execution_ref` + sqlNl +
-        `FROM team_tasks t` + sqlNl +
-        `LEFT JOIN team_members m ON m.id = t.assignee_member_id` + sqlNl +
+        `FROM task_team_tasks t` + sqlNl +
+        `LEFT JOIN task_team_members m ON m.id = t.assignee_member_id` + sqlNl +
         `WHERE ${teamConds.join(' AND ')}`
       );
       params.push(...teamParams);
@@ -285,7 +285,7 @@ export class TaskService {
         `  status AS raw_status,` + sqlNl +
         `  created_at AS created_at, finished_at AS finished_at,` + sqlNl +
         `  NULL AS assignee, NULL AS brief_id, NULL AS execution_ref` + sqlNl +
-        `FROM agent_task` + sqlNl +
+        `FROM task_agent_tasks` + sqlNl +
         `WHERE ${taskConds.join(' AND ')}`
       );
       params.push(...taskParams);
@@ -297,7 +297,7 @@ export class TaskService {
         `  status AS raw_status,` + sqlNl +
         `  created_at AS created_at, NULL AS finished_at,` + sqlNl +
         `  NULL AS assignee, NULL AS brief_id, NULL AS execution_ref` + sqlNl +
-        `FROM hermes_call_logs` + sqlNl +
+        `FROM create_hermes_call_logs` + sqlNl +
         `WHERE ${hermesConds.join(' AND ')}`
       );
       params.push(...hermesParams);

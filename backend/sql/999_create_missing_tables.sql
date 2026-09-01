@@ -3,7 +3,7 @@
 -- 在服务器上执行：docker exec -i shentong-mysql mysql -u root -p<password> shentong_db < this.sql
 
 -- MCP Server 配置表
-CREATE TABLE IF NOT EXISTS `mcp_servers` (
+CREATE TABLE IF NOT EXISTS `eco_mcp_servers` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `user_id` BIGINT UNSIGNED NOT NULL,
   `name` VARCHAR(128) NOT NULL,
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS `mcp_servers` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- N8N 实例表
-CREATE TABLE IF NOT EXISTS `n8n_instances` (
+CREATE TABLE IF NOT EXISTS `eco_n8n_instances` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `user_id` BIGINT UNSIGNED NOT NULL,
   `name` VARCHAR(128) NOT NULL,
@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS `n8n_workflows` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- N8N Webhook 日志表
-CREATE TABLE IF NOT EXISTS `n8n_webhook_logs` (
+CREATE TABLE IF NOT EXISTS `eco_n8n_webhook_logs` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `instance_id` BIGINT UNSIGNED NOT NULL,
   `workflow_id` VARCHAR(64) NOT NULL,
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS `n8n_webhook_logs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Hermes 实例表
-CREATE TABLE IF NOT EXISTS `hermes_instances` (
+CREATE TABLE IF NOT EXISTS `create_hermes_instances` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `user_id` BIGINT NOT NULL,
   `name` VARCHAR(64) NOT NULL,
@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS `hermes_instances` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Hermes 调用日志表
-CREATE TABLE IF NOT EXISTS `hermes_call_logs` (
+CREATE TABLE IF NOT EXISTS `create_hermes_call_logs` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `instance_id` BIGINT NOT NULL,
   `user_id` BIGINT NOT NULL,
@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS `hermes_call_logs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Hermes 技能包表
-CREATE TABLE IF NOT EXISTS `hermes_skills` (
+CREATE TABLE IF NOT EXISTS `create_hermes_skills` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(128) NOT NULL,
   `description` TEXT,
@@ -141,7 +141,7 @@ CREATE TABLE IF NOT EXISTS `hermes_skills` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Hermes 技能包评分记录表
-CREATE TABLE IF NOT EXISTS `hermes_skill_ratings` (
+CREATE TABLE IF NOT EXISTS `create_hermes_skill_ratings` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `user_id` BIGINT NOT NULL COMMENT '用户ID',
   `skill_id` BIGINT NOT NULL COMMENT '技能包ID',
@@ -156,10 +156,10 @@ CREATE TABLE IF NOT EXISTS `hermes_skill_ratings` (
 -- OpenClaw 实例表
 -- 注意：与 openclaw-instance.entity.ts 完全一致，deprecated_005 已废弃
 -- 安全方式：仅在不存时创建，不删除已有数据
-CREATE TABLE IF NOT EXISTS `openclaw_instances` (
+CREATE TABLE IF NOT EXISTS `eco_openclaw_instances` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
   `user_id` BIGINT NOT NULL,
-  `agent_id` BIGINT NULL COMMENT '关联 agents 表 id',
+  `agent_id` BIGINT NULL COMMENT '关联 eco_agents 表 id',
   `openclaw_agent_id` VARCHAR(64) NOT NULL COMMENT 'OpenClaw 侧 agentId',
   `endpoint` VARCHAR(256) NOT NULL DEFAULT 'http://localhost:8080' COMMENT 'OpenClaw API 地址',
   `status` ENUM('online','offline','error') DEFAULT 'offline',

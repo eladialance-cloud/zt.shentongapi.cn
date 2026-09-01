@@ -3,15 +3,15 @@
 -- 执行方式: mysql -u <user> -p <database> < this file
 -- ============================================
 
--- ── 1. models 表：新增连接凭据字段 ──
-ALTER TABLE `models`
+-- ── 1. ai_models 表：新增连接凭据字段 ──
+ALTER TABLE `ai_models`
   ADD COLUMN `api_endpoint` VARCHAR(512) NULL COMMENT 'API地址' AFTER `name`,
   ADD COLUMN `api_key` VARCHAR(512) NULL COMMENT 'AES加密的API Key' AFTER `api_endpoint`,
   ADD COLUMN `connection_status` VARCHAR(16) NOT NULL DEFAULT 'untested' COMMENT '连接状态' AFTER `api_key`,
   ADD COLUMN `last_tested_at` DATETIME NULL COMMENT '最后测试时间' AFTER `connection_status`;
 
--- ── 2. agents 表：新增 displayName 字段 ──
-ALTER TABLE `agents`
+-- ── 2. eco_agents 表：新增 displayName 字段 ──
+ALTER TABLE `eco_agents`
   ADD COLUMN `display_name` VARCHAR(64) NULL COMMENT '显示名称' AFTER `name`;
 
 -- ── 3. workflows 表：新增合并字段（从 n8n_workflow_lib 合并） ──

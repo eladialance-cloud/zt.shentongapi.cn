@@ -13,7 +13,7 @@ export interface EnvTemplateItem {
   description?: string;
 }
 
-@Entity('mcp_catalog')
+@Entity('eco_mcp_catalog')
 export class McpCatalogEntity extends BaseEntity {
   @Column({ length: 128 })
   name: string;

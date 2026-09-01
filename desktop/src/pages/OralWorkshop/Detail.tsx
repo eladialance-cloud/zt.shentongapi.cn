@@ -94,7 +94,7 @@ export function statusText(status: string): string {
   return map[status] ?? status
 }
 
-/** 发布状态（F5：publish_plans.publish_status） */
+/** 发布状态（F5：create_publish_plans.publish_status） */
 export const PUBLISH_STATUS_META: Record<string, { label: string; color: string }> = {
   draft: { label: '草稿', color: 'orange' },
   unpublish: { label: '未发布', color: 'default' },

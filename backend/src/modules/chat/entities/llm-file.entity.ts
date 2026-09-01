@@ -10,7 +10,7 @@ const idColumnOptions = {
 /** 用户经 llm-proxy 上传到上游的文件映射（qwen-long 两步式等专用文本模型）
  * 作用：1) chat 请求中的 file id 归属校验；2) 审计上传来源模型。
  */
-@Entity('llm_files')
+@Entity('ai_llm_files')
 export class LlmFileEntity {
   @PrimaryGeneratedColumn(idColumnOptions)
   id: number;

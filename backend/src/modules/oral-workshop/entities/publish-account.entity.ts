@@ -10,9 +10,9 @@ const paIdColumnOptions = {
 /**
  * 发布账号（对标 aigc-human platform_accounts）
  * 绑定方式：桌面端扫码登录 → cookies 加密上传 → login_status=online
- * 管理后台只控制平台开关（oral_workshop_publish_platforms）
+ * 管理后台只控制平台开关（create_oral_workshop_publish_platforms）
  */
-@Entity('publish_accounts')
+@Entity('create_publish_accounts')
 export class PublishAccountEntity {
   @PrimaryGeneratedColumn(paIdColumnOptions)
   id: number;

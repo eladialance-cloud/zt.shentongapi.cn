@@ -4,7 +4,7 @@ import { Entity, PrimaryColumn, Column } from 'typeorm';
  * 频道表
  * 数据合同真源：Community 模块 - 社区频道管理
  */
-@Entity('channels')
+@Entity('social_channels')
 export class ChannelEntity {
   @PrimaryColumn({ type: 'varchar', length: 32 })
   id: string;

@@ -220,13 +220,16 @@ describe('口播工坊全链路（真实 Service + 真实 Executor）', () => {
     const service = new OralWorkshopService(
       f.jobRepo,
       f.stepRepo,
-      fakeAccountRepo() as any,
       fakeMediaRepo() as any,
       fakeAccountRepo() as any,
       fakeMediaRepo() as any,
       f.billing,
       fakeLlm() as any,
       fakeSystemLlm() as any,
+      undefined as any,
+      undefined as any,
+      undefined as any,
+      undefined as any,
     );
     const audioUrl = makeUploadsFixtureFile('voice.mp3', 'fake-mp3');
     const outputDir = makeOutputDir();
@@ -286,13 +289,16 @@ describe('口播工坊全链路（真实 Service + 真实 Executor）', () => {
     const service = new OralWorkshopService(
       f.jobRepo,
       f.stepRepo,
-      fakeAccountRepo() as any,
       fakeMediaRepo() as any,
       fakeAccountRepo() as any,
       fakeMediaRepo() as any,
       f.billing,
       fakeLlm({ failRewrite: true }) as any,
       fakeSystemLlm() as any,
+      undefined as any,
+      undefined as any,
+      undefined as any,
+      undefined as any,
     );
     const audioUrl = makeUploadsFixtureFile('voice.mp3', 'fake-mp3');
     const exec = new OralWorkshopExecutor(service, fakeLlm({ failRewrite: true }) as any, makeRunner([]));
@@ -319,13 +325,16 @@ describe('口播工坊全链路（真实 Service + 真实 Executor）', () => {
     const service = new OralWorkshopService(
       f.jobRepo,
       f.stepRepo,
-      fakeAccountRepo() as any,
       fakeMediaRepo() as any,
       fakeAccountRepo() as any,
       fakeMediaRepo() as any,
       f.billing,
       fakeLlm() as any,
       fakeSystemLlm() as any,
+      undefined as any,
+      undefined as any,
+      undefined as any,
+      undefined as any,
     );
     const audioUrl = makeUploadsFixtureFile('voice.mp3', 'fake-mp3');
     const outputDir = makeOutputDir();

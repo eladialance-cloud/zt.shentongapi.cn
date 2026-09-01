@@ -32,7 +32,7 @@ const DEFAULT_AUDIT_CONFIG = {
  * 提供：
  *   - 审核队列（audit_queue 表）查询/批准/驳回/误报
  *   - 敏感词（sensitive_words 表）CRUD 与批量导入
- *   - AI 审核配置（ai_audit_config 表，单行 JSON）读写与测试
+ *   - AI 审核配置（create_ai_audit_config 表，单行 JSON）读写与测试
  */
 @Injectable()
 export class AdminAuditService {

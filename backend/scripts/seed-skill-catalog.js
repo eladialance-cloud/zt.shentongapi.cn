@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * seed-skill-catalog.js - 技能目录清单入库「技能源」(skill_sources)
+ * seed-skill-catalog.js - 技能目录清单入库「技能源」(eco_skill_sources)
  *
  * 输入：已解压的 awesome-openclaw-skills 目录（含 categories/*.md）
  * 用法：node scripts/seed-skill-catalog.js <extracted-dir>
@@ -127,7 +127,7 @@ async function main() {
     charset: 'utf8mb4',
   });
 
-  const sql = `INSERT INTO skill_sources
+  const sql = `INSERT INTO eco_skill_sources
     (source_url, source_type, skill_name, skill_desc, skill_type, category, status, analyze_result, created_at, updated_at)
     VALUES (?, 'github', ?, ?, 'skill', ?, 'analyzed', ?, NOW(), NOW())
     ON DUPLICATE KEY UPDATE

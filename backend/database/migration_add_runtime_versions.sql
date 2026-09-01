@@ -1,8 +1,8 @@
--- P0-6 修复：为生产数据库添加 runtime_versions 表
+-- P0-6 修复：为生产数据库添加 eco_runtime_versions 表
 -- seed.sql 引用了此表但 init.sql 中缺少定义（已在新版 init.sql 中修复）
 -- 执行方式：docker exec -i shentong-mysql mysql -u root -p<password> shentong_db < migration_add_runtime_versions.sql
 
-CREATE TABLE IF NOT EXISTS `runtime_versions` (
+CREATE TABLE IF NOT EXISTS `eco_runtime_versions` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `service_name` VARCHAR(32) NOT NULL COMMENT '服务名称 (openclaw/n8n/mcp)',
   `version` VARCHAR(32) NOT NULL COMMENT '版本号',

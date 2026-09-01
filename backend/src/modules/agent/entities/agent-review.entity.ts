@@ -6,7 +6,7 @@ import {
   Index,
 } from 'typeorm';
 
-@Entity('agent_reviews')
+@Entity('eco_agent_reviews')
 export class AgentReviewEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })
   id: number;

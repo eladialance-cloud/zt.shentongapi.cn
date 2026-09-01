@@ -78,7 +78,7 @@ export class MediaGenerationService implements OnModuleInit {
 
   /** 用户端可选生成模型（仅已上架 + 已配好凭据的 image/video 模型） */
   async listGenerationModels(): Promise<GenerationModelItem[]> {
-    const models = await this.modelRepo.find({ where: { isActive: true }, order: { createdAt: 'DESC' } });
+    const models = await this.modelRepo.find({ where: { isActive: true }, order: { createdAt: 'DESC' }, relations: { pricing: true } });
     // 与 resolveModel 保持一致：模型未绑定供应商时回退到全局中转/首个可用供应商，
     // 否则后台添加的图片/视频模型即使生成时能兜底，桌面端列表也看不到
     const relay = await resolveRelay(this.providerRepo);
@@ -95,9 +95,9 @@ export class MediaGenerationService implements OnModuleInit {
         name: m.name,
         type: (m.modelType === 'image_edit' ? 'image' : m.modelType) as 'image' | 'video',
         provider: provider.slug,
-        generationParams: m.generationParams ?? {},
-        pricePerImage: m.pricePerImage,
-        videoPrices: m.videoPrices ?? {},
+        generationParams: m.pricing?.generationParams ?? {},
+        pricePerImage: m.pricing?.pricePerImage,
+        videoPrices: m.pricing?.videoPrices ?? {},
       });
     }
     return out;
@@ -106,7 +106,7 @@ export class MediaGenerationService implements OnModuleInit {
   // ============ 内部解析 ============
 
   private async resolveModel(modelId: string, type: MediaJobType): Promise<{ model: ModelEntity; provider: ModelProviderEntity; adapter: GenerationAdapterConfig; decryptedKey: string }> {
-    const model = await this.modelRepo.findOne({ where: { modelId, isActive: true } });
+    const model = await this.modelRepo.findOne({ where: { modelId, isActive: true }, relations: { pricing: true } });
     if (!model || (model.modelType !== 'image' && model.modelType !== 'image_edit' && model.modelType !== 'video')) {
       throw new BadRequestException('生成模型不存在或未上架');
     }
@@ -132,7 +132,7 @@ export class MediaGenerationService implements OnModuleInit {
     // 未配置时兼容老供应商 config.generation 适配模板；与 admin 测试连接共用同一合并逻辑
     const adapter: GenerationAdapterConfig = buildMediaGenerationAdapter(
       provider,
-      model.generationParams,
+      model.pricing?.generationParams,
     );
     return { model, provider, adapter, decryptedKey: decrypted };
   }
@@ -146,19 +146,19 @@ export class MediaGenerationService implements OnModuleInit {
   ): Promise<{ price: number; frozenTxnId: number | null }> {
     let base = 0;
     if (model.modelType === 'image' || model.modelType === 'image_edit') {
-      base = model.pricePerImage ?? DEFAULT_IMAGE_PRICE;
+      base = model.pricing?.pricePerImage ?? DEFAULT_IMAGE_PRICE;
     } else {
       // 视频按秒计费：per_second 取 video_per_second[分辨率]x时长，未配置档直接拒绝；否则回退旧价格矩阵
-      const price = computeVideoCharge(model, { resolution: opts.resolution, duration: opts.duration ?? 5 });
+      const price = computeVideoCharge(model.pricing ?? {}, { resolution: opts.resolution, duration: opts.duration ?? 5 });
       const tierKey = normalizeResolutionTier(opts.resolution ?? '');
-      if (model.pricingMode === 'per_second') {
-        const hasTier = Object.keys(model.videoPerSecond ?? {}).some(
+      if (model.pricing?.pricingMode === 'per_second') {
+        const hasTier = Object.keys(model.pricing?.videoPerSecond ?? {}).some(
           (k) => normalizeResolutionTier(k) === tierKey,
         );
         if (!hasTier) {
           throw new BadRequestException(`该模型未配置 ${tierKey || '默认'} 分辨率档的视频每秒价格`);
         }
-      } else if (!Object.keys(model.videoPrices ?? {}).some((k) => normalizeResolutionTier(k) === tierKey)) {
+      } else if (!Object.keys(model.pricing?.videoPrices ?? {}).some((k) => normalizeResolutionTier(k) === tierKey)) {
         throw new BadRequestException(`该模型未配置 ${tierKey || '默认'}/${opts.duration ?? 5} 秒的视频生成价格`);
       }
       base = price;

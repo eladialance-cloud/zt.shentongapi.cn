@@ -20,7 +20,9 @@ function buildAdminService() {
     submitVideo: async () => ({ taskId: 't1' }),
     generateImage: async () => ({ url: 'https://x/1.png' }),
   };
-  const svc = new AdminModelService(modelRepo, providerRepo, encryption, generationClient);
+  const pricingRepo: any = { createQueryBuilder: () => ({ update: () => ({ set: () => ({ where: () => ({ execute: async () => ({ affected: 1 }) }) }) }) }), create: (o: any) => o, save: async (e: any) => e, upsert: async () => ({ affected: 1 }) };
+  const credentialsRepo: any = { create: (o: any) => o, save: async (e: any) => e, upsert: async () => ({ affected: 1 }) };
+  const svc = new AdminModelService(modelRepo, providerRepo, pricingRepo, credentialsRepo, encryption, generationClient);
   return { svc, modelRepo, providerRepo, generationClient };
 }
 
@@ -185,12 +187,14 @@ describe('模型级 test() 合并 generationParams 适配器', () => {
       modelType: 'video',
       modelId: 'v',
       upstreamModelId: 'qwen-video-plus',
-      generationParams: {
-        video_submit_path: '/api/v1/services/aigc/video-generation/video-synthesis',
-        request_template: { model: '{upstreamModelId}', input: { prompt: '{prompt}' } },
-        extra_headers: { 'X-DashScope-Async': 'enable' },
-        success_values: ['SUCCEEDED'],
-        task_id_path: 'output.task_id',
+      pricing: {
+        generationParams: {
+          video_submit_path: '/api/v1/services/aigc/video-generation/video-synthesis',
+          request_template: { model: '{upstreamModelId}', input: { prompt: '{prompt}' } },
+          extra_headers: { 'X-DashScope-Async': 'enable' },
+          success_values: ['SUCCEEDED'],
+          task_id_path: 'output.task_id',
+        },
       },
       isActive: true,
     });
@@ -223,7 +227,7 @@ describe('模型级 test() 合并 generationParams 适配器', () => {
       modelType: 'image',
       modelId: 'img',
       upstreamModelId: 'wanx',
-      generationParams: { images_path: '/api/v1/services/aigc/text2image/image-synthesis' },
+      pricing: { generationParams: { images_path: '/api/v1/services/aigc/text2image/image-synthesis' } },
       isActive: true,
     });
     providerRepo.findOne = async () => ({

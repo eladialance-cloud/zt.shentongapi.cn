@@ -6,7 +6,7 @@ import {
   Index,
 } from 'typeorm';
 
-@Entity('agent_ratings')
+@Entity('eco_agent_ratings')
 @Index('uniq_agent_ratings_user_agent', ['userId', 'agentId'], { unique: true })
 export class AgentRatingEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', name: 'id' })

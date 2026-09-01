@@ -3,7 +3,7 @@
 -- Agent部门分类表（动态分类替代固定enum）
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS `agent_department` (
+CREATE TABLE IF NOT EXISTS `eco_agent_department` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(64) NOT NULL COMMENT '部门名称',
   `code` VARCHAR(32) NOT NULL COMMENT '部门编码，如 office/programming/copywriting/data_analysis/other',

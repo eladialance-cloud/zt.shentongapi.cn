@@ -38,7 +38,7 @@ export class ImportGithubDto {
   @MaxLength(64)
   defaultModelId?: string;
 
-  /** 名称/介绍自动翻译为中文所使用的模型（models.model_id，留空自动选择） */
+  /** 名称/介绍自动翻译为中文所使用的模型（ai_models.model_id，留空自动选择） */
   @IsOptional()
   @IsString()
   @MaxLength(64)

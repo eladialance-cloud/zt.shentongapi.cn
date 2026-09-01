@@ -5,7 +5,7 @@ import { bigintTransformer } from '../../../common/entities/base.entity';
  * 用户社区档案表
  * 数据合同真源：Community 模块 - 用户档案
  */
-@Entity('user_profiles')
+@Entity('social_user_profiles')
 export class UserProfileEntity {
   @PrimaryColumn({ type: 'bigint', transformer: bigintTransformer })
   userId: number;

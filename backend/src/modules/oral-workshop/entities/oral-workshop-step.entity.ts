@@ -11,8 +11,8 @@ const stepIdColumnOptions = {
 /** 口播工坊步骤状态 */
 export type OralWorkshopStepStatus = 'pending' | 'running' | 'done' | 'failed';
 
-/** 口播工坊步骤明细表（oral_workshop_steps） */
-@Entity('oral_workshop_steps')
+/** 口播工坊步骤明细表（create_oral_workshop_steps） */
+@Entity('create_oral_workshop_steps')
 export class OralWorkshopStepEntity {
   @PrimaryGeneratedColumn(stepIdColumnOptions)
   id: number;

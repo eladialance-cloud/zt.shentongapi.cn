@@ -121,6 +121,7 @@ export class SedimentationService {
           title: dto.title,
           content: dto.content,
           sessionId: dto.sessionId ?? null,
+          taskId: dto.taskId ?? null,
           status: 'applied',
         }),
       );
@@ -172,6 +173,7 @@ export class SedimentationService {
         kbId: Number(kb.id),
         docId: Number(doc.id),
         sessionId: dto.sessionId ?? null,
+        taskId: dto.taskId ?? null,
         status: 'applied',
         undoToken,
       }),

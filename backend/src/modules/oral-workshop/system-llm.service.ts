@@ -1,7 +1,7 @@
 /**
  * 口播工坊系统级 LLM 调用器（M0-2 确认：服务端直连，不走 llm-proxy，避免与任务预扣双重计费）
  *
- * 通道：admin-model 已配置的 model_providers（优先 deepseek/openai/qwen/doubao）+ API Key 池兜底，
+ * 通道：admin-model 已配置的 ai_model_providers（优先 deepseek/openai/qwen/doubao）+ API Key 池兜底，
  * 直连 OpenAI 兼容 /chat/completions（与 agent-translate 同一模式）。
  */
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
@@ -128,7 +128,7 @@ export class SystemLlmService implements LlmCaller {
       const resolved = await this.resolvePreferredModel(preferredModel);
       if (resolved) return resolved;
     }
-    // 3) 供应商池（model_providers）
+    // 3) 供应商池（ai_model_providers）
     const providers = await this.providerRepo.find({ where: { status: 'active' } });
     providers.sort((a, b) => {
       const ia = PROVIDER_PREFERENCE.indexOf(a.slug);
@@ -270,7 +270,7 @@ export class SystemLlmService implements LlmCaller {
   async chat(messages: LlmMessage[], opts?: { temperature?: number; purpose?: OralLlmPurpose }): Promise<string> {
     const target = await this.resolveTarget(undefined, opts?.purpose);
     if (!target) {
-      throw new ServiceUnavailableException('未配置可用的大模型供应商（请在管理后台配置 model_providers 或 API Key 池）');
+      throw new ServiceUnavailableException('未配置可用的大模型供应商（请在管理后台配置 ai_model_providers 或 API Key 池）');
     }
     const body = {
       model: target.model,

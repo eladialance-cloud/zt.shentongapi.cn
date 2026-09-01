@@ -1,9 +1,10 @@
-﻿/** 本地 Hermes 技能管理桥：封装 hermes skills CLI（list/search/install/update/uninstall/check） */
+﻿/** 本地 Hermes 技能管理桥：原生 /api/skills 优先 + CLI 降级（list/search/install/update/uninstall/check） */
 import { spawn } from "node:child_process";
 import { readdirSync, existsSync, mkdirSync, cpSync } from "node:fs";
 import { join, basename } from "node:path";
 import { app } from "electron";
 import { getRuntimeRoot } from "./runtime-config";
+import { HermesClient, type HermesSkillInfo } from "./hermes-client";
 
 export interface HermesSkillItem {
   name: string;
@@ -136,59 +137,133 @@ export function parseSkillsSearch(stdout: string): HermesSkillItem[] {
 }
 
 /** 已安装技能列表（含内置标注） */
-export async function listSkills(): Promise<HermesSkillsListResult> {
-  const builtin = listBundledHermesSkills();
-  const run = await runHermes(["skills", "list"], 60000);
-  if (run.code !== 0) {
-    return { ok: false, error: run.stderr.trim() || "hermes skills list 失败", stdout: run.stdout };
-  }
-  return { ok: true, items: parseSkillsList(run.stdout, builtin), stdout: run.stdout };
+function makeClient(): HermesClient {
+  return new HermesClient();
 }
 
-/** 搜索技能市场 */
+/** 原生技能项 → IPC 技能项（provenance=bundled 或桌面内置名单 → builtin） */
+function toSkillItems(list: HermesSkillInfo[], builtin: string[]): HermesSkillItem[] {
+  return list.map((s) => {
+    const provenance =
+      typeof s.provenance === "string" ? s.provenance : typeof s.source === "string" ? s.source : undefined;
+    return {
+      name: s.name,
+      source: provenance === "bundled" ? "builtin" : provenance,
+      version: typeof s.version === "string" && s.version ? s.version : undefined,
+      builtin: provenance === "bundled" || builtin.includes(s.name),
+    };
+  });
+}
+
+/** 已安装技能列表（含内置标注；原生 /api/skills 优先，失败降级 CLI） */
+export async function listSkills(): Promise<HermesSkillsListResult> {
+  const builtin = listBundledHermesSkills();
+  try {
+    const items = await makeClient().listSkills();
+    return { ok: true, items: toSkillItems(items, builtin) };
+  } catch (err) {
+    console.warn("[hermes-skills] 原生 /api/skills 失败，降级 CLI: " + (err instanceof Error ? err.message : String(err)));
+    const run = await runHermes(["skills", "list"], 60000);
+    if (run.code !== 0) {
+      return { ok: false, error: run.stderr.trim() || "hermes skills list 失败", stdout: run.stdout };
+    }
+    return { ok: true, items: parseSkillsList(run.stdout, builtin), stdout: run.stdout };
+  }
+}
+
+/** 搜索技能市场（原生 /api/skills/hub/search 优先，失败降级 CLI） */
 export async function searchSkills(query: string): Promise<HermesSkillsListResult> {
   const q = (query || "").trim();
   if (!q) return { ok: false, error: "搜索词为空" };
-  const run = await runHermes(["skills", "search", q, "--json"], 60000);
-  if (run.code !== 0) {
-    return { ok: false, error: run.stderr.trim() || "hermes skills search 失败", stdout: run.stdout };
+  try {
+    const data = await makeClient().searchSkills(q);
+    const items: HermesSkillItem[] = (data.results ?? []).map((r) => ({
+      name: String(r.identifier ?? r.name ?? ""),
+      source:
+        typeof r.source === "string" && r.source
+          ? r.source
+          : typeof r.trust_level === "string"
+            ? r.trust_level
+            : undefined,
+    }));
+    return { ok: true, items };
+  } catch (err) {
+    console.warn("[hermes-skills] 原生 hub/search 失败，降级 CLI: " + (err instanceof Error ? err.message : String(err)));
+    const run = await runHermes(["skills", "search", q, "--json"], 60000);
+    if (run.code !== 0) {
+      return { ok: false, error: run.stderr.trim() || "hermes skills search 失败", stdout: run.stdout };
+    }
+    return { ok: true, items: parseSkillsSearch(run.stdout), stdout: run.stdout };
   }
-  return { ok: true, items: parseSkillsSearch(run.stdout), stdout: run.stdout };
 }
 
-/** 安装技能（identifier: openai/skills/skill-creator 或 SKILL.md URL） */
+/** 安装技能（identifier: openai/skills/skill-creator 或 SKILL.md URL；原生 hub/install 后台异步，失败降级 CLI 同步安装） */
 export async function installSkill(identifier: string): Promise<HermesSkillsOpResult> {
   const id = (identifier || "").trim();
   if (!id) return { ok: false, error: "技能标识为空" };
-  const run = await runHermes(["skills", "install", id, "-y"], 180000);
-  if (run.code !== 0) {
-    return { ok: false, error: run.stderr.trim() || "hermes skills install 失败", stdout: run.stdout };
+  try {
+    const res = await makeClient().installSkill(id);
+    if (res?.ok === false) {
+      return { ok: false, error: res.error ?? "hermes skills install 失败" };
+    }
+    return { ok: true, stdout: "已在后台启动安装（pid=" + (res?.pid ?? "?") + "），稍后刷新查看" };
+  } catch (err) {
+    console.warn("[hermes-skills] 原生 hub/install 失败，降级 CLI: " + (err instanceof Error ? err.message : String(err)));
+    const run = await runHermes(["skills", "install", id, "-y"], 180000);
+    if (run.code !== 0) {
+      return { ok: false, error: run.stderr.trim() || "hermes skills install 失败", stdout: run.stdout };
+    }
+    return { ok: true, stdout: run.stdout };
   }
-  return { ok: true, stdout: run.stdout };
 }
 
-/** 更新技能（name 缺省 = 全部过期技能） */
+/** 更新技能（name 缺省 = 全部；指定 name 时原生 hub/update 不支持单技能，走 CLI；未指定时原生优先后台异步） */
 export async function updateSkills(name?: string): Promise<HermesSkillsOpResult> {
-  const args = name && name.trim() ? ["skills", "update", name.trim()] : ["skills", "update"];
-  const run = await runHermes(args, 180000);
-  if (run.code !== 0) {
-    return { ok: false, error: run.stderr.trim() || "hermes skills update 失败", stdout: run.stdout };
+  const n = (name || "").trim();
+  if (n) {
+    const run = await runHermes(["skills", "update", n], 180000);
+    if (run.code !== 0) {
+      return { ok: false, error: run.stderr.trim() || "hermes skills update 失败", stdout: run.stdout };
+    }
+    return { ok: true, stdout: run.stdout };
   }
-  return { ok: true, stdout: run.stdout };
+  try {
+    const res = await makeClient().updateSkills();
+    if (res?.ok === false) {
+      return { ok: false, error: res.error ?? "hermes skills update 失败" };
+    }
+    return { ok: true, stdout: "已在后台启动更新（pid=" + (res?.pid ?? "?") + "），稍后刷新查看" };
+  } catch (err) {
+    console.warn("[hermes-skills] 原生 hub/update 失败，降级 CLI: " + (err instanceof Error ? err.message : String(err)));
+    const run = await runHermes(["skills", "update"], 180000);
+    if (run.code !== 0) {
+      return { ok: false, error: run.stderr.trim() || "hermes skills update 失败", stdout: run.stdout };
+    }
+    return { ok: true, stdout: run.stdout };
+  }
 }
 
-/** 卸载技能 */
+/** 卸载技能（原生 hub/uninstall 后台异步，失败降级 CLI 同步卸载） */
 export async function uninstallSkill(name: string): Promise<HermesSkillsOpResult> {
   const n = (name || "").trim();
   if (!n) return { ok: false, error: "技能名为空" };
-  const run = await runHermes(["skills", "uninstall", n, "-y"], 60000);
-  if (run.code !== 0) {
-    return { ok: false, error: run.stderr.trim() || "hermes skills uninstall 失败", stdout: run.stdout };
+  try {
+    const res = await makeClient().uninstallSkill(n);
+    if (res?.ok === false) {
+      return { ok: false, error: res.error ?? "hermes skills uninstall 失败" };
+    }
+    return { ok: true, stdout: "已在后台启动卸载（pid=" + (res?.pid ?? "?") + "），稍后刷新查看" };
+  } catch (err) {
+    console.warn("[hermes-skills] 原生 hub/uninstall 失败，降级 CLI: " + (err instanceof Error ? err.message : String(err)));
+    const run = await runHermes(["skills", "uninstall", n, "-y"], 60000);
+    if (run.code !== 0) {
+      return { ok: false, error: run.stderr.trim() || "hermes skills uninstall 失败", stdout: run.stdout };
+    }
+    return { ok: true, stdout: run.stdout };
   }
-  return { ok: true, stdout: run.stdout };
 }
 
-/** 检查可更新技能 */
+/** 检查可更新技能（无原生等价端点，保持 CLI） */
 export async function checkSkills(): Promise<HermesSkillsOpResult> {
   const run = await runHermes(["skills", "check"], 60000);
   if (run.code !== 0) {

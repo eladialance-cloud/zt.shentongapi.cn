@@ -7,7 +7,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
  */
 export type N8nLastExecutionStatus = 'success' | 'error' | 'running' | 'unknown';
 
-@Entity('n8n_workflows')
+@Entity('task_n8n_workflows')
 export class N8nWorkflowEntity extends BaseEntity {
   @Index()
   @Column({ name: 'instance_id', type: 'bigint', unsigned: true })

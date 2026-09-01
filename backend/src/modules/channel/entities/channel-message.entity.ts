@@ -4,7 +4,7 @@
 } from "typeorm";
 
 /** 渠道消息记录 */
-@Entity("channel_messages")
+@Entity("social_channel_messages")
 export class ChannelMessageEntity {
   @PrimaryGeneratedColumn({ type: "bigint", name: "id" })
   id: number;

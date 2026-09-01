@@ -6,7 +6,7 @@ import { PluginEntity } from './plugin.entity';
  * 用户-插件关联实体
  * 记录用户安装的插件及其配置和状态
  */
-@Entity('user_plugins')
+@Entity('eco_user_plugins')
 @Index('idx_user_plugin', ['userId', 'pluginId'], { unique: true })
 export class UserPluginEntity extends BaseEntity {
   @Column({ name: 'user_id', type: 'int' })
