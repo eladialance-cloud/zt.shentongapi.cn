@@ -40,23 +40,49 @@ export class SyncGateway implements OnGatewayConnection, OnGatewayDisconnect, On
       this.logger.log('[sync] REDIS_URL 未配置，单实例模式（不挂载 Redis adapter）');
       return;
     }
+    let pubClient: any = null;
+    let subClient: any = null;
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { createAdapter } = require('@socket.io/redis-adapter');
       const Redis = require('ioredis').default || require('ioredis');
-      const pubClient = new Redis(url, { lazyConnect: true, maxRetriesPerRequest: 3, enableOfflineQueue: false });
-      const subClient = pubClient.duplicate();
+      pubClient = new Redis(url, { lazyConnect: true, maxRetriesPerRequest: 3, enableOfflineQueue: false });
+      subClient = pubClient.duplicate();
       Promise.all([pubClient.connect(), subClient.connect()])
         .then(() => {
+          // 版本不兼容（旧 socket.io/旧 node_modules）时 server.adapter 可能不存在，跳过即可
+          if (typeof (server as any).adapter !== 'function') {
+            this.logger.warn('[sync] 当前 socket.io 版本不支持挂载 Redis adapter，回退内存模式');
+            this.safeDisconnect(pubClient);
+            this.safeDisconnect(subClient);
+            return;
+          }
           server.adapter(createAdapter(pubClient, subClient));
           this.logger.log('[sync] socket.io Redis adapter 已挂载（多实例广播可用）');
         })
         .catch((err: Error) => {
           this.logger.warn(`[sync] Redis 连接失败，回退内存模式: ${err.message}`);
-          Promise.all([pubClient.disconnect().catch(() => undefined), subClient.disconnect().catch(() => undefined)]);
+          this.safeDisconnect(pubClient);
+          this.safeDisconnect(subClient);
         });
     } catch (err) {
       this.logger.warn(`[sync] @socket.io/redis-adapter 未安装，回退内存模式: ${(err as Error).message}（安装：cd backend && npm install）`);
+    }
+  }
+
+  /**
+   * 安全断开 Redis 客户端：ioredis disconnect() 为同步 void，直接 .catch 会因
+   * undefined.catch 抛 TypeError 导致 unhandledRejection 崩溃（生产环境已复现）
+   */
+  private safeDisconnect(client: any): void {
+    if (!client) return;
+    try {
+      const result = client.disconnect();
+      if (result && typeof result.catch === 'function') {
+        result.catch(() => undefined);
+      }
+    } catch (err) {
+      this.logger.debug(`[sync] Redis 客户端断开忽略: ${(err as Error).message}`);
     }
   }
 

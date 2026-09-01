@@ -94,4 +94,8 @@ async function bootstrap() {
   }
 }
 
-bootstrap();
+bootstrap().catch((err) => {
+  // 启动失败时打印完整堆栈并退出（否则 Node 只输出错误首行，难以定位）
+  console.error('[Bootstrap] 启动失败:', err);
+  process.exit(1);
+});
