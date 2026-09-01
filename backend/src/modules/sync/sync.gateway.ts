@@ -1,9 +1,10 @@
-﻿import { Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
   OnGatewayInit,
+  SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
@@ -124,6 +125,42 @@ export class SyncGateway implements OnGatewayConnection, OnGatewayDisconnect, On
     this.server.to(`user:${userId}`).emit(event, data);
   }
 
+  /** remote:result 客户端事件监听器（由 RemoteService 注册，用于执行结果回传飞书） */
+  private remoteResultListeners: Array<(userId: number, payload: unknown) => void> = [];
+
+  /** 注册 remote:result 监听器 */
+  onRemoteResult(listener: (userId: number, payload: unknown) => void): void {
+    this.remoteResultListeners.push(listener);
+  }
+
+  /** 判断用户是否有在线设备（房间内存在 socket） */
+  async isUserOnline(userId: number): Promise<boolean> {
+    if (!this.server) return false;
+    try {
+      const sockets = await this.server.in(`user:${userId}`).fetchSockets();
+      return sockets.length > 0;
+    } catch (err) {
+      this.logger.debug(`[sync] isUserOnline(${userId}) 异常: ${(err as Error).message}`);
+      return false;
+    }
+  }
+
+  /**
+   * 桌面端回传命令执行结果（remote:result 事件）
+   * payload: { commandId, status, progress?, message?, description?, data?, replyContext? }
+   */
+  @SubscribeMessage('remote:result')
+  handleRemoteResult(client: Socket, payload: unknown): void {
+    const userId = (client as any)?.userId as number | undefined;
+    if (!userId) return;
+    for (const listener of this.remoteResultListeners) {
+      try {
+        listener(userId, payload);
+      } catch (err) {
+        this.logger.error(`[sync] remote:result 监听器异常: ${(err as Error).message}`);
+      }
+    }
+  }
   /** 广播事件（所有连接） */
   broadcast(event: string, data: unknown): void {
     if (!this.server) {

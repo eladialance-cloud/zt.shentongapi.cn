@@ -72,6 +72,8 @@ import { SearchModule } from './modules/search/search.module';
 import { MarketModule } from './modules/market/market.module';
 import { MediaGenerationModule } from './modules/media-generation/media-generation.module';
 import { OralWorkshopModule } from './modules/oral-workshop/oral-workshop.module';
+import { AutomationModule } from './modules/automation/automation.module';
+import { RemoteModule } from './modules/remote/remote.module';
 import { MediaAssetsModule } from './modules/media-assets/media-asset.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -161,6 +163,8 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     MediaGenerationModule,
     OralWorkshopModule,
     MediaAssetsModule,
+    AutomationModule,
+    RemoteModule,
   ],
   controllers: [AppController],
   providers: [

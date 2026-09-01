@@ -1,4 +1,4 @@
-﻿import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { ChannelEntity } from "../entities/channel.entity";
@@ -13,6 +13,26 @@ export class ChannelService {
     private readonly channelRepo: Repository<ChannelEntity>,
     private readonly encryptionService: EncryptionService,
   ) {}
+
+
+  /** 查询已激活的渠道（按平台，用于 IM 绑定路由；创建时间升序取最早绑定） */
+  async findActiveChannelsByPlatform(platform: string): Promise<ChannelEntity[]> {
+    return this.channelRepo.find({
+      where: { platform: platform as ChannelEntity["platform"], status: "active" },
+      order: { createdAt: "ASC" },
+    });
+  }
+
+  /** 查询某用户已激活的渠道（按平台） */
+  async findActiveChannelsByPlatformForUser(
+    platform: string,
+    userId: number,
+  ): Promise<ChannelEntity[]> {
+    return this.channelRepo.find({
+      where: { platform: platform as ChannelEntity["platform"], status: "active", userId },
+      order: { createdAt: "ASC" },
+    });
+  }
 
   health() {
     return { status: "ok", module: "channel" };

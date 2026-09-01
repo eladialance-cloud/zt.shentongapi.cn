@@ -35,6 +35,7 @@ import TeamList from "@/pages/Team";
 import TeamDetail from "@/pages/Team/Detail";
 import Office from "@/pages/Office";
 import ChannelDetail from "@/pages/Channels/Detail";
+import AutomationPage from "@/pages/Automation";
 import ChannelList from "@/pages/Channels";
 import PublishList from "@/pages/Channels/Publish";
 import McpConfig from "@/pages/McpConfig";
@@ -131,7 +132,7 @@ const router = createHashRouter([
       { path: "/mcp-market", element: <McpConfig /> },
       { path: "/skill-market", element: <SkillMarket /> },
       { path: "/skill-market/detail/:type/:id", element: <LocalDetail /> },
-      { path: "/automation", element: <Navigate to="/workflow" replace /> },
+      { path: "/automation", element: <AutomationPage /> },
       // 兼容旧链接：复数 /workflows 别名指向单数路由
       { path: "/workflows", element: <Navigate to="/workflow" replace /> },
       { path: "/team", element: <TeamList /> },

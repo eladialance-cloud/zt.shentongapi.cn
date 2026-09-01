@@ -46,6 +46,8 @@ import { ensureN8nI18n } from './n8n-i18n'
 import { syncOpenClawMcpFromBackend } from './openclaw-mcp-sync'
 import { AppUpdater } from './updater'
 import { getDeviceFingerprint } from './device'
+import { getRemoteControlManager } from './remote-control'
+import { existsSync, readFileSync } from 'node:fs'
 import { localDb } from './local-db'
 import { getOrCreateSalt, deriveDbKey } from './local-db/crypto'
 import { verifyAll, verifyIntegrity } from './runtime-resolver'
@@ -394,6 +396,65 @@ console.warn = (...args: unknown[]) => { log.warn(...args); if (mirrorToConsole)
 console.error = (...args: unknown[]) => { log.error(...args); if (mirrorToConsole) __consoleError(...args) }
 
 const serviceManager = new ServiceManager()
+// ===== 自动化工作台：远程控制（IM→设备→执行→回传） =====
+// 桌面端作为"执行器"：连接云端 sync 网关接收 remote:command，执行后 remote:result 回传
+const remoteControl = getRemoteControlManager()
+const remoteApiBase = ST_API_BASE.replace(/\/api$/, '')
+const remoteAuthFile = join(app.getPath('userData'), 'openclaw-chat', 'auth.json')
+
+/** 对话服务（registerIpcHandlers 内初始化，供自动化工作台 AI 咨询使用） */
+let openClawChatService: OpenClawChatService | null = null
+
+/** 读取云端登录 token（auth.json 由渲染层登录时同步写入） */
+function readRemoteToken(): string {
+  try {
+    if (!existsSync(remoteAuthFile)) return ''
+    const parsed = JSON.parse(readFileSync(remoteAuthFile, 'utf8')) as { token?: unknown }
+    return typeof parsed?.token === 'string' ? parsed.token : ''
+  } catch {
+    return ''
+  }
+}
+
+/** 启动远程控制：注入依赖 + 读取本地 token，有 token 即连接云端网关 */
+async function bootstrapRemoteControl(): Promise<void> {
+  try {
+    remoteControl.setApiBaseProvider(async () => remoteApiBase)
+    remoteControl.setAuthTokenProvider(async () => readRemoteToken() || null)
+    remoteControl.setStatusProvider(() => serviceManager.getAllStatus())
+    remoteControl.setChatProvider(createRemoteChatProvider())
+    const fp = await getDeviceFingerprint()
+    remoteControl.setConfig({ serverUrl: remoteApiBase, token: readRemoteToken(), deviceId: fp.fingerprint })
+    if (readRemoteToken()) {
+      remoteControl.updateSettings({ enabled: true, securityLevel: 'medium' })
+    }
+  } catch (err) {
+    console.warn('[remote-control] bootstrap failed:', err)
+  }
+}
+
+/** 自动化工作台对话咨询：未知命令 → 本地 OpenClaw AI 回答 */
+function createRemoteChatProvider(): (text: string) => Promise<string | null> {
+  return async (text: string): Promise<string | null> => {
+    const svc = openClawChatService
+    const token = readRemoteToken()
+    if (!svc || !token) return null
+    let fullText = ''
+    try {
+      await svc.send(
+        { text, token },
+        (chunk) => { fullText += chunk },
+        () => undefined,
+        (finalText) => { fullText = finalText ?? fullText },
+      )
+    } catch (err) {
+      console.warn('[remote-control] 对话咨询失败，回退无法识别:', (err as Error).message)
+      return null
+    }
+    const trimmed = fullText?.trim?.() ?? ''
+    return trimmed ? trimmed.slice(0, 2000) : null
+  }
+}
 const isDev = !app.isPackaged
 let appUpdater: AppUpdater | null = null
 
@@ -437,7 +498,13 @@ if (!gotLock) {
     appUpdater = new AppUpdater(mainWindow)
     appUpdater.checkForUpdates()
     registerIpcHandlers()
-
+    // 自动化工作台 D4：开机自启（托盘常驻，保证 IM→设备闭环开机即用）
+    try {
+      app.setLoginItemSettings({ openAtLogin: true })
+    } catch (err) {
+      console.warn('[remote-control] 开机自启设置失败:', err)
+    }    // 自动化工作台：启动远程控制（有登录 token 即连接云端）
+    void bootstrapRemoteControl()
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         createMainWindow(serviceManager, isDev)
@@ -449,6 +516,7 @@ if (!gotLock) {
   app.on('before-quit', () => {
     setQuitting(true)
     void serviceManager.stopAll()
+    remoteControl.destroy()
   })
 
   app.on('will-quit', () => {
@@ -469,7 +537,7 @@ function registerIpcHandlers(): void {
   const llmIntegrations = new LlmIntegrationsStore(
     join(app.getPath('userData'), 'llm-integrations.json'),
   )
-  const openClawChat = new OpenClawChatService({
+  openClawChatService = new OpenClawChatService({
     callOpenClaw: createLocalOpenClawWsCaller(),
     callCustomModel: createCustomLlmCaller(llmIntegrations),
     ensureOpenClaw: async () => {
@@ -516,7 +584,7 @@ function registerIpcHandlers(): void {
         }
       }
       try {
-        const result = await openClawChat.send(
+        const result = await openClawChatService!.send(
           {
             text: payload.text,
             token: payload.token,
@@ -545,13 +613,26 @@ function registerIpcHandlers(): void {
   )
 
   ipcMain.on('openclaw-chat:abort', () => {
-    openClawChat.abort()
+    openClawChatService!.abort()
   })
 
   // 登录/刷新 token 时同步写 auth.json（n8n-run-workflow 工具卡读 ST_AUTH_FILE）
   ipcMain.on('openclaw-chat:sync-auth', (_event, token: unknown) => {
     if (typeof token === 'string' && token.trim()) {
-      openClawChat.syncAuthToken(token.trim())
+      openClawChatService!.syncAuthToken(token.trim())
+      // 自动化工作台：登录/刷新 token 后更新远程控制连接（IM→设备闭环需要有效 JWT）
+      void (async () => {
+        const fp = await getDeviceFingerprint()
+        remoteControl.setConfig({ serverUrl: remoteApiBase, token: token.trim(), deviceId: fp.fingerprint })
+        if (!remoteControl.getSettings().enabled) {
+          remoteControl.updateSettings({ enabled: true, securityLevel: 'medium' })
+        } else {
+          await remoteControl.disconnect()
+          await remoteControl.connect().catch((err: Error) => {
+            console.error('[remote-control] reconnect on token refresh failed:', err)
+          })
+        }
+      })()
     }
   })
 

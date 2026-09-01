@@ -1020,6 +1020,9 @@ export type RemoteCommandType =
   | "format_disk"
   | "execute_system_command"
   | "modify_system_config"
+    | "file_read"
+  | "file_open"
+    | "run_scenario"
   | "unknown";
 
 /** 远程控制安全等级 */
