@@ -75,6 +75,23 @@ export function relocateHermesRuntime(hermesRoot: string): HermesRelocateResult 
       }
     }
   }
+  // 2b. 复制运行时 DLL（python311.dll / vcruntime140.dll / python3.dll 等）——
+  //     只复制 python.exe 会报 0xC0000135 缺少 DLL，venv 启动直接失败
+  try {
+    for (const dll of fs.readdirSync(managedPython)) {
+      if (!/\.dll$/i.test(dll)) continue
+      const src = path.join(managedPython, dll)
+      const dst = path.join(venvScripts, dll)
+      const srcSize = fs.statSync(src).size
+      const dstSize = fs.existsSync(dst) ? fs.statSync(dst).size : 0
+      if (dstSize !== srcSize) {
+        fs.copyFileSync(src, dst)
+        changed = true
+      }
+    }
+  } catch {
+    // ignore（目录不可读等场景）
+  }
 
   // 3. 重写 site-packages 中内嵌旧源码路径的 editable 文件
   if (oldHome && !samePath(oldHome, managedPython)) {
