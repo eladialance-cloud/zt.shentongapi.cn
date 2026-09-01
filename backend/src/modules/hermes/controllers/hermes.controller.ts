@@ -18,7 +18,7 @@ import {
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { HermesService } from '../services/hermes.service';
-import { CreateInstanceDto, PaginationDto, ExecuteTaskDto, RateSkillDto, CreateSkillDto } from '../dto/hermes.dto';
+import { PaginationDto, RateSkillDto, CreateSkillDto } from '../dto/hermes.dto';
 import { HermesReportDto } from '../dto/hermes-report.dto';
 
 @ApiTags('Hermes')
@@ -43,100 +43,6 @@ export class HermesController {
     @Body() dto: HermesReportDto,
   ) {
     return this.service.reportLocalExecution(userId, dto);
-  }
-
-  // ============ 实例管理 ============
-
-  @Get('instances')
-  @ApiOperation({ summary: '获取 Hermes 实例列表' })
-  listInstances(@CurrentUser() user: ICurrentUser) {
-    return this.service.listInstances(user.userId);
-  }
-
-  @Post('instances')
-  @ApiOperation({ summary: '创建 Hermes 实例' })
-  createInstance(
-    @CurrentUser() user: ICurrentUser,
-    @Body() dto: CreateInstanceDto,
-  ) {
-    return this.service.createInstance(user.userId, dto);
-  }
-
-  @Get('instances/:id')
-  @ApiOperation({ summary: '获取 Hermes 实例详情' })
-  getInstance(
-    @CurrentUser() user: ICurrentUser,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
-    return this.service.getInstance(user.userId, id);
-  }
-
-  @Post('instances/:id/start')
-  @ApiOperation({ summary: '启动 Hermes 实例' })
-  startInstance(
-    @CurrentUser() user: ICurrentUser,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
-    return this.service.startInstance(user.userId, id);
-  }
-
-  @Post('instances/:id/stop')
-  @ApiOperation({ summary: '停止 Hermes 实例' })
-  stopInstance(
-    @CurrentUser() user: ICurrentUser,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
-    return this.service.stopInstance(user.userId, id);
-  }
-
-  @Delete('instances/:id')
-  @ApiOperation({ summary: '删除 Hermes 实例' })
-  async deleteInstance(
-    @CurrentUser() user: ICurrentUser,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
-    await this.service.deleteInstance(user.userId, id);
-    return null;
-  }
-
-  @Get('instances/:id/call-logs')
-  @ApiOperation({ summary: '获取实例任务历史' })
-  getCallLogs(
-    @CurrentUser() user: ICurrentUser,
-    @Param('id', ParseIntPipe) id: number,
-    @Query() query: PaginationDto,
-  ) {
-    return this.service.getCallLogs(user.userId, id, query);
-  }
-
-  @Post('instances/:id/execute')
-  @ApiOperation({ summary: '执行编排任务' })
-  executeTask(
-    @CurrentUser() user: ICurrentUser,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: ExecuteTaskDto,
-  ) {
-    return this.service.executeTask(user.userId, id, dto);
-  }
-
-  @Post('instances/:id/skills/:skillId/unmount')
-  @ApiOperation({ summary: '卸载技能包' })
-  unmountSkill(
-    @CurrentUser() user: ICurrentUser,
-    @Param('id', ParseIntPipe) id: number,
-    @Param('skillId', ParseIntPipe) skillId: number,
-  ) {
-    return this.service.unmountSkill(user.userId, id, skillId);
-  }
-
-  @Post('instances/:id/skills/:skillId/mount')
-  @ApiOperation({ summary: '挂载技能包' })
-  mountSkill(
-    @CurrentUser() user: ICurrentUser,
-    @Param('id', ParseIntPipe) id: number,
-    @Param('skillId', ParseIntPipe) skillId: number,
-  ) {
-    return this.service.mountSkill(user.userId, id, skillId);
   }
 
   // ============ 技能市场 ============

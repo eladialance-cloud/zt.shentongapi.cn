@@ -2,7 +2,7 @@
 // 团队任务：需求档案确认后自动开始（Hermes 逐步编排），进入页面轮询自动补新任务与节点进度
 // 我的任务 / Hermes 源：统一接口合并展示，动作仍走旧路径
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Empty, Input, Select, Spin, Switch } from "antd";
+import { Button, Empty, Input, Select, Spin, Switch, Tabs } from "antd";
 import {
   ApartmentOutlined,
   ClockCircleOutlined,
@@ -20,36 +20,21 @@ import * as taskApi from "@/api/task-api";
 import type { UnifiedTaskItem } from "@/api/task-api";
 import type { TeamTask } from "@/types/team";
 import {
-  mapHermesStatus,
   mapTaskStatus,
   mapTeamStatus,
   mergeUnifiedWithFallback,
   groupTasksByBatch,
   sortByCreatedAtDesc,
-  SOURCE_TAG_META,
   sourceColorOf,
   sourceLabelOf,
   STATUS_TAG_META,
 } from "./unified";
-import type { TaskGroup, UnifiedTask, UnifiedTaskSource, UnifiedTaskStatus } from "./unified";
+import type { UnifiedTask, UnifiedTaskSource, UnifiedTaskStatus } from "./unified";
 import { countRunning, nativeTaskId, shouldAutoStart, submitStepRunner } from "./task-runner";
 import PipelineView from "./PipelineView";
 import ScheduledPanel from "./ScheduledPanel";
 import { listScheduledTasks } from "@/api/scheduled-task-api";
-import EdictView from "./EdictView";
-import JunjiPanelsHub from "./JunjiPanelsHub";
-import { onEdictBoardUpdated } from "@/api/edict-api";
-import { OFFICIALS_COUNT } from "./edict-data";
-import edictStyles from "./edict.module.css";
 import styles from "./styles.module.css";
-
-/** 时间格式化（与 Channels 页一致） */
-function formatTime(v: unknown): string {
-  if (!v) return "-";
-  const d = new Date(v as string);
-  if (isNaN(d.getTime())) return String(v);
-  return d.toLocaleString("zh-CN", { hour12: false });
-}
 
 /** 相对时间（列表卡片用）：刚刚 / x 分钟前 / x 小时前 / 日期 */
 function formatRelative(v: unknown): string {
@@ -160,70 +145,15 @@ async function loadMyTaskSource(): Promise<UnifiedTask[]> {
   }
 }
 
-/** 三省六部看板状态 → 统一状态（本地编排记录） */
-function mapEdictStateToHermes(state: string): UnifiedTaskStatus {
-  if (state === "Done") return "done";
-  if (state === "Cancelled") return "cancelled";
-  if (state === "Blocked") return "failed";
-  if (state === "Taizi" || state === "Pending") return "todo";
-  return "running";
-}
-
-/**
- * P4：Hermes 源 = 本地三省六部编排记录（edict 看板 JJC- 任务）。
- * 原实现调云端 GET /hermes/instances（云实例表），桌面端永远为空（死入口）。
- */
-async function loadHermesSource(): Promise<UnifiedTask[]> {
-  try {
-    const { isEdictAvailable, edictBoard } = await import("@/api/edict-api");
-    if (isEdictAvailable()) {
-      const board = await edictBoard();
-      return (board.tasks || [])
-        .filter((t) => /^JJC-/i.test(t.id || ""))
-        .map((t) => ({
-          key: "hermes:" + t.id,
-          source: "hermes" as const,
-          title: t.title || t.id,
-          status: mapEdictStateToHermes(t.state),
-          rawStatus: t.state,
-          assignee: t.assigneeOrg || t.org,
-          createdAt: t.createdAt || t.updatedAt || new Date().toISOString(),
-          finishedAt: t.state === "Done" || t.state === "Cancelled" ? t.updatedAt || t.createdAt || null : null,
-        }));
-    }
-  } catch (err) {
-    console.warn("[TaskCenter] 加载本地三省六部记录失败:", err);
-  }
-  try {
-    // 非桌面环境兜底：云端 Hermes 实例列表
-    const instances = await (await import("@/api/hermes-api")).listInstances();
-    return (instances ?? []).map((inst) => {
-      const loose = inst as unknown as Record<string, unknown>;
-      return {
-        key: "hermes:" + String(inst.id ?? loose.instanceId ?? "?"),
-        source: "hermes",
-        title: String(loose.taskDesc ?? loose.task ?? inst.name ?? "Hermes 调用"),
-        status: mapHermesStatus(String(inst.status ?? "pending")),
-        rawStatus: String(inst.status ?? "pending"),
-        createdAt: String(inst.createdAt ?? loose.startedAt ?? new Date().toISOString()),
-      };
-    });
-  } catch (err) {
-    console.warn("[TaskCenter] 加载 Hermes 实例列表失败:", err);
-    return [];
-  }
-}
-
 /** 三源并发拉取（统一接口不可用时的降级路径） */
 async function loadAll(): Promise<{
   tasks: UnifiedTask[];
   teamIdByKey: Map<string, number>;
   teamTaskByKey: Map<string, TeamTask>;
 }> {
-  const [teamResult, myTasks, hermesTasks] = await Promise.all([
+  const [teamResult, myTasks] = await Promise.all([
     loadTeamContext(),
     loadMyTaskSource(),
-    loadHermesSource(),
   ]);
   const teamTasks: UnifiedTask[] = [];
   teamResult.teamTaskByKey.forEach((t, key) => {
@@ -244,7 +174,7 @@ async function loadAll(): Promise<{
     });
   });
   return {
-    tasks: sortByCreatedAtDesc([...teamTasks, ...myTasks, ...hermesTasks]),
+    tasks: sortByCreatedAtDesc([...teamTasks, ...myTasks]),
     teamIdByKey: teamResult.teamIdByKey,
     teamTaskByKey: teamResult.teamTaskByKey,
   };
@@ -337,19 +267,7 @@ export default function TaskCenter() {
           setTeamTaskByKey(result.teamTaskByKey);
           unifiedTasks = result.tasks;
         }
-        // P4：合并本地三省六部编排记录（Hermes 源）到统一列表（与云端 unified 结果按 key 去重）
-        let finalTasks = unifiedTasks;
-        if (sourceFilter === "all" || sourceFilter === "hermes") {
-          const hermesLocal = await loadHermesSource().catch(() => []);
-          if (hermesLocal.length) {
-            const seen = new Set(finalTasks.map((t) => t.key));
-            finalTasks = [
-              ...finalTasks,
-              ...hermesLocal.filter((t) => !seen.has(t.key) && (statusFilter === "all" || t.status === statusFilter)),
-            ];
-          }
-        }
-        setTasks(finalTasks);
+        setTasks(unifiedTasks);
       } catch (err) {
         console.warn("[TaskCenter] 加载任务失败:", err);
         setTasks([]);
@@ -398,17 +316,6 @@ export default function TaskCenter() {
       }
     });
   }, [tasks, token, autoStartOn, teamIdByKey, loadData]);
-
-  // 三省六部看板订阅：真实任务数 badge（主进程 3s 轮询推送）
-  useEffect(() => {
-    let off: (() => void) | null = null;
-    try {
-      off = onEdictBoardUpdated((b) => setEdictTaskCount(b.tasks.length));
-    } catch {
-      /* 非桌面环境跳过 */
-    }
-    return () => off?.();
-  }, []);
 
   // 清理：离开待执行的任务从派发集合中移除（允许重试重新派发）
   useEffect(() => {
@@ -464,16 +371,8 @@ export default function TaskCenter() {
       }));
   }, [filtered]);
 
-  /** 军机处/三省六部 视图 Tab（v4：军机处置首默认） */
-  const [activeEdictTab, setActiveEdictTab] = useState<"junji" | "edict" | "scheduled" | "mine" | "logs">("junji");
-  /** P3：军机处总览抽屉「查看该官署任务」→ 三省六部看板筛选 */
-  const [edictOrgFilter, setEdictOrgFilter] = useState<string | null>(null);
-  const handleNavigateBoard = useCallback((orgName?: string) => {
-    setEdictOrgFilter(orgName ?? null);
-    setActiveEdictTab("edict");
-  }, []);
-  /** 三省六部看板任务数（真实 board 推送） */
-  const [edictTaskCount, setEdictTaskCount] = useState(0);
+  /** 视图 Tab（我的任务默认） */
+  const [activeTab, setActiveTab] = useState<"mine" | "scheduled" | "logs">("mine");
   /** 定时任务数（真实 API） */
   const [scheduledCount, setScheduledCount] = useState(0);
   useEffect(() => {
@@ -491,125 +390,21 @@ export default function TaskCenter() {
   const mineCount = tasks.length;
   return (
     <div className={styles.pageContainer}>
-      {/* ===== v4 Tab 栏：军机处 / 三省六部 / 定时任务 / 我的任务 / 执行日志 ===== */}
-      <div className={edictStyles.tabsBar} style={{ marginBottom: 14 }}>
-        <button
-          className={[
-            edictStyles.tabItem,
-            edictStyles.tabItemJunji,
-            activeEdictTab === "junji" ? edictStyles.tabItemJunjiActive : "",
-          ].filter(Boolean).join(" ")}
-          onClick={() => setActiveEdictTab("junji")}
-        >
-          🏛 军机处
-          <span className={edictStyles.tabNew}>新</span>
-          <span className={edictStyles.tabBadge}>{OFFICIALS_COUNT}</span>
-        </button>
-        <button
-          className={[
-            edictStyles.tabItem,
-            activeEdictTab === "edict" ? edictStyles.tabItemActive : "",
-          ].filter(Boolean).join(" ")}
-          onClick={() => setActiveEdictTab("edict")}
-        >
-          📜 三省六部
-          <span className={edictStyles.tabNew}>新</span>
-          <span className={edictStyles.tabBadge}>{edictTaskCount}</span>
-        </button>
-        <button className={edictStyles.tabItem} onClick={() => setActiveEdictTab("scheduled")}>
-          ⏰ 定时任务 <span className={edictStyles.tabBadge}>{scheduledCount}</span>
-        </button>
-        <button className={edictStyles.tabItem} onClick={() => setActiveEdictTab("mine")}>
-          📄 我的任务 <span className={edictStyles.tabBadge}>{mineCount}</span>
-        </button>
-        <button className={edictStyles.tabItem} onClick={() => setActiveEdictTab("logs")}>
-          🧾 执行日志
-        </button>
-      </div>
-
-      {/* ===== 军机处视图（默认） ===== */}
-      {activeEdictTab === "junji" && <JunjiPanelsHub onNavigateBoard={handleNavigateBoard} />}
-
-      {/* ===== 三省六部视图 ===== */}
-      {activeEdictTab === "edict" && (
-        <EdictView orgFilter={edictOrgFilter} onClearOrgFilter={() => setEdictOrgFilter(null)} />
-      )}
-
-      {/* ===== 定时任务视图 ===== */}
-      {activeEdictTab === "scheduled" && (
-        <div className={styles.pageContainerInner}>
-          <div className={styles.pageHeader}>
-            <div className={styles.pageTitle}>
-              <span className={styles.pageTitleIcon}>
-                <ClockCircleOutlined />
+      <Tabs
+        activeKey={activeTab}
+        onChange={(k) => setActiveTab(k as "mine" | "scheduled" | "logs")}
+        style={{ marginBottom: 14 }}
+        items={[
+          {
+            key: "mine",
+            label: (
+              <span className={styles.tabLabel}>
+                📄 我的任务
+                {mineCount > 0 && <span className={styles.tabCount}>{mineCount}</span>}
               </span>
-              <div className={styles.pageTitleText}>
-                <span className={styles.pageTitleMain}>定时任务</span>
-                <span className={styles.pageTitleSub}>到期由调度器触发执行，创建走对话/OpenClaw</span>
-              </div>
-            </div>
-          </div>
-          <ScheduledPanel />
-        </div>
-      )}
-
-{/* ===== 执行日志视图 ===== */}
-      {activeEdictTab === "logs" && (
-        <div className={styles.pageContainerInner}>
-          <div className={styles.pageHeader}>
-            <div className={styles.pageTitle}>
-              <span className={styles.pageTitleIcon}>
-                <RobotOutlined />
-              </span>
-              <div className={styles.pageTitleText}>
-                <span className={styles.pageTitleMain}>执行日志</span>
-                <span className={styles.pageTitleSub}>任务执行历史（含三省六部流转，详情见各任务）</span>
-              </div>
-            </div>
-            <div className={styles.headerActions}>
-              <Button
-                className={styles.ghostBtn}
-                icon={<ReloadOutlined />}
-                loading={loading}
-                onClick={() => void loadData(false)}
-              >
-                刷新
-              </Button>
-            </div>
-          </div>
-          <div className={styles.filterBar}>
-            <Input
-              className={styles.searchInput}
-              prefix={<SearchOutlined />}
-              placeholder="搜索执行日志…"
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-              allowClear
-              style={{ width: 260 }}
-            />
-            <span className={styles.filterCount}>共 {logEntries.length} 条执行记录</span>
-          </div>
-          <div className={styles.logList}>
-            {logEntries.length === 0 ? (
-              <Empty description="暂无执行记录" />
-            ) : (
-              logEntries.map((e) => (
-                <div key={e.key} className={styles.logRow} onClick={() => setSelected(e.task)}>
-                  <span className={styles[PILL_CLS[e.status]]}>{STATUS_TAG_META[e.status].label}</span>
-                  <span className={styles.logSource}>{sourceLabelOf(e.task)}</span>
-                  <span className={styles.logTitle}>{e.title}</span>
-                  <span className={styles.logTime}>创建 {formatRelative(e.createdAt)}</span>
-                  {e.finishedAt && <span className={styles.logTime}>完成 {formatRelative(e.finishedAt)}</span>}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-{/* ===== 我的任务视图 ===== */}
-      {activeEdictTab === "mine" && (
-      <>
+            ),
+            children: (
+              <>
       {/* ===== 页头 ===== */}
       <div className={styles.pageHeader}>
         <div className={styles.pageTitle}>
@@ -618,7 +413,7 @@ export default function TaskCenter() {
           </span>
           <div className={styles.pageTitleText}>
             <span className={styles.pageTitleMain}>任务中心</span>
-            <span className={styles.pageTitleSub}>Hermes 编排 · 三省六部 · 产出逐项确认</span>
+            <span className={styles.pageTitleSub}>Hermes 编排 · 产出逐项确认</span>
           </div>
         </div>
         <div className={styles.headerActions}>
@@ -770,8 +565,88 @@ export default function TaskCenter() {
           )}
         </div>
       </div>
-      </>
-      )}
+              </>
+            ),
+          },
+          {
+            key: "scheduled",
+            label: (
+              <span className={styles.tabLabel}>
+                ⏰ 定时任务
+                {scheduledCount > 0 && <span className={styles.tabCount}>{scheduledCount}</span>}
+              </span>
+            ),
+            children: <>{}        <div className={styles.pageContainerInner}>
+          <div className={styles.pageHeader}>
+            <div className={styles.pageTitle}>
+              <span className={styles.pageTitleIcon}>
+                <ClockCircleOutlined />
+              </span>
+              <div className={styles.pageTitleText}>
+                <span className={styles.pageTitleMain}>定时任务</span>
+                <span className={styles.pageTitleSub}>到期由调度器触发执行，创建走对话/OpenClaw</span>
+              </div>
+            </div>
+          </div>
+          <ScheduledPanel />
+        </div></>,
+          },
+          {
+            key: "logs",
+            label: <>🧾 执行日志</>,
+            children: <>{}        <div className={styles.pageContainerInner}>
+          <div className={styles.pageHeader}>
+            <div className={styles.pageTitle}>
+              <span className={styles.pageTitleIcon}>
+                <RobotOutlined />
+              </span>
+              <div className={styles.pageTitleText}>
+                <span className={styles.pageTitleMain}>执行日志</span>
+                <span className={styles.pageTitleSub}>任务执行历史（含团队/Hermes 流转，详情见各任务）</span>
+              </div>
+            </div>
+            <div className={styles.headerActions}>
+              <Button
+                className={styles.ghostBtn}
+                icon={<ReloadOutlined />}
+                loading={loading}
+                onClick={() => void loadData(false)}
+              >
+                刷新
+              </Button>
+            </div>
+          </div>
+          <div className={styles.filterBar}>
+            <Input
+              className={styles.searchInput}
+              prefix={<SearchOutlined />}
+              placeholder="搜索执行日志…"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              allowClear
+              style={{ width: 260 }}
+            />
+            <span className={styles.filterCount}>共 {logEntries.length} 条执行记录</span>
+          </div>
+          <div className={styles.logList}>
+            {logEntries.length === 0 ? (
+              <Empty description="暂无执行记录" />
+            ) : (
+              logEntries.map((e) => (
+                <div key={e.key} className={styles.logRow} onClick={() => setSelected(e.task)}>
+                  <span className={styles[PILL_CLS[e.status]]}>{STATUS_TAG_META[e.status].label}</span>
+                  <span className={styles.logSource}>{sourceLabelOf(e.task)}</span>
+                  <span className={styles.logTitle}>{e.title}</span>
+                  <span className={styles.logTime}>创建 {formatRelative(e.createdAt)}</span>
+                  {e.finishedAt && <span className={styles.logTime}>完成 {formatRelative(e.finishedAt)}</span>}
+                </div>
+              ))
+            )}
+          </div>
+        </div></>,
+          },
+        ]}
+      />
     </div>
   );
 }

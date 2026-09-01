@@ -156,7 +156,7 @@ async function bootstrap() {
   console.log(report.join('\n'));
   console.log('');
   console.log('下一步：把 .env / systemd 的 AES_KEY 更新为新密钥，然后重启后端；确认业务正常后删除旧密钥备份。');
-  console.log('注意：请保留旧密钥直到确认所有功能正常（聊天/模型/OSS/支付/工作流/官署技能）。');
+  console.log('注意：请保留旧密钥直到确认所有功能正常（聊天/模型/OSS/支付/工作流/技能）。');
 
   await app.close();
 }

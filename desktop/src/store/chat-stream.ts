@@ -11,7 +11,6 @@
 import { createOpenClawChat, type OpenClawChatHandle } from '@/api/openclaw-chat-api'
 import * as chatApi from '@/api/chat-api'
 import * as marketApi from '@/api/market-api'
-import { officeBridge, isRetrieveTool } from '@/pages/Office/services/officeBridge'
 import type { ChatMessage, ToolCallInfo } from '@/types/chat'
 import type { OpenClawChatMessage, OpenClawToolCall } from '@shared/types'
 import { isVideoClawTool } from '@/utils/video-claw-tool'
@@ -338,8 +337,7 @@ function ensureHandle(): OpenClawChatHandle {
     snapshot = { ...snapshot, content }
     if (!replyGenerated) {
       replyGenerated = true
-      officeBridge.onReplyGenerated()
-    }
+        }
     emit()
   })
 
@@ -355,8 +353,6 @@ function ensureHandle(): OpenClawChatHandle {
 
   handle.onToolCall((tc) => {
     const mapped = upsertToolCall(tc)
-    officeBridge.onToolCall(tc.name)
-    if (isRetrieveTool(tc.name)) officeBridge.onAgentRetrieve()
     // 视频相关工具：自动拉起服务 + 订阅任务进度
     if (isVideoClawTool(tc.name)) {
       ensureVideoClawStarted()
@@ -375,8 +371,6 @@ function ensureHandle(): OpenClawChatHandle {
     }
     // OpenClaw 对话安装的内容自动同步进「我的」
     void marketApi.syncChat().catch(() => undefined)
-    officeBridge.onReview()
-    setTimeout(() => officeBridge.onTaskComplete(), 1500)
     if (!abortRequested) {
       void runSedimentation()
     }
@@ -388,8 +382,7 @@ function ensureHandle(): OpenClawChatHandle {
     const sessionId = snapshot.streamingSessionId
     const content = snapshot.content
     console.error('[chat-stream] openclaw error:', err)
-    officeBridge.onSystemError(err.message)
-    if (sessionId != null && content.trim()) {
+      if (sessionId != null && content.trim()) {
       persistAssistant(sessionId, {
         role: 'assistant',
         content: content + '\n\n[生成中断]',
@@ -571,8 +564,7 @@ export async function startChatSend(params: StartChatSendParams): Promise<void> 
     await h.send(params.content, params.history, params.knowledgeBaseId, params.sessionId, params.modelId)
   } catch (err) {
     const messageText = err instanceof Error ? err.message : String(err)
-    officeBridge.onSystemError(messageText)
-    if (snapshot.content.trim()) {
+      if (snapshot.content.trim()) {
       persistAssistant(params.sessionId, {
         role: 'assistant',
         content: snapshot.content + '\n\n[生成中断]',

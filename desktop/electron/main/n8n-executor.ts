@@ -2,7 +2,7 @@
 //
 // 背景：本地 N8N 运行在用户桌面（127.0.0.1:5678），后端服务器无法触达，
 // 旧实现由后端返回假成功。这里由桌面端直连本地 N8N webhook 真跑，
-// 并把云端 token 注入 payload（与官署 n8n-run-workflow 技能行为对齐）。
+// 并把云端 token 注入 payload（与 n8n-run-workflow 技能行为对齐）。
 
 import { app } from 'electron';
 import { readFileSync, existsSync } from 'node:fs';

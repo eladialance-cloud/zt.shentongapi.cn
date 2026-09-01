@@ -69,7 +69,6 @@ import type { LocalBrief } from '../shared/types'
 import { createStepRunner, type OrchestrateDeps, type OrchestrateInput, type StepRunnerDeps, type StepRunnerHandle, type TeamMemberProfile, type TeamTaskStatus } from './hermes-orchestrator'
 import { buildMemberProfiles, type MemberRow } from './hermes-member-profile'
 import { listSkills, searchSkills, installSkill, updateSkills, uninstallSkill, checkSkills, installSkillLocal } from './hermes-skills'
-import { getEvolution } from './hermes-evolution'
 import { handleMemoryOp } from './hermes-memory'
 import { HermesClient } from './hermes-client'
 import {
@@ -82,8 +81,6 @@ import {
   testLogin,
 } from './platform-login'
 import { registerVideoParserIpc } from './video-parser'
-import { createEdictDeps, createEdictExtraDeps, ensureEdictHermesProfiles, registerEdictIpc } from './edict-bridge'
-import { registerEdictExtraIpc } from './edict-extra'
 
 // ===== Hermes 编排依赖（团队驱动执行） =====
 
@@ -556,35 +553,6 @@ function registerIpcHandlers(): void {
     }
   })
 
-  // ===== 三省六部看板（OpenClaw 太子 + Hermes 官署执行；edict:* IPC + 看板轮询推送） =====
-  const edictDeps = createEdictDeps()
-  const disposeEdictIpc = registerEdictIpc(edictDeps, { pollIntervalMs: 3000 })
-  const disposeEdictExtraIpc = registerEdictExtraIpc(
-    createEdictExtraDeps(edictDeps, {
-      // P1：Hermes 真实运行状态（serviceManager 服务状态 + 端口监听），替代 config.yaml 假状态
-      getHermesRuntimeStatus: async () => {
-        const st = await serviceManager.getServiceStatus("hermes");
-        const alive = st === "running";
-        return {
-          alive,
-          probe: alive,
-          status: alive ? "Hermes 运行时正常" : st === "unknown" ? "Hermes 状态未知（未启动）" : "Hermes 运行时未启动",
-          checkedAt: new Date().toISOString(),
-        };
-      },
-    }),
-    {}
-  )
-  // 引导 11 个官署 Hermes profiles（幂等：缺失创建 + SOUL.md 注入 + config.yaml 同步），失败不影响启动
-  ensureEdictHermesProfiles().then((r) => {
-    if (r.created.length) console.log('[edict-bridge] 已引导官署 profiles: ' + r.created.join(','))
-    else if (!r.ok) console.warn('[edict-bridge] 官署 profiles 引导跳过: ' + (r.reason || '未知'))
-  })
-  app.on('will-quit', () => {
-    disposeEdictIpc()
-    disposeEdictExtraIpc()
-  })
-
   // 注入用户 llm-proxy 静态 Key（登录后由渲染层调用；OpenClaw 的 openai provider 指向云端 llm-proxy）
   ipcMain.on('openclaw-chat:set-proxy-key', (_event, key: string) => {
     serviceManager.setOpenClawProxyKey(key || '')
@@ -614,40 +582,6 @@ function registerIpcHandlers(): void {
     })
     if (res.canceled || !res.filePaths[0]) return { ok: false, error: '已取消选择' }
     return installSkillLocal(res.filePaths[0])
-  })
-  ipcMain.handle('hermes-evolution:get', async () => {
-    try {
-      return await getEvolution(new HermesClient())
-    } catch (err) {
-      // 原生客户端初始化失败（极端情况）降级 CLI，不阻断进化页
-      const msg = err instanceof Error ? err.message : String(err)
-      console.warn('[hermes-evolution] 原生客户端初始化失败，降级 CLI:', msg)
-      return getEvolution()
-    }
-  })
-  // ===== Hermes 原生策展（P1：curator 状态 / 暂停恢复 / 立即运行；未接入时返回降级结果，不抛错） =====
-  ipcMain.handle('hermes-curator:get', async () => {
-    try {
-      const state = await new HermesClient().getCurator()
-      return { ok: true, state }
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
-    }
-  })
-  ipcMain.handle('hermes-curator:set-paused', async (_e, paused: unknown) => {
-    try {
-      const res = await new HermesClient().setCuratorPaused(!!paused)
-      return { ok: res.ok !== false }
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
-    }
-  })
-  ipcMain.handle('hermes-curator:run', async () => {
-    try {
-      return await new HermesClient().runCurator()
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
-    }
   })
   // ===== Hermes 官方状态（P1：/api/status + /api/system/stats，面板只读；各失败独立降级为 null） =====
   ipcMain.handle('hermes-status:get', async () => {

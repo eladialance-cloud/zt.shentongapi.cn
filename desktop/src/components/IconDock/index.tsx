@@ -8,12 +8,9 @@ import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Tooltip } from 'antd'
 import {
-  Building2,
   MessageSquare,
-  Workflow,
   BookOpen,
   Bot,
-  Users,
   Settings,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -28,12 +25,9 @@ interface DockItem {
 }
 
 const DOCK_ITEMS: DockItem[] = [
-  { key: 'office',    icon: Building2,     label: 'AI 办公室',  shortcut: '⌘1', path: '/office'      },
   { key: 'chat',      icon: MessageSquare,  label: '对话',       shortcut: '⌘2', path: '/chat'        },
-  { key: 'hermes',    icon: Workflow,       label: 'Hermes',    shortcut: '⌘3', path: '/hermes'      },
   { key: 'knowledge', icon: BookOpen,       label: '知识库',     shortcut: '⌘4', path: '/knowledge'   },
   { key: 'agents',    icon: Bot,            label: '智能体',     shortcut: '⌘5', path: '/agent-market' },
-  { key: 'team',      icon: Users,          label: '团队',       shortcut: '⌘6', path: '/team'        },
   { key: 'settings',  icon: Settings,       label: '设置',       shortcut: '⌘7', path: '/settings'    },
 ]
 
@@ -42,7 +36,6 @@ export default function IconDock() {
   const location = useLocation()
 
   const isActive = (path: string): boolean => {
-    if (path === '/office') return location.pathname === '/office'
     return location.pathname === path || location.pathname.startsWith(path + '/')
   }
 

@@ -1,37 +1,5 @@
-import { IsString, IsOptional, IsArray, IsNumber, IsEnum, IsObject, Min, Max, IsInt } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsNumber, IsObject, Min, Max, IsInt } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-
-export class CreateInstanceDto {
-  @ApiProperty({ description: '实例名称', maxLength: 64 })
-  @IsString()
-  name: string;
-
-  @ApiPropertyOptional({ description: '初始挂载技能包ID列表' })
-  @IsOptional()
-  @IsArray()
-  skillIds?: number[];
-
-  @ApiPropertyOptional({ description: '执行目标类型：team=OPC团队, workflow=N8N工作流' })
-  @IsOptional()
-  @IsEnum(['team', 'workflow'])
-  executionType?: 'team' | 'workflow';
-
-  @ApiPropertyOptional({ description: 'OPC 团队 ID（executionType=team 时必填）' })
-  @IsOptional()
-  @IsNumber()
-  teamId?: number;
-
-  @ApiPropertyOptional({ description: 'N8N 工作流 ID（executionType=workflow 时必填）' })
-  @IsOptional()
-  @IsString()
-  workflowId?: string;
-
-  @ApiPropertyOptional({ description: '关联知识库 ID（可选）' })
-  @IsOptional()
-  @IsNumber()
-  knowledgeBaseId?: number;
-
-}
 
 export class PaginationDto {
   @ApiPropertyOptional({ description: '页码', default: 1 })
@@ -43,71 +11,6 @@ export class PaginationDto {
   @IsOptional()
   @IsNumber()
   pageSize?: number;
-}
-
-export class ExecuteTaskDto {
-  @ApiProperty({
-    description: '调用类型',
-    enum: ['skill_execute', 'tool_call', 'agent_invoke', 'workflow_run'],
-  })
-  @IsEnum(['skill_execute', 'tool_call', 'agent_invoke', 'workflow_run'])
-  callType: 'skill_execute' | 'tool_call' | 'agent_invoke' | 'workflow_run';
-
-  @ApiProperty({ description: '调用目标名称' })
-  @IsString()
-  target: string;
-
-  @ApiPropertyOptional({ description: '输入参数' })
-  @IsOptional()
-  @IsObject()
-  input?: Record<string, unknown>;
-
-  @ApiPropertyOptional({ description: '每分钟积分单价（0=免费）', default: 0 })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  pricePerMinute?: number;
-
-  // 各类型特定参数
-  @ApiPropertyOptional({ description: '技能包ID（callType=skill_execute 时必填）' })
-  @IsOptional()
-  @IsNumber()
-  skillId?: number;
-
-  @ApiPropertyOptional({ description: 'MCP服务器ID（callType=tool_call 时必填）' })
-  @IsOptional()
-  @IsString()
-  serverId?: string;
-
-  @ApiPropertyOptional({ description: '工具名称（callType=tool_call 时必填）' })
-  @IsOptional()
-  @IsString()
-  toolName?: string;
-
-  @ApiPropertyOptional({ description: '工具参数（callType=tool_call 时使用）' })
-  @IsOptional()
-  @IsObject()
-  args?: Record<string, unknown>;
-
-  @ApiPropertyOptional({ description: 'Agent ID（callType=agent_invoke 时必填）' })
-  @IsOptional()
-  @IsNumber()
-  agentId?: number;
-
-  @ApiPropertyOptional({ description: 'OPC 团队 ID（callType=agent_invoke 时可选，表示调用整个团队）' })
-  @IsOptional()
-  @IsNumber()
-  teamId?: number;
-
-  @ApiPropertyOptional({ description: 'N8N实例ID（callType=workflow_run 时必填）' })
-  @IsOptional()
-  @IsNumber()
-  n8nInstanceId?: number;
-
-  @ApiPropertyOptional({ description: '工作流ID（callType=workflow_run 时必填）' })
-  @IsOptional()
-  @IsString()
-  workflowId?: string;
 }
 
 export class RateSkillDto {

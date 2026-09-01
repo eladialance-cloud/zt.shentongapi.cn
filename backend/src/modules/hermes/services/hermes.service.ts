@@ -6,68 +6,27 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { HermesInstanceEntity } from '../entities/hermes-instance.entity';
 import { HermesCallLogEntity } from '../entities/hermes-call-log.entity';
 import { HermesSkillEntity } from '../entities/hermes-skill.entity';
 import { HermesSkillRatingEntity } from '../entities/hermes-skill-rating.entity';
-import { CreditsService } from '../../credits/services/credits.service';
-import { McpService } from '../../mcp/services/mcp.service';
-import { N8nService } from '../../n8n/services/n8n.service';
-import { OpenClawService } from '../../openclaw/services/openclaw.service';
 import { TeamService } from '../../team/services/team.service';
-import { SkillRunnerService } from './skill-runner.service';
-import { InstanceWorkerService } from './instance-worker.service';
-import { SyncGateway } from '../../sync/sync.gateway';
 import { parsePaging, paginate } from '../../../common/utils/query.util';
-import { CreateInstanceDto, PaginationDto, ExecuteTaskDto, RateSkillDto, CreateSkillDto } from '../dto/hermes.dto';
+import { PaginationDto, RateSkillDto, CreateSkillDto } from '../dto/hermes.dto';
 import { HermesReportDto } from '../dto/hermes-report.dto';
-
-export interface HermesTask {
-  userId: number;
-  instanceId: number;
-  callType: 'skill_execute' | 'tool_call' | 'agent_invoke' | 'workflow_run';
-  target: string;
-  input: Record<string, unknown>;
-  pricePerMinute: number;
-  // 各类型特定参数
-  skillId?: number;
-  serverId?: string;
-  toolName?: string;
-  args?: Record<string, unknown>;
-  agentId?: number;
-  teamId?: number;
-  n8nInstanceId?: number;
-  workflowId?: string;
-}
-
-/** 默认任务超时 60 秒 */
-const DEFAULT_TASK_TIMEOUT_MS = 60_000;
-/** 默认预冻结积分（按分钟计费时先冻结估算值） */
-const DEFAULT_ESTIMATED_MINUTES = 5;
 
 @Injectable()
 export class HermesService {
   private readonly logger = new Logger(HermesService.name);
 
   constructor(
-    @InjectRepository(HermesInstanceEntity)
-    private instanceRepo: Repository<HermesInstanceEntity>,
     @InjectRepository(HermesCallLogEntity)
     private callLogRepo: Repository<HermesCallLogEntity>,
     @InjectRepository(HermesSkillEntity)
     private skillRepo: Repository<HermesSkillEntity>,
     @InjectRepository(HermesSkillRatingEntity)
     private ratingRepo: Repository<HermesSkillRatingEntity>,
-    private creditsService: CreditsService,
-    private mcpService: McpService,
-    private n8nService: N8nService,
-    private openClawService: OpenClawService,
-    private skillRunner: SkillRunnerService,
-    private instanceWorker: InstanceWorkerService,
-    private syncGateway: SyncGateway,
     private teamService: TeamService,
   ) {}
-
   /**
    * 本地 Hermes 编排结果上报（桌面端主进程回写）
    * 归属校验：团队必须存在且为当前用户创建；写 create_hermes_call_logs（call_type=orchestrate，无实例）
@@ -93,151 +52,6 @@ export class HermesService {
     });
     const saved = await this.callLogRepo.save(log);
     return { ok: true, logId: saved.id };
-  }
-
-  // ============ 实例管理 ============
-
-  async listInstances(userId: number): Promise<HermesInstanceEntity[]> {
-    return this.instanceRepo.find({
-      where: { userId },
-      order: { createdAt: 'DESC' },
-    });
-  }
-
-  async createInstance(
-    userId: number,
-    dto: CreateInstanceDto,
-  ): Promise<HermesInstanceEntity> {
-    const instance = this.instanceRepo.create({
-      userId,
-      name: dto.name,
-      status: 'stopped',
-      skillCount: dto.skillIds?.length || 0,
-      skillIds: dto.skillIds || [],
-      executionType: dto.executionType,
-      teamId: dto.teamId,
-      workflowId: dto.workflowId,
-      knowledgeBaseId: dto.knowledgeBaseId,
-    });
-    return this.instanceRepo.save(instance);
-  }
-
-  async getInstance(
-    userId: number,
-    instanceId: number,
-  ): Promise<HermesInstanceEntity> {
-    const instance = await this.instanceRepo.findOne({
-      where: { id: instanceId, userId },
-    });
-    if (!instance) {
-      throw new NotFoundException('Hermes 实例不存在');
-    }
-    return instance;
-  }
-
-  /** 推送状态变更到 WebSocket */
-  private pushStatus(userId: number, instanceId: number, status: string) {
-    this.syncGateway.pushToUser(userId, 'hermes:status-changed', {
-      instanceId, status, timestamp: new Date().toISOString(),
-    });
-  }
-
-  async startInstance(userId: number, instanceId: number): Promise<HermesInstanceEntity> {
-    const instance = await this.getInstance(userId, instanceId);
-    if (instance.status === 'running') throw new BadRequestException('实例已在运行中');
-
-    instance.status = 'running';
-    instance.startedAt = new Date();
-    instance.errorMessage = undefined;
-    instance.cpuPercent = 0;
-    instance.memoryUsedMb = 0;
-    instance.memoryTotalMb = 1024;
-    const saved = await this.instanceRepo.save(instance);
-
-    try { await this.instanceWorker.startWorker(saved); }
-    catch (err) { this.logger.warn(`启动 worker 失败（降级为模拟模式）: ${(err as Error).message}`); }
-
-    this.pushStatus(userId, instanceId, 'running');
-    return saved;
-  }
-
-  async stopInstance(userId: number, instanceId: number): Promise<HermesInstanceEntity> {
-    const instance = await this.getInstance(userId, instanceId);
-    if (instance.status !== 'running') throw new BadRequestException('实例未在运行');
-
-    try { await this.instanceWorker.stopWorker(instanceId); }
-    catch (err) { this.logger.warn(`停止 worker 失败: ${(err as Error).message}`); }
-
-    instance.status = 'stopped';
-    instance.pid = undefined;
-    instance.cpuPercent = 0;
-    instance.memoryUsedMb = 0;
-    const saved = await this.instanceRepo.save(instance);
-
-    this.pushStatus(userId, instanceId, 'stopped');
-    return saved;
-  }
-
-  async deleteInstance(userId: number, instanceId: number): Promise<void> {
-    const instance = await this.getInstance(userId, instanceId);
-    if (instance.status === 'running') {
-      await this.stopInstance(userId, instanceId);
-    }
-    await this.callLogRepo.delete({ instanceId });
-    await this.instanceRepo.delete(instanceId);
-  }
-
-  // ============ 资源监控 ============
-
-  /**
-   * 获取实例实时资源使用（从 worker 采样）
-   */  getResourceUsage(instanceId: number) {
-    return this.instanceWorker.getResourceUsage(instanceId);
-  }
-
-  /**
-   * 获取所有活跃实例 ID（供心跳巡检用）
-   */  getActiveInstanceIds(): number[] {
-    return this.instanceWorker.getActiveInstanceIds();
-  }
-
-  // ============ 任务历史 ============
-
-  async getCallLogs(userId: number, instanceId: number, query: PaginationDto) {
-    const { page, pageSize } = parsePaging(query.page, query.pageSize, 10);
-    const [list, total] = await this.callLogRepo.findAndCount({
-      where: { instanceId, userId }, order: { createdAt: 'DESC' }, skip: (page - 1) * pageSize, take: pageSize,
-    });
-    return paginate(list, total, page, pageSize);
-  }
-
-  // ============ 技能挂载 ============
-
-  async mountSkill(
-    userId: number,
-    instanceId: number,
-    skillId: number,
-  ): Promise<HermesInstanceEntity> {
-    const instance = await this.getInstance(userId, instanceId);
-    const skillIds = instance.skillIds || [];
-    if (!skillIds.includes(skillId)) {
-      skillIds.push(skillId);
-    }
-    instance.skillIds = skillIds;
-    instance.skillCount = skillIds.length;
-    return this.instanceRepo.save(instance);
-  }
-
-  async unmountSkill(
-    userId: number,
-    instanceId: number,
-    skillId: number,
-  ): Promise<HermesInstanceEntity> {
-    const instance = await this.getInstance(userId, instanceId);
-    const skillIds = (instance.skillIds || []).filter((id) => id !== skillId);
-    instance.skillIds = skillIds;
-    instance.skillCount = skillIds.length;
-    return this.instanceRepo.save(instance);
   }
 
   // ============ 技能市场 ============
@@ -275,17 +89,8 @@ export class HermesService {
   }
 
   async listInstalledSkills(userId: number): Promise<HermesSkillEntity[]> {
-    // 返回用户所有实例上已挂载的技能包（去重）
-    const instances = await this.listInstances(userId);
-    const allSkillIds = new Set<number>();
-    for (const inst of instances) {
-      (inst.skillIds || []).forEach((id) => allSkillIds.add(id));
-    }
-    if (allSkillIds.size === 0) return [];
-    return this.skillRepo
-      .createQueryBuilder('s')
-      .where('s.id IN (:...ids)', { ids: [...allSkillIds] })
-      .getMany();
+    // Hermes 实例功能已下线：不再按实例挂载技能包，返回空列表（保留端点兼容旧客户端）
+    return [];
   }
 
   async installSkill(userId: number, skillId: number): Promise<HermesSkillEntity> {
@@ -297,24 +102,12 @@ export class HermesService {
     return skill;
   }
 
-  /** 卸载技能包（从用户所有实例移除，减少安装计数） */
+  /** 卸载技能包（减少安装计数；实例挂载逻辑已随 Hermes 实例功能下线） */
   async uninstallSkill(userId: number, skillId: number): Promise<void> {
     const skill = await this.skillRepo.findOne({ where: { id: skillId } });
     if (!skill) {
       throw new NotFoundException('技能包不存在');
     }
-
-    // 从用户所有实例中移除该技能
-    const instances = await this.listInstances(userId);
-    for (const inst of instances) {
-      if (inst.skillIds?.includes(skillId)) {
-        inst.skillIds = inst.skillIds.filter((id) => id !== skillId);
-        inst.skillCount = inst.skillIds.length;
-        await this.instanceRepo.save(inst);
-      }
-    }
-
-    // 减少安装计数
     if (skill.installCount > 0) {
       await this.skillRepo.decrement({ id: skillId }, 'installCount', 1);
     }
@@ -403,174 +196,6 @@ export class HermesService {
     };
   }
 
-  // ============ 编排引擎 ============
-
-  /** 结算或退还冻结积分 */
-  private async settleOrRefund(userId: number, frozenTxnId: number | null, amount: number, logger: Logger) {
-    if (!frozenTxnId) return;
-    try {
-      await this.creditsService.settleCredits(userId, frozenTxnId, amount);
-    } catch (err) {
-      logger.error(`积分结算失败: ${(err as Error).message}`, (err as Error).stack);
-    }
-  }
-
-  /**
-   * 执行编排任务
-   * 完整流程：校验实例 → 预冻结积分 → 执行任务 → 结算积分 → 记录日志
-   */
-  async executeTask(userId: number, instanceId: number, dto: ExecuteTaskDto): Promise<unknown> {
-    // 1. 校验实例存在且在运行中
-    const instance = await this.getInstance(userId, instanceId);
-    if (instance.status !== 'running') throw new BadRequestException('实例未运行，请先启动实例');
-
-    const task: HermesTask = {
-      userId, instanceId, callType: dto.callType, target: dto.target, input: dto.input || {},
-      pricePerMinute: dto.pricePerMinute ?? 0, skillId: dto.skillId, serverId: dto.serverId,
-      toolName: dto.toolName, args: dto.args, agentId: dto.agentId, teamId: dto.teamId, n8nInstanceId: dto.n8nInstanceId, workflowId: dto.workflowId,
-    };
-
-    const startTime = Date.now();
-
-    // 2. 创建调用日志
-    const savedLog = await this.callLogRepo.save(this.callLogRepo.create({
-      instanceId: task.instanceId, userId: task.userId, callType: task.callType, status: 'running', target: task.target,
-      teamId: task.teamId,
-    }));
-
-    // 3. 预冻结积分
-    let frozenTxnId: number | null = null;
-    const estimatedCost = task.pricePerMinute * DEFAULT_ESTIMATED_MINUTES;
-    if (estimatedCost > 0) {
-      try {
-        frozenTxnId = (await this.creditsService.freezeCredits(task.userId, estimatedCost, 'plugin_call', `hermes_instance_${task.instanceId}`)).id;
-      } catch {
-        await this.callLogRepo.update(savedLog.id, { status: 'failed', durationMs: 0, errorMessage: '积分余额不足' });
-        throw new BadRequestException('积分余额不足，请充值');
-      }
-    }
-
-    try {
-      // 4. 带超时执行任务（超时通过 AbortSignal 真正取消底层执行，避免任务在后台继续跑）
-      const result = await this.withTimeout((signal) => this.dispatchTask(task, signal), DEFAULT_TASK_TIMEOUT_MS);
-
-      // 5. 计算实际耗时和积分
-      const durationMs = Date.now() - startTime;
-      const actualCost = task.pricePerMinute * Math.max(1, Math.ceil(durationMs / 60000));
-
-      // 6. 结算积分
-      await this.settleOrRefund(task.userId, frozenTxnId, actualCost, this.logger);
-
-      // 7. 更新日志为成功
-      await this.callLogRepo.update(savedLog.id, { status: 'success', durationMs, creditsCost: actualCost });
-
-      this.syncGateway.pushToUser(userId, 'hermes:task-completed', {
-        instanceId, callLogId: savedLog.id, callType: task.callType, target: task.target,
-        status: 'success', durationMs, creditsCost: actualCost, timestamp: new Date().toISOString(),
-      });
-
-      return { callLogId: savedLog.id, callType: task.callType, target: task.target, durationMs, creditsCost: actualCost, result };
-    } catch (err) {
-      const durationMs = Date.now() - startTime;
-      // 执行失败：退还冻结积分
-      await this.settleOrRefund(task.userId, frozenTxnId, 0, this.logger);
-
-      const isTimeout = (err as Error).message?.includes('超时');
-      await this.callLogRepo.update(savedLog.id, {
-        status: isTimeout ? 'timeout' : 'failed', durationMs, creditsCost: 0, errorMessage: (err as Error).message?.slice(0, 512),
-      });
-      throw err;
-    }
-  }
-
-  /**
-   * 任务分发
-   */
-  private async dispatchTask(task: HermesTask, signal?: AbortSignal): Promise<unknown> {
-    switch (task.callType) {
-      case 'agent_invoke':
-        if (task.teamId) {
-          return this.invokeTeam(task);
-        }
-        return this.invokeAgent(task);
-      case 'workflow_run':
-        return this.runWorkflow(task, signal);
-      case 'tool_call':
-        return this.callTool(task, signal);
-      case 'skill_execute':
-        return this.executeSkill(task, signal);
-      default:
-        throw new BadRequestException(`不支持的调用类型: ${task.callType}`);
-    }
-  }
-
-  /**
-   * 带超时的 Promise 包装：超时后 abort 底层任务（kill 子进程/取消请求），
-   * 避免「已报超时但任务还在后台跑」导致的积分误退/副作用残留
-   */
-  private async withTimeout<T>(
-    run: (signal: AbortSignal) => Promise<T>,
-    timeoutMs: number,
-  ): Promise<T> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const taskPromise = run(controller.signal);
-      const timeoutPromise = new Promise<T>((_, reject) => {
-        controller.signal.addEventListener('abort', () => {
-          reject(new BadRequestException('任务执行超时'));
-        });
-      });
-      return await Promise.race([taskPromise, timeoutPromise]);
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-  /** 调用整个 OPC 团队：OpenClaw 直调接口已下线（L0 探针确认 /api/chat、/api/agents 不存在），
-   * 对话统一走桌面端本地 OpenClaw（自动编排 Hermes/N8N/MCP） */
-  private async invokeTeam(task: HermesTask): Promise<unknown> {
-    throw new BadRequestException('团队调用暂不可用：OpenClaw 直调接口已下线，请使用桌面端对话（本地 OpenClaw 自动编排）');
-  }
-  private async invokeAgent(task: HermesTask): Promise<unknown> {
-    throw new BadRequestException('Agent 调用暂不可用：OpenClaw 直调接口已下线，请使用桌面端对话（本地 OpenClaw 自动调用）');
-  }
-  private async runWorkflow(task: HermesTask, _signal?: AbortSignal): Promise<unknown> {
-    if (!task.n8nInstanceId || !task.workflowId) {
-      throw new BadRequestException('工作流调用需要 n8nInstanceId 和 workflowId');
-    }
-    return this.n8nService.triggerWorkflow(
-      task.userId,
-      task.n8nInstanceId,
-      task.workflowId,
-      task.input,
-    );
-  }
-
-  private async callTool(task: HermesTask, _signal?: AbortSignal): Promise<unknown> {
-    if (!task.serverId || !task.toolName) {
-      throw new BadRequestException('工具调用需要 serverId 和 toolName');
-    }
-    return this.mcpService.callTool(task.userId, {
-      serverId: task.serverId,
-      toolName: task.toolName,
-      args: task.args || {},
-    });
-  }
-
-  /**
-   * 技能包执行 — 通过 SkillRunnerService 执行
-   */
-  private async executeSkill(task: HermesTask, signal?: AbortSignal): Promise<unknown> {
-    if (!task.skillId) {
-      throw new BadRequestException('技能执行需要 skillId');
-    }
-    const skill = await this.skillRepo.findOne({ where: { id: task.skillId } });
-    if (!skill) {
-      throw new NotFoundException(`技能包不存在: ${task.skillId}`);
-    }
-    return this.skillRunner.run(skill, task.input, task.userId, signal);
-  }
 
   health() {
     return { status: 'ok', module: 'hermes' };

@@ -53,7 +53,6 @@ import { listMarketAgents } from '@/api/agent-api'
 import { listLlmIntegrations } from '@/api/llm-integrations-api'
 import type { LlmIntegration } from '@shared/types'
 import { listKnowledgeBases, listOfficialKnowledgeBases } from '@/api/knowledge-api'
-import { officeBridge, isRetrieveTool } from '@/pages/Office/services/officeBridge'
 import type {
   ChatSession,
   ChatMessage,
@@ -452,8 +451,6 @@ export default function Chat() {
           .catch((err) => console.error('[Chat] update session title failed:', err))
       }
 
-      // officeBridge: 用户发送消息 → 主管深度工作
-      officeBridge.onChatMessageSent()
 
       // 2. 最近上下文（最近 10 条文本消息，消息不出本机）
       const history: OpenClawChatMessage[] = messages

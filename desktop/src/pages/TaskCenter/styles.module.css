@@ -825,3 +825,22 @@
   color: var(--color-text-tertiary);
   white-space: nowrap;
 }
+/* 视图 Tab 徽标 */
+.tabLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tabCount {
+  display: inline-block;
+  min-width: 18px;
+  height: 18px;
+  line-height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: rgba(79, 110, 247, 0.12);
+  color: #4f6ef7;
+  font-size: 12px;
+  text-align: center;
+}

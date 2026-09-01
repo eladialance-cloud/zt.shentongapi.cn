@@ -56,9 +56,6 @@ const ROUTE_LABEL_MAP: Record<string, string> = {
   '/creator/create': '创建',
   '/creator/:id/edit': '编辑',
   '/creator/revenue': '收益',
-  // ===== Hermes =====
-  '/hermes': 'Hermes',
-  '/hermes/:id': '详情',
   // ===== 市场 =====
   '/agent-market': 'Agent 市场',
   '/skill-market': '技能市场',
@@ -68,14 +65,12 @@ const ROUTE_LABEL_MAP: Record<string, string> = {
   '/settings': '设置',
   '/profile': '个人信息',
   '/services': '服务管理',
-  '/office': 'AI 办公室',
   '/automation': '自动化',
   '/automation-editor': '编辑器',
   '/automation-editor/:id': '编辑',
   '/automation-history': '历史',
   '/automation-history/:id': '详情',
   '/mcp-config': 'MCP 配置',
-  '/team': '团队',
 }
 
 /**

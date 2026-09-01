@@ -9,7 +9,7 @@ import { useNavigate } from "react-router-dom";
 import PluginMarket from "@/pages/Plugin";
 import WorkflowList from "@/pages/Workflow";
 import AgentMarket from "@/pages/AgentMarket";
-import HermesSkillMarket from "@/pages/Hermes/SkillMarket";
+import HermesSkillMarket from "./HermesSkillMarket";
 import InstalledList from "./InstalledList";
 import McpMarket from "@/pages/McpMarket";
 import InstalledMcp from "@/pages/McpMarket/Installed";

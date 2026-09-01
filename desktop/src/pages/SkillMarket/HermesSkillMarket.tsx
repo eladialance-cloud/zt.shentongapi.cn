@@ -25,7 +25,7 @@ import * as hermesApi from "@/api/hermes-api";
 import * as marketApi from "@/api/market-api";
 import type { HermesSkill, InstalledSkill } from "@/types/hermes";
 import type { InstalledRecord } from "@/types/market";
-import styles from "./styles.module.css";
+import styles from "./hermes-market.module.css";
 
 export default function HermesSkillMarket({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();

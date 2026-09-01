@@ -1,8 +1,7 @@
 // 我的-技能包：已安装技能包列表
-// 调用 GET /hermes/skills/installed + 本地市场记录 + OpenClaw 内置技能（军机处技能库来源）
+// 调用本地市场记录（云端 Hermes 实例挂载记录已随实例功能下线）
 
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Button, Card, Empty, Spin, Tag, message } from "antd";
 import {
   CheckCircleOutlined,
@@ -10,27 +9,23 @@ import {
 } from "@ant-design/icons";
 import * as hermesApi from "@/api/hermes-api";
 import * as marketApi from "@/api/market-api";
-import { edictSkillLibrary } from "@/api/edict-api";
-import type { EdictLibrarySkill } from "@shared/edict-types";
 import type { InstalledSkill } from "@/types/hermes";
 import type { InstalledRecord } from "@/types/market";
 import styles from "./styles.module.css";
 
 export default function InstalledSkills() {
-  const navigate = useNavigate();
-  const [skills, setSkills] = useState<Array<InstalledSkill & { installDir?: string; libSource?: string; category?: string; deps?: string }>>([]);
+  const [skills, setSkills] = useState<Array<InstalledSkill & { installDir?: string }>>([]);
   const [loading, setLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [cloudList, localList, libRes] = await Promise.all([
+      const [cloudList, localList] = await Promise.all([
         hermesApi.listInstalledSkills().catch(() => [] as InstalledSkill[]),
         marketApi.listInstalled().catch(() => [] as InstalledRecord[]),
-        edictSkillLibrary().catch(() => ({ ok: false as const, skills: [] as EdictLibrarySkill[] })),
       ]);
-      // 本地已下载的技能优先展示（本地目录为主），云端挂载记录为辅
-      const localSkills = localList
+      // 本地已下载的技能优先展示（本地目录为主），云端记录为辅
+      const localSkills: Array<InstalledSkill & { installDir?: string }> = localList
         .filter((r) => r.type === "skill")
         .map((r) => ({
           id: Number(r.id) || 0,
@@ -43,27 +38,7 @@ export default function InstalledSkills() {
           version: r.version,
           installDir: r.dir,
         }));
-      // OpenClaw 内置技能（军机处技能库可选用）
-      const libSkills: Array<InstalledSkill & { installDir?: string; libSource?: string; category?: string; deps?: string }> = (libRes?.skills || [])
-        .filter((s) => s.source === "openclaw")
-        .map((s, idx) => ({
-          id: -1000 - idx,
-          name: s.name,
-          description: s.description || "OpenClaw 内置技能",
-          author: "OpenClaw 内置",
-          pricePerMinute: 0,
-          installCount: 0,
-          mounted: false,
-          version: "内置",
-          installDir: s.dir,
-          libSource: s.source,
-          category: s.category,
-          deps: s.deps,
-        }));
-      const merged: Array<InstalledSkill & { installDir?: string; libSource?: string; category?: string; deps?: string }> = [
-        ...libSkills,
-        ...localSkills,
-      ];
+      const merged: Array<InstalledSkill & { installDir?: string }> = [...localSkills];
       for (const s of cloudList || []) {
         if (!merged.some((m) => m.id === s.id)) {
           merged.push({ ...s, installDir: undefined });
@@ -100,9 +75,6 @@ export default function InstalledSkills() {
                     <ThunderboltOutlined />
                   </div>
                   <span className={styles.skillName}>{skill.name}</span>
-                  {skill.libSource === "openclaw" && <Tag color="blue">OpenClaw 内置</Tag>}
-                  {skill.category && skill.libSource === "openclaw" && <Tag color="geekblue">{skill.category}</Tag>}
-                  {skill.deps && skill.libSource === "openclaw" && <Tag>{skill.deps}</Tag>}
                   {skill.mounted && (
                     <Tag color="green">
                       <CheckCircleOutlined /> 已挂载
@@ -124,20 +96,6 @@ export default function InstalledSkills() {
                       ? "免费"
                       : `${skill.pricePerMinute} 积分/分钟`}
                   </span>
-                </div>
-                <div className={styles.skillActions}>
-                  {skill.libSource === "openclaw" ? (
-                    <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
-                      可在军机处「技能 → 添加技能」中选择使用
-                    </span>
-                  ) : (
-                    <Button
-                      size="small"
-                      onClick={() => navigate("/hermes")}
-                    >
-                      去 Hermes 挂载
-                    </Button>
-                  )}
                 </div>
               </div>
             </Card>

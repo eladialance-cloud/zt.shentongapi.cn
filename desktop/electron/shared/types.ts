@@ -1,50 +1,6 @@
 // 主进程 / 渲染进程共享类型定义
 // 该文件同时被 tsconfig.node.json 与 tsconfig.web.json 包含
 
-import type {
-  EdictAgentConfig,
-  EdictAgentStatusInfo,
-  EdictAgentsStatusData,
-  EdictBoard,
-  EdictCourtDiscussResult,
-  EdictModelChangeEntry,
-  EdictMorningBrief,
-  EdictOfficial,
-  EdictOp,
-  EdictPipelineResult,
-  EdictRemoteSkillItem,
-  EdictRemoteSkillsResult,
-  EdictSessionItem,
-  EdictSkillContentResult,
-  EdictSkillLibraryResult,
-  EdictStats,
-  EdictSubConfig,
-  EdictNotifyConfig,
-  EdictTask,
-  EdictTodo,
-} from "./edict-types";
-export type {
-  EdictAgentConfig,
-  EdictAgentStatusInfo,
-  EdictAgentsStatusData,
-  EdictBoard,
-  EdictCourtDiscussResult,
-  EdictModelChangeEntry,
-  EdictMorningBrief,
-  EdictNotifyConfig,
-  EdictOfficial,
-  EdictOp,
-  EdictPipelineResult,
-  EdictRemoteSkillItem,
-  EdictRemoteSkillsResult,
-  EdictSessionItem,
-  EdictSkillContentResult,
-  EdictSkillLibraryResult,
-  EdictStats,
-  EdictSubConfig,
-  EdictTask,
-  EdictTodo,
-};
 
 export type ServiceName = "openclaw" | "n8n" | "mcp" | "hermes" | "video-claw";
 
@@ -416,39 +372,6 @@ export interface HermesMemoryCard {
   text: string;
 }
 
-export interface HermesEvolutionResult {
-  ok: boolean;
-  error?: string;
-  memory?: HermesMemoryCard[];
-  journey?: Record<string, unknown> | null;
-  journeyRaw?: string;
-  curator?: string;
-  memoryStatus?: string;
-}
-
-/** Hermes 原生策展状态（P1：GET /api/curator） */
-export interface HermesCuratorState {
-  enabled?: boolean;
-  paused?: boolean;
-  interval_hours?: number;
-  last_run_at?: string | null;
-  min_idle_hours?: number;
-  stale_after_days?: number;
-  archive_after_days?: number;
-  [key: string]: unknown;
-}
-
-export interface HermesCuratorResult {
-  ok: boolean;
-  state?: HermesCuratorState;
-  error?: string;
-}
-
-export interface HermesCuratorOpResult {
-  ok: boolean;
-  pid?: number;
-  error?: string;
-}
 
 /** Hermes 官方状态（P1：GET /api/status + /api/system/stats，面板只读） */
 export interface HermesStatusPayload {
@@ -721,18 +644,6 @@ export interface ElectronAPI {
     /** 弹窗选择本地文件夹安装技能（需含 SKILL.md） */
     installLocal(): Promise<HermesSkillsOpResult>;
   };
-  /** Hermes 进化可视化（记忆 + journey + curator） */
-  hermesEvolution: {
-    get(): Promise<HermesEvolutionResult>;
-  };
-
-  /** Hermes 原生策展（P1：状态 / 暂停恢复 / 立即运行） */
-  hermesCurator: {
-    get(): Promise<HermesCuratorResult>;
-    setPaused(paused: boolean): Promise<HermesCuratorOpResult>;
-    run(): Promise<HermesCuratorOpResult>;
-  };
-
   /** Hermes 官方状态（P1：/api/status + /api/system/stats，只读） */
   hermesStatus: {
     get(): Promise<HermesStatusResult>;
@@ -889,9 +800,6 @@ export interface ElectronAPI {
   };
 
 
-  /** 三省六部看板（OpenClaw 太子 + Hermes 官署执行，edict JSON 看板） */
-  edict: EdictAPI;
-
   /** OpenClaw 本地直达对话（记账在云端，消息走本地 OpenClaw） */
   openclawChat: {
     /** 注入用户 llm-proxy 静态 Key（登录后调用；OpenClaw openai provider 指向云端 llm-proxy） */
@@ -927,108 +835,6 @@ export interface ElectronAPI {
 }
 
 
-/** 三省六部 IPC API（edict:*，主进程 edict-bridge 注册） */
-export interface EdictAPI {
-  /** 下旨：太子建任务（create → Zhongshu）；返回 taskId */
-  issue(input: { title: string; body?: string; priority?: string; dept?: string }): Promise<EdictOp<{ taskId: string }>>;
-  /** 全量看板 */
-  board(): Promise<EdictBoard>;
-  /** 单个任务 */
-  task(taskId: string): Promise<EdictOp<EdictTask | null>>;
-  /** 状态流转（校验状态机，非法返回原因） */
-  transition(taskId: string, to: string, note?: string): Promise<EdictOp>;
-  /** 封驳（门下 → 中书，需 reason） */
-  veto(taskId: string, reason: string): Promise<EdictOp>;
-  /** 准奏（门下 → 尚书） */
-  approve(taskId: string): Promise<EdictOp>;
-  /** 完成收口（done） */
-  complete(taskId: string, output?: string, summary?: string, actorAgentId?: string): Promise<EdictOp>;
-  /** 阻塞 */
-  block(taskId: string, reason: string): Promise<EdictOp>;
-  /** 进展上报 */
-  progress(taskId: string, text: string, plan?: string): Promise<EdictOp>;
-  /** 编排执行：当前状态按状态机推进到终态（Hermes CLI 逐节点） */
-  run(taskId: string, opts?: { maxVetoRounds?: number }): Promise<EdictOp<EdictPipelineResult>>;
-  /** 官署状态 */
-  officials(): Promise<EdictOfficial[]>;
-  /** 军机处统计 */
-  stats(): Promise<EdictStats>;
-  /** 默认模型 + 官署 profiles */
-  models(): Promise<{ default: string; profiles: { id: string; label: string }[] }>;
-  /** 看板变化推送（edict:board-updated） */
-  onBoardUpdated(cb: (board: EdictBoard) => void): () => void;
-  /** 单任务变化推送（edict:task-updated） */
-  onTaskUpdated(cb: (task: EdictTask) => void): () => void;
-  /** 人工介入：取消任务 */
-  cancel(taskId: string): Promise<EdictOp>;
-  /** 人工介入：推进到下一合法状态 */
-  advance(taskId: string): Promise<EdictOp>;
-  /** 人工介入：重新触发三省六部编排（停滞重试） */
-  retry(taskId: string): Promise<EdictOp>;
-  /** 人工介入：停滞升级一步 */
-  escalate(taskId: string): Promise<EdictOp>;
-  /** 人工介入：解阻（Blocked → 重新起草） */
-  unblock(taskId: string): Promise<EdictOp>;
-  /** 结果回传通知：读取本地配置 */
-  notifyConfig(): Promise<EdictNotifyConfig>;
-  /** 结果回传通知：保存本地配置 */
-  saveNotifyConfig(config: EdictNotifyConfig): Promise<EdictOp>;
-  /** 结果回传通知：发送测试消息 */
-  testNotify(): Promise<EdictOp>;
-
-  /** 省部调度：全部官署 Agent 在线状态 */
-  agentsStatus(): Promise<EdictAgentsStatusData>;
-  /** 省部调度：唤醒（确保）指定官署 profile */
-  agentWake(agentId: string): Promise<EdictOp>;
-  /** 模型配置：官署 Agent 配置（含模型/技能/knownModels） */
-  agentConfig(): Promise<EdictAgentConfig>;
-  /** 模型配置：切换指定官署模型（写 Hermes config.yaml + 同步 profiles） */
-  setModel(agentId: string, model: string): Promise<EdictOp>;
-  /** 模型配置：模型变更日志 */
-  modelChangeLog(): Promise<EdictModelChangeEntry[]>;
-  /** 技能配置：读取官署技能文件内容 */
-  skillContent(agentId: string, skillName: string): Promise<EdictSkillContentResult>;
-  /** 技能配置：本地新增技能 */
-  addSkill(agentId: string, skillName: string, description: string, trigger: string): Promise<EdictOp>;
-  /** 技能配置：远程技能列表 */
-  remoteSkillsList(): Promise<EdictRemoteSkillsResult>;
-  /** 技能配置：添加远程技能 */
-  addRemoteSkill(agentId: string, skillName: string, sourceUrl: string, description?: string): Promise<EdictOp>;
-  /** 技能配置：更新远程技能 */
-  updateRemoteSkill(agentId: string, skillName: string): Promise<EdictOp>;
-  /** 技能配置：移除远程技能 */
-  removeRemoteSkill(agentId: string, skillName: string): Promise<EdictOp>;
-  /** 技能配置：技能库（技能市场《我的》：OpenClaw 内置 / Hermes 已装 / 云端技能包） */
-  skillLibrary(): Promise<EdictSkillLibraryResult>;
-  /** 技能配置：把技能库技能整目录复制到官署 profile */
-  copySkill(agentId: string, source: string, skillName: string): Promise<EdictOp>;
-  /** 技能配置：删除官署本地技能（可重新添加） */
-  removeSkill(agentId: string, skillName: string): Promise<EdictOp>;
-  /** 朝堂议政：开始议政 */
-  courtDiscussStart(topic: string, officials: string[], taskId?: string): Promise<EdictCourtDiscussResult>;
-  /** 朝堂议政：推进一轮（可带皇帝发言/天命） */
-  courtDiscussAdvance(sessionId: string, userMessage?: string, decree?: string): Promise<EdictCourtDiscussResult>;
-  /** 朝堂议政：散朝总结 */
-  courtDiscussConclude(sessionId: string): Promise<EdictOp & { summary?: string }>;
-  /** 朝堂议政：销毁会话 */
-  courtDiscussDestroy(sessionId: string): Promise<EdictOp>;
-  /** 朝堂议政：命运骰子 */
-  courtDiscussFate(): Promise<{ ok: boolean; event: string }>;
-  /** 天下要闻：简报 */
-  morningBrief(): Promise<EdictMorningBrief>;
-  /** 天下要闻：订阅配置 */
-  morningConfig(): Promise<EdictSubConfig>;
-  /** 天下要闻：保存订阅配置 */
-  saveMorningConfig(config: EdictSubConfig): Promise<EdictOp>;
-  /** 天下要闻：立即采集 */
-  refreshMorning(): Promise<EdictOp>;
-  /** 小任务/会话列表 */
-  sessions(): Promise<EdictSessionItem[]>;
-  /** 旨库：模板下旨（复用 issue 建任务） */
-  createTask(input: { title: string; body?: string; priority?: string; dept?: string }): Promise<EdictOp<{ taskId: string }>>;
-  /** 天下要闻：采集完成推送（edict:morning-updated） */
-  onMorningUpdated(cb: (brief: EdictMorningBrief) => void): () => void;
-}
 
 /** 通过 contextBridge.exposeInMainWorld('runtime', ...) 暴露给渲染进程的运行时 API 形状 */
 export interface RuntimeAPI {
