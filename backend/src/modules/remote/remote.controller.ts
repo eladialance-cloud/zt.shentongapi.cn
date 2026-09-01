@@ -36,6 +36,12 @@ export class RemoteController {
     @Res() res: Response,
   ) {
     try {
+      // 飞书开放平台 URL 验证握手：必须原样回显 challenge，否则事件订阅配置失败
+      const body = (req.body ?? {}) as Record<string, any>;
+      if (body?.type === "url_verification" && typeof body?.challenge === "string" && body.challenge) {
+        res.status(200).json({ challenge: body.challenge });
+        return;
+      }
       await this.remoteService.handleFeishuInbound(req.body, signature, timestamp);
       res.status(200).json({ code: 0, data: {} });
     } catch (err) {

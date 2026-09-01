@@ -29,12 +29,14 @@ export class FeishuBotAdapter implements ChannelAdapter {
     token: string,
     timestamp?: string,
   ): boolean {
-    if (!token || !signature || !timestamp) {
-      if (!token) {
-        this.logger.warn("[FeishuBot] 未配置 webhookToken，跳过签名校验（开发模式）");
-        return true;
-      }
-      return false;
+    // 飞书开放平台明文事件回调（加密策略=不加密）不携带签名头，跳过校验
+    if (!signature || !timestamp) {
+      this.logger.log("[FeishuBot] 无签名头（开放平台明文事件），跳过签名校验");
+      return true;
+    }
+    if (!token) {
+      this.logger.warn("[FeishuBot] 未配置 webhookToken，跳过签名校验（开发模式）");
+      return true;
     }
     try {
       const rawBody =
