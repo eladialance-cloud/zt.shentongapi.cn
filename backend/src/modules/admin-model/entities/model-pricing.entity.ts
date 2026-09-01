@@ -47,7 +47,7 @@ export class ModelPricingEntity extends BaseEntity {
   pricePerMinute?: number;
 
   /** 计费方式：token / per_image / per_call / per_minute / per_second */
-  @Column({ name: 'pricing_mode', length: 16, nullable: true })
+  @Column({ name: 'pricing_mode', type: 'varchar', length: 16, nullable: true })
   pricingMode?: string | null;
 
   /** 视频按分辨率档积分/秒 */
