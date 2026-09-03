@@ -311,6 +311,7 @@ export default function SystemConfigPage() {
         sttModel: cfgv.sttModel || '',
         sttEndpoint: cfgv.sttEndpoint || '',
         sttApiKey: cfgv.sttApiKey || '',
+        sttFileBase: cfgv.sttFileBase || '',
         embeddingProvider: cfgv.embeddingProvider || 'doubao',
         embeddingEndpoint: cfgv.embeddingEndpoint || '',
         embeddingApiKey: cfgv.embeddingApiKey || '',
@@ -527,6 +528,7 @@ export default function SystemConfigPage() {
         sttModel: values.sttModel || '',
         sttEndpoint: values.sttEndpoint || '',
         sttApiKey: values.sttApiKey || '',
+        sttFileBase: values.sttFileBase || '',
         embeddingProvider: values.embeddingProvider || 'doubao',
         embeddingEndpoint: values.embeddingEndpoint || '',
         embeddingApiKey: values.embeddingApiKey || '',
@@ -1289,16 +1291,17 @@ export default function SystemConfigPage() {
                 <RobotOutlined /> 语音识别 / 向量检索
               </div>
               <div className={styles.levelGrid} style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
-                <Form.Item name="sttProvider" label="语音识别引擎" extra="openai=whisper（默认）；volcano=火山 ASR">
+                <Form.Item name="sttProvider" label="语音识别引擎" extra="dashscope=百炼 paraformer(推荐，复用现有百炼key)；openai=whisper；volcano=火山">
                   <Select
                     options={[
-                      { value: 'openai', label: 'OpenAI whisper' },
-                      { value: 'volcano', label: '火山方舟 ASR' }
+                      { value: 'dashscope', label: '阿里百炼 paraformer（推荐）' },
+                      { value: 'openai', label: 'OpenAI whisper（需填端点+Key）' },
+                      { value: 'volcano', label: '火山 ASR（需火山识别资源）' }
                     ]}
                   />
                 </Form.Item>
-                <Form.Item name="sttModel" label="语音识别模型" extra="提取文案/字幕用；留空=whisper-1">
-                  <Input placeholder="如 whisper-1" allowClear />
+                <Form.Item name="sttModel" label="语音识别模型" extra="dashscope 留空=paraformer-v2；openai 留空=whisper-1">
+                  <Input placeholder="如 paraformer-v2 / whisper-1" allowClear />
                 </Form.Item>
                 <Form.Item name="embeddingProvider" label="向量 Embedding 供应商">
                   <Select
@@ -1317,6 +1320,9 @@ export default function SystemConfigPage() {
                 </Form.Item>
                 <Form.Item name="sttApiKey" label="语音识别 API Key" extra="火山 ASR 专用密钥">
                   <Input.Password placeholder="请输入语音识别密钥" allowClear />
+                </Form.Item>
+                <Form.Item name="sttFileBase" label="公网音频前缀(百炼用)" extra="选 dashscope 时必须填，如 https://zt.shentongapi.cn">
+                  <Input placeholder="https://zt.shentongapi.cn" allowClear />
                 </Form.Item>
                 <Form.Item name="embeddingEndpoint" label="Embedding 端点" extra="留空=按供应商默认">
                   <Input placeholder="如 https://ark.cn-beijing.volces.com/api/v3" allowClear />

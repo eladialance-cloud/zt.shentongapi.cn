@@ -185,8 +185,8 @@ export interface OralWorkshopConfig {
   heygenDefaultAvatarId?: string
 
   // ===== 语音识别 / 向量检索 =====
-  /** 语音识别引擎：openai=whisper（默认）/ volcano=火山 ASR */
-  sttProvider?: 'openai' | 'volcano'
+  /** 语音识别引擎：dashscope=百炼 paraformer（推荐）/ openai=whisper / volcano=火山 ASR */
+  sttProvider?: 'dashscope' | 'openai' | 'volcano'
   /** 语音识别模型（默认 whisper-1） */
   sttModel?: string
   /** 向量 embedding 供应商 */
@@ -195,6 +195,8 @@ export interface OralWorkshopConfig {
   sttEndpoint?: string
   /** 语音识别 API Key（volcano ASR 专用） */
   sttApiKey?: string
+  /** 公网音频地址前缀（dashscope 百炼 paraformer 文件转写用，如 https://zt.shentongapi.cn） */
+  sttFileBase?: string
   /** 向量 embedding 接入端点（留空=按供应商默认：doubao 火山方舟/qwen 通义/openai） */
   embeddingEndpoint?: string
   /** 向量 embedding API Key（留空=用 llmApiKey/volcanoApiKey 兜底） */

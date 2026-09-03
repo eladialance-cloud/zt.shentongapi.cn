@@ -11,7 +11,7 @@ import { ModelProviderEntity } from '../admin-model/entities/model-provider.enti
 import { SystemConfigEntity } from '../admin-system/entities/system-config.entity';
 import { ApiKeyPoolService } from '../api-key-pool/services/api-key-pool.service';
 import { EncryptionService } from '../../common/services/encryption.service';
-import { readFileSync } from 'fs';
+import { copyFileSync, mkdirSync, readFileSync } from 'fs';
 import { randomUUID } from 'crypto';
 import * as path from 'path';
 import type { LlmCaller, LlmMessage } from './llm';
@@ -231,16 +231,27 @@ export class SystemLlmService implements LlmCaller {
     return null;
   }
 
-  /** 语音识别（audio -> 文本）：直连 OpenAI 兼容 /audio/transcriptions（multipart），不计费（任务预扣已覆盖） */
+  /** 语音识别（audio -> 文本）
+   *  - sttProvider=dashscope：百炼 paraformer 录音文件转写（提交任务+轮询，适配长音频，走公网音频 URL）
+   *  - 其余：OpenAI 兼容 /audio/transcriptions（需显式 sttEndpoint/sttApiKey，或供应商池含真实识别通道）
+   *  不计费（任务预扣已覆盖）。 */
   async stt(audioPath: string): Promise<string> {
     const cfg = await this.readOralConfig();
+    const sttProvider = typeof cfg.sttProvider === 'string' && cfg.sttProvider
+      ? String(cfg.sttProvider).trim().toLowerCase()
+      : '';
+    if (sttProvider === 'dashscope') {
+      return this.sttViaDashscopeParaformer(cfg, audioPath);
+    }
     const sttModel =
       (typeof cfg.sttModel === 'string' && cfg.sttModel) ||
       process.env.ORAL_WORKSHOP_STT_MODEL ||
       'whisper-1';
     const target = await this.resolveSttTarget(cfg, sttModel);
     if (!target) {
-      throw new ServiceUnavailableException('未配置可用的大模型供应商（STT 识别）');
+      throw new ServiceUnavailableException(
+        '未配置可用的语音识别通道：请在口播工坊配置里选择 dashscope(百炼 paraformer)，或配置 sttEndpoint+sttApiKey(OpenAI 兼容 whisper)'
+      );
     }
     const buf = readFileSync(audioPath);
     const form = new FormData();
@@ -248,9 +259,9 @@ export class SystemLlmService implements LlmCaller {
     form.append('model', target.model);
     let resp: Response;
     try {
-      resp = await fetch(`${target.endpoint}/audio/transcriptions`, {
+      resp = await fetch(target.endpoint + '/audio/transcriptions', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${target.apiKey}` },
+        headers: { Authorization: 'Bearer ' + target.apiKey },
         body: form,
         signal: AbortSignal.timeout(180000),
       });
@@ -266,6 +277,112 @@ export class SystemLlmService implements LlmCaller {
     if (!out) throw new ServiceUnavailableException('STT 上游返回空文本');
     return out;
   }
+
+  /** 百炼 paraformer 录音文件转写：本地 wav -> uploads 公网 URL -> 提交任务 -> 轮询结果 */
+  private async sttViaDashscopeParaformer(cfg: Record<string, unknown>, audioPath: string): Promise<string> {
+    const s = (v: unknown): string => (typeof v === 'string' && v.trim() ? v.trim() : '');
+    const model = s(cfg.sttModel) || process.env.ORAL_WORKSHOP_STT_MODEL || 'paraformer-v2';
+    let apiKey = s(cfg.sttApiKey);
+    if (!apiKey) {
+      try {
+        const providers = await this.providerRepo.find({ where: { status: 'active' } });
+        const dash = providers.find((p) => /dashscope\\.aliyuncs\\.com/i.test(String(p.baseUrl || '')));
+        if (dash?.apiKey) apiKey = this.encryptionService.decryptAes(dash.apiKey);
+      } catch (e) {
+        this.logger.warn('[oral-workshop] 读取百炼供应商 Key 失败: ' + (e as Error).message);
+      }
+    }
+    if (!apiKey) {
+      throw new ServiceUnavailableException(
+        '语音识别(dashscope)：未找到可用百炼 API Key（请在管理后台大模型配置百炼供应商，或在口播工坊配置填 sttApiKey）',
+      );
+    }
+    const fileBase = (s(cfg.sttFileBase) || process.env.ORAL_WORKSHOP_PUBLIC_BASE || '').replace(/\/+$/, '');
+    if (!fileBase) {
+      throw new ServiceUnavailableException(
+        '语音识别(dashscope)：缺少公网音频地址前缀，请在口播工坊配置填 sttFileBase（如 https://zt.shentongapi.cn）或设置环境变量 ORAL_WORKSHOP_PUBLIC_BASE',
+      );
+    }
+    const fileUrl = fileBase + this.publicAudioPath(audioPath);
+    let resp: Response;
+    try {
+      resp = await fetch('https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+        body: JSON.stringify({ model, input: { file_urls: [fileUrl] } }),
+        signal: AbortSignal.timeout(60000),
+      });
+    } catch (e) {
+      throw new ServiceUnavailableException('百炼识别提交失败: ' + (e as Error).message);
+    }
+    const submitBody = await resp.text().catch(() => '');
+    if (!resp.ok) {
+      throw new ServiceUnavailableException('百炼识别提交 HTTP ' + resp.status + ': ' + submitBody.slice(0, 300));
+    }
+    let taskId = '';
+    try {
+      taskId = String((JSON.parse(submitBody) as { output?: { task_id?: string } }).output?.task_id || '');
+    } catch {
+      /* 解析失败走下方报错 */
+    }
+    if (!taskId) {
+      throw new ServiceUnavailableException('百炼识别未返回任务 ID: ' + submitBody.slice(0, 200));
+    }
+    const deadline = Date.now() + 300000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2000));
+      let pollResp: Response;
+      try {
+        pollResp = await fetch('https://dashscope.aliyuncs.com/api/v1/tasks/' + taskId, {
+          headers: { Authorization: 'Bearer ' + apiKey },
+          signal: AbortSignal.timeout(30000),
+        });
+      } catch (e) {
+        throw new ServiceUnavailableException('百炼识别查询失败: ' + (e as Error).message);
+      }
+      const pollBody = await pollResp.text().catch(() => '');
+      if (!pollResp.ok) {
+        throw new ServiceUnavailableException('百炼识别查询 HTTP ' + pollResp.status + ': ' + pollBody.slice(0, 200));
+      }
+      let parsed: { output?: { task_status?: string; message?: string; results?: Array<{ transcription?: string }> } } = {};
+      try {
+        parsed = JSON.parse(pollBody) as typeof parsed;
+      } catch {
+        continue;
+      }
+      const status = parsed.output?.task_status || '';
+      if (status === 'SUCCEEDED') {
+        const text = (parsed.output?.results || [])
+          .map((r) => (r.transcription || '').trim())
+          .filter(Boolean)
+          .join('\n')
+          .trim();
+        if (!text) throw new ServiceUnavailableException('百炼识别成功但返回空文本');
+        return text;
+      }
+      if (status === 'FAILED' || status === 'CANCELED') {
+        throw new ServiceUnavailableException(
+          '百炼识别' + (status === 'FAILED' ? '失败' : '已取消') + ': ' + (parsed.output?.message || ''),
+        );
+      }
+    }
+    throw new ServiceUnavailableException('百炼识别超时（5 分钟），请重试');
+  }
+
+  /** 把本地音频放入可静态访问的 uploads 目录，返回 /uploads/… 相对路径 */
+  private publicAudioPath(audioPath: string): string {
+    const uploadsRoot = path.resolve(process.env.ORAL_WORKSHOP_UPLOADS_DIR || 'uploads');
+    const abs = path.resolve(audioPath);
+    if (abs.startsWith(uploadsRoot + path.sep)) {
+      return '/uploads/' + path.relative(uploadsRoot, abs).split(path.sep).join('/');
+    }
+    const dir = path.join(uploadsRoot, 'oral-workshop', 'stt');
+    mkdirSync(dir, { recursive: true });
+    const dest = path.join(dir, Date.now() + '-' + randomUUID().slice(0, 8) + '.wav');
+    copyFileSync(abs, dest);
+    return '/uploads/oral-workshop/stt/' + path.basename(dest);
+  }
+
   /** 非流式调用 OpenAI 兼容 /chat/completions，返回完整文本 */
   async chat(messages: LlmMessage[], opts?: { temperature?: number; purpose?: OralLlmPurpose }): Promise<string> {
     const target = await this.resolveTarget(undefined, opts?.purpose);
@@ -558,6 +675,11 @@ export class SystemLlmService implements LlmCaller {
           return { success: true, message: '数字人服务可达（HTTP ' + resp.status + '，协议已通，请求被拒属预期）：' + text.slice(0, 200) };
         }
         case 'stt': {
+          if (str(cfg.sttProvider) === 'dashscope') {
+            const fBase = str(cfg.sttFileBase) || process.env.ORAL_WORKSHOP_PUBLIC_BASE || '';
+            return { success: !!fBase, message: fBase ? '语音识别配置为百炼 paraformer（sttFileBase=' + fBase + '），保存后请到桌面端用「上传文件提取文案」实测一次' : '语音识别(dashscope)缺少 sttFileBase 公网音频前缀，请先填写' };
+          }
+
           const sttKey = str(cfg.sttApiKey) || apiKey;
           if (!sttKey) return { success: false, message: '未配置语音识别 API Key（sttApiKey 或火山方舟 Key）' };
           const isVolcano = str(cfg.sttProvider) === 'volcano';
