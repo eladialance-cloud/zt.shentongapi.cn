@@ -286,7 +286,7 @@ export class SystemLlmService implements LlmCaller {
     if (!apiKey) {
       try {
         const providers = await this.providerRepo.find({ where: { status: 'active' } });
-        const dash = providers.find((p) => /dashscope\\.aliyuncs\\.com/i.test(String(p.baseUrl || '')));
+        const dash = providers.find((p) => /dashscope\.aliyuncs\.com/i.test(String(p.baseUrl || '')));
         if (dash?.apiKey) apiKey = this.encryptionService.decryptAes(dash.apiKey);
       } catch (e) {
         this.logger.warn('[oral-workshop] 读取百炼供应商 Key 失败: ' + (e as Error).message);
@@ -308,7 +308,7 @@ export class SystemLlmService implements LlmCaller {
     try {
       resp = await fetch('https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+        headers: { 'Content-Type': 'application/json', 'X-DashScope-Async': 'enable', Authorization: 'Bearer ' + apiKey },
         body: JSON.stringify({ model, input: { file_urls: [fileUrl] } }),
         signal: AbortSignal.timeout(60000),
       });
@@ -352,11 +352,7 @@ export class SystemLlmService implements LlmCaller {
       }
       const status = parsed.output?.task_status || '';
       if (status === 'SUCCEEDED') {
-        const text = (parsed.output?.results || [])
-          .map((r) => (r.transcription || '').trim())
-          .filter(Boolean)
-          .join('\n')
-          .trim();
+        const text = await this.pullDashscopeResultText(parsed.output);
         if (!text) throw new ServiceUnavailableException('百炼识别成功但返回空文本');
         return text;
       }
@@ -367,6 +363,45 @@ export class SystemLlmService implements LlmCaller {
       }
     }
     throw new ServiceUnavailableException('百炼识别超时（5 分钟），请重试');
+  }
+
+  /** 拉取百炼结果文件（OSS JSON），拼接全部 transcripts[].text */
+  private async pullDashscopeResultText(node: unknown): Promise<string> {
+    const urls: string[] = [];
+    const walk = (v: unknown): void => {
+      if (!v || typeof v !== 'object') return;
+      const rec = v as Record<string, unknown>;
+      if (typeof rec.transcription_url === 'string') urls.push(String(rec.transcription_url));
+      for (const val of Object.values(rec)) {
+        if (Array.isArray(val)) val.forEach((x) => walk(x));
+        else walk(val);
+      }
+    };
+    walk(node);
+    const seen = new Set<string>();
+    const parts: string[] = [];
+    for (const u of urls) {
+      if (seen.has(u)) continue;
+      seen.add(u);
+      let resp: Response;
+      try {
+        resp = await fetch(u, { signal: AbortSignal.timeout(30000) });
+      } catch (e) {
+        throw new ServiceUnavailableException('百炼识别结果文件拉取失败: ' + (e as Error).message);
+      }
+      const body = await resp.text().catch(() => '');
+      if (!resp.ok) {
+        throw new ServiceUnavailableException('百炼识别结果文件 HTTP ' + resp.status);
+      }
+      try {
+        const data = JSON.parse(body) as { transcripts?: Array<{ text?: string }> };
+        for (const t of data.transcripts || []) {
+          const seg = (t.text || '').trim();
+          if (seg) parts.push(seg);
+        }
+      } catch { /* 结果文件解析失败跳过 */ }
+    }
+    return parts.join('\n').trim();
   }
 
   /** 把本地音频放入可静态访问的 uploads 目录，返回 /uploads/… 相对路径 */

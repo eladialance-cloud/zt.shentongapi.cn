@@ -201,7 +201,7 @@ export class OralWorkshopService implements OnModuleInit {
     } catch (err) {
       throw new BadRequestException('视频链接不可访问: ' + (err as Error).message);
     }
-    const dir = path.join(process.env.ORAL_WORKSHOP_UPLOADS_DIR || 'uploads', 'oral-workshop', 'extract', String(userId), String(Date.now()));
+    const dir = path.resolve(process.env.ORAL_WORKSHOP_UPLOADS_DIR || 'uploads', 'oral-workshop', 'extract', String(userId), String(Date.now()));
     fs.mkdirSync(dir, { recursive: true });
     const extMatch = videoUrl.match(/\.(mp4|mov|avi|mkv|flv|webm|mp3|m4a|wav|aac)(\?|$)/i);
     const videoPath = path.join(dir, 'source' + (extMatch ? '.' + extMatch[1].toLowerCase() : '.mp4'));
@@ -1875,7 +1875,7 @@ export class OralWorkshopService implements OnModuleInit {
   /** A3：上传本地音视频文件 → ffmpeg 抽音频 → STT（复用学习对标链路，不计费） */
   async extractFile(userId: number, file: Express.Multer.File): Promise<{ text: string }> {
     if (!file) throw new BadRequestException('请上传音视频文件');
-    const dir = path.join(process.env.ORAL_WORKSHOP_UPLOADS_DIR || 'uploads', 'oral-workshop', 'extract', String(userId), String(Date.now()));
+    const dir = path.resolve(process.env.ORAL_WORKSHOP_UPLOADS_DIR || 'uploads', 'oral-workshop', 'extract', String(userId), String(Date.now()));
     fs.mkdirSync(dir, { recursive: true });
     const extMatch = (file.originalname || '').match(/\.(mp4|mov|avi|mkv|flv|webm|mp3|m4a|wav|aac)$/i);
     const src = path.join(dir, 'source' + (extMatch ? '.' + extMatch[1].toLowerCase() : path.extname(file.originalname) || '.bin'));
@@ -1912,7 +1912,7 @@ export class OralWorkshopService implements OnModuleInit {
     } catch (err) {
       throw new BadRequestException('源地址不可访问: ' + (err as Error).message);
     }
-    const dir = path.join(process.env.ORAL_WORKSHOP_UPLOADS_DIR || 'uploads', 'oral-workshop', 'trim', String(userId), String(Date.now()));
+    const dir = path.resolve(process.env.ORAL_WORKSHOP_UPLOADS_DIR || 'uploads', 'oral-workshop', 'trim', String(userId), String(Date.now()));
     fs.mkdirSync(dir, { recursive: true });
     const src = path.join(dir, 'source' + (sourceUrl.match(/\.(mp4|mov|mp3|m4a|wav|aac)(\?|$)/i)?.[1] ? '.' + sourceUrl.match(/\.(mp4|mov|mp3|m4a|wav|aac)(\?|$)/i)![1].toLowerCase() : '.mp3'));
     await downloadTo(sourceUrl, src);

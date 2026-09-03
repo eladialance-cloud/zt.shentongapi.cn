@@ -557,7 +557,13 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
       if (parser && /yt-dlp|Unsupported URL|Unsupported site|网页而非视频|自动解析失败/i.test(msg)) {
         try {
           message.info('服务器未能解析该链接，正在使用本地浏览器解析…（首次约需 10-30 秒）')
-          const parsed = await parser.parse(raw)
+          let parseTarget = raw
+          if (parser.extractUrl) {
+            const extracted = await parser.extractUrl(raw)
+            if (!extracted) throw new Error('未能从分享文本中识别出视频链接，请直接粘贴视频链接')
+            parseTarget = extracted
+          }
+          const parsed = await parser.parse(parseTarget)
           if (parsed.ok) {
             const buf = await parser.readFile(parsed.videoPath)
             if (!buf || !buf.byteLength) throw new Error('本地解析结果为空')

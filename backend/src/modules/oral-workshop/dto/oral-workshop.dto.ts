@@ -576,7 +576,6 @@ export class GenerateScriptDto {
 export class ExtractScriptDto {
   @IsNotEmpty({ message: 'videoUrl 不能为空' })
   @IsString()
-  @MaxLength(512)
-  @Validate(SafeMediaRefConstraint)
+  @MaxLength(4000)
   videoUrl: string;
 }
