@@ -61,9 +61,10 @@ export class FeishuBotAdapter implements ChannelAdapter {
     const data = payload as Record<string, any> | null;
     if (!data?.encrypt || !encryptKey) return null;
     try {
-      const key = Buffer.from(encryptKey, "base64");
+      // 飞书 Encrypt Key 是普通字符串，需 SHA256 导出 32 字节 AES 密钥（不是 base64 解码）
+      const key = crypto.createHash("sha256").update(encryptKey, "utf8").digest();
       const enc = Buffer.from(data.encrypt, "base64");
-      if (key.length !== 32 || enc.length <= 16) {
+      if (enc.length <= 16) {
         this.logger.error("[FeishuBot] 解密参数非法 key=" + key.length + " enc=" + enc.length);
         return null;
       }
