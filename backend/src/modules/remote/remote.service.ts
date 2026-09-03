@@ -77,6 +77,7 @@ export class RemoteService {
     payload: unknown,
     signature?: string,
     timestamp?: string,
+    rawBody?: string,
   ): Promise<{ ok: boolean; challenge?: string }> {
     const data = (payload ?? {}) as Record<string, any>;
     const wasEncrypted = typeof data?.encrypt === "string" && !!data.encrypt;
@@ -133,11 +134,14 @@ export class RemoteService {
       return { ok: false };
     }
 
-    if (
-      channel.webhookToken &&
-      !this.feishuAdapter.verifySignature(payload, signature ?? "", channel.webhookToken, timestamp)
-    ) {
-      this.logger.warn("[remote] 飞书签名校验失败，拒绝处理");
+    // 飞书开放平台事件签名：密钥为 app_secret；自定义机器人用 webhookToken。两者都试，任一通过即可。
+    const creds = this.channelService.decryptCredentials(channel) ?? {};
+    const signKeys = [creds.appSecret, channel.webhookToken].filter(Boolean) as string[];
+    const sigOk = signKeys.some((k) =>
+      this.feishuAdapter.verifySignature(payload, signature ?? "", k, timestamp, rawBody),
+    );
+    if (!sigOk) {
+      this.logger.warn("[remote] 飞书签名校验失败（appSecret/webhookToken 均不匹配），拒绝处理");
       return { ok: false };
     }
 

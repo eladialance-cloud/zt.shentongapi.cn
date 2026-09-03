@@ -47,7 +47,8 @@ export class RemoteController {
     try {
       // 飞书开放平台 URL 验证握手：必须原样回显 challenge，否则事件订阅配置失败
       const body = (req.body ?? {}) as Record<string, any>;
-      const feishuResult = await this.remoteService.handleFeishuInbound(body, signature, timestamp);
+      const rawBody = this.rawBodyOf(req);
+      const feishuResult = await this.remoteService.handleFeishuInbound(body, signature, timestamp, rawBody);
       if (feishuResult?.challenge) {
         res.status(200).json({ challenge: feishuResult.challenge });
         return;

@@ -28,6 +28,7 @@ export class FeishuBotAdapter implements ChannelAdapter {
     signature: string,
     token: string,
     timestamp?: string,
+    rawBody?: string,
   ): boolean {
     // 飞书开放平台明文事件回调（加密策略=不加密）不携带签名头，跳过校验
     if (!signature || !timestamp) {
@@ -39,10 +40,9 @@ export class FeishuBotAdapter implements ChannelAdapter {
       return true;
     }
     try {
-      const rawBody =
-        typeof payload === "string" ? payload : JSON.stringify(payload ?? {});
+      const body = rawBody ?? (typeof payload === "string" ? payload : JSON.stringify(payload ?? {}));
       const stringToSign = `${timestamp}\n${token}`;
-      const hmac = crypto.createHmac("sha256", stringToSign).update(rawBody).digest("base64");
+      const hmac = crypto.createHmac("sha256", stringToSign).update(body).digest("base64");
       const ok = hmac === signature;
       if (!ok) this.logger.warn("[FeishuBot] 签名校验失败");
       return ok;
@@ -54,7 +54,7 @@ export class FeishuBotAdapter implements ChannelAdapter {
 
   /**
    * 飞书开放平台加密回调解密（AES-256-CBC + PKCS7）
-   * Encrypt Key 为 base64 编码的 32 字节密钥；encrypt 字段 base64 解码后前 16 字节为 IV。
+   * Encrypt Key 为普通字符串，SHA256 导出 32 字节密钥；encrypt 字段 base64 解码后前 16 字节为 IV。
    * 返回解密后的 JSON 对象；未加密或缺少密钥返回 null。
    */
   decryptPayload(payload: unknown, encryptKey: string): Record<string, any> | null {
