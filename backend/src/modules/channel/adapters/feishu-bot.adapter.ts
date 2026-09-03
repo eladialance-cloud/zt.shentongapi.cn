@@ -192,14 +192,16 @@ export class FeishuBotAdapter implements ChannelAdapter {
       if (!target) {
         return { success: false, error: "缺少接收者 open_id（targetExternalId）" };
       }
-      const res = await fetch("https://open.feishu.cn/open-apis/im/v1/messages", {
+      // receive_id_type 是查询参数(open_id)，receive_id 放 body
+      const res = await fetch(
+        `https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=${encodeURIComponent("open_id")}`,
+        {
         method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          receive_id_type: "open_id",
           receive_id: target,
           msg_type: "text",
           content: JSON.stringify({ text: message.content }),
