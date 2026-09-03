@@ -274,9 +274,11 @@ jobs:
         if: ${{ github.event.inputs.api_base || true }}
         run: |
           $apiBase = '${{ github.event.inputs.api_base || 'https://zt.shentongapi.cn/api' }}'
-          $envContent = "# Production environment config`nVITE_API_BASE_URL=$apiBase`n"
+          # WebSocket 与 API 同源，去掉末尾 /api 得到 host（socket.io 走 /api/socket.io）
+          $wsBase = $apiBase -replace '/api$', ''
+          $envContent = "# Production environment config`nVITE_API_BASE_URL=$apiBase`nVITE_WS_URL=$wsBase/api`n"
           Set-Content -Path ".env.production" -Value $envContent -Encoding UTF8
-          Write-Host "✅ .env.production: VITE_API_BASE_URL=$apiBase"
+          Write-Host "✅ .env.production: VITE_API_BASE_URL=$apiBase; VITE_WS_URL=$($wsBase)/api"
         shell: pwsh
 
       # ===== 8. TypeCheck =====
@@ -443,6 +445,8 @@ jobs:
           api_base="${{ github.event.inputs.api_base || 'https://zt.shentongapi.cn/api' }}"
           echo "# Production environment config" > .env.production
           echo "VITE_API_BASE_URL=$api_base" >> .env.production
+          ws_base="${api_base%/api}"
+          echo "VITE_WS_URL=${ws_base}/api" >> .env.production
 
       - name: 🔍 TypeCheck
         run: npm run typecheck
