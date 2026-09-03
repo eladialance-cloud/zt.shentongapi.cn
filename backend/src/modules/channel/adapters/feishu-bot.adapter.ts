@@ -52,6 +52,30 @@ export class FeishuBotAdapter implements ChannelAdapter {
     }
   }
 
+  /**
+   * 飞书开放平台加密回调解密（AES-256-CBC + PKCS7）
+   * Encrypt Key 为 base64 编码的 32 字节密钥；encrypt 字段 base64 解码后前 16 字节为 IV。
+   * 返回解密后的 JSON 对象；未加密或缺少密钥返回 null。
+   */
+  decryptPayload(payload: unknown, encryptKey: string): Record<string, any> | null {
+    const data = payload as Record<string, any> | null;
+    if (!data?.encrypt || !encryptKey) return null;
+    try {
+      const key = Buffer.from(encryptKey, "base64");
+      const enc = Buffer.from(data.encrypt, "base64");
+      if (key.length !== 32 || enc.length <= 16) {
+        this.logger.error("[FeishuBot] 解密参数非法 key=" + key.length + " enc=" + enc.length);
+        return null;
+      }
+      const iv = enc.subarray(0, 16);
+      const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+      const decrypted = Buffer.concat([decipher.update(enc.subarray(16)), decipher.final()]);
+      return JSON.parse(decrypted.toString("utf8"));
+    } catch (err) {
+      this.logger.error("[FeishuBot] 回调解密失败: " + (err as Error).message);
+      return null;
+    }
+  }
   parseInboundMessage(payload: unknown): InboundMessage | null {
     const data = payload as Record<string, any> | null;
     this.logger.log(`[FeishuBot] parseInboundMessage: ${JSON.stringify(data).substring(0, 160)}`);

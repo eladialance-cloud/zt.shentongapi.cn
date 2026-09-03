@@ -1,4 +1,4 @@
-﻿// 渠道详情页 — 编辑凭证、查看 Webhook、管理消息
+// 渠道详情页 — 编辑凭证、查看 Webhook、管理消息
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -46,6 +46,7 @@ export default function ChannelDetail() {
         appSecret: "",
         token: "",
         encodingAesKey: "",
+        encryptKey: "",
       });
     } catch (err) {
       message.error("加载渠道详情失败");
@@ -67,6 +68,7 @@ export default function ChannelDetail() {
       if (vals.appSecret) credentials.appSecret = vals.appSecret;
       if (vals.token) credentials.token = vals.token;
       if (vals.encodingAesKey) credentials.encodingAesKey = vals.encodingAesKey;
+      if (vals.encryptKey) credentials.encryptKey = vals.encryptKey;
 
       await channelApi.updateChannel(channel.id, {
         name: vals.name,
@@ -137,6 +139,9 @@ export default function ChannelDetail() {
             </Form.Item>
             <Form.Item label="EncodingAESKey" name="encodingAesKey" tooltip="消息加解密密钥（可选）">
               <Input.Password placeholder="43位随机字符串" />
+            </Form.Item>
+            <Form.Item label="Encrypt Key" name="encryptKey" tooltip="飞书加密策略的加密密钥（开启加密时必填）">
+              <Input.Password placeholder="飞书 Encrypt Key" />
             </Form.Item>
             <Form.Item label="Webhook Token" name="webhookToken" tooltip="URL 验证用 Token">
               <Input.Password placeholder="平台 URL 验证 Token" />

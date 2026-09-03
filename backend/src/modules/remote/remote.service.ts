@@ -77,21 +77,15 @@ export class RemoteService {
     payload: unknown,
     signature?: string,
     timestamp?: string,
-  ): Promise<{ ok: boolean }> {
-    const inbound = this.feishuAdapter.parseInboundMessage(payload);
-    if (!inbound) {
-      this.logger.warn("[remote] 无法解析飞书入站消息（事件类型可能不支持）");
-      return { ok: false };
-    }
+  ): Promise<{ ok: boolean; challenge?: string }> {
+    const data = (payload ?? {}) as Record<string, any>;
 
-    // 绑定匹配：优先用飞书事件 header.token 精确匹配渠道 webhookToken，支持多机器人多用户
-    const headerToken = (payload as Record<string, any>)?.header?.token as string | undefined;
+    const headerToken = data?.header?.token ?? data?.token;
     let channel: ChannelEntity | null = null;
     if (headerToken) {
       const matched = await this.channelService.findActiveChannelsByPlatform("feishu_bot");
       channel = matched.find((c) => c.webhookToken === headerToken) ?? null;
     }
-    // 兜底：取最早激活的飞书渠道（单用户单机器人场景）
     if (!channel) {
       channel = await this.findChannelByPlatform("feishu_bot");
     }
@@ -100,7 +94,33 @@ export class RemoteService {
       return { ok: false };
     }
 
-    // 验签（webhookToken 已配置时强制校验）
+    let effectivePayload: unknown = payload;
+    if (typeof data?.encrypt === "string" && data.encrypt) {
+      const creds = this.channelService.decryptCredentials(channel);
+      const encryptKey = creds?.encryptKey ?? "";
+      if (!encryptKey) {
+        this.logger.warn("[remote] 收到飞书加密回调，但渠道未配置 Encrypt Key，无法解密");
+        return { ok: false };
+      }
+      const decrypted = this.feishuAdapter.decryptPayload(payload, encryptKey);
+      if (!decrypted) {
+        this.logger.warn("[remote] 飞书回调解密失败，拒绝处理");
+        return { ok: false };
+      }
+      effectivePayload = decrypted;
+    }
+
+    const effective = (effectivePayload ?? {}) as Record<string, any>;
+    if (effective?.type === "url_verification" && typeof effective?.challenge === "string") {
+      return { ok: true, challenge: effective.challenge };
+    }
+
+    const inbound = this.feishuAdapter.parseInboundMessage(effectivePayload);
+    if (!inbound) {
+      this.logger.warn("[remote] 无法解析飞书入站消息（事件类型可能不支持）");
+      return { ok: false };
+    }
+
     if (
       channel.webhookToken &&
       !this.feishuAdapter.verifySignature(payload, signature ?? "", channel.webhookToken, timestamp)

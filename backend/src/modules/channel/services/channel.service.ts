@@ -107,9 +107,14 @@ export class ChannelService {
     if (data.teamId !== undefined) channel.teamId = data.teamId;
     if (data.agentId !== undefined) channel.agentId = data.agentId;
     if (data.credentials) {
-      channel.credentials = this.encryptionService.encryptAes(
-        JSON.stringify(data.credentials),
-      );
+      // 合并更新：保留已有 appId/appSecret 等，只覆盖本次传入字段；
+      // 空字符串视为清除该字段，避免保存 encryptKey 时把其它凭证抹掉
+      const existing = this.decryptCredentials(channel) ?? {};
+      const merged = { ...existing, ...data.credentials };
+      for (const k of Object.keys(merged)) {
+        if (merged[k] === "") delete merged[k];
+      }
+      channel.credentials = this.encryptionService.encryptAes(JSON.stringify(merged));
     }
 
     return this.channelRepo.save(channel);
