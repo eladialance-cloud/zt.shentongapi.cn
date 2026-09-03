@@ -76,6 +76,7 @@ export class FeishuBotAdapter implements ChannelAdapter {
       return null;
     }
   }
+
   parseInboundMessage(payload: unknown): InboundMessage | null {
     const data = payload as Record<string, any> | null;
     this.logger.log(`[FeishuBot] parseInboundMessage: ${JSON.stringify(data).substring(0, 160)}`);

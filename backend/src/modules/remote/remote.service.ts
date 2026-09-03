@@ -79,6 +79,7 @@ export class RemoteService {
     timestamp?: string,
   ): Promise<{ ok: boolean; challenge?: string }> {
     const data = (payload ?? {}) as Record<string, any>;
+    const wasEncrypted = typeof data?.encrypt === "string" && !!data.encrypt;
 
     const headerToken = data?.header?.token ?? data?.token;
     let channel: ChannelEntity | null = null;
@@ -86,7 +87,33 @@ export class RemoteService {
       const matched = await this.channelService.findActiveChannelsByPlatform("feishu_bot");
       channel = matched.find((c) => c.webhookToken === headerToken) ?? null;
     }
-    if (!channel) {
+    let effectivePayload: unknown = payload;
+    let encryptKey = "";
+    if (wasEncrypted) {
+      // 加密回调：依次尝试各激活飞书渠道的 Encrypt Key，解密成功即命中该渠道
+      const matchedChannels = await this.channelService.findActiveChannelsByPlatform("feishu_bot");
+      const candidates = channel
+        ? [channel]
+        : matchedChannels.length
+          ? matchedChannels
+          : [await this.findChannelByPlatform("feishu_bot")].filter(Boolean) as ChannelEntity[];
+      for (const cand of candidates) {
+        const creds = this.channelService.decryptCredentials(cand);
+        const key = creds?.encryptKey ?? "";
+        if (!key) continue;
+        const decrypted = this.feishuAdapter.decryptPayload(payload, key);
+        if (decrypted) {
+          channel = cand;
+          effectivePayload = decrypted;
+          encryptKey = key;
+          break;
+        }
+      }
+      if (!channel || !encryptKey) {
+        this.logger.warn("[remote] 收到飞书加密回调，但没有渠道能解密（检查 Encrypt Key 是否已配置）");
+        return { ok: false };
+      }
+    } else if (!channel) {
       channel = await this.findChannelByPlatform("feishu_bot");
     }
     if (!channel) {
@@ -94,24 +121,9 @@ export class RemoteService {
       return { ok: false };
     }
 
-    let effectivePayload: unknown = payload;
-    if (typeof data?.encrypt === "string" && data.encrypt) {
-      const creds = this.channelService.decryptCredentials(channel);
-      const encryptKey = creds?.encryptKey ?? "";
-      if (!encryptKey) {
-        this.logger.warn("[remote] 收到飞书加密回调，但渠道未配置 Encrypt Key，无法解密");
-        return { ok: false };
-      }
-      const decrypted = this.feishuAdapter.decryptPayload(payload, encryptKey);
-      if (!decrypted) {
-        this.logger.warn("[remote] 飞书回调解密失败，拒绝处理");
-        return { ok: false };
-      }
-      effectivePayload = decrypted;
-    }
-
     const effective = (effectivePayload ?? {}) as Record<string, any>;
     if (effective?.type === "url_verification" && typeof effective?.challenge === "string") {
+      this.logger.log(`[remote] 飞书 url_verification 收到挑战 encrypted=${wasEncrypted} channel=${channel?.id}`);
       return { ok: true, challenge: effective.challenge };
     }
 
