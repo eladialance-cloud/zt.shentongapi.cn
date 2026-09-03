@@ -8,6 +8,7 @@ import { ChannelService } from "./services/channel.service";
 import { PublishService } from "./services/publish.service";
 import { FeishuBotAdapter } from "./adapters/feishu-bot.adapter";
 import { WechatMpAdapter } from "./adapters/wechat-mp.adapter";
+import { WecomAdapter } from "./adapters/wecom.adapter";
 import { CommonModule } from "../../common/common.module";
 
 @Module({
@@ -20,7 +21,7 @@ import { CommonModule } from "../../common/common.module";
     CommonModule,
   ],
   controllers: [ChannelController],
-  providers: [ChannelService, PublishService, FeishuBotAdapter, WechatMpAdapter],
-  exports: [ChannelService, PublishService, FeishuBotAdapter, WechatMpAdapter],
+  providers: [ChannelService, PublishService, FeishuBotAdapter, WechatMpAdapter, WecomAdapter],
+  exports: [ChannelService, PublishService, FeishuBotAdapter, WechatMpAdapter, WecomAdapter],
 })
 export class ChannelModule {}

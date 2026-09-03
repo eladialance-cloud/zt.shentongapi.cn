@@ -1,4 +1,4 @@
-﻿// 管理端主布局 - SubTask 17.7
+// 管理端主布局 - SubTask 17.7
 //
 // 结构：顶栏(48px, logo + 管理员头像菜单) + 侧边栏(200px, 分组菜单) + 内容区(Outlet)
 // 侧边栏菜单(Task 2 精简版 6 项): 仪表盘/用户管理/内容管理/模型与配置/财务管理/系统管理
@@ -17,6 +17,7 @@ import {
   SafetyCertificateOutlined,
   SettingOutlined,
   TeamOutlined,
+  ThunderboltOutlined,
   UserOutlined
 } from '@ant-design/icons'
 import { useAdminAuthStore } from '@/store/admin-auth'
@@ -56,6 +57,16 @@ const MENU_ENTRIES: MenuEntry[] = [
       { key: 'knowledge-bases', label: '官方知识库', path: '/content/knowledge-bases' },
       { key: 'review', label: '审核中心', path: '/review' },
       { key: 'imports', label: 'GitHub 导入', path: '/imports', icon: <GithubOutlined /> }
+    ]
+  },
+  {
+    key: 'group-automation',
+    label: '自动化工作台',
+    icon: <ThunderboltOutlined />,
+    children: [
+      { key: 'automation-templates', label: '场景模板', path: '/automation/templates' },
+      { key: 'automation-policies', label: '安全策略', path: '/automation/policies' },
+      { key: 'automation-devices', label: '用户设备', path: '/automation/devices' }
     ]
   },
   {

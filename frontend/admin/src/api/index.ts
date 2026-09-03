@@ -1,6 +1,7 @@
 // 管理端 API 统一导出
 export * from './admin-auth-api'
 export * from './admin-agent-api'
+export * from './admin-automation-api'
 export * from './admin-api-key-pool-api'
 export * from './admin-audit-api'
 export * from './admin-community-api'

@@ -2,23 +2,35 @@ import { Injectable, Logger } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { ChannelService } from "../channel/services/channel.service";
 import { FeishuBotAdapter } from "../channel/adapters/feishu-bot.adapter";
+import { WechatMpAdapter } from "../channel/adapters/wechat-mp.adapter";
+import { WecomAdapter } from "../channel/adapters/wecom.adapter";
+import { InboundMessage } from "../channel/adapters/channel-adapter.interface";
 import { ChannelEntity } from "../channel/entities/channel.entity";
 import { SyncGateway } from "../sync/sync.gateway";
 import { AutomationService } from "../automation/automation.service";
 
 /**
- * 自动化工作台 - 远程路由服务（阶段1：飞书入站 → 场景/命令路由 → 设备执行 → 结果回传）
+ * 自动化工作台 - 远程路由服务（阶段2：飞书/公众号/企业微信 入站 → 场景/命令路由 → 设备执行 → 结果回传）
  * 方案文档: 深瞳AI自动化工作台建设方案（代码内置版）B1/B2/B5/B7-lite/B6
  *
  * 绑定模型：复用 create_publish_channels 表
- *   - platform='feishu_bot' 且 status='active' 的渠道即视为一条 IM 绑定
- *   - 入站按 header.token（飞书应用验证 token）匹配渠道 webhookToken；未匹配时取最早激活渠道
+ *   - platform='feishu_bot'|'wechat_mp'|'wechat_work' 且 status='active' 的渠道即视为一条 IM 绑定
+ *   - 飞书按 header.token 匹配渠道 webhookToken；公众号/企业微信按平台取最早激活渠道（单账号场景）
  * 意图分流（B7-lite）：
  *   1. 用户已启用场景实例命中（实例名/模板关键词）→ run_scenario 推送
  *   2. 本地命令关键词（查询状态/读取文件/执行系统命令等）→ 原文推送，桌面端解析
  *   3. 高危命令确认回复 → confirm 推送
  * 离线处理：直接回传"设备不在线"，不做离线队列
  */
+/** 微信系 webhook 查询参数 */
+interface WechatWebhookQuery {
+  signature?: string;
+  timestamp?: string;
+  nonce?: string;
+  echostr?: string;
+  msgSignature?: string;
+}
+
 @Injectable()
 export class RemoteService {
   private readonly logger = new Logger(RemoteService.name);
@@ -32,6 +44,8 @@ export class RemoteService {
   constructor(
     private readonly channelService: ChannelService,
     private readonly feishuAdapter: FeishuBotAdapter,
+    private readonly wechatMpAdapter: WechatMpAdapter,
+    private readonly wecomAdapter: WecomAdapter,
     private readonly syncGateway: SyncGateway,
     private readonly automationService: AutomationService,
   ) {
@@ -45,12 +59,19 @@ export class RemoteService {
 
   /** 健康检查 */
   health() {
-    return { status: "ok", module: "remote", mode: "feishu-device-closed-loop" };
+    return { status: "ok", module: "remote", mode: "im-device-closed-loop" };
+  }
+
+  /** 按平台取最早激活渠道（单账号场景兜底） */
+  private async findChannelByPlatform(
+    platform: "feishu_bot" | "wechat_mp" | "wechat_work",
+  ): Promise<ChannelEntity | null> {
+    const list = await this.channelService.findActiveChannelsByPlatform(platform);
+    return list[0] ?? null;
   }
 
   /**
    * 处理飞书 webhook 入站消息
-   * @returns ok=false 表示无绑定/非文本消息（无需回执）；ok=true 表示已处理
    */
   async handleFeishuInbound(
     payload: unknown,
@@ -72,8 +93,7 @@ export class RemoteService {
     }
     // 兜底：取最早激活的飞书渠道（单用户单机器人场景）
     if (!channel) {
-      const fallback = await this.channelService.findActiveChannelsByPlatform("feishu_bot");
-      channel = fallback[0] ?? null;
+      channel = await this.findChannelByPlatform("feishu_bot");
     }
     if (!channel) {
       this.logger.warn("[remote] 无已激活的飞书渠道绑定，忽略入站消息（请在渠道管理中配置飞书机器人）");
@@ -89,6 +109,143 @@ export class RemoteService {
       return { ok: false };
     }
 
+    return this.routeInboundMessage(channel, inbound);
+  }
+
+  /**
+   * 处理公众号 webhook（GET 验证回显 echostr / POST XML 消息）
+   */
+  async handleWechatMpInbound(
+    payload: unknown,
+    query: WechatWebhookQuery,
+  ): Promise<{ ok: boolean; echostr?: string }> {
+    // GET 验证：签名通过才回显 echostr
+    if (typeof query?.echostr === "string" && query.echostr) {
+      const channel = await this.findChannelByPlatform("wechat_mp");
+      const token = channel?.webhookToken ?? "";
+      const ok = this.wechatMpAdapter.verifySignature(query, query.signature ?? "", token);
+      return { ok, echostr: ok ? query.echostr : undefined };
+    }
+
+    // POST 消息（XML 原始体）
+    const inbound = this.wechatMpAdapter.parseInboundMessage(payload);
+    if (!inbound) {
+      this.logger.warn("[remote] 无法解析公众号入站消息");
+      return { ok: false };
+    }
+    const channel = await this.findChannelByPlatform("wechat_mp");
+    if (!channel) {
+      this.logger.warn("[remote] 无已激活的公众号渠道绑定，忽略入站消息");
+      return { ok: false };
+    }
+    // 验签（channel.webhookToken = 公众号 Token）
+    if (
+      channel.webhookToken &&
+      !this.wechatMpAdapter.verifySignature(query, query.signature ?? "", channel.webhookToken)
+    ) {
+      this.logger.warn("[remote] 公众号签名校验失败，拒绝处理");
+      return { ok: false };
+    }
+    // 关注/取关等事件：仅记录，不路由
+    if (inbound.messageType === "event" || !inbound.content?.trim()) {
+      return { ok: true };
+    }
+    return this.routeInboundMessage(channel, inbound);
+  }
+
+  /**
+   * 处理企业微信回调（GET 验证 / POST 加密事件）
+   */
+  async handleWecomInbound(
+    payload: unknown,
+    query: WechatWebhookQuery,
+  ): Promise<{ ok: boolean; echostr?: string }> {
+    const channel = await this.findChannelByPlatform("wechat_work");
+    if (!channel) {
+      this.logger.warn("[remote] 无已激活的企业微信渠道绑定，忽略回调（请先在渠道管理中配置企业微信）");
+      return { ok: false };
+    }
+    const token = channel.webhookToken ?? "";
+
+    // GET 验证：msg_signature 校验通过后解密 echostr 回显
+    if (typeof query?.echostr === "string" && query.echostr) {
+      const ok = this.wecomAdapter.verifySignature(
+        { timestamp: query.timestamp, nonce: query.nonce, encrypt: query.echostr },
+        query.msgSignature ?? "",
+        token,
+      );
+      if (!ok) {
+        this.logger.warn("[remote] 企业微信 GET 验签失败");
+        return { ok: false };
+      }
+      const creds = this.channelService.decryptCredentials(channel);
+      const aesKey = creds?.encodingAesKey ?? "";
+      if (aesKey) {
+        try {
+          const { message } = this.wecomAdapter.decryptPayload({ encrypt: query.echostr }, aesKey);
+          return { ok: true, echostr: message };
+        } catch (err) {
+          this.logger.warn(`[remote] 企业微信 echostr 解密失败: ${(err as Error).message}`);
+          return { ok: false };
+        }
+      }
+      return { ok: true, echostr: query.echostr };
+    }
+
+    // POST 事件回调：body 为 { Encrypt: "..." }（JSON 或原始体）
+    let encrypt = (payload as Record<string, any>)?.Encrypt as string | undefined;
+    if (!encrypt) {
+      const raw = typeof payload === "string" ? payload : JSON.stringify(payload ?? {});
+      try {
+        encrypt = (JSON.parse(raw) as Record<string, any>)?.Encrypt as string | undefined;
+      } catch {
+        encrypt = undefined;
+      }
+    }
+    if (!encrypt) {
+      this.logger.warn("[remote] 企业微信回调缺少 Encrypt 字段");
+      return { ok: false };
+    }
+
+    // 验签：msg_signature = SHA1(sort(token, timestamp, nonce, encrypt))
+    const ok = this.wecomAdapter.verifySignature(
+      { timestamp: query.timestamp, nonce: query.nonce, encrypt },
+      query.msgSignature ?? "",
+      token,
+    );
+    if (!ok) {
+      this.logger.warn("[remote] 企业微信签名校验失败，拒绝处理");
+      return { ok: false };
+    }
+
+    // 解密 → 解析 → 路由
+    const creds = this.channelService.decryptCredentials(channel);
+    let message: string;
+    try {
+      const decrypted = this.wecomAdapter.decryptPayload({ encrypt }, creds?.encodingAesKey ?? "");
+      message = decrypted.message;
+    } catch (err) {
+      this.logger.warn(`[remote] 企业微信消息解密失败: ${(err as Error).message}`);
+      return { ok: false };
+    }
+    const inbound = this.wecomAdapter.parseInboundMessage(message);
+    if (!inbound) {
+      this.logger.warn("[remote] 无法解析企业微信入站消息");
+      return { ok: false };
+    }
+    if (inbound.messageType === "event" || !inbound.content?.trim()) {
+      return { ok: true };
+    }
+    return this.routeInboundMessage(channel, inbound);
+  }
+
+  /**
+   * 公共路由：文本指令 → 确认回复 → 在线检查 → 场景分流 → 命令推送
+   */
+  private async routeInboundMessage(
+    channel: ChannelEntity,
+    inbound: InboundMessage,
+  ): Promise<{ ok: boolean }> {
     // 仅处理文本指令
     const text = inbound.content?.trim() ?? "";
     if (inbound.messageType !== "text" || !text) {
@@ -263,7 +420,7 @@ export class RemoteService {
     return commandId;
   }
 
-  /** 回传文本消息到飞书 */
+  /** 回传文本消息到 IM（按渠道平台选择适配器） */
   private async replyText(
     channel: ChannelEntity,
     senderExternalId: string,
@@ -276,12 +433,25 @@ export class RemoteService {
       webhookToken: channel.webhookToken ?? undefined,
       webhookUrl: channel.webhookUrl ?? undefined,
     });
-    const result = await this.feishuAdapter.sendMessage(credentialsJson, {
-      targetExternalId: senderExternalId,
-      content,
-    });
+    let result: { success: boolean; externalId?: string; error?: string };
+    if (channel.platform === "wechat_mp") {
+      result = await this.wechatMpAdapter.sendMessage(credentialsJson, {
+        targetExternalId: senderExternalId,
+        content,
+      });
+    } else if (channel.platform === "wechat_work") {
+      result = await this.wecomAdapter.sendMessage(credentialsJson, {
+        targetExternalId: senderExternalId,
+        content,
+      });
+    } else {
+      result = await this.feishuAdapter.sendMessage(credentialsJson, {
+        targetExternalId: senderExternalId,
+        content,
+      });
+    }
     if (!result.success) {
-      this.logger.error(`[remote] 飞书回传失败: ${result.error}`);
+      this.logger.error(`[remote] IM 回传失败: ${result.error}`);
     }
   }
 

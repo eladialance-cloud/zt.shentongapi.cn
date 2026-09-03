@@ -23,6 +23,7 @@ import {
   MoreHorizontal,
   Mic,
   Zap,
+  QrCode,
   type LucideIcon,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
@@ -54,6 +55,7 @@ const MORE_NAV: NavItem[] = [
   { key: 'skill-market', label: '技能市场', icon: Store,     path: '/skill-market' },
   { key: 'workflow',     label: '工作流',   icon: Workflow,  path: '/workflow' },
   { key: 'automation',  label: '自动化',  icon: Zap,      path: '/automation' },
+  { key: 'binding-guide', label: '绑定引导', icon: QrCode,    path: '/binding-guide' },
   { key: 'channels',     label: '渠道',     icon: Send,      path: '/channels' },
   { key: 'credits',      label: '积分',     icon: Coins,     path: '/credits' },
   { key: 'settings',     label: '设置',     icon: Settings,  path: '/settings' },

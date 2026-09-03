@@ -68,6 +68,9 @@ const AdminPlans = lazy(() => import('@/pages/Plans'))
 const AdminApiKeyPool = lazy(() => import('@/pages/ApiKeyPool'))
 const AdminImports = lazy(() => import('@/pages/Imports'))
 const AdminMembership = lazy(() => import('@/pages/Membership'))
+const AutomationTemplates = lazy(() => import('@/pages/Automation/Templates'))
+const AutomationPolicies = lazy(() => import('@/pages/Automation/Policies'))
+const AutomationDevices = lazy(() => import('@/pages/Automation/Devices'))
 
 /** Suspense fallback：Ant Design Spin 居中加载 */
 const SuspenseFallback = (
@@ -171,7 +174,11 @@ const router = createBrowserRouter(
 { path: 'mcp', element: withSuspense(<AdminMcp />) },
         { path: 'infra', element: withSuspense(<AdminInfraHub />) },
         { path: 'plans', element: withSuspense(<AdminPlans />) },
-        { path: 'membership', element: withSuspense(<AdminMembership />) }
+        { path: 'membership', element: withSuspense(<AdminMembership />) },
+        { path: 'automation', element: <Navigate to='/automation/templates' replace /> },
+        { path: 'automation/templates', element: withSuspense(<AutomationTemplates />) },
+        { path: 'automation/policies', element: withSuspense(<AutomationPolicies />) },
+        { path: 'automation/devices', element: withSuspense(<AutomationDevices />) }
       ]
     },
 

@@ -47,6 +47,7 @@ import { syncOpenClawMcpFromBackend } from './openclaw-mcp-sync'
 import { AppUpdater } from './updater'
 import { getDeviceFingerprint } from './device'
 import { getRemoteControlManager } from './remote-control'
+import { runComputerControlMcpServer, registerComputerControlMcp } from './computer-control-mcp'
 import { existsSync, readFileSync } from 'node:fs'
 import { localDb } from './local-db'
 import { getOrCreateSalt, deriveDbKey } from './local-db/crypto'
@@ -459,7 +460,16 @@ const isDev = !app.isPackaged
 let appUpdater: AppUpdater | null = null
 
 // 单实例锁 - 防止多开
-const gotLock = app.requestSingleInstanceLock()
+// ===== computer-control MCP 模式（OpenClaw 通过 --shentong-mcp-server 拉起，不创建窗口/托盘） =====
+if (process.argv.includes('--shentong-mcp-server')) {
+  app.whenReady().then(() => {
+    void runComputerControlMcpServer().catch((err) => {
+      console.error('[computer-control-mcp] 服务异常:', err)
+      process.exit(1)
+    })
+  })
+} else {
+  const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 } else {
@@ -503,7 +513,9 @@ if (!gotLock) {
       app.setLoginItemSettings({ openAtLogin: true })
     } catch (err) {
       console.warn('[remote-control] 开机自启设置失败:', err)
-    }    // 自动化工作台：启动远程控制（有登录 token 即连接云端）
+    }    // 自动化工作台 D1：注册 computer-control MCP 进 OpenClaw mcp.servers（幂等）
+    registerComputerControlMcp()
+    // 自动化工作台：启动远程控制（有登录 token 即连接云端）
     void bootstrapRemoteControl()
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -1429,4 +1441,5 @@ ipcMain.handle(
 
   ipcMain.handle('market:syncChat', async () => syncChatInstalled())
 
+}
 }
