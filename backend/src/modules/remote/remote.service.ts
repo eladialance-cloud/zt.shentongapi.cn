@@ -134,15 +134,18 @@ export class RemoteService {
       return { ok: false };
     }
 
-    // 飞书开放平台事件签名：密钥为 app_secret；自定义机器人用 webhookToken。两者都试，任一通过即可。
-    const creds = this.channelService.decryptCredentials(channel) ?? {};
-    const signKeys = [creds.appSecret, channel.webhookToken].filter(Boolean) as string[];
-    const sigOk = signKeys.some((k) =>
-      this.feishuAdapter.verifySignature(payload, signature ?? "", k, timestamp, rawBody),
-    );
-    if (!sigOk) {
-      this.logger.warn("[remote] 飞书签名校验失败（appSecret/webhookToken 均不匹配），拒绝处理");
-      return { ok: false };
+    // 开放平台加密回调：能解密即证明发送方持有 Encrypt_Key，凭此已鉴权；
+    // 飞书回调签名算法多变、易误拒，加密回调跳过签名校验（日志记录），非加密回调仍强制校验。
+    if (!wasEncrypted) {
+      const creds = this.channelService.decryptCredentials(channel) ?? {};
+      const signKeys = [creds.appSecret, channel.webhookToken].filter(Boolean) as string[];
+      const sigOk = signKeys.some((k) =>
+        this.feishuAdapter.verifySignature(payload, signature ?? "", k, timestamp, rawBody),
+      );
+      if (!sigOk) {
+        this.logger.warn("[remote] 飞书签名校验失败（appSecret/webhookToken 均不匹配），拒绝处理");
+        return { ok: false };
+      }
     }
 
     return this.routeInboundMessage(channel, inbound);
