@@ -121,16 +121,19 @@ export class FeishuBotAdapter implements ChannelAdapter {
     }
     const appId = cfg?.appId;
     const appSecret = cfg?.appSecret;
-    const webhookToken = cfg?.webhookToken || cfg?.token || cfg?.webhook_token;
+    const customBotToken = cfg?.webhook_token || cfg?.webhookToken;
 
-    if (webhookToken) {
-      return this.sendViaWebhook(webhookToken, message);
-    }
+    // 优先开放平台应用（appId+appSecret）：群/私聊都可通过机器人主动回复。
+    // 注意：验证令牌(credentials.token / channel.webhookToken)不是自定义机器人 webhook token，
+    // 只有明确配置了 webhook_token / webhookToken 的自定义机器人渠道才走 webhook。
     if (appId && appSecret) {
       return this.sendViaOpenApi(appId, appSecret, message);
     }
+    if (customBotToken) {
+      return this.sendViaWebhook(customBotToken, message);
+    }
 
-    const err = "未配置飞书发送凭证（credentials.webhookToken 或 credentials.appId+appSecret）";
+    const err = "未配置飞书发送凭证（credentials.appId+appSecret 或自定义机器人 webhook_token）";
     this.logger.warn(`[FeishuBot] ${err}`);
     return { success: false, error: err };
   }
