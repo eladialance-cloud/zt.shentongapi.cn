@@ -192,6 +192,18 @@ export class CreateOralWorkshopJobDto {
   @IsString()
   @MaxLength(64)
   clientTxnId?: string;
+
+  /** 封面主标题（标题封面步骤：留空=后端 titleCover 自动生成） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  coverH1?: string;
+
+  /** 封面副标题（标题封面步骤：留空=后端 titleCover 自动生成） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  coverH2?: string;
 }
 
 /** 批量矩阵化建单 DTO（对标参考软件 draft:batch-create：文案 × 模板 × 声音 × 形象） */

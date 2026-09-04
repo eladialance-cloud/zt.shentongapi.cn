@@ -17,7 +17,7 @@ import {
   Sparkles,
   XCircle,
 } from 'lucide-react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import {
   advanceOralWorkshopJob,
   cancelOralWorkshopJob,
@@ -112,6 +112,7 @@ export function publishStatusMeta(status: string | null): { label: string; color
 export default function OralWorkshopDetail() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
+  const location = useLocation()
   const jobId = Number(id)
   const { setLastJob } = useOralWorkshopStore()
   const [job, setJob] = useState<OralWorkshopJob | null>(null)
@@ -131,6 +132,18 @@ export default function OralWorkshopDetail() {
   const [publishDescription, setPublishDescription] = useState('')
   const [aiTags, setAiTags] = useState<string[]>([])
   const [aiGenerating, setAiGenerating] = useState(false)
+
+  // 从工作台「视频发布」步骤带过来的发布偏好（预填）
+  const owPublish = (location.state as { owPublish?: { accountId?: number; asDraft?: boolean; mode?: 'manual' | 'auto'; title?: string; description?: string } } | null)?.owPublish
+  useEffect(() => {
+    if (!owPublish) return
+    if (owPublish.asDraft !== undefined) setPublishAsDraft(owPublish.asDraft)
+    if (owPublish.mode) setPublishMode(owPublish.mode)
+    if (owPublish.title) setPublishTitle(owPublish.title)
+    if (owPublish.description) setPublishDescription(owPublish.description)
+    if (typeof owPublish.accountId === 'number') setSelectedAccountIds((prev) => (prev.length ? prev : [owPublish.accountId as number]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [publishResult, setPublishResult] = useState<{ type: 'success' | 'warning' | 'error'; summary: string } | null>(null)
   const [importingMaterials, setImportingMaterials] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)

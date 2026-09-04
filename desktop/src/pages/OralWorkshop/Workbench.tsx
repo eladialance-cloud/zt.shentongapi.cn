@@ -1,11 +1,13 @@
 /**
  * 口播工坊 · 创作工作台（多步骤向导，对标参考软件 UI）
- * ① 文案与选题（含学习对标-提取文案 / 选题灵感）
- * ② 人设与风格（IP 大脑预设 + 自定义）
- * ③ 配音（我的声音 / 上传成音）
- * ④ 数字人形象（我的形象 / 上传视频）
- * ⑤ 模板（卡片选择）+ 双语字幕
- * ⑥ 预览提交（汇总 → 创建任务 → 进入 7 步流水线）
+ * ① 提取文案（链接/上传提取 + 视频源 + 原文案）
+ * ② 改写文案（人设/风格 + 一键改写 + 原文/结果对照）
+ * ③ 声音克隆（我的声音 / 上传成音 / 克隆结果预览）
+ * ④ 数字人生成（形象 / 驱动音频 / 模型版本）
+ * ⑤ 视频剪辑（模板 + BGM + 字幕 + 画中画）
+ * ⑥ 标题封面（标题/描述/封面主副标题）
+ * ⑦ 视频发布（账号 + 直接发布/草稿）
+ * ⑧ 生成视频（汇总 → 创建任务 → 进入 7 步流水线）
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -38,7 +40,6 @@ import {
   Sparkles,
   Trash2,
   Upload as UploadIcon,
-  User,
   ExternalLink,
   Scissors,
   ArrowDown,
@@ -281,6 +282,7 @@ export default function OralWorkshopWorkbench() {
   const [dhForm] = Form.useForm()
   const [refAudioOpen, setRefAudioOpen] = useState(false)
   const [refAudioForm] = Form.useForm()
+  const refAudioUrlWatched = Form.useWatch('refAudioUrl', refAudioForm)
   const [batchOpen, setBatchOpen] = useState(false)
   const [batchTopics, setBatchTopics] = useState('')
   const [batchTemplateIds, setBatchTemplateIds] = useState<number[]>([])
@@ -317,6 +319,7 @@ export default function OralWorkshopWorkbench() {
   const [rewriteReference, setRewriteReference] = useState('')
 const [rewriteOriginal, setRewriteOriginal] = useState('')
 const [rewriteResult, setRewriteResult] = useState<string | null>(null)
+  const [rewriteDraft, setRewriteDraft] = useState('')
   // A5：产品/营销文案弹窗
   const [productCopyOpen, setProductCopyOpen] = useState(false)
   const [productCopyLoading, setProductCopyLoading] = useState(false)
@@ -360,6 +363,20 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
   const [bgmEnabled, setBgmEnabled] = useState(true)
   // E4：字幕文本覆盖（多行，每行一条；留空=按文案自动分段）
   const [subtitlesOverride, setSubtitlesOverride] = useState('')
+  // 视频源（提取文案：对标平台来源，提交映射到 platforms）
+  const [videoSource, setVideoSource] = useState<string>()
+  // 数字人清晰度档位（D5：V1=标准 / V2=高清，默认 V2）
+  const [dhModelVersion, setDhModelVersion] = useState<'V1' | 'V2'>('V2')
+  // 驱动音频（D5：auto=自动用上一步克隆声音 / manual=手动指定我的声音或成音）
+  const [driveAudioMode, setDriveAudioMode] = useState<'auto' | 'manual'>('auto')
+  // ⑥ 标题封面：封面主/副标题（提交落库 coverH1/H2，留空=后端自动生成）
+  const [coverH1, setCoverH1] = useState('')
+  const [coverH2, setCoverH2] = useState('')
+  // ⑦ 视频发布：标题/描述/发布方式（创建后带入详情页发布面板）
+  const [publishTitle, setPublishTitle] = useState('')
+  const [publishDescription, setPublishDescription] = useState('')
+  const [publishAsDraft, setPublishAsDraft] = useState(false)
+  const [publishMode, setPublishMode] = useState<'manual' | 'auto'>('manual')
   // B3：选题生成深度（浅度=关键词直出；深度=先分析对标风格再生成）
   const [topicDepth, setTopicDepth] = useState<'shallow' | 'deep'>('shallow')
   // F4a：发布账号（工作台管理，详情页一键发布）
@@ -423,6 +440,17 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, draft])
+
+  // 进入「改写文案」步骤时，把主文案同步到改写原文（仅在原文为空/从未改写过时初始化）
+  useEffect(() => {
+    if (current !== 1) return
+    const script = ((form.getFieldValue('scriptInput') as string) ?? '').trim()
+    if (!rewriteDraft && script) {
+      setRewriteDraft(script)
+      setRewriteOriginal(script)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current])
 
   // 草稿自动保存：表单变化防抖 800ms 写入 localStorage（对标参考软件 autoSave）
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -602,9 +630,9 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
     return false
   }
 
-  /** A4：智能改写（选模板/字数/参考范文，结果先展示原文/改写后对比，确认后替换） */
+  /** A4：智能改写（左侧原文可直接修改；生成后右侧结果也可直接修改，确认后再应用） */
   const handleRewrite = async () => {
-    const script = (form.getFieldValue('scriptInput') as string) ?? ''
+    const script = ((rewriteDraft ?? (form.getFieldValue('scriptInput') as string)) ?? '').trim()
     if (!script.trim()) {
       message.warning('请先填写待改写的口播文案')
       return
@@ -619,9 +647,10 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
         persona: (form.getFieldValue('persona') as string | undefined)?.trim(),
         style: (form.getFieldValue('style') as string | undefined)?.trim(),
       })
+      setRewriteDraft(script.trim())
       setRewriteOriginal(script.trim())
       setRewriteResult(res.text)
-      message.success('改写完成，请对比后在下方确认「使用此文案」')
+      message.success('改写完成，可直接修改右侧结果后点击「使用此文案」')
     } catch (err) {
       message.error('改写失败: ' + (err as Error).message)
     } finally {
@@ -629,14 +658,15 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
     }
   }
 
-  /** A4：确认使用改写结果（替换文案框） */
+  /** A4：确认使用改写结果（把右侧可继续修改的改写文案替换到文案框） */
   const handleApplyRewrite = () => {
     if (!rewriteResult) return
     form.setFieldsValue({ scriptInput: rewriteResult })
     message.success('已替换文案（可继续编辑）')
     setRewriteOpen(false)
     setRewriteResult(null)
-    setRewriteOriginal('')
+    setRewriteOriginal(rewriteResult)
+    setRewriteDraft(rewriteResult)
   }
 
   /** A4：关闭/取消时清空改写对比状态 */
@@ -644,6 +674,7 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
     setRewriteOpen(false)
     setRewriteResult(null)
     setRewriteOriginal('')
+    setRewriteDraft('')
   }
 
   /** A5：产品/营销文案（产品名称/卖点 → 口播文案） */
@@ -1031,10 +1062,12 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
         targetAudience: values.targetAudience,
         style: values.style,
         persona: values.persona,
+        platforms: videoSource ? [videoSource] : undefined,
         templateId: values.templateId ?? undefined,
         voiceId: values.voiceId,
         speakerId: values.speakerId,
         digitalHumanId: values.digitalHumanId ?? (validShots.length === 1 ? validShots[0].digitalHumanId : undefined),
+        dhModelVersion,
         dhGenerationMode,
         shots: validShots.length > 1 ? validShots : undefined,
         subtitlesEnabled,
@@ -1051,6 +1084,8 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
         videoUrl,
         bilingual: !!targetLang,
         targetLang,
+        coverH1: coverH1.trim() || undefined,
+        coverH2: coverH2.trim() || undefined,
         executionMode: values.executionMode ?? 'auto',
         clientTxnId: 'ow-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
       })
@@ -1064,7 +1099,17 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
       })
       message.success('任务已创建，进入详情页跟踪 7 步流水线')
       void useCreditsStore.getState().fetchBalance()
-      navigate('/oral-workshop/' + job.id)
+      navigate('/oral-workshop/' + job.id, {
+        state: {
+          owPublish: {
+            accountId: selectedAccountId,
+            asDraft: publishAsDraft,
+            mode: publishMode,
+            title: publishTitle.trim() || undefined,
+            description: publishDescription.trim() || undefined,
+          },
+        },
+      })
     } catch (err) {
       const e = err as Error
       message.error('创建失败: ' + (e?.message ?? e))
@@ -1075,12 +1120,14 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
 
   const steps = useMemo(
     () => [
-      { title: '文案与选题', icon: <FileText size={15} /> },
-      { title: '人设与风格', icon: <User size={15} /> },
-      { title: '配音', icon: <Mic size={15} /> },
-      { title: '数字人形象', icon: <Clapperboard size={15} /> },
-      { title: '模板', icon: <Layers size={15} /> },
-      { title: '预览提交', icon: <Send size={15} /> },
+      { title: '提取文案', icon: <ExternalLink size={15} /> },
+      { title: '改写文案', icon: <Wand2 size={15} /> },
+      { title: '声音克隆', icon: <Mic size={15} /> },
+      { title: '数字人生成', icon: <Clapperboard size={15} /> },
+      { title: '视频剪辑', icon: <Scissors size={15} /> },
+      { title: '标题封面', icon: <FileText size={15} /> },
+      { title: '视频发布', icon: <Send size={15} /> },
+      { title: '生成视频', icon: <Video size={15} /> },
     ],
     []
   )
@@ -1153,11 +1200,11 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
 
       <Card className={styles.card} bodyStyle={{ padding: 20 }}>
         <Form form={form} layout="vertical" onFinish={handleSubmit} onValuesChange={handleDraftChange}>
-        {/* ① 文案与选题 */}
+        {/* ① 提取文案 */}
         {current === 0 && (
           <div className={styles.panel}>
             <div className={styles.panelTitle}>
-              <FileText size={15} /> 口播文案 / 选题
+              <ExternalLink size={15} /> 提取文案
             </div>
             <div className={styles.extractRow}>
               <Input
@@ -1183,27 +1230,32 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                 分析风格
               </Button>
             </div>
-            <div className={styles.extractRow} style={{ marginTop: 8 }}>
-              <Button
-                type="dashed"
-                icon={<Wand2 size={13} />}
-                onClick={() => {
-                  setRewriteOriginal(((form.getFieldValue('scriptInput') as string) ?? '').trim())
-                  setRewriteResult(null)
-                  setRewriteOpen(true)
-                }}
-              >
-                智能改写
-              </Button>
-              <Button type="dashed" icon={<Music2 size={13} />} onClick={() => setProductCopyOpen(true)}>
-                产品文案
-              </Button>
-              <Input
-                placeholder="参考范文（可选）：粘贴一段爆款文案，选题/改写时学习其风格"
-                value={referenceText}
-                maxLength={20000}
-                onChange={(e) => setReferenceText(e.target.value)}
-              />
+            <div className={styles.formRow} style={{ marginTop: 8 }}>
+              <Form.Item label="视频源" className={styles.formCol}>
+                <Select
+                  value={videoSource}
+                  onChange={setVideoSource}
+                  placeholder="选择对标/素材来源平台（可选，提交后回写平台标签）"
+                  allowClear
+                  options={[
+                    { value: 'douyin', label: '抖音' },
+                    { value: 'kuaishou', label: '快手' },
+                    { value: 'bilibili', label: 'B站' },
+                    { value: 'xiaohongshu', label: '小红书' },
+                    { value: 'weixin', label: '微信视频号' },
+                    { value: 'other', label: '其他' },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item label="源媒体预览" className={styles.formCol}>
+                {/\.(mp4|mov|m4v|webm|mp3|m4a|wav|aac|m3u8)(\?|#|$)/i.test(benchmarkUrl) ? (
+                  <video className={styles.video} src={benchmarkUrl} controls preload="metadata" style={{ width: '100%', borderRadius: 8, maxHeight: 220 }} />
+                ) : (
+                  <div className={styles.panelHint} style={{ marginTop: 4 }}>
+                    {benchmarkUrl ? '已粘贴链接，点击「提取文案」后由服务器解析下载；直接视频/音频直链可在此预览。' : '粘贴视频/音频直链后可在此预览，或先提取文案。'}
+                  </div>
+                )}
+              </Form.Item>
             </div>
             <Form.Item name="scriptInput" rules={[{ required: true, message: '请输入口播文案或选题' }]}>
               <TextArea
@@ -1217,11 +1269,11 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
           </div>
         )}
 
-        {/* ② 人设与风格 */}
+        {/* ② 改写文案 */}
         {current === 1 && (
           <div className={styles.panel}>
             <div className={styles.panelTitle}>
-              <User size={15} /> IP 大脑 · 人设与风格
+              <Wand2 size={15} /> 改写文案
             </div>
             <div className={styles.presetGrid}>
               {personaPresets.map((p) => (
@@ -1238,9 +1290,14 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                 </button>
               ))}
             </div>
-            <Form.Item name="persona" label="人设（可自定义覆盖预设）">
-              <Input placeholder="如：资深 AI 产品经理，犀利点评行业真相" maxLength={512} />
-            </Form.Item>
+            <div className={styles.formRow}>
+              <Form.Item name="persona" label="人设（可自定义覆盖预设）" className={styles.formCol}>
+                <Input placeholder="如：资深 AI 产品经理，犀利点评行业真相" maxLength={512} />
+              </Form.Item>
+              <Form.Item name="goal" label="创作目标（可选）" className={styles.formCol}>
+                <Input placeholder="如：涨粉 / 带货 / 知识科普" maxLength={2000} />
+              </Form.Item>
+            </div>
             <div className={styles.formRow}>
               <Form.Item name="targetAudience" label="目标受众（可选）" className={styles.formCol}>
                 <Input placeholder="如：职场新人 / 宝妈 / 创业者" maxLength={255} />
@@ -1249,17 +1306,94 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                 <Input placeholder="如：口语化、有网感、干货型" maxLength={512} />
               </Form.Item>
             </div>
-            <Form.Item name="goal" label="创作目标（可选）">
-              <Input placeholder="如：涨粉 / 带货 / 知识科普" maxLength={2000} />
-            </Form.Item>
+            <div className={styles.extractRow} style={{ marginTop: 8 }}>
+              <Form.Item label="写作提示词模板" style={{ flex: 1, marginBottom: 0 }}>
+                <Select
+                  value={rewriteTemplate}
+                  onChange={setRewriteTemplate}
+                  options={[
+                    { value: 'rewrite_master', label: '信息保全（默认，保留原意润色）' },
+                    { value: 'generic_rewrite', label: '精简口语化（更适合口播）' },
+                    { value: 'rewrite_detailed', label: '爆款详细（加长展开）' },
+                    { value: 'rewrite_deep_learn', label: '深度学习（参考范文风格）' },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item label="字数限制" style={{ flex: 1, marginBottom: 0 }}>
+                <Slider min={100} max={800} step={20} value={rewriteWordCount} onChange={setRewriteWordCount} marks={{ 100: '短', 260: '260', 800: '长' }} />
+              </Form.Item>
+            </div>
+            <Button
+              type="primary"
+              icon={<Wand2 size={14} />}
+              loading={rewriteLoading}
+              onClick={() => void handleRewrite()}
+              style={{ marginBottom: 12 }}
+            >
+              一键改写文案
+            </Button>
+            <div className={styles.rewriteCompare}>
+              <div className={styles.rewriteCompareCol}>
+                <div className={styles.rewriteCompareHead}>原文（{Array.from(rewriteDraft || '').length} 字 · 可直接修改）</div>
+                <TextArea
+                  rows={8}
+                  value={rewriteDraft}
+                  maxLength={20000}
+                  placeholder="可直接修改提取/粘贴的文案后再开始改写…"
+                  onChange={(e) => {
+                    const value = e.target.value
+                    setRewriteDraft(value)
+                    form.setFieldsValue({ scriptInput: value })
+                  }}
+                />
+              </div>
+              <div className={styles.rewriteCompareCol}>
+                {rewriteResult ? (
+                  <>
+                    <div className={styles.rewriteCompareHead}>改写后（{Array.from(rewriteResult).length} 字 · 可直接修改）</div>
+                    <TextArea
+                      rows={8}
+                      value={rewriteResult}
+                      maxLength={20000}
+                      onChange={(e) => setRewriteResult(e.target.value)}
+                    />
+                    <Button
+                      type="primary"
+                      size="small"
+                      icon={<CheckCircle2 size={14} />}
+                      style={{ marginTop: 8 }}
+                      onClick={() => void handleApplyRewrite()}
+                    >
+                      使用此文案
+                    </Button>
+                  </>
+                ) : (
+                  <div className={styles.panelHint} style={{ marginTop: 24 }}>
+                    点「一键改写文案」后，右侧展示改写结果；生成后可在文本框内直接修改，再点「使用此文案」替换。
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className={styles.extractRow} style={{ marginTop: 12 }}>
+              <Button type="dashed" icon={<Music2 size={13} />} onClick={() => setProductCopyOpen(true)}>
+                产品文案
+              </Button>
+              <Input
+                placeholder="参考范文（可选）：粘贴一段爆款文案，选题/改写时学习其风格"
+                value={referenceText}
+                maxLength={20000}
+                onChange={(e) => setReferenceText(e.target.value)}
+              />
+            </div>
+            <div className={styles.panelHint}>改写的是左侧原文（提取的文案可直接先修改）；生成后右侧结果仍可继续直接修改。</div>
           </div>
         )}
 
-        {/* ③ 配音 */}
+        {/* ③ 声音克隆 */}
         {current === 2 && (
           <div className={styles.panel}>
             <div className={styles.panelTitle}>
-              <Mic size={15} /> 配音
+              <Mic size={15} /> 声音克隆
             </div>
                             <Form.Item name="voiceModelVersion" label="配音音质" initialValue="V2" extra="V1=标准（快、省）；V2=高清（更自然，默认）">
                   <Select
@@ -1305,6 +1439,18 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                 }))}
               />
             </Form.Item>
+            {(() => {
+              const cur = voices.find((v) => v.id === form.getFieldValue('voiceId'))
+              const audioSrc = cur?.demoAudio ? resolveMediaUrl(cur.demoAudio) : (audioUrl ?? '')
+              return (
+                <div className={styles.panelHint} style={{ marginBottom: 12 }}>
+                  <div style={{ marginBottom: 4 }}>克隆结果：{audioSrc ? '已就绪，可播放预览' : '上传成音或选择克隆声音后，此处可预览克隆结果'}</div>
+                  {audioSrc ? (
+                    <audio controls src={audioSrc} preload="metadata" style={{ width: '100%', maxHeight: 60 }} />
+                  ) : null}
+                </div>
+              )
+            })()}
             <div className={styles.assetActions}>
               <Button size="small" type="dashed" icon={<Plus size={12} />} onClick={() => setRefAudioOpen(true)}>
                 添加参考音频（我的声音）
@@ -1382,11 +1528,11 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
           </div>
         )}
 
-        {/* ④ 数字人形象 */}
+        {/* ④ 数字人生成 */}
         {current === 3 && (
           <div className={styles.panel}>
             <div className={styles.panelTitle}>
-              <Clapperboard size={15} /> 数字人形象
+              <Clapperboard size={15} /> 数字人生成
             </div>
             <Form.Item name="digitalHumanId" label="我的形象（火山数字人）">
               <Select
@@ -1398,6 +1544,30 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                 }))}
               />
             </Form.Item>
+            <Form.Item label="驱动音频" tooltip="auto=自动使用上一步「声音克隆」产物驱动；manual=手动指定我的克隆声或上传成音">
+              <Radio.Group value={driveAudioMode} onChange={(e) => setDriveAudioMode(e.target.value)} optionType="button" buttonStyle="solid">
+                <Radio.Button value="auto">自动（上一步克隆声音）</Radio.Button>
+                <Radio.Button value="manual">手动指定</Radio.Button>
+              </Radio.Group>
+            </Form.Item>
+            {driveAudioMode === 'manual' && (
+              <div className={styles.uploadGroup} style={{ marginBottom: 8 }}>
+                <Form.Item name="voiceId" label="驱动声音（选择我的克隆声）" style={{ marginBottom: 8 }}>
+                  <Select
+                    placeholder="选择克隆声音（留空=用上传成音）"
+                    allowClear
+                    options={voices.map((v) => ({ value: v.id, label: v.name + (v.speakerId ? '（已就绪 ✓）' : '') }))}
+                  />
+                </Form.Item>
+                <MediaUploadRow
+                  label="或上传驱动成音"
+                  accept="audio/*"
+                  value={audioUrl}
+                  onUpload={setAudioUrl}
+                  onClear={() => setAudioUrl(undefined)}
+                />
+              </div>
+            )}
             <div className={styles.uploadGroup} style={{ marginTop: 8 }}>
               <div className={styles.uploadRow} style={{ alignItems: 'center' }}>
                 <span className={styles.uploadLabel}>HeyGen 预置形象（官方形象库）</span>
@@ -1525,6 +1695,17 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                 onClear={() => setVideoUrl(undefined)}
               />
             </div>
+            <Form.Item label="数字人模型版本" style={{ marginTop: 14 }}>
+              <Select
+                value={dhModelVersion}
+                onChange={setDhModelVersion}
+                options={[
+                  { value: 'V1', label: 'V1（标准，快、省）' },
+                  { value: 'V2', label: 'V2（高清，更自然，推荐）' },
+                ]}
+                style={{ width: '100%' }}
+              />
+            </Form.Item>
             <div className={styles.panelHint}>云端：HeyGen（预置形象/图片 talking photo）/火山；未配置云端 Key 时自动使用上传视频或本地卡片兜底。</div>
             <Form.Item
               label="数字人生成方式"
@@ -1575,48 +1756,14 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
               )}
             </div>
             <div className={styles.panelHint}>添加 2 个以上镜头将按顺序切分语音、逐个生成再自动拼接成片；每镜头时长 2-120 秒。</div>
-            <div className={styles.uploadGroup} style={{ marginTop: 14 }}>
-              <div className={styles.uploadRow} style={{ alignItems: 'center' }}>
-                <span className={styles.uploadLabel}>画中画素材（可选，最多 4 个）</span>
-                <Button size="small" type="dashed" icon={<Plus size={12} />} onClick={() => setPipOpen(true)}>
-                  添加画中画
-                </Button>
-              </div>
-              {pipItems.length === 0 ? (
-                <div className={styles.uploadHint}>未添加（成片不叠加画中画）</div>
-              ) : (
-                pipItems.map((pip, i) => (
-                  <div key={i} className={styles.uploadRow}>
-                    <span className={styles.uploadLabel}>{i + 1}</span>
-                    <a href={pip.url} target="_blank" rel="noreferrer" className={styles.uploadValue}>
-                      {pip.url.length > 44 ? pip.url.slice(0, 44) + '…' : pip.url}
-                    </a>
-                    <span className={styles.uploadHint}>
-                      {PIP_POSITION_LABELS[pip.position || 'br']} · {Math.round((pip.scale || 0.25) * 100)}%
-                      {typeof pip.startSec === 'number' && typeof pip.endSec === 'number'
-                        ? ' · ' + pip.startSec + 's-' + pip.endSec + 's'
-                        : ''}
-                    </span>
-                    <Button
-                      type="text"
-                      size="small"
-                      danger
-                      icon={<Trash2 size={12} />}
-                      onClick={() => setPipItems((items) => items.filter((_, j) => j !== i))}
-                    />
-                  </div>
-                ))
-              )}
-            </div>
-            <div className={styles.panelHint}>画中画支持图片或视频（png/jpg/mp4 等），随任务生成时叠加到成片指定位置。</div>
           </div>
         )}
 
-        {/* ⑤ 模板 */}
+        {/* ⑤ 视频剪辑 */}
         {current === 4 && (
           <div className={styles.panel}>
             <div className={styles.panelTitle}>
-              <Layers size={15} /> 视频模板
+              <Scissors size={15} /> 视频剪辑
             </div>
             {templatesLoading ? (
               <div className={styles.templateLoading}>
@@ -1694,19 +1841,89 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                 onChange={(e) => setSubtitlesOverride(e.target.value)}
               />
             </Form.Item>
+            <div className={styles.uploadGroup} style={{ marginTop: 14 }}>
+              <div className={styles.uploadRow} style={{ alignItems: 'center' }}>
+                <span className={styles.uploadLabel}>混剪/画中画素材（可选，最多 4 个）</span>
+                <Button size="small" type="dashed" icon={<Plus size={12} />} onClick={() => setPipOpen(true)}>
+                  添加画中画
+                </Button>
+              </div>
+              {pipItems.length === 0 ? (
+                <div className={styles.uploadHint}>未添加（成片不叠加画中画）</div>
+              ) : (
+                pipItems.map((pip, i) => (
+                  <div key={i} className={styles.uploadRow}>
+                    <span className={styles.uploadLabel}>{i + 1}</span>
+                    <a href={pip.url} target="_blank" rel="noreferrer" className={styles.uploadValue}>
+                      {pip.url.length > 44 ? pip.url.slice(0, 44) + '…' : pip.url}
+                    </a>
+                    <span className={styles.uploadHint}>
+                      {PIP_POSITION_LABELS[pip.position || 'br']} · {Math.round((pip.scale || 0.25) * 100)}%
+                      {typeof pip.startSec === 'number' && typeof pip.endSec === 'number'
+                        ? ' · ' + pip.startSec + 's-' + pip.endSec + 's'
+                        : ''}
+                    </span>
+                    <Button
+                      type="text"
+                      size="small"
+                      danger
+                      icon={<Trash2 size={12} />}
+                      onClick={() => setPipItems((items) => items.filter((_, j) => j !== i))}
+                    />
+                  </div>
+                ))
+              )}
+            </div>
+            <div className={styles.panelHint}>画中画支持图片或视频（png/jpg/mp4 等），随任务生成时叠加到成片指定位置。</div>
           </div>
         )}
 
-        {/* ⑥ 预览提交 */}
+        {/* ⑥ 标题封面 */}
         {current === 5 && (
           <div className={styles.panel}>
             <div className={styles.panelTitle}>
-              <Send size={15} /> 预览与提交
+              <FileText size={15} /> 标题封面（用于发布）
+            </div>
+            <div className={styles.formRow}>
+              <Form.Item label="视频标题" className={styles.formCol}>
+                <Input
+                  placeholder="输入视频标题（留空=生成后 AI 自动生成）"
+                  value={publishTitle}
+                  maxLength={128}
+                  onChange={(e) => setPublishTitle(e.target.value)}
+                />
+              </Form.Item>
+              <Form.Item label="发布描述 / 标签" className={styles.formCol}>
+                <Input
+                  placeholder="输入描述和标签（留空=生成后 AI 自动生成）"
+                  value={publishDescription}
+                  maxLength={500}
+                  onChange={(e) => setPublishDescription(e.target.value)}
+                />
+              </Form.Item>
+            </div>
+            <div className={styles.formRow}>
+              <Form.Item label="封面主标题" className={styles.formCol}>
+                <Input
+                  placeholder="封面大标题（默认居中大字）"
+                  value={coverH1}
+                  maxLength={64}
+                  onChange={(e) => setCoverH1(e.target.value)}
+                />
+              </Form.Item>
+              <Form.Item label="封面副标题" className={styles.formCol}>
+                <Input
+                  placeholder="封面副标题（可选）"
+                  value={coverH2}
+                  maxLength={64}
+                  onChange={(e) => setCoverH2(e.target.value)}
+                />
+              </Form.Item>
             </div>
             {recentJob && (
               <div style={{ marginBottom: 16 }}>
                 <div className={styles.panelHint} style={{ marginBottom: 8 }}>
-                  最近成片预览（任务 #{recentJob.id}，可到任务详情继续修改封面/发布）
+                  最近成片预览（任务 #{recentJob.id}，可到任务详情用封面设计器继续修改）
                 </div>
                 {recentJob.videoUrl ? (
                   <video className={styles.video} src={resolveMediaUrl(recentJob.videoUrl)} controls preload="metadata" style={{ width: '100%', borderRadius: 8 }} />
@@ -1719,41 +1936,17 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                 )}
               </div>
             )}
-            <div className={styles.summaryCard}>
-              <div className={styles.summaryRow}>
-                <span className={styles.summaryLabel}>口播文案</span>
-                <span className={styles.summaryValue}>
-                  {summary.script ? summary.script.slice(0, 120) + (summary.script.length > 120 ? '…' : '') : '—'}
-                </span>
-              </div>
-              <div className={styles.summaryRow}>
-                <span className={styles.summaryLabel}>人设</span>
-                <span className={styles.summaryValue}>{summary.persona || '—'}</span>
-              </div>
-              <div className={styles.summaryRow}>
-                <span className={styles.summaryLabel}>受众 / 风格</span>
-                <span className={styles.summaryValue}>
-                  {summary.audience || '—'} / {summary.style || '—'}
-                </span>
-              </div>
-              <div className={styles.summaryRow}>
-                <span className={styles.summaryLabel}>配音</span>
-                <span className={styles.summaryValue}>{summary.voice || (audioUrl ? '上传成音' : '系统默认')}</span>
-              </div>
-              <div className={styles.summaryRow}>
-                <span className={styles.summaryLabel}>数字人</span>
-                <span className={styles.summaryValue}>{summary.dh || (videoUrl ? '上传视频' : '系统兜底')}</span>
-              </div>
-              <div className={styles.summaryRow}>
-                <span className={styles.summaryLabel}>模板</span>
-                <span className={styles.summaryValue}>{summary.template || '默认模板'}</span>
-              </div>
-              <div className={styles.summaryRow}>
-                <span className={styles.summaryLabel}>字幕</span>
-                <span className={styles.summaryValue}>{subtitleLangLabel(form.getFieldValue('targetLang'))}</span>
-              </div>
+            <div className={styles.panelHint}>留空则后端 titleCover 步骤根据文案自动生成标题与封面。</div>
+          </div>
+        )}
+
+        {/* ⑦ 视频发布 */}
+        {current === 6 && (
+          <div className={styles.panel}>
+            <div className={styles.panelTitle}>
+              <Send size={15} /> 视频发布
             </div>
-            <div className={styles.summaryCard} style={{ marginTop: 12 }}>
+            <div className={styles.summaryCard}>
               <div className={styles.summaryRow}>
                 <span className={styles.summaryLabel}>发布账号</span>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1793,7 +1986,68 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                   })()}
                 </div>
               </div>
-              <div className={styles.panelHint}>任务生成完成后，在任务详情页可一键发布到已绑定账号。</div>
+            </div>
+            <Form.Item label="发布方式" style={{ marginTop: 14 }}>
+              <Radio.Group value={publishAsDraft} onChange={(e) => setPublishAsDraft(e.target.value)} optionType="button" buttonStyle="solid">
+                <Radio.Button value={false}>直接发布</Radio.Button>
+                <Radio.Button value={true}>保存为草稿</Radio.Button>
+              </Radio.Group>
+              {!publishAsDraft && (
+                <div style={{ marginTop: 8 }}>
+                  <Radio.Group value={publishMode} onChange={(e) => setPublishMode(e.target.value)} optionType="button" buttonStyle="solid">
+                    <Radio.Button value="auto">后台自动发布</Radio.Button>
+                    <Radio.Button value="manual">手动打开平台发布</Radio.Button>
+                  </Radio.Group>
+                </div>
+              )}
+            </Form.Item>
+            <div className={styles.panelHint}>生成后在任务详情页按此偏好一键发布到所选账号；未绑定账号需先授权。</div>
+          </div>
+        )}
+
+        {/* ⑧ 生成视频 */}
+        {current === 7 && (
+          <div className={styles.panel}>
+            <div className={styles.panelTitle}>
+              <Video size={15} /> 生成视频
+            </div>
+            <div className={styles.summaryCard}>
+              <div className={styles.summaryRow}>
+                <span className={styles.summaryLabel}>口播文案</span>
+                <span className={styles.summaryValue}>
+                  {summary.script ? summary.script.slice(0, 120) + (summary.script.length > 120 ? '…' : '') : '—'}
+                </span>
+              </div>
+              <div className={styles.summaryRow}>
+                <span className={styles.summaryLabel}>人设</span>
+                <span className={styles.summaryValue}>{summary.persona || '—'}</span>
+              </div>
+              <div className={styles.summaryRow}>
+                <span className={styles.summaryLabel}>受众 / 风格</span>
+                <span className={styles.summaryValue}>
+                  {summary.audience || '—'} / {summary.style || '—'}
+                </span>
+              </div>
+              <div className={styles.summaryRow}>
+                <span className={styles.summaryLabel}>配音</span>
+                <span className={styles.summaryValue}>{summary.voice || (audioUrl ? '上传成音' : '系统默认')}</span>
+              </div>
+              <div className={styles.summaryRow}>
+                <span className={styles.summaryLabel}>数字人</span>
+                <span className={styles.summaryValue}>{summary.dh || (videoUrl ? '上传视频' : '系统兜底')}</span>
+              </div>
+              <div className={styles.summaryRow}>
+                <span className={styles.summaryLabel}>模板</span>
+                <span className={styles.summaryValue}>{summary.template || '默认模板'}</span>
+              </div>
+              <div className={styles.summaryRow}>
+                <span className={styles.summaryLabel}>字幕</span>
+                <span className={styles.summaryValue}>{subtitleLangLabel(form.getFieldValue('targetLang'))}</span>
+              </div>
+              <div className={styles.summaryRow}>
+                <span className={styles.summaryLabel}>标题/封面</span>
+                <span className={styles.summaryValue}>{coverH1 || publishTitle || '留空=自动生成'}</span>
+              </div>
             </div>
             <div className={styles.execModeRow}>
               <Form.Item
@@ -1828,7 +2082,7 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                 disabled={scriptChars === 0}
                 className={styles.primaryBtn}
               >
-                生成口播视频
+                一键生成视频
               </Button>
             </div>
           </div>
@@ -1984,12 +2238,24 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
           <Form.Item name="name" label="声音名称" rules={[{ required: true, message: '请输入声音名称' }]}>
             <Input placeholder="如：我的带货声线" maxLength={128} />
           </Form.Item>
+          <div className={styles.uploadGroup} style={{ marginBottom: 4 }}>
+            <MediaUploadRow
+              label="本地上传参考音频"
+              accept="audio/*"
+              value={refAudioUrlWatched}
+              onUpload={(url) => {
+                refAudioForm.setFieldsValue({ refAudioUrl: url })
+                message.success('参考音频已上传并自动填入，可补充名称后提交克隆')
+              }}
+              onClear={() => refAudioForm.setFieldsValue({ refAudioUrl: undefined })}
+            />
+          </div>
           <Form.Item
             name="refAudioUrl"
-            label="参考音频 URL（先在上方上传成音，把得到的链接粘到这里；建议 10-60 秒清晰人声）"
-            rules={[{ required: true, message: '请输入参考音频 URL' }]}
+            label="参考音频（可直接点上方「本地上传」，也可粘贴 https 公网音频 URL；建议 10-60 秒清晰人声）"
+            rules={[{ required: true, message: '请上传参考音频或填写 URL' }]}
           >
-            <Input placeholder="https://…/ref.mp3" maxLength={512} />
+            <Input placeholder="https://…/ref.mp3（或点上方本地上传）" maxLength={512} />
           </Form.Item>
           {recordingSupported && (
             <div className={styles.uploadGroup} style={{ marginBottom: 12 }}>
@@ -2127,7 +2393,7 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
         </Form>
       </Modal>
 
-            {/* 智能改写弹窗（A4：选模板/字数/参考范文，结果对比后确认应用） */}
+            {/* 智能改写弹窗（A4：原文可直接修改；生成后结果也可直接修改，确认后应用） */}
       <Modal
         open={rewriteOpen}
         title="智能改写"
@@ -2150,50 +2416,74 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
         }
         okText="开始改写"
         confirmLoading={rewriteLoading}
-        width={640}
+        width={720}
       >
-        {rewriteResult ? (
-          <div className={styles.rewriteCompare}>
-            <div className={styles.rewriteCompareCol}>
-              <div className={styles.rewriteCompareHead}>原文（{Array.from(rewriteOriginal || '').length} 字）</div>
-              <p className={styles.rewriteCompareText}>{rewriteOriginal || '--'}</p>
-            </div>
-            <div className={styles.rewriteCompareCol}>
-              <div className={styles.rewriteCompareHead}>改写后（{Array.from(rewriteResult).length} 字）</div>
-              <p className={styles.rewriteCompareText}>{rewriteResult}</p>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-              <Form.Item label="改写模板" style={{ flex: 1, marginBottom: 0 }}>
-                <Select
-                  value={rewriteTemplate}
-                  onChange={setRewriteTemplate}
-                  options={[
-                    { value: 'rewrite_master', label: '信息保全（默认，保留原意润色）' },
-                    { value: 'generic_rewrite', label: '精简口语化（更适合口播）' },
-                    { value: 'rewrite_detailed', label: '爆款详细（加长展开）' },
-                    { value: 'rewrite_deep_learn', label: '深度学习（参考范文风格）' },
-                  ]}
-                />
-              </Form.Item>
-              <Form.Item label="目标字数" style={{ flex: 1, marginBottom: 0 }}>
-                <Slider min={100} max={800} step={20} value={rewriteWordCount} onChange={setRewriteWordCount} marks={{ 100: '短', 260: '260', 800: '长' }} />
-              </Form.Item>
-            </div>
-            <Form.Item label="参考范文（可选，深度学习模板生效）">
-              <TextArea
-                rows={4}
-                placeholder="粘贴一段参考范文，AI 学习其风格与结构…"
-                value={rewriteReference}
-                maxLength={20000}
-                onChange={(e) => setRewriteReference(e.target.value)}
-              />
-            </Form.Item>
-            <div className={styles.panelHint}>改写的是当前文案框中的内容；生成后可在对比区确认「使用此文案」替换，或「重新改写」。</div>
-          </>
+        <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+          <Form.Item label="改写模板" style={{ flex: 1, marginBottom: 0 }}>
+            <Select
+              value={rewriteTemplate}
+              onChange={setRewriteTemplate}
+              options={[
+                { value: 'rewrite_master', label: '信息保全（默认，保留原意润色）' },
+                { value: 'generic_rewrite', label: '精简口语化（更适合口播）' },
+                { value: 'rewrite_detailed', label: '爆款详细（加长展开）' },
+                { value: 'rewrite_deep_learn', label: '深度学习（参考范文风格）' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item label="目标字数" style={{ flex: 1, marginBottom: 0 }}>
+            <Slider min={100} max={800} step={20} value={rewriteWordCount} onChange={setRewriteWordCount} marks={{ 100: '短', 260: '260', 800: '长' }} />
+          </Form.Item>
+        </div>
+        {!rewriteResult && (
+          <Form.Item label="参考范文（可选，深度学习模板生效）">
+            <TextArea
+              rows={4}
+              placeholder="粘贴一段参考范文，AI 学习其风格与结构…"
+              value={rewriteReference}
+              maxLength={20000}
+              onChange={(e) => setRewriteReference(e.target.value)}
+            />
+          </Form.Item>
         )}
+        <div className={styles.rewriteCompare}>
+          <div className={styles.rewriteCompareCol}>
+            <div className={styles.rewriteCompareHead}>
+              原文（{Array.from(rewriteDraft || '').length} 字 · 可直接修改）
+            </div>
+            <TextArea
+              rows={8}
+              value={rewriteDraft}
+              maxLength={20000}
+              placeholder="可直接修改提取/粘贴的文案后再开始改写…"
+              onChange={(e) => {
+                const value = e.target.value
+                setRewriteDraft(value)
+                form.setFieldsValue({ scriptInput: value })
+              }}
+            />
+          </div>
+          <div className={styles.rewriteCompareCol}>
+            {rewriteResult ? (
+              <>
+                <div className={styles.rewriteCompareHead}>
+                  改写后（{Array.from(rewriteResult).length} 字 · 可直接修改）
+                </div>
+                <TextArea
+                  rows={8}
+                  value={rewriteResult}
+                  maxLength={20000}
+                  onChange={(e) => setRewriteResult(e.target.value)}
+                />
+              </>
+            ) : (
+              <div className={styles.panelHint} style={{ marginTop: 24 }}>
+                点「开始改写」后，右侧展示改写结果；生成后可在文本框内继续直接修改，再点「使用此文案」替换。
+              </div>
+            )}
+          </div>
+        </div>
+        <div className={styles.panelHint}>改写的是左侧原文（提取的文案可直接先修改）；生成后右侧结果仍可继续直接修改。</div>
       </Modal>
 
 {/* 产品/营销文案弹窗（A5） */}

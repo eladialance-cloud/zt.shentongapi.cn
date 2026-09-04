@@ -90,6 +90,8 @@ export interface OralWorkshopJobItem {
   digitalHumanId: number | null;
   voiceId: number | null;
   voiceSpeakerId: string | null;
+  voiceModelVersion: string | null;
+  dhModelVersion: string | null;
   templateId: number | null;
   videoUrl: string | null;
   audioUrl: string | null;
@@ -479,6 +481,10 @@ export class OralWorkshopService implements OnModuleInit {
         targetLang: dto.targetLang ?? null,
         executionMode: dto.executionMode ?? 'auto',
         waitingStep: dto.executionMode && dto.executionMode !== 'auto' ? 'extract' : null,
+        voiceModelVersion: dto.voiceModelVersion ?? null,
+        dhModelVersion: dto.dhModelVersion ?? null,
+        coverH1: dto.coverH1?.trim() ? dto.coverH1.trim() : null,
+        coverH2: dto.coverH2?.trim() ? dto.coverH2.trim() : null,
         frozenTxnId: frozen.id,
       });
       const saved = await this.jobRepo.save(job);
@@ -2051,6 +2057,8 @@ export class OralWorkshopService implements OnModuleInit {
       digitalHumanId: job.digitalHumanId ?? null,
       voiceId: job.voiceId ?? null,
       voiceSpeakerId: job.voiceSpeakerId ?? null,
+      voiceModelVersion: job.voiceModelVersion ?? null,
+      dhModelVersion: job.dhModelVersion ?? null,
       templateId: job.templateId ?? null,
       videoUrl: job.videoUrl ?? null,
       audioUrl: job.audioUrl ?? null,

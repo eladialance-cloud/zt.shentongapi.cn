@@ -47,6 +47,10 @@ export interface OralWorkshopJob {
   digitalHumanId: number | null
   voiceId: number | null
   voiceSpeakerId: string | null
+  /** 配音音质档位：V1=标准 / V2=高清 */
+  voiceModelVersion: string | null
+  /** 数字人清晰度档位：V1=标准 / V2=高清 */
+  dhModelVersion: string | null
   templateId: number | null
   videoUrl: string | null
   audioUrl: string | null
@@ -139,6 +143,10 @@ export interface CreateOralWorkshopJobDto {
   targetLang?: string
   /** 执行模式：auto=自动流水线（默认）/ manual=手动逐步 / single=单步执行 */
   executionMode?: 'auto' | 'manual' | 'single'
+  /** 封面主标题（标题封面步骤：留空=后端 titleCover 自动生成） */
+  coverH1?: string
+  /** 封面副标题（标题封面步骤：留空=后端 titleCover 自动生成） */
+  coverH2?: string
   clientTxnId?: string
 }
 
