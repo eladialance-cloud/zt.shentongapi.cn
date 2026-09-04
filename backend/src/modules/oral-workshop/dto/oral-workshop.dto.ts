@@ -51,6 +51,11 @@ export class CreateOralWorkshopJobDto {
   @IsIn(['auto', 'manual', 'single'])
   executionMode?: 'auto' | 'manual' | 'single';
 
+  /** 草稿模式：true=只跑到 digitalHuman 出草稿即暂停（两阶段），false=传统一次成片 */
+  @IsOptional()
+  @IsBoolean()
+  draftMode?: boolean;
+
   @IsOptional()
   @IsInt()
   digitalHumanId?: number;
@@ -590,4 +595,81 @@ export class ExtractScriptDto {
   @IsString()
   @MaxLength(4000)
   videoUrl: string;
+}
+
+
+/** 视频剪辑：更新编辑参数并重渲染成片 DTO（两阶段：先生成草稿，再分段编辑重渲染） */
+export class RenderEditDto {
+  /** 分段剪辑方案：JSON 数组 [{order, startSec, endSec, enabled, text}]，按 order 升序拼接 */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(120)
+  editSegments?: Array<{
+    order: number;
+    startSec: number;
+    endSec: number;
+    enabled?: boolean;
+    text?: string;
+  }>;
+
+  @IsOptional()
+  @IsInt()
+  templateId?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  @Validate(SafeMediaRefConstraint)
+  bgmUrl?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  bgmVolume?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  subtitlesEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  bgmEnabled?: boolean;
+
+  /** 字幕文本覆盖（多行，每行一条；留空=按文案自动分段） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  subtitlesOverride?: string;
+
+  /** 画中画素材（最多 4 个） */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(4)
+  pipAssets?: Array<{
+    url: string;
+    position?: 'tl' | 'tr' | 'bl' | 'br' | 'center';
+    scale?: number;
+    startSec?: number;
+    endSec?: number;
+  }>;
+
+  @IsOptional()
+  @IsBoolean()
+  bilingual?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  targetLang?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  coverH1?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  coverH2?: string;
 }

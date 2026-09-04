@@ -22,6 +22,8 @@ import {
   ProductCopyDto,
   RewriteScriptDto,
   StyleAnalysisDto,
+  RenderEditDto,
+
   OralWorkshopJobQueryDto,
 } from './dto/oral-workshop.dto';
 
@@ -140,6 +142,15 @@ export class OralWorkshopController {
     if (!Number.isInteger(jobId) || jobId <= 0) throw new BadRequestException('无效的任务 ID');
     return this.oralWorkshopService.retryJob(user.userId, jobId);
   }
+
+  @Post('jobs/:id/render')
+  @ApiOperation({ summary: '先出草稿，再分段剪辑重渲染成片（两阶段；另扣 credits）' })
+  render(@CurrentUser() user: ICurrentUser, @Param('id') id: string, @Body() dto: RenderEditDto) {
+    const jobId = Number(id);
+    if (!Number.isInteger(jobId) || jobId <= 0) throw new BadRequestException('无效的任务 ID');
+    return this.oralWorkshopService.render(user.userId, jobId, dto);
+  }
+
 
   @Delete('jobs/:id')
   @ApiOperation({ summary: '删除任务（软删除）' })

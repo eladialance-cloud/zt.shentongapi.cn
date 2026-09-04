@@ -1,0 +1,53 @@
+*** Begin Patch
+*** Update File: D:\二次开发\frontend\admin\src\types\admin-system.ts
+@@
+-  /** 语音识别引擎：openai=whisper（默认）/ volcano=火山 ASR */
+-  sttProvider?: 'openai' | 'volcano'
++  /** 语音识别引擎：dashscope=百炼 paraformer（推荐）/ openai=whisper / volcano=火山 ASR */
++  sttProvider?: 'dashscope' | 'openai' | 'volcano'
+@@
+   /** 语音识别 API Key（volcano ASR 专用） */
+   sttApiKey?: string
++  /** 公网音频地址前缀（dashscope 百炼 paraformer 文件转写用，如 https://zt.shentongapi.cn） */
++  sttFileBase?: string
+*** Update File: D:\二次开发\frontend\admin\src\pages\System\Config.tsx
+@@
+         sttEndpoint: cfgv.sttEndpoint || ',
+         sttApiKey: cfgv.sttApiKey || '',
++        sttFileBase: cfgv.sttFileBase || ',
+@@
+         sttEndpoint: values.sttEndpoint || ',
+         sttApiKey: values.sttApiKey || '',
++        sttFileBase: values.sttFileBase || ',
+@@
+-                <Form.Item name="sttProvider" label="语音识别引擎" extra="openai=whisper（默认）；volcano=火山 ASR">
+-                  <Select
+-                    options={[
+-                      { value: 'openai', label: 'OpenAI whisper' },
+-                      { value: 'volcano', label: '火山方舟 ASR' }
+-                    ]}
+-                  />
+-                </Form.Item>
+-                <Form.Item name="sttModel" label="语音识别模型" extra="提取文案/字幕用；留空=whisper-1">
+-                  <Input placeholder="如 whisper-1" allowClear />
+-                </Form.Item>
++                <Form.Item name="sttProvider" label="语音识别引擎" extra="dashscope=百炼 paraformer(推荐，复用现有百炼key)；openai=whisper；volcano=火山">
++                  <Select
++                    options={[
++                      { value: 'dashscope', label: '阿里百炼 paraformer（推荐）' },
++                      { value: 'openai', label: 'OpenAI whisper（需填端点+Key）' },
++                      { value: 'volcano', label: '火山 ASR（需火山识别资源）' }
++                    ]}
++                  />
++                </Form.Item>
++                <Form.Item name="sttModel" label="语音识别模型" extra="dashscope 留空=paraformer-v2；openai 留空=whisper-1">
++                  <Input placeholder="如 paraformer-v2 / whisper-1" allowClear />
++                </Form.Item>
+@@
+                 <Form.Item name="sttApiKey" label="语音识别 API Key" extra="火山 ASR 专用密钥">
+                   <Input.Password placeholder="请输入语音识别密钥" allowClear />
+                 </Form.Item>
++                <Form.Item name="sttFileBase" label="公网音频前缀(百炼用)" extra="选 dashscope 时必须填，如 https://zt.shentongapi.cn">
++                  <Input placeholder="https://zt.shentongapi.cn" allowClear />
++                </Form.Item>
+*** End Patch

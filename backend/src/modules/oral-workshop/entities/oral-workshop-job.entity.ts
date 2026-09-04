@@ -35,6 +35,10 @@ export class OralWorkshopJobEntity {
   @Column({ name: 'execution_mode', type: 'varchar', length: 16, default: 'auto' })
   executionMode: 'auto' | 'manual' | 'single';
 
+  /** 草稿模式：1=只跑到 digitalHuman 出草稿即暂停，等待 render 渲染成片 */
+  @Column({ name: 'draft_mode', type: 'tinyint', default: 0 })
+  draftMode: boolean;
+
   /** 手动/单步模式下等待用户放行的步骤（null=已放行或自动模式） */
   @Column({ name: 'waiting_step', type: 'varchar', length: 32, nullable: true })
   waitingStep?: string | null;
@@ -125,6 +129,18 @@ export class OralWorkshopJobEntity {
   @Column({ name: 'video_url', type: 'varchar', length: 512, nullable: true })
   videoUrl?: string | null;
 
+  /** 数字人原始草稿视频（draft_mode=1 时 digitalHuman 产物，永留便于回退） */
+  @Column({ name: 'draft_video_url', type: 'varchar', length: 512, nullable: true })
+  draftVideoUrl?: string | null;
+
+  /** 分段剪辑方案：JSON 数组 [{order, startSec, endSec, enabled, text}] */
+  @Column({ name: 'edit_segments', type: 'text', nullable: true })
+  editSegments?: string | null;
+
+  /** 重渲染成片次数（每次另扣一次 credits） */
+  @Column({ name: 'render_count', type: 'int', default: 0 })
+  renderCount: number;
+
   @Column({ name: 'audio_url', type: 'varchar', length: 512, nullable: true })
   audioUrl?: string | null;
 
@@ -149,6 +165,14 @@ export class OralWorkshopJobEntity {
   /** 实际结算 Credits 成本 */
   @Column({ name: 'credits_cost', type: 'int', default: 0 })
   creditsCost: number;
+
+  /** 草稿结算成本（基础+配音档+数字人档） */
+  @Column({ name: 'draft_cost', type: 'int', default: 0 })
+  draftCost: number;
+
+  /** 最近一次重渲染成本 */
+  @Column({ name: 'edit_cost', type: 'int', default: 0 })
+  editCost: number;
 
   /** 双语字幕开关（true = videoEdit 渲染中英双行字幕，LLM 翻译） */
   @Column({ type: 'boolean', default: false })

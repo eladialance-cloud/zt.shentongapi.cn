@@ -23,6 +23,7 @@ import { MediaAssetService } from '../media-assets/services/media-asset.service'
 import { MaterialSearchService } from '../media-assets/services/material-search.service';
 import { defaultFfmpegRunner, downloadTo, assertPublicMediaUrl, looksLikeHtml, resolveDirectMediaUrl } from './ffmpeg';
 import { BatchCreateOralWorkshopJobsDto, CreateOralWorkshopJobDto, OralWorkshopJobQueryDto } from './dto/oral-workshop.dto';
+import { RenderEditDto } from './dto/oral-workshop.dto';
 import { listTemplates as listTemplatesLoader, toTemplateMeta, type OralWorkshopTemplateMeta } from './template-loader';
 import { deriveTitle } from './compose-inputs';
 import { deriveTopicTags } from './publisher';
@@ -61,7 +62,6 @@ export interface IpArchiveSourceEntry {
   view_count?: number;
 }
 
-
 export interface OralWorkshopJobItem {
   id: number;
   status: OralWorkshopJobStatus;
@@ -94,6 +94,12 @@ export interface OralWorkshopJobItem {
   dhModelVersion: string | null;
   templateId: number | null;
   videoUrl: string | null;
+  draftVideoUrl: string | null;
+  editSegments: Array<{ order: number; startSec: number; endSec: number; enabled?: boolean; text?: string }> | null;
+  renderCount: number;
+  draftMode: boolean;
+  draftCost: number;
+  editCost: number;
   audioUrl: string | null;
   coverUrl: string | null;
   coverH1: string | null;
@@ -329,6 +335,157 @@ export class OralWorkshopService implements OnModuleInit {
     return Math.max(base + voiceCost + dhCost, 1);
   }
 
+  /** 重渲染成片计价：读 system_config.oral_workshop.editCost，缺省用基础分 baseCredits */
+  private async estimateEditCredits(): Promise<number> {
+    let edit = 5;
+    if (this.configRepo) {
+      try {
+        const row = await this.configRepo.findOne({ where: { section: 'oral_workshop' } });
+        const cfg = (row?.configValue ?? {}) as Record<string, unknown>;
+        if (typeof cfg.baseCredits === 'number' && cfg.baseCredits >= 0) edit = Math.round(cfg.baseCredits);
+        if (typeof cfg.editCost === 'number' && cfg.editCost >= 0) edit = Math.round(cfg.editCost);
+      } catch (err) {
+        this.logger.warn('[oral-workshop] 读取编辑积分配置失败，使用默认值: ' + (err as Error).message);
+      }
+    }
+    return Math.max(edit, 1);
+  }
+
+  /** 解析分段剪辑方案（JSON 字符串 -> 数组），非法返回 null */
+  parseEditSegments(
+    raw?: string | null,
+  ): Array<{ order: number; startSec: number; endSec: number; enabled?: boolean; text?: string }> | null {
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return null;
+      const out = parsed
+        .filter((x) => x && typeof x === 'object' && Number(x.endSec) > Number(x.startSec))
+        .map((x, i) => ({
+          order: Number(x.order ?? i),
+          startSec: Number(x.startSec) || 0,
+          endSec: Number(x.endSec) || 0,
+          enabled: x.enabled !== false,
+          text: typeof x.text === 'string' ? x.text : undefined,
+        }))
+        .sort((a, b) => a.order - b.order)
+        .slice(0, 120);
+      return out.length ? out : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** 归一化分段方案（DTO -> JSON 字符串落库） */
+  private normalizeEditSegments(
+    segments?: Array<{ order: number; startSec: number; endSec: number; enabled?: boolean; text?: string }>,
+  ): string | null {
+    if (!Array.isArray(segments) || segments.length === 0) return null;
+    const out = segments
+      .filter((x) => x && Number(x.endSec) > Number(x.startSec))
+      .slice(0, 120)
+      .map((x, i) => ({
+        order: Number(x.order ?? i),
+        startSec: Math.max(0, Number(x.startSec) || 0),
+        endSec: Number(x.endSec) || 0,
+        enabled: x.enabled !== false,
+        text: typeof x.text === 'string' && x.text.trim() ? x.text.slice(0, 200) : undefined,
+      }))
+      .sort((a, b) => a.order - b.order);
+    return out.length ? JSON.stringify(out) : null;
+  }
+
+  /** 草稿就绪：把 digitalHuman 产物持久化为可回放的草稿 URL，结算草稿成本并暂停等待渲染成片 */
+  private async onDraftReady(jobId: number): Promise<void> {
+    const job = await this.jobRepo.findOne({ where: { id: jobId } });
+    if (!job) return;
+    if (job.draftVideoUrl) return;
+    const results = await this.getStepResults(jobId);
+    const dh = results.digitalHuman ?? {};
+    const raw = String(dh.video_url || dh.video_path || '');
+    if (!raw) {
+      this.logger.warn('[oral-workshop] 任务 ' + jobId + ' 草稿就绪但无 digitalHuman 视频产物');
+      return;
+    }
+    job.draftVideoUrl = this.persistArtifact(job.id, raw);
+    const draftCost = await this.estimateCredits({
+      voiceModelVersion: job.voiceModelVersion ?? undefined,
+      dhModelVersion: job.dhModelVersion ?? undefined,
+    });
+    if (job.frozenTxnId) {
+      await this.billing.settleActualCost(job.userId, job.frozenTxnId, draftCost);
+      job.frozenTxnId = null;
+    }
+    job.draftCost = draftCost;
+    job.creditsCost = draftCost;
+    job.waitingStep = 'videoEdit';
+    await this.jobRepo.save(job);
+  }
+
+  /** 渲染成片：更新编辑参数 + 冻结重渲染成本 + 重置 videoEdit 及下游 pending 放行 */
+  async render(userId: number, id: number, dto: RenderEditDto): Promise<OralWorkshopJobItem> {
+    const job = await this.jobRepo.findOne({ where: { id, userId } });
+    if (!job) throw new NotFoundException('口播工坊任务不存在');
+    if (!job.draftVideoUrl && !job.videoUrl) {
+      throw new BadRequestException('暂无草稿/成片可渲染，请先生成草稿');
+    }
+    if (job.currentStep === 'videoEdit' && job.status === 'processing') {
+      throw new BadRequestException('正在渲染成片，请稍候');
+    }
+    if (dto.templateId != null) job.templateId = dto.templateId;
+    if (dto.bgmUrl !== undefined) job.bgmUrl = dto.bgmUrl || null;
+    if (dto.bgmVolume != null) job.bgmVolume = String(dto.bgmVolume);
+    if (dto.subtitlesEnabled !== undefined) job.subtitlesEnabled = dto.subtitlesEnabled;
+    if (dto.bgmEnabled !== undefined) job.bgmEnabled = dto.bgmEnabled;
+    if (dto.subtitlesOverride !== undefined) job.subtitlesOverride = dto.subtitlesOverride || null;
+    if (dto.pipAssets !== undefined) job.pipAssets = this.normalizePipAssets(dto.pipAssets);
+    if (dto.targetLang !== undefined) job.targetLang = dto.targetLang || null;
+    if (dto.bilingual !== undefined) job.bilingual = dto.bilingual;
+    if (dto.coverH1 !== undefined) job.coverH1 = dto.coverH1 ? dto.coverH1.trim() : null;
+    if (dto.coverH2 !== undefined) job.coverH2 = dto.coverH2 ? dto.coverH2.trim() : null;
+    if (dto.editSegments !== undefined) {
+      const seg = this.normalizeEditSegments(dto.editSegments);
+      job.editSegments = seg;
+      if (!seg) throw new BadRequestException('分段剪辑：请至少保留一个有效片段');
+    }
+    const editCost = await this.estimateEditCredits();
+    const frozen = await this.billing.estimateAndFreeze(
+      userId,
+      'oral_workshop',
+      'ow-edit-' + job.id + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+      editCost,
+    );
+    try {
+      const steps = await this.loadSteps(job.id);
+      await this.stepRepo.save(
+        steps.map((st) =>
+          this.toStepEntity(
+            {
+              ...st,
+              status: st.step === 'videoEdit' || st.step === 'titleCover' || st.step === 'publishReady' ? 'pending' : st.status,
+              resultJson: st.step === 'videoEdit' || st.step === 'titleCover' || st.step === 'publishReady' ? undefined : st.resultJson,
+              error: undefined,
+              retryCount: 0,
+            },
+            true,
+          ),
+        ),
+      );
+      job.draftMode = false;
+      job.waitingStep = null;
+      job.renderCount = Number(job.renderCount || 0) + 1;
+      job.status = 'processing';
+      job.currentStep = null;
+      job.frozenTxnId = frozen.id;
+      job.editCost = editCost;
+      await this.jobRepo.save(job);
+    } catch (err) {
+      await this.billing.refund(userId, frozen.id);
+      throw err;
+    }
+    return this.get(userId, id);
+  }
+
   /** 口播工坊元数据（桌面端工作台）：官方音色池 + 档位积分定价 */
   async getWorkshopMeta(userId?: number): Promise<{
     voicePool: Array<{ speakerId: string; name?: string; resourceId?: string }>;
@@ -480,6 +637,7 @@ export class OralWorkshopService implements OnModuleInit {
         bilingual: dto.bilingual ?? false,
         targetLang: dto.targetLang ?? null,
         executionMode: dto.executionMode ?? 'auto',
+        draftMode: !!dto.draftMode,
         waitingStep: dto.executionMode && dto.executionMode !== 'auto' ? 'extract' : null,
         voiceModelVersion: dto.voiceModelVersion ?? null,
         dhModelVersion: dto.dhModelVersion ?? null,
@@ -639,16 +797,21 @@ export class OralWorkshopService implements OnModuleInit {
       take: Math.max(limit * 3, limit),
     });
     // 手动/单步模式下等待用户放行（waitingStep 非空）的任务不自动执行
-    const executable = rows.filter((j) => j.executionMode === 'auto' || !j.waitingStep);
+    const executable = rows.filter((j) => !j.waitingStep);
     return executable.slice(0, limit);
   }
 
   /** 供执行器取某任务下一个待执行步骤名（无则 null） */
   async nextPendingStepOf(jobId: number): Promise<string | null> {
     const job = await this.jobRepo.findOne({ where: { id: jobId } });
+    const steps = await this.loadSteps(jobId);
     // 手动/单步模式暂停中：不返回待执行步骤，直到用户"执行下一步"放行
     if (job && job.executionMode !== 'auto' && job.waitingStep) return null;
-    const steps = await this.loadSteps(jobId);
+    // 草稿模式：只跑到 digitalHuman 出草稿即暂停，videoEdit 等待用户「渲染成片」放行
+    if (job && job.draftMode) {
+      const pending = nextPendingStep(steps)?.step;
+      if (pending === 'videoEdit' || pending === 'titleCover' || pending === 'publishReady') return null;
+    }
     return nextPendingStep(steps)?.step ?? null;
   }
 
@@ -997,7 +1160,6 @@ export class OralWorkshopService implements OnModuleInit {
     { platform: 'wx_channels', displayName: '蝴蝶号', sortOrder: 6, remark: '微信视频号，扫码登录绑定' },
   ];
 
-
   // ===== 发布包生成 / 画中画素材推荐 / IP 大脑档案 =====
 
   /** 生成发布标题/描述（AI 发布包，失败降级拼接；任务不存在/非本人抛 400） */
@@ -1258,7 +1420,6 @@ export class OralWorkshopService implements OnModuleInit {
       createdAt: r.createdAt,
     };
   }
-
 
   /** 平台探测主页（test-login 用 cookie 请求该地址判断登录态） */
   private readonly platformProbeUrls: Record<string, string> = {
@@ -1666,7 +1827,6 @@ export class OralWorkshopService implements OnModuleInit {
     await this.jobRepo.save(job);
   }
 
-
   /** 标记某步 done：写产物、推进 currentStep；全部完成后结算实际成本 */
   async markStepDone(jobId: number, stepName: string, resultJson?: Record<string, unknown>): Promise<void> {
     const job = await this.jobRepo.findOne({ where: { id: jobId } });
@@ -1693,9 +1853,14 @@ export class OralWorkshopService implements OnModuleInit {
       }
       await this.jobRepo.save(job);
     }
+    // 草稿模式：digitalHuman 完成后进入「草稿就绪」，结算草稿成本并暂停，等待用户「渲染成片」
+    if (job.draftMode && stepName === 'digitalHuman' && job.status !== 'failed' && !job.draftVideoUrl) {
+      await this.onDraftReady(job.id);
+    }
   }
 
   /** 标记某步 failed：可重试则回 pending，否则任务 failed 并退款 */
+
   async markStepFailed(jobId: number, stepName: string, error: string): Promise<void> {
     const job = await this.jobRepo.findOne({ where: { id: jobId } });
     if (!job) throw new NotFoundException('口播工坊任务不存在');
@@ -1742,15 +1907,17 @@ export class OralWorkshopService implements OnModuleInit {
     if (status === 'done') {
       job.status = 'done';
       if (job.frozenTxnId) {
-        // 实际成本：voiceClone 已写 credits_cost 用实际值；否则按管理后台单价估算（基础+配音档+数字人档）
-        let actual = job.creditsCost > 0 ? job.creditsCost : DEFAULT_ESTIMATED_CREDITS;
-        if (job.creditsCost <= 0) {
+        // 实际成本：编辑重渲染按 editCost 结算（草稿已单独结算）；否则 voiceClone 实际值或估算
+        let actual = job.editCost > 0 ? job.editCost : (job.creditsCost > 0 ? job.creditsCost : DEFAULT_ESTIMATED_CREDITS);
+        if (job.editCost <= 0 && job.creditsCost <= 0) {
           actual = await this.estimateCredits({
             voiceModelVersion: job.voiceModelVersion ?? undefined,
             dhModelVersion: job.dhModelVersion ?? undefined,
           });
         }
         await this.billing.settleActualCost(job.userId, job.frozenTxnId, actual);
+        // 累计展示成本：草稿 + 最近一次编辑重渲染
+        if (job.editCost > 0) job.creditsCost = (job.draftCost || 0) + job.editCost;
       }
     } else {
       job.status = status;
@@ -2061,6 +2228,12 @@ export class OralWorkshopService implements OnModuleInit {
       dhModelVersion: job.dhModelVersion ?? null,
       templateId: job.templateId ?? null,
       videoUrl: job.videoUrl ?? null,
+      draftVideoUrl: job.draftVideoUrl ?? null,
+      editSegments: this.parseEditSegments(job.editSegments),
+      renderCount: job.renderCount ?? 0,
+      draftMode: !!job.draftMode,
+      draftCost: job.draftCost ?? 0,
+      editCost: job.editCost ?? 0,
       audioUrl: job.audioUrl ?? null,
       coverUrl: job.coverUrl ?? null,
       coverH1: job.coverH1 ?? null,

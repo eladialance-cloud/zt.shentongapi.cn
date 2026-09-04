@@ -16,6 +16,7 @@ import type {
   BatchCreateResult,
   CreateOralWorkshopJobDto,
   OralWorkshopJob,
+  RenderEditDto,
   OralWorkshopJobListResult,
   OralWorkshopJobQuery,
   OralWorkshopTemplateMeta,
@@ -103,9 +104,13 @@ export async function advanceOralWorkshopJob(id: number): Promise<OralWorkshopJo
 }
 
 /**
- * 取消任务（退还预扣 Credits）
- * POST /oral-workshop/jobs/:id/cancel
+ * 渲染成片（两阶段：先生成草稿，再分段剪辑重渲染）；另扣 credits
+ * POST /oral-workshop/jobs/:id/render  body: RenderEditDto
  */
+export async function renderOralWorkshopJob(id: number, dto: RenderEditDto): Promise<OralWorkshopJob> {
+  return httpClient.post<OralWorkshopJob>(`/oral-workshop/jobs/${id}/render`, dto)
+}
+
 export async function cancelOralWorkshopJob(id: number): Promise<OralWorkshopJob> {
   return httpClient.post<OralWorkshopJob>(`/oral-workshop/jobs/${id}/cancel`)
 }

@@ -406,3 +406,68 @@ export function composePlan(opts: ComposeJobOptions): FfmpegPlan {
 
   return { commands, tempFiles, finalVideoPath, assContent };
 }
+
+/**
+ * 分段剪辑：按 [startSec, endSec] 裁出源视频片段（视频轨，去音频），缩放到模板尺寸。
+ * 供「先出草稿 → 分段编辑 → 重渲染」使用；每段独立 re-encode，便于 concat 无缝拼接。
+ */
+export function buildSegmentTrimVideoCommand(opts: {
+  inputPath: string;
+  startSec: number;
+  endSec: number;
+  outputPath: string;
+  width?: number;
+  height?: number;
+  fps?: number;
+}): string[] {
+  const width = opts.width ?? 1080;
+  const height = opts.height ?? 1920;
+  const fps = opts.fps ?? 30;
+  return [
+    'ffmpeg', '-y',
+    '-i', opts.inputPath,
+    '-ss', String(opts.startSec),
+    '-to', String(opts.endSec),
+    '-an',
+    '-filter_complex', 'scale=' + width + ':' + height + ':force_original_aspect_ratio=decrease,pad=' + width + ':' + height + ':(ow-iw)/2:(oh-ih)/2,setsar=1,fps=' + String(fps) + '[v]',
+    '-map', '[v]',
+    '-c:v', 'libx264', '-crf', '20', '-preset', 'medium',
+    '-pix_fmt', 'yuv420p',
+    opts.outputPath,
+  ];
+}
+
+/** 分段剪辑：按 [startSec, endSec] 裁出语音片段（仅音频，44100 单声道 mp3） */
+export function buildSegmentTrimAudioCommand(opts: {
+  inputPath: string;
+  startSec: number;
+  endSec: number;
+  outputPath: string;
+}): string[] {
+  return [
+    'ffmpeg', '-y',
+    '-i', opts.inputPath,
+    '-ss', String(opts.startSec),
+    '-to', String(opts.endSec),
+    '-ar', '44100', '-ac', '1',
+    '-c:a', 'libmp3lame', '-q:a', '5',
+    opts.outputPath,
+  ];
+}
+
+/** 分段剪辑：把已裁好的片段按 list 文件 concat（同编码，可用 -c copy 高速拼接） */
+export function buildSegmentConcatCommand(opts: {
+  listPath: string;
+  outputPath: string;
+  copy?: boolean;
+}): string[] {
+  return [
+    'ffmpeg', '-y',
+    '-f', 'concat', '-safe', '0',
+    '-i', opts.listPath,
+    ...(opts.copy === false
+      ? ['-c:v', 'libx264', '-crf', '20', '-preset', 'medium', '-c:a', 'aac']
+      : ['-c', 'copy']),
+    opts.outputPath,
+  ];
+}

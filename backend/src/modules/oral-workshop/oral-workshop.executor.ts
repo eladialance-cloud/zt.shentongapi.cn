@@ -17,6 +17,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { buildCardVideoCommand, buildCoverCommand, buildShotConcatCommand, buildShotTrimCommand, composePlan, type FfmpegPlan } from './composer';
+import { buildSegmentConcatCommand, buildSegmentTrimAudioCommand, buildSegmentTrimVideoCommand } from './composer';
 import { deriveTitle, ensureBadgeImage, segmentScript, segmentScriptBilingual, type TitlePair } from './compose-inputs';
 import { loadTemplate } from './template-loader';
 import { VoiceCloneAdapter } from './adapters/voice.adapter';
@@ -687,13 +688,21 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
     const results = await this.service.getStepResults(job.id);
     const voiceArtifact = results.voiceClone ?? {};
     const humanArtifact = results.digitalHuman ?? {};
-    const audioPath = String(voiceArtifact.audio_path || job.audioUrl || '');
-    const humanVideoPath = String(humanArtifact.video_path || humanArtifact.video_url || job.videoUrl || '');
-    if (!audioPath || !humanVideoPath) {
+    const audioPath0 = String(voiceArtifact.audio_path || job.audioUrl || '');
+    const humanVideoPath0 = String(humanArtifact.video_path || humanArtifact.video_url || job.videoUrl || '');
+    if (!audioPath0 || !humanVideoPath0) {
       throw new Error('videoEdit 缺少合成输入（需 voiceClone.audio_path 与 digitalHuman.video_path）');
     }
     const template = loadTemplate(this.templateIdOf(job));
     const outputDir = this.outputDirFor(job);
+    const editSegments = this.service.parseEditSegments(job.editSegments);
+    let audioPath = audioPath0;
+    let humanVideoPath = humanVideoPath0;
+    if (editSegments && editSegments.length) {
+      const edited = await this.buildEditedHumanMedia(humanVideoPath0, audioPath0, editSegments, outputDir, template, job.id);
+      humanVideoPath = edited.videoPath;
+      audioPath = edited.audioPath;
+    }
     fs.mkdirSync(outputDir, { recursive: true });
     const badgeImagePath = process.env.ORAL_WORKSHOP_BADGE_IMAGE || ensureBadgeImage(outputDir);
     const script = job.rewrittenScript || job.scriptInput || '';
@@ -726,6 +735,23 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       subtitles = segmentScriptBilingual(pairs);
       bilingual = true;
       subtitleLang = 'en';
+    }
+    // 分段剪辑：按「保留片段」的累计时间轴重算字幕（去掉被裁掉的中间段），避免字幕错位
+    if (editSegments && editSegments.length && subtitlesEnabled) {
+      const enabled = editSegments.filter((s) => s.enabled !== false);
+      const out: Array<{ start: number; end: number; text: string }> = [];
+      let cur = 0;
+      for (const seg of enabled) {
+        const dur = Math.max(0.3, Number(seg.endSec) - Number(seg.startSec));
+        const text = String(seg.text || '').trim();
+        if (text) out.push({ start: Math.round(cur * 100) / 100, end: Math.round((cur + dur) * 100) / 100, text });
+        cur += dur;
+      }
+      if (out.length) {
+        subtitles = out;
+        bilingual = false;
+        subtitleLang = 'zh';
+      }
     }
     // E3：BGM（任务级 bgmUrl > 模板 auto_bgm 的 BGM 库默认 > 无 BGM）
     let bgmPath: string | undefined;
@@ -795,6 +821,59 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       subtitle_lang: subtitleLang,
       composedAt: new Date().toISOString(),
     };
+  }
+
+
+  /**
+   * 分段剪辑：按保留片段从草稿视频/语音裁出各段，再分别 concat 视频/音频，
+   * 作为 videoEdit 的基础视频与语音轨。返回 { videoPath, audioPath }。
+   */
+  private async buildEditedHumanMedia(
+    sourceVideo: string,
+    sourceAudio: string,
+    segments: Array<{ order: number; startSec: number; endSec: number; enabled?: boolean; text?: string }>,
+    outputDir: string,
+    template: { project_settings?: { width?: number; height?: number; fps?: number } },
+    jobId: number,
+  ): Promise<{ videoPath: string; audioPath: string }> {
+    fs.mkdirSync(outputDir, { recursive: true });
+    const enabled = segments
+      .filter((s) => s.enabled !== false && Number(s.endSec) > Number(s.startSec))
+      .sort((a, b) => Number(a.order) - Number(b.order));
+    if (enabled.length === 0) throw new Error('分段剪辑：请至少保留一个片段');
+    const width = Number(template?.project_settings?.width || 1080);
+    const height = Number(template?.project_settings?.height || 1920);
+    const fps = Number(template?.project_settings?.fps || 30);
+    const clipDir = path.join(outputDir, 'edit-seg-' + jobId);
+    fs.mkdirSync(clipDir, { recursive: true });
+    const videoClips: string[] = [];
+    const audioClips: string[] = [];
+    for (let i = 0; i < enabled.length; i++) {
+      const seg = enabled[i];
+      const vOut = path.join(clipDir, 'v' + i + '.mp4');
+      const aOut = path.join(clipDir, 'a' + i + '.mp3');
+      await this.runFfmpeg(
+        buildSegmentTrimVideoCommand({ inputPath: sourceVideo, startSec: Number(seg.startSec), endSec: Number(seg.endSec), outputPath: vOut, width, height, fps }),
+        outputDir,
+      );
+      await this.runFfmpeg(buildSegmentTrimAudioCommand({ inputPath: sourceAudio, startSec: Number(seg.startSec), endSec: Number(seg.endSec), outputPath: aOut }), outputDir);
+      videoClips.push(vOut);
+      audioClips.push(aOut);
+    }
+    const vList = path.join(clipDir, 'vlist.txt');
+    fs.writeFileSync(vList, videoClips.map((c) => "file '" + c + "'").join('\n'), 'utf8');
+    const aList = path.join(clipDir, 'alist.txt');
+    fs.writeFileSync(aList, audioClips.map((c) => "file '" + c + "'").join('\n'), 'utf8');
+    const videoPath = path.join(outputDir, 'edited_human_' + jobId + '.mp4');
+    const audioPath = path.join(outputDir, 'edited_voice_' + jobId + '.mp3');
+    if (enabled.length === 1) {
+      await fs.promises.copyFile(videoClips[0], videoPath);
+      await fs.promises.copyFile(audioClips[0], audioPath);
+    } else {
+      await this.runFfmpeg(buildSegmentConcatCommand({ listPath: vList, outputPath: videoPath }), outputDir);
+      await this.runFfmpeg(buildSegmentConcatCommand({ listPath: aList, outputPath: audioPath }), outputDir);
+    }
+    return { videoPath, audioPath };
   }
 
   /** titleCover：封面渲染（视频首帧 + h1/h2 标题，模板样式）+ 标题元数据 */

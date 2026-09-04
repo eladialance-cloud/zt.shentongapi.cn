@@ -59,6 +59,18 @@ export interface OralWorkshopJob {
   coverH2: string | null
   coverConfig: string | null
   creditsCost: number
+  /** 草稿视频 URL（两阶段：数字人生成后的原始片，用于分段剪辑预览） */
+  draftVideoUrl: string | null
+  /** 分段剪辑方案（服务端解析 JSON 后返回数组） */
+  editSegments: EditSegment[] | null
+  /** 重渲染成片次数 */
+  renderCount: number
+  /** 草稿模式：只跑到数字人出草稿即暂停，等待「渲染成片」 */
+  draftMode: boolean
+  /** 草稿结算成本 */
+  draftCost: number
+  /** 最近一次重渲染成片成本 */
+  editCost: number
   bilingual: boolean
   targetLang: string | null
   /** 执行模式：auto=自动流水线 / manual=手动逐步 / single=单步执行 */
@@ -143,6 +155,8 @@ export interface CreateOralWorkshopJobDto {
   targetLang?: string
   /** 执行模式：auto=自动流水线（默认）/ manual=手动逐步 / single=单步执行 */
   executionMode?: 'auto' | 'manual' | 'single'
+  /** 两阶段：true=只生成数字人草稿（draftVideoUrl），等待「渲染成片」 */
+  draftMode?: boolean
   /** 封面主标题（标题封面步骤：留空=后端 titleCover 自动生成） */
   coverH1?: string
   /** 封面副标题（标题封面步骤：留空=后端 titleCover 自动生成） */
@@ -514,4 +528,30 @@ export interface IpArchive {
   topics?: string | null
   sourceJson?: string | null
   createdAt: string
+}
+
+
+/** 分段剪辑方案片段（两阶段：先生成草稿，再分段编辑重渲染） */
+export interface EditSegment {
+  order: number;
+  startSec: number;
+  endSec: number;
+  enabled?: boolean;
+  text?: string;
+}
+
+/** 视频剪辑：渲染成片 DTO（更新编辑参数 + 分段方案 → 后端重渲染） */
+export interface RenderEditDto {
+  editSegments?: EditSegment[];
+  templateId?: number;
+  bgmUrl?: string;
+  bgmVolume?: number;
+  subtitlesEnabled?: boolean;
+  bgmEnabled?: boolean;
+  subtitlesOverride?: string;
+  pipAssets?: PipAssetInput[];
+  bilingual?: boolean;
+  targetLang?: string;
+  coverH1?: string;
+  coverH2?: string;
 }

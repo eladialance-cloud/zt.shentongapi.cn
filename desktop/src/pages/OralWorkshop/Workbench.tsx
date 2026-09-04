@@ -4,10 +4,10 @@
  * ② 改写文案（人设/风格 + 一键改写 + 原文/结果对照）
  * ③ 声音克隆（我的声音 / 上传成音 / 克隆结果预览）
  * ④ 数字人生成（形象 / 驱动音频 / 模型版本）
- * ⑤ 视频剪辑（模板 + BGM + 字幕 + 画中画）
- * ⑥ 标题封面（标题/描述/封面主副标题）
- * ⑦ 视频发布（账号 + 直接发布/草稿）
- * ⑧ 生成视频（汇总 → 创建任务 → 进入 7 步流水线）
+ * ⑤ 生成草稿（数字人原始片段，内联轮询）
+ * ⑥ 视频剪辑（草稿分段 + 模板/BGM/字幕/画中画 → 渲染成片，内联轮询）
+ * ⑦ 标题封面（标题/描述/封面主副标题）
+ * ⑧ 视频发布（账号 + 直接发布/草稿）
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -57,6 +57,10 @@ import {
   createMyDigitalHuman,
   createMyVoice,
   createOralWorkshopJob,
+  getOralWorkshopJob,
+  cancelOralWorkshopJob,
+  renderOralWorkshopJob,
+
   deleteMyDigitalHuman,
   deleteMyVoice,
   analyzeStyle,
@@ -89,6 +93,10 @@ import {
   type DigitalHumanAsset,
   type HeyGenAvatarItem,
   type OralWorkshopTemplateMeta,
+  type OralWorkshopJob,
+  type EditSegment,
+  type RenderEditDto,
+
   type StyleAnalysisResult,
   type TopicItem,
   type VoiceAsset,
@@ -358,6 +366,19 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
   const [heygenConfigured, setHeygenConfigured] = useState(false)
   const [heygenAvatarsLoading, setHeygenAvatarsLoading] = useState(false)
   const [dhImageUploading, setDhImageUploading] = useState(false)
+
+  // —— 两阶段：先生成草稿，再分段剪辑渲染成片 ——
+  const [activeJob, setActiveJob] = useState<OralWorkshopJob | null>(null)
+  const [draftJobId, setDraftJobId] = useState<number | undefined>()
+  const [draftLoading, setDraftLoading] = useState(false)
+  const [draftError, setDraftError] = useState('')
+  const [editSegments, setEditSegments] = useState<EditSegment[]>([])
+  const [renderLoading, setRenderLoading] = useState(false)
+  const [renderError, setRenderError] = useState('')
+  const draftPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const renderPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [draftStep, setDraftStep] = useState<string | null>(null)
+  const draftVideoRef = useRef<HTMLVideoElement | null>(null)
   // E7：字幕轨 / BGM 轨开关（默认开）
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(true)
   const [bgmEnabled, setBgmEnabled] = useState(true)
@@ -1031,6 +1052,220 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
     }
   }
 
+  // ===== 两阶段：生成草稿 / 分段剪辑渲染成片 =====
+
+  const stopDraftPoll = () => {
+    if (draftPollRef.current) { clearInterval(draftPollRef.current); draftPollRef.current = null }
+  }
+  const stopRenderPoll = () => {
+    if (renderPollRef.current) { clearInterval(renderPollRef.current); renderPollRef.current = null }
+  }
+
+  /** 按口播文案（改写结果优先）按句切分，再按整段时长按字符占比分配区间 */
+  const buildDraftSegments = (durationSec: number): EditSegment[] => {
+    const script = (rewriteResult || rewriteDraft || (form.getFieldValue('scriptInput') as string) || '').trim()
+    if (!script || durationSec <= 0) return []
+    const sentences = script
+      .split(/(?<=[。！？!?；;\n])/)
+      .map((x) => x.trim())
+      .filter(Boolean)
+    const total = sentences.reduce((n, x) => n + x.length, 0) || 1
+    let cursor = 0
+    return sentences
+      .map((sen, i) => {
+        const dur = Math.max(0.3, (sen.length / total) * durationSec)
+        const start = Math.round(cursor * 100) / 100
+        const end = Math.round(Math.min(durationSec, cursor + dur) * 100) / 100
+        cursor = end
+        return { order: i, startSec: start, endSec: end, enabled: true, text: sen }
+      })
+      .filter((x) => x.endSec > x.startSec)
+  }
+
+  const startDraftPoll = (id: number) => {
+    stopDraftPoll()
+    draftPollRef.current = setInterval(async () => {
+      try {
+        const job = await getOralWorkshopJob(id)
+        setActiveJob(job)
+        setDraftStep(job.currentStep)
+        if (job.draftVideoUrl) {
+          stopDraftPoll()
+          setDraftLoading(false)
+          message.success('草稿已生成，可进入「视频剪辑」分段调整后渲染成片')
+          return
+        }
+        if (job.status === 'failed') {
+          stopDraftPoll()
+          setDraftLoading(false)
+          setDraftError(job.error || '草稿生成失败')
+        }
+      } catch (err) {
+        stopDraftPoll()
+        setDraftLoading(false)
+        setDraftError('草稿轮询失败: ' + ((err as Error)?.message ?? String(err)))
+      }
+    }, 2500)
+  }
+
+  const startRenderPoll = (id: number) => {
+    stopRenderPoll()
+    renderPollRef.current = setInterval(async () => {
+      try {
+        const job = await getOralWorkshopJob(id)
+        setActiveJob(job)
+        if (job.videoUrl) {
+          stopRenderPoll()
+          setRenderLoading(false)
+          message.success('成片渲染完成，可在「标题封面 / 视频发布」继续完善')
+          return
+        }
+        if (job.status === 'failed') {
+          stopRenderPoll()
+          setRenderLoading(false)
+          setRenderError(job.error || '成片渲染失败')
+        }
+      } catch (err) {
+        stopRenderPoll()
+        setRenderLoading(false)
+        setRenderError('渲染轮询失败: ' + ((err as Error)?.message ?? String(err)))
+      }
+    }, 3000)
+  }
+
+  const handleStartDraft = async () => {
+    try {
+      await form.validateFields()
+    } catch {
+      message.warning('请先完成前序步骤（至少填写口播文案）')
+      return
+    }
+    const values = form.getFieldsValue(true) as Record<string, unknown>
+    const targetLang = values.targetLang && values.targetLang !== 'zh' ? (values.targetLang as string) : undefined
+    const validShots = shots
+      .filter((s) => s.digitalHumanId)
+      .map((s) => ({ digitalHumanId: s.digitalHumanId as number, seconds: s.seconds }))
+    setDraftLoading(true)
+    setDraftError('')
+    setDraftStep(null)
+    setEditSegments([])
+    try {
+      const job = draftJobId ? null : await createOralWorkshopJob({
+        scriptInput: values.scriptInput as string,
+        goal: values.goal as string | undefined,
+        targetAudience: values.targetAudience as string | undefined,
+        style: values.style as string | undefined,
+        persona: values.persona as string | undefined,
+        platforms: videoSource ? [videoSource] : undefined,
+        templateId: values.templateId as number | undefined,
+        voiceId: values.voiceId as number | undefined,
+        speakerId: values.speakerId as string | undefined,
+        digitalHumanId: (values.digitalHumanId as number | undefined) ?? (validShots.length === 1 ? validShots[0].digitalHumanId : undefined),
+        dhModelVersion,
+        dhGenerationMode,
+        shots: validShots.length > 1 ? validShots : undefined,
+        subtitlesEnabled,
+        bgmEnabled,
+        subtitlesOverride: subtitlesOverride.trim() || undefined,
+        voiceModelVersion: (values.voiceModelVersion as 'V1' | 'V2') ?? 'V2',
+        voiceSpeechRate: values.voiceSpeechRate as number | undefined,
+        voiceLoudnessRate: values.voiceLoudnessRate as number | undefined,
+        voiceEmotion: values.voiceEmotion as string | undefined,
+        bgmUrl: values.bgmUrl as string | undefined,
+        bgmVolume: values.bgmVolume as number | undefined,
+        pipAssets: pipItems.length ? pipItems : undefined,
+        audioUrl,
+        videoUrl,
+        bilingual: !!targetLang,
+        targetLang,
+        coverH1: coverH1.trim() || undefined,
+        coverH2: coverH2.trim() || undefined,
+        executionMode: 'auto',
+        draftMode: true,
+        clientTxnId: 'ow-draft-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+      })
+      setActiveJob(job)
+      setDraftJobId(job.id)
+      setDraftStep(job.currentStep)
+      message.success('草稿任务已创建，正在生成数字人原始片段…')
+      void useCreditsStore.getState().fetchBalance()
+      startDraftPoll(job.id)
+    } catch (err) {
+      setDraftError((err as Error)?.message ?? String(err))
+    } finally {
+      setDraftLoading(false)
+    }
+  }
+
+  const updateSegment = (i: number, patch: Partial<EditSegment>) => {
+    setEditSegments((prev) => prev.map((sg, idx) => (idx === i ? { ...sg, ...patch } : sg)))
+  }
+  const moveSegment = (i: number, dir: -1 | 1) => {
+    setEditSegments((prev) => {
+      const next = [...prev]
+      const j = i + dir
+      if (j < 0 || j >= next.length) return prev
+      const [item] = next.splice(i, 1)
+      next.splice(j, 0, item)
+      return next.map((sg, idx) => ({ ...sg, order: idx }))
+    })
+  }
+  const removeSegment = (i: number) => setEditSegments((prev) => prev.filter((_, idx) => idx !== i).map((sg, idx) => ({ ...sg, order: idx })))
+  const segmentFromDraft = () => {
+    const dur = draftVideoRef.current?.duration
+    if (!dur || dur <= 0) { message.warning('请先加载草稿视频'); return }
+    const segs = buildDraftSegments(dur)
+    if (!segs.length) { message.warning('未能按文案自动分段'); return }
+    setEditSegments(segs)
+    message.success('已按文案自动分段（' + segs.length + ' 段），可拖动起止秒微调')
+  }
+
+  const handleRender = async () => {
+    if (!draftJobId) { setRenderError('请先在第 5 步「生成草稿」'); return }
+    if (!editSegments.some((x) => x.enabled !== false && x.endSec > x.startSec)) {
+      setRenderError('请先按文案自动分段，并至少保留一个有效片段')
+      return
+    }
+    setRenderError('')
+    setRenderLoading(true)
+    try {
+      const job = await renderOralWorkshopJob(draftJobId, {
+        editSegments,
+        templateId: (form.getFieldValue('templateId') as number | undefined) ?? undefined,
+        bgmUrl: (form.getFieldValue('bgmUrl') as string | undefined) ?? undefined,
+        bgmVolume: (form.getFieldValue('bgmVolume') as number | undefined) ?? undefined,
+        subtitlesEnabled,
+        bgmEnabled,
+        subtitlesOverride: subtitlesOverride.trim() || undefined,
+        pipAssets: pipItems.length ? pipItems : undefined,
+        targetLang: (form.getFieldValue('targetLang') as string | undefined) || undefined,
+        coverH1: coverH1.trim() || undefined,
+        coverH2: coverH2.trim() || undefined,
+      })
+      setActiveJob(job)
+      message.success('渲染任务已提交，正在合成成片…')
+      void useCreditsStore.getState().fetchBalance()
+      startRenderPoll(job.id)
+    } catch (err) {
+      setRenderError((err as Error)?.message ?? String(err))
+      setRenderLoading(false)
+    }
+  }
+
+  const handleCancelDraft = async () => {
+    if (!draftJobId) return
+    stopDraftPoll()
+    await cancelOralWorkshopJob(draftJobId).catch(() => undefined)
+    setDraftLoading(false)
+    setDraftStep(null)
+    message.info('已取消草稿生成')
+  }
+
+  useEffect(() => () => {
+    stopDraftPoll()
+    stopRenderPoll()
+  }, [])
+
   const handleSubmit = async (values: {
     scriptInput: string
     goal?: string
@@ -1097,9 +1332,9 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
         persona: values.persona ?? '',
         templateId: values.templateId ?? null,
       })
-      message.success('任务已创建，进入详情页跟踪 7 步流水线')
+      message.success(draftJobId ? '草稿已生成，进入详情页发布/继续完善' : '任务已创建，进入详情页跟踪流水线')
       void useCreditsStore.getState().fetchBalance()
-      navigate('/oral-workshop/' + job.id, {
+      navigate('/oral-workshop/' + (draftJobId || job!.id), {
         state: {
           owPublish: {
             accountId: selectedAccountId,
@@ -1124,10 +1359,10 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
       { title: '改写文案', icon: <Wand2 size={15} /> },
       { title: '声音克隆', icon: <Mic size={15} /> },
       { title: '数字人生成', icon: <Clapperboard size={15} /> },
+      { title: '生成草稿', icon: <Video size={15} /> },
       { title: '视频剪辑', icon: <Scissors size={15} /> },
       { title: '标题封面', icon: <FileText size={15} /> },
       { title: '视频发布', icon: <Send size={15} /> },
-      { title: '生成视频', icon: <Video size={15} /> },
     ],
     []
   )
@@ -1158,6 +1393,10 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
   const goNext = async () => {
     if (current === 0 && scriptChars === 0) {
       message.warning('请先填写口播文案（可选题灵感 / 学习对标生成）')
+      return
+    }
+    if (current === 4 && !activeJob?.draftVideoUrl) {
+      message.warning('请先点击「开始生成草稿」，草稿就绪后再进入视频剪辑')
       return
     }
     setCurrent((c) => Math.min(c + 1, steps.length - 1))
@@ -1544,6 +1783,46 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                 }))}
               />
             </Form.Item>
+            <div className={styles.uploadGroup} style={{ marginTop: 8 }}>
+              <div className={styles.uploadLabel}>我的形象（点击选择）</div>
+              {dhAssets.length === 0 ? (
+                <div className={styles.uploadHint}>暂无形象，可添加形象 ID 或上传视频/图片建形象</div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginTop: 4 }}>
+                  {dhAssets.map((d) => {
+                    const selected = d.id === form.getFieldValue('digitalHumanId')
+                    const thumb = d.previewUrl || d.imageUrl || d.videoUrl
+                    return (
+                      <div
+                        key={d.id}
+                        title={(d.name || d.cloudId) + (d.authorized ? '' : '（未授权）')}
+                        onClick={() => form.setFieldsValue({ digitalHumanId: d.id })}
+                        style={{
+                          cursor: 'pointer', borderRadius: 8, overflow: 'hidden', position: 'relative',
+                          border: selected ? '2px solid var(--color-primary, #1677ff)' : '2px solid transparent',
+                          opacity: selected ? 1 : 0.85,
+                        }}
+                      >
+                        {d.kind === 'video' && d.videoUrl ? (
+                          <video src={resolveMediaUrl(d.videoUrl)} style={{ width: '100%', aspectRatio: '3/4', objectFit: 'cover', display: 'block' }} muted playsInline />
+                        ) : thumb ? (
+                          <img src={resolveMediaUrl(thumb)} alt={d.name} style={{ width: '100%', aspectRatio: '3/4', objectFit: 'cover', display: 'block' }} />
+                        ) : (
+                          <div style={{ width: '100%', aspectRatio: '3/4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'var(--color-text-tertiary)', textAlign: 'center', padding: 4 }}>
+                            {d.cloudId || d.name}
+                          </div>
+                        )}
+                        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '2px 4px', fontSize: 11, background: 'rgba(0,0,0,.55)', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {d.name || d.cloudId}
+                        </div>
+                        {selected && <div style={{ position: 'absolute', top: 4, right: 4, background: 'var(--color-primary, #1677ff)', color: '#fff', borderRadius: 4, fontSize: 10, padding: '0 4px' }}>已选</div>}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              <div className={styles.uploadHint}>显示缩略图/形象ID，点击选择；未授权形象需先授权（下方「删除当前形象」可移除）。</div>
+            </div>
             <Form.Item label="驱动音频" tooltip="auto=自动使用上一步「声音克隆」产物驱动；manual=手动指定我的克隆声或上传成音">
               <Radio.Group value={driveAudioMode} onChange={(e) => setDriveAudioMode(e.target.value)} optionType="button" buttonStyle="solid">
                 <Radio.Button value="auto">自动（上一步克隆声音）</Radio.Button>
@@ -1759,13 +2038,136 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
           </div>
         )}
 
-        {/* ⑤ 视频剪辑 */}
+        {/* ⑤ 生成草稿（两阶段：先合成人声+数字人原始片段） */}
         {current === 4 && (
+          <div className={styles.panel}>
+            <div className={styles.panelTitle}>
+              <Video size={15} /> 生成草稿
+            </div>
+            {draftLoading && (
+              <div className={styles.panelHint} style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Spin size="small" /> {draftStep ? '当前步骤：' + draftStep + '…' : '正在生成数字人原始片段…'}
+              </div>
+            )}
+            {draftError && (
+              <div className={styles.panelHint} style={{ color: 'var(--color-danger, #ff4d4f)', marginBottom: 12 }}>
+                {draftError}
+              </div>
+            )}
+            {activeJob?.draftVideoUrl ? (
+              <video
+                className={styles.video}
+                src={resolveMediaUrl(activeJob.draftVideoUrl)}
+                controls
+                preload="metadata"
+                style={{ width: '100%', borderRadius: 8, marginBottom: 12 }}
+              />
+            ) : (
+              <div className={styles.uploadGroup}>
+                <div className={styles.uploadHint}>
+                  点击下方「开始生成草稿」：先合成配音 + 数字人原始片段并保存为草稿，再进入下一步做分段剪辑、渲染成片。
+                </div>
+                <div className={styles.uploadRow}>
+                  <Button type="primary" icon={<Video size={15} />} loading={draftLoading} onClick={() => void handleStartDraft()}>
+                    {draftLoading ? '生成中…' : '开始生成草稿'}
+                  </Button>
+                  {draftJobId && !activeJob?.draftVideoUrl ? (
+                    <Button danger icon={<RefreshCw size={15} />} onClick={() => void handleCancelDraft()}>
+                      取消
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            )}
+            {activeJob?.draftVideoUrl ? (
+              <div className={styles.uploadRow}>
+                <span className={styles.uploadHint}>草稿已就绪（任务 #{activeJob.id}），下一步「视频剪辑」可分段调整后渲染成片。</span>
+                <Button type="primary" onClick={() => setCurrent(5)}>
+                  进入视频剪辑
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {/* ⑥ 视频剪辑 */}
+        {current === 5 && (
           <div className={styles.panel}>
             <div className={styles.panelTitle}>
               <Scissors size={15} /> 视频剪辑
             </div>
-            {templatesLoading ? (
+            {activeJob?.draftVideoUrl ? (
+              <div style={{ marginBottom: 16 }}>
+                <div className={styles.panelHint} style={{ marginBottom: 8 }}>草稿视频（数字人原始片段）</div>
+                <video
+                  ref={draftVideoRef}
+                  className={styles.video}
+                  src={resolveMediaUrl(activeJob.draftVideoUrl)}
+                  controls
+                  preload="metadata"
+                  onLoadedMetadata={(e) => {
+                    const d = e.currentTarget.duration
+                    if (d > 0 && editSegments.length === 0) setEditSegments(buildDraftSegments(d))
+                  }}
+                  style={{ width: '100%', borderRadius: 8, marginBottom: 12 }}
+                />
+                <div className={styles.uploadRow}>
+                  <Button size="small" icon={<Scissors size={12} />} onClick={segmentFromDraft}>按文案自动分段</Button>
+                  {editSegments.length > 0 ? (
+                    <span className={styles.uploadHint}>共 {editSegments.length} 段，可勾选保留/删除、改起止秒、上下排序</span>
+                  ) : null}
+                </div>
+                {editSegments.length > 0 ? (
+                  <div style={{ marginTop: 10, maxHeight: 280, overflow: 'auto', paddingRight: 4 }}>
+                    {editSegments.map((seg, i) => (
+                      <div key={i} style={{ border: '1px solid var(--color-border, #eceff1)', borderRadius: 8, padding: 10, marginBottom: 8, opacity: seg.enabled === false ? 0.5 : 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Switch size="small" checked={seg.enabled !== false} onChange={(v) => updateSegment(i, { enabled: v })} />
+                          <span style={{ flex: 1, fontSize: 13 }}>#{i + 1} · {(seg.text || '（空字幕）').slice(0, 40)}</span>
+                          <Button size="small" type="text" icon={<ArrowUp size={12} />} disabled={i === 0} onClick={() => moveSegment(i, -1)} />
+                          <Button size="small" type="text" icon={<ArrowDown size={12} />} disabled={i === editSegments.length - 1} onClick={() => moveSegment(i, 1)} />
+                          <Button size="small" type="text" danger icon={<Trash2 size={12} />} onClick={() => removeSegment(i)} />
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 12 }}>起</span>
+                          <InputNumber size="small" min={0} step={0.1} value={seg.startSec} onChange={(v) => updateSegment(i, { startSec: Number(v) || 0 })} style={{ width: 88 }} />
+                          <span style={{ fontSize: 12 }}>止</span>
+                          <InputNumber size="small" min={0} step={0.1} value={seg.endSec} onChange={(v) => updateSegment(i, { endSec: Number(v) || 0 })} style={{ width: 88 }} />
+                          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>秒</span>
+                          {seg.enabled === false ? <Tag color="red">已剔除</Tag> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <div className={styles.uploadGroup} style={{ marginTop: 12 }}>
+                  {renderError && (
+                    <div className={styles.panelHint} style={{ color: 'var(--color-danger, #ff4d4f)', marginBottom: 12 }}>{renderError}</div>
+                  )}
+                  <div className={styles.uploadRow}>
+                    <Button type="primary" icon={<RefreshCw size={15} />} loading={renderLoading} onClick={() => void handleRender()} disabled={!activeJob.draftVideoUrl}>
+                      {renderLoading ? '渲染中…' : '渲染成片（另扣 Credits）'}
+                    </Button>
+                    {renderLoading ? (
+                      <span className={styles.uploadHint}>正在合成成片…请勿关闭页面</span>
+                    ) : activeJob.videoUrl ? (
+                      <span className={styles.uploadHint}>成片已生成 ✓</span>
+                    ) : null}
+                  </div>
+                </div>
+                {activeJob.videoUrl ? (
+                  <div style={{ marginTop: 14 }}>
+                    <div className={styles.panelHint} style={{ marginBottom: 8 }}>成片预览（任务 #{activeJob.id}）</div>
+                    <video className={styles.video} src={resolveMediaUrl(activeJob.videoUrl)} controls preload="metadata" style={{ width: '100%', borderRadius: 8 }} />
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className={styles.uploadHint} style={{ marginBottom: 16 }}>
+                尚未生成草稿——请先回到第 5 步「生成草稿」，完成后此处可分段剪辑并渲染成片。
+              </div>
+            )}
+                        {templatesLoading ? (
               <div className={styles.templateLoading}>
                 <Spin /> 模板加载中…
               </div>
@@ -1878,8 +2280,8 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
           </div>
         )}
 
-        {/* ⑥ 标题封面 */}
-        {current === 5 && (
+        {/* ⑦ 标题封面 */}
+        {current === 6 && (
           <div className={styles.panel}>
             <div className={styles.panelTitle}>
               <FileText size={15} /> 标题封面（用于发布）
@@ -1940,8 +2342,8 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
           </div>
         )}
 
-        {/* ⑦ 视频发布 */}
-        {current === 6 && (
+        {/* ⑧ 视频发布 */}
+        {current === 7 && (
           <div className={styles.panel}>
             <div className={styles.panelTitle}>
               <Send size={15} /> 视频发布
@@ -2005,89 +2407,6 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
           </div>
         )}
 
-        {/* ⑧ 生成视频 */}
-        {current === 7 && (
-          <div className={styles.panel}>
-            <div className={styles.panelTitle}>
-              <Video size={15} /> 生成视频
-            </div>
-            <div className={styles.summaryCard}>
-              <div className={styles.summaryRow}>
-                <span className={styles.summaryLabel}>口播文案</span>
-                <span className={styles.summaryValue}>
-                  {summary.script ? summary.script.slice(0, 120) + (summary.script.length > 120 ? '…' : '') : '—'}
-                </span>
-              </div>
-              <div className={styles.summaryRow}>
-                <span className={styles.summaryLabel}>人设</span>
-                <span className={styles.summaryValue}>{summary.persona || '—'}</span>
-              </div>
-              <div className={styles.summaryRow}>
-                <span className={styles.summaryLabel}>受众 / 风格</span>
-                <span className={styles.summaryValue}>
-                  {summary.audience || '—'} / {summary.style || '—'}
-                </span>
-              </div>
-              <div className={styles.summaryRow}>
-                <span className={styles.summaryLabel}>配音</span>
-                <span className={styles.summaryValue}>{summary.voice || (audioUrl ? '上传成音' : '系统默认')}</span>
-              </div>
-              <div className={styles.summaryRow}>
-                <span className={styles.summaryLabel}>数字人</span>
-                <span className={styles.summaryValue}>{summary.dh || (videoUrl ? '上传视频' : '系统兜底')}</span>
-              </div>
-              <div className={styles.summaryRow}>
-                <span className={styles.summaryLabel}>模板</span>
-                <span className={styles.summaryValue}>{summary.template || '默认模板'}</span>
-              </div>
-              <div className={styles.summaryRow}>
-                <span className={styles.summaryLabel}>字幕</span>
-                <span className={styles.summaryValue}>{subtitleLangLabel(form.getFieldValue('targetLang'))}</span>
-              </div>
-              <div className={styles.summaryRow}>
-                <span className={styles.summaryLabel}>标题/封面</span>
-                <span className={styles.summaryValue}>{coverH1 || publishTitle || '留空=自动生成'}</span>
-              </div>
-            </div>
-            <div className={styles.execModeRow}>
-              <Form.Item
-                name="executionMode"
-                label="执行模式"
-                initialValue="auto"
-                tooltip="自动=创建后流水线全自动执行；手动=每步完成后等待您点击「执行下一步」；单步=只执行当前一步"
-              >
-                <Radio.Group
-                  options={[
-                    { value: 'auto', label: '自动执行' },
-                    { value: 'manual', label: '手动逐步' },
-                    { value: 'single', label: '单步执行' },
-                  ]}
-                  optionType="button"
-                  buttonStyle="solid"
-                />
-              </Form.Item>
-            </div>
-            <div className={styles.submitRow}>
-              <div className={styles.estimate}>
-                <Coins size={14} />
-                <span>预估扣费</span>
-                <Tag color="gold">{ORAL_WORKSHOP_ESTIMATED_CREDITS} Credits</Tag>
-                <span className={styles.estimateHint}>预扣后按实际结算，失败自动退还</span>
-              </div>
-              <Button
-                type="primary"
-                htmlType="submit"
-                icon={<Send size={15} />}
-                loading={submitting}
-                disabled={scriptChars === 0}
-                className={styles.primaryBtn}
-              >
-                一键生成视频
-              </Button>
-            </div>
-          </div>
-        )}
-
         {/* 底部导航 */}
         <div className={styles.wizardFooter}>
           <Button disabled={current === 0} onClick={goPrev}>
@@ -2105,7 +2424,7 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
               loading={submitting}
               onClick={() => void form.submit()}
             >
-              生成口播视频
+              完成并发布
             </Button>
           )}
         </div>
