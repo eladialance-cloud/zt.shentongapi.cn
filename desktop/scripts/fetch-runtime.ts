@@ -1,7 +1,7 @@
 /**
  * 构建期运行时下载脚本(非 Electron 主进程代码,在 Node.js 环境直接运行)。
  *
- * 用途:在打包前下载 N8N / OpenClaw / MCP Gateway 三个服务的运行时到 `runtime/` 目录,
+ * 用途:在打包前下载 N8N / Hermes / Video-Claw 三个服务的运行时到 `runtime/` 目录,
  * 以便 electron-builder 通过 extraResources 打包进安装包。
  *
  * 运行方式:
@@ -42,7 +42,7 @@ interface ServiceEntry {
 
 interface RuntimeManifest {
   version: string;
-  services: Record<'n8n' | 'openclaw' | 'mcp' | 'hermes', ServiceEntry>;
+  services: Record<'n8n' | 'hermes' | 'video-claw', ServiceEntry>;
 }
 
 // ---------- 常量 ----------
@@ -52,7 +52,7 @@ const RUNTIME_DIR = path.join(PROJECT_ROOT, 'runtime');
 const MANIFEST_PATH = path.join(RUNTIME_DIR, 'manifest.json');
 const TMP_DIR = path.join(RUNTIME_DIR, '.tmp');
 const DOWNLOAD_TIMEOUT_MS = 60_000;
-const SERVICE_KEYS = ['n8n', 'openclaw', 'mcp', 'hermes'] as const;
+const SERVICE_KEYS = ['n8n', 'hermes', 'video-claw'] as const;
 
 // ---------- 工具函数 ----------
 

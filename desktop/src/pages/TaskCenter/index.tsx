@@ -527,7 +527,7 @@ export default function TaskCenter() {
               </span>
               <div className={styles.pageTitleText}>
                 <span className={styles.pageTitleMain}>定时任务</span>
-                <span className={styles.pageTitleSub}>到期由调度器触发执行，创建走对话/OpenClaw</span>
+                <span className={styles.pageTitleSub}>到期由调度器触发执行，创建走对话/Hermes</span>
               </div>
             </div>
           </div>

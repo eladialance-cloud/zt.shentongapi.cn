@@ -231,7 +231,7 @@ export class RemoteControlManager extends EventEmitter {
   private settings: RemoteControlSettings = { ...DEFAULT_SETTINGS }
 
 
-  /** 对话咨询提供者（主进程注入：未知命令走本地 OpenClaw 对话，返回 AI 回答或 null） */
+  /** 对话咨询提供者（主进程注入：未知命令走本地 Hermes 对话，返回 AI 回答或 null） */
   private chatProvider: ((text: string) => Promise<string | null>) | null = null
   /** 本地状态查询提供者（由主进程注入 serviceManager.getAllStatus） */
   private statusProvider: (() => unknown) | null = null
@@ -330,7 +330,7 @@ export class RemoteControlManager extends EventEmitter {
   }
 
 
-  /** 注入对话咨询提供者（未知命令 → 本地 OpenClaw 对话） */
+  /** 注入对话咨询提供者（未知命令 → 本地 Hermes 对话） */
   setChatProvider(provider: ((text: string) => Promise<string | null>) | null): void {
     this.chatProvider = provider
   }
@@ -658,7 +658,7 @@ export class RemoteControlManager extends EventEmitter {
   }
 
 
-  /** 未知命令：走对话咨询（本地 OpenClaw AI 直接回答），无提供者时回传无法识别 */
+  /** 未知命令：走对话咨询（本地 Hermes AI 直接回答），无提供者时回传无法识别 */
   private async executeUnknown(command: RemoteCommand): Promise<void> {
     const provider = this.chatProvider
     if (!provider) {

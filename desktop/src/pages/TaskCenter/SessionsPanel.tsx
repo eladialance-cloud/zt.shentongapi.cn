@@ -1,6 +1,6 @@
 /**
  * 小任务/会话（edict 原版 SessionsPanel 照搬 + 深瞳 IPC 适配）
- * 数据源：edict:sessions —— 非旨意任务（OpenClaw 会话）优先；否则聚合官署最近活动
+ * 数据源：edict:sessions —— 非旨意任务（Hermes 会话）优先；否则聚合官署最近活动
  */
 import { useCallback, useEffect, useState } from "react";
 import { isEdictAvailable, edictSessions, onEdictBoardUpdated } from "@/api/edict-api";
@@ -64,7 +64,7 @@ export default function SessionsPanel() {
           </span>
         ))}
         <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--muted)" }}>
-          {sessions.length ? (sessions[0].isEdict ? "官署活动聚合（来自看板流转记录）" : "OpenClaw 会话") : ""}
+          {sessions.length ? (sessions[0].isEdict ? "官署活动聚合（来自看板流转记录）" : "Hermes 会话") : ""}
         </span>
       </div>
 

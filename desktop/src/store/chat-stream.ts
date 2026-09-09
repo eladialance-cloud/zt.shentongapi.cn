@@ -8,14 +8,48 @@
 // 5. 对话做 AI 视频 —— 工具卡出现视频相关调用时自动拉起 video-claw 服务，
 //    并订阅其 /api/tasks/{id}/events（SSE）把进度实时写进工具卡。
 
-import { createOpenClawChat, type OpenClawChatHandle } from '@/api/openclaw-chat-api'
+import { createHermesChat } from '@/api/hermes-chat-api'
 import * as chatApi from '@/api/chat-api'
-import * as marketApi from '@/api/market-api'
 import { officeBridge, isRetrieveTool } from '@/pages/Office/services/officeBridge'
 import type { ChatMessage, ToolCallInfo } from '@/types/chat'
-import type { OpenClawChatMessage, OpenClawToolCall } from '@shared/types'
+import type { HermesChatMessage, HermesChatToolCall } from '@shared/types'
 import { isVideoClawTool } from '@/utils/video-claw-tool'
 import * as sedimentApi from '@/api/sedimentation-api'
+
+/** 对话引擎：阶段 4 起仅 Hermes（:8642） */
+export type ChatEngine = 'hermes'
+
+/** Hermes 引擎最小消息形状 */
+type EngineChatMessage = HermesChatMessage
+
+/** Hermes 引擎最小工具调用形状 */
+type EngineToolCall = HermesChatToolCall
+
+/** Hermes 引擎最小生命周期形状 */
+interface EngineLifecycleInfo {
+  phase: string
+  stopReason?: string
+  error?: string
+}
+
+/** Hermes 引擎统一句柄（runStream 只依赖这些方法） */
+export interface EngineChatHandle {
+  send: (
+    text: string,
+    history?: EngineChatMessage[],
+    knowledgeBaseId?: number,
+    sessionId?: number,
+    modelId?: string,
+  ) => Promise<{ ok: boolean; aborted?: boolean }>
+  setModel: (modelId: string) => void
+  abort: () => void
+  onMessage: (cb: (content: string) => void) => () => void
+  onFinalize: (cb: (content: string) => void) => () => void
+  onToolCall: (cb: (toolCall: EngineToolCall) => void) => () => void
+  onLifecycle: (cb: (info: EngineLifecycleInfo) => void) => () => void
+  onDone: (cb: () => void) => () => void
+  onError: (cb: (err: Error) => void) => () => void
+}
 
 export interface SedimentNotice {
   id: string
@@ -59,9 +93,14 @@ interface ChatStreamDraft {
 }
 
 const DRAFT_KEY = 'chat-stream:draft'
+const ENGINE_KEY = 'chat-stream:engine'
 const DRAFT_INTERVAL_MS = 6000
 
-let handle: OpenClawChatHandle | null = null
+/** 默认对话引擎：Hermes；仍可由用户在对话页切换并持久化 */
+const DEFAULT_CHAT_ENGINE: ChatEngine = 'hermes'
+let chatEngine: ChatEngine = DEFAULT_CHAT_ENGINE
+let engineHydrated = false
+let handle: EngineChatHandle | null = null
 let snapshot: ChatStreamSnapshot = {
   streaming: false,
   streamingSessionId: null,
@@ -79,7 +118,7 @@ let replyGenerated = false
 
 // ===== 最近一轮对话快照（消息完成后触发沉淀识别用） =====
 let lastUserMessage = ''
-let lastHistory: OpenClawChatMessage[] = []
+let lastHistory: EngineChatMessage[] = []
 let lastSessionId: number | null = null
 let lastKnowledgeBaseId: number | undefined = undefined
 let lastModelId: string | undefined = undefined
@@ -118,7 +157,7 @@ function updateToolCall(id: string, updater: (tc: ToolCallInfo) => ToolCallInfo)
   emit()
 }
 
-function toToolCallInfo(tc: OpenClawToolCall): ToolCallInfo {
+function toToolCallInfo(tc: EngineToolCall): ToolCallInfo {
   return {
     id: tc.id,
     name: tc.name,
@@ -130,7 +169,7 @@ function toToolCallInfo(tc: OpenClawToolCall): ToolCallInfo {
   }
 }
 
-function upsertToolCall(tc: OpenClawToolCall): ToolCallInfo {
+function upsertToolCall(tc: EngineToolCall): ToolCallInfo {
   const mapped = toToolCallInfo(tc)
   const idx = snapshot.toolCalls.findIndex((t) => t.id === mapped.id)
   if (idx >= 0) {
@@ -155,7 +194,7 @@ function upsertToolCall(tc: OpenClawToolCall): ToolCallInfo {
 
 // ==================== 视频任务（对话内实时进度） ====================
 
-function extractTaskId(tc: OpenClawToolCall): string | null {
+function extractTaskId(tc: EngineToolCall): string | null {
   const scan = (v: unknown): string => {
     if (v == null) return ''
     if (typeof v === 'string') return v
@@ -329,9 +368,11 @@ function persistAssistant(sessionId: number, msg: Omit<ChatMessage, 'id' | 'sess
 
 // ==================== 事件注册（常驻） ====================
 
-function ensureHandle(): OpenClawChatHandle {
+function ensureHandle(): EngineChatHandle {
   if (handle) return handle
-  handle = createOpenClawChat()
+  hydrateEngine()
+  handle =
+    createHermesChat() as unknown as EngineChatHandle
 
   handle.onMessage((chunk) => {
     const content = snapshot.content + chunk
@@ -373,8 +414,7 @@ function ensureHandle(): OpenClawChatHandle {
       persistAssistant(sessionId, { role: 'assistant', content, toolCalls, status: 'done' })
       pushCompleted({ sessionId, content, toolCalls, status: 'done' })
     }
-    // OpenClaw 对话安装的内容自动同步进「我的」
-    void marketApi.syncChat().catch(() => undefined)
+    // Hermes 对话安装的内容自动同步进「我的」
     officeBridge.onReview()
     setTimeout(() => officeBridge.onTaskComplete(), 1500)
     if (!abortRequested) {
@@ -387,7 +427,7 @@ function ensureHandle(): OpenClawChatHandle {
     if (abortRequested) return
     const sessionId = snapshot.streamingSessionId
     const content = snapshot.content
-    console.error('[chat-stream] openclaw error:', err)
+    console.error('[chat-stream] hermes error:', err)
     officeBridge.onSystemError(err.message)
     if (sessionId != null && content.trim()) {
       persistAssistant(sessionId, {
@@ -404,7 +444,6 @@ function ensureHandle(): OpenClawChatHandle {
       })
     }
     snapshot = { ...snapshot, error: err.message }
-    void marketApi.syncChat().catch(() => undefined)
     emit()
     resetStreaming()
   })
@@ -535,7 +574,7 @@ export function dismissSedimentNotice(): void {
 export interface StartChatSendParams {
   sessionId: number
   content: string
-  history: OpenClawChatMessage[]
+  history: EngineChatMessage[]
   knowledgeBaseId?: number
   /** 当前会话选择的模型（custom/<integrationId>/<modelId> 时主进程直连自定义端点） */
   modelId?: string
@@ -591,6 +630,42 @@ export function abortChatSend(): void {
   handle?.abort()
 }
 
+/** 切换对话引擎（hermes）。切前中断进行中的流式，避免旧引擎事件流入新会话。 */
+export function setChatEngine(engine: ChatEngine): void {
+  if (chatEngine === engine) return
+  if (snapshot.streaming) {
+    abortRequested = true
+    handle?.abort()
+  }
+  chatEngine = engine
+  engineHydrated = true
+  try {
+    localStorage.setItem(ENGINE_KEY, engine)
+  } catch {
+    /* localStorage 不可用时忽略（隐私模式） */
+  }
+  handle = null
+  resetStreaming()
+  emit()
+}
+
+/** 惰性从 localStorage 恢复上次选择的引擎（模块首次被引用时执行一次） */
+function hydrateEngine(): void {
+  if (engineHydrated) return
+  engineHydrated = true
+  try {
+    const v = localStorage.getItem(ENGINE_KEY)
+    if (v === 'hermes') chatEngine = v
+  } catch {
+    /* 忽略非浏览器环境（SSR/测试） */
+  }
+}
+
+export function getChatEngine(): ChatEngine {
+  hydrateEngine()
+  return chatEngine
+}
+
 export function isChatStreamBusy(): boolean {
   return snapshot.streaming
 }
@@ -600,6 +675,8 @@ export default {
   getChatStreamSnapshot,
   startChatSend,
   abortChatSend,
+  setChatEngine,
+  getChatEngine,
   loadChatDraft,
   clearChatDraft,
   consumePendingVideos,

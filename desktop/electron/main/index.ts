@@ -9,15 +9,11 @@ import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { get as httpGet } from 'node:http'
 import { get as httpsGet } from 'node:https'
-import {
-  OpenClawChatService,
-  createCustomLlmCaller,
-  createLocalOpenClawWsCaller,
-  waitForLocalPort,
-  OPENCLAW_LOCAL_PORT,
-} from './openclaw-chat'
 import { LlmIntegrationsStore } from './llm-integrations'
-import type { OpenClawChatMessage } from './openclaw-chat'
+import { HermesChatService, waitForLocalPort } from './hermes-chat'
+import type { HermesChatMessage } from './hermes-chat'
+import { HERMES_SESSION_TOKEN_CREDENTIAL } from './hermes-client'
+import { getCredential } from './services/credential-store'
 import type { LlmIntegration } from '../shared/types'
 
 // GPU 白名单开关：解决部分显卡/驱动/远程桌面环境下 WebGL 被 Chromium 黑名单拦截的问题
@@ -39,16 +35,19 @@ installIpcRegistry()
 
 import { createMainWindow, getMainWindow, setQuitting } from './windows/main-window'
 import { createTray, destroyTray } from './tray'
-import { ServiceManager, ST_API_BASE } from './service-manager'
+import { ServiceManager, ST_API_BASE, migrateLegacyOpenClawData } from './service-manager'
+import { listModules, listModuleMcpNames } from './service-registry/patch-loader'
+import { disabledModuleSet, setModuleDisabled } from './service-registry/module-state'
+import type { ModuleInfo } from '../shared/types'
 import { ensureN8nAuth } from './n8n-auth'
 import { runLocalN8nWorkflow } from './n8n-executor'
 import { ensureN8nI18n } from './n8n-i18n'
-import { syncOpenClawMcpFromBackend } from './openclaw-mcp-sync'
+import { writeHermesMcpServers, syncHermesMcpFromBackend } from './hermes-mcp-sync'
 import { AppUpdater } from './updater'
 import { getDeviceFingerprint } from './device'
 import { getRemoteControlManager } from './remote-control'
 import { runComputerControlMcpServer, registerComputerControlMcp } from './computer-control-mcp'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { localDb } from './local-db'
 import { getOrCreateSalt, deriveDbKey } from './local-db/crypto'
 import { verifyAll, verifyIntegrity } from './runtime-resolver'
@@ -65,6 +64,7 @@ import {
   updateMarketItem,
   syncChatInstalled,
   installGithubSkill,
+  installModuleFromSource,
 } from './local-market/local-content-manager'
 import type { MarketItemType } from '../shared/types'
 import type { ServiceName, SyncQueueItem, SyncQueueRow } from '../shared/types'
@@ -73,6 +73,8 @@ import { createStepRunner, type OrchestrateDeps, type OrchestrateInput, type Ste
 import { buildMemberProfiles, type MemberRow } from './hermes-member-profile'
 import { listSkills, searchSkills, installSkill, updateSkills, uninstallSkill, checkSkills, installSkillLocal } from './hermes-skills'
 import { handleMemoryOp } from './hermes-memory'
+import { handleMemoryProviderOp } from './hermes-memory-provider'
+import { getHermesToolsets, setHermesToolsetEnabled, getHermesMcpServers } from './hermes-tools'
 import { HermesClient } from './hermes-client'
 import {
   getSupportedPlatforms,
@@ -84,7 +86,7 @@ import {
   testLogin,
 } from './platform-login'
 import { registerVideoParserIpc } from './video-parser'
-import { createEdictDeps, createEdictExtraDeps, ensureEdictHermesProfiles, registerEdictIpc } from './edict-bridge'
+import { createEdictDeps, createEdictExtraDeps, ensureEdictHermesProfiles, registerEdictIpc, getEdictProfilesDir } from './edict-bridge'
 import { registerEdictExtraIpc } from './edict-extra'
 
 // ===== Hermes 编排依赖（团队驱动执行） =====
@@ -401,10 +403,14 @@ const serviceManager = new ServiceManager()
 // 桌面端作为"执行器"：连接云端 sync 网关接收 remote:command，执行后 remote:result 回传
 const remoteControl = getRemoteControlManager()
 const remoteApiBase = ST_API_BASE.replace(/\/api$/, '')
-const remoteAuthFile = join(app.getPath('userData'), 'openclaw-chat', 'auth.json')
+const remoteAuthFile = join(app.getPath('userData'), 'hermes-chat', 'auth.json')
 
-/** 对话服务（registerIpcHandlers 内初始化，供自动化工作台 AI 咨询使用） */
-let openClawChatService: OpenClawChatService | null = null
+/** Hermes 对话服务（registerIpcHandlers 内初始化；B1 统一对话入口） */
+let hermesChatService: HermesChatService | null = null
+/** Hermes 会话首选模型（setModel 写入；send 未显式指定时缺省取用） */
+let hermesPreferredModel = ''
+/** Hermes 本地 API 端口（与 hermes-client.ts / service-manager 注入一致） */
+const HERMES_LOCAL_PORT = 8642
 
 /** 读取云端登录 token（auth.json 由渲染层登录时同步写入） */
 function readRemoteToken(): string {
@@ -415,6 +421,27 @@ function readRemoteToken(): string {
   } catch {
     return ''
   }
+}
+
+/**
+ * 确保本地 Hermes Agent 运行并监听 :8642：
+ * 状态 running 但端口未监听（残留/假活）→ 强制重启；未运行 → 启动；随后等待端口就绪。
+ */
+async function ensureHermes(): Promise<void> {
+  const info = serviceManager.getInfo('hermes')
+  const alive = info && info.status === 'running' && (await waitForLocalPort(HERMES_LOCAL_PORT, 2000, 500))
+  if (alive) return
+  if (info && info.status === 'running') {
+    console.log('[hermes-chat] Hermes 状态异常（端口未监听），自动重启...')
+    const ok = await serviceManager.restart('hermes')
+    if (!ok) throw new Error('Hermes 重启失败，请到服务管理页检查后再试')
+  } else {
+    console.log('[hermes-chat] Hermes 未运行，自动启动...')
+    const ok = await serviceManager.start('hermes')
+    if (!ok) throw new Error('Hermes 启动失败，请到服务管理页检查后再试')
+  }
+  const ready = await waitForLocalPort(HERMES_LOCAL_PORT)
+  if (!ready) throw new Error('Hermes 启动超时，请稍后重试')
 }
 
 /** 启动远程控制：注入依赖 + 读取本地 token，有 token 即连接云端网关 */
@@ -434,10 +461,10 @@ async function bootstrapRemoteControl(): Promise<void> {
   }
 }
 
-/** 自动化工作台对话咨询：未知命令 → 本地 OpenClaw AI 回答 */
+/** 自动化工作台对话咨询：未知命令 → 本地 Hermes AI 回答 */
 function createRemoteChatProvider(): (text: string) => Promise<string | null> {
   return async (text: string): Promise<string | null> => {
-    const svc = openClawChatService
+    const svc = hermesChatService
     const token = readRemoteToken()
     if (!svc || !token) return null
     let fullText = ''
@@ -446,7 +473,6 @@ function createRemoteChatProvider(): (text: string) => Promise<string | null> {
         { text, token },
         (chunk) => { fullText += chunk },
         () => undefined,
-        (finalText) => { fullText = finalText ?? fullText },
       )
     } catch (err) {
       console.warn('[remote-control] 对话咨询失败，回退无法识别:', (err as Error).message)
@@ -460,7 +486,7 @@ const isDev = !app.isPackaged
 let appUpdater: AppUpdater | null = null
 
 // 单实例锁 - 防止多开
-// ===== computer-control MCP 模式（OpenClaw 通过 --shentong-mcp-server 拉起，不创建窗口/托盘） =====
+// ===== computer-control MCP 模式（--shentong-mcp-server 拉起，不创建窗口/托盘） =====
 if (process.argv.includes('--shentong-mcp-server')) {
   app.whenReady().then(() => {
     void runComputerControlMcpServer().catch((err) => {
@@ -485,6 +511,8 @@ if (!gotLock) {
   app.whenReady().then(() => {
     // 清理旧版本遗留的下载临时文件（避免残留半成品导致“运行时下载失败”）
     cleanupStaleTempFiles()
+    // 一次性迁移旧版 OpenClaw 数据目录（OpenClaw 已移除）
+    migrateLegacyOpenClawData()
     app.setAppUserModelId('com.shentong.ai')
 
     // P0-2: IPC 安全边界——注册任何通道前安装来源校验守卫（只信任主窗口顶层页面）
@@ -513,7 +541,7 @@ if (!gotLock) {
       app.setLoginItemSettings({ openAtLogin: true })
     } catch (err) {
       console.warn('[remote-control] 开机自启设置失败:', err)
-    }    // 自动化工作台 D1：注册 computer-control MCP 进 OpenClaw mcp.servers（幂等）
+    }    // 自动化工作台 D1：注册 computer-control MCP 服务（幂等）
     registerComputerControlMcp()
     // 自动化工作台：启动远程控制（有登录 token 即连接云端）
     void bootstrapRemoteControl()
@@ -545,93 +573,33 @@ app.on('window-all-closed', () => {
 
 /** 注册 IPC 处理器 */
 function registerIpcHandlers(): void {
-  // ===== OpenClaw 本地直达对话（记账云端 + 对话本地） =====
   const llmIntegrations = new LlmIntegrationsStore(
     join(app.getPath('userData'), 'llm-integrations.json'),
   )
-  openClawChatService = new OpenClawChatService({
-    callOpenClaw: createLocalOpenClawWsCaller(),
-    callCustomModel: createCustomLlmCaller(llmIntegrations),
-    ensureOpenClaw: async () => {
-      const info = serviceManager.getInfo('openclaw')
-      // 状态机防御：status='running' 但端口未监听（进程残留/假活）时也强制重启，
-      // 避免直接 fetch 127.0.0.1:8080 报 "fetch failed" 且永不自愈
-      const alive =
-        info &&
-        info.status === 'running' &&
-        (await waitForLocalPort(OPENCLAW_LOCAL_PORT, 2000, 500))
-      if (alive) return
-      if (info && info.status === 'running') {
-        console.log('[openclaw-chat] OpenClaw 状态异常（端口未监听），自动重启...')
-        const ok = await serviceManager.restart('openclaw')
-        if (!ok) throw new Error('OpenClaw 重启失败，请到服务管理页检查后再试')
-      } else {
-        console.log('[openclaw-chat] OpenClaw 未运行，自动启动...')
-        const ok = await serviceManager.start('openclaw')
-        if (!ok) throw new Error('OpenClaw 启动失败，请到服务管理页检查后再试')
-      }
-      const ready = await waitForLocalPort(OPENCLAW_LOCAL_PORT)
-      if (!ready) throw new Error('OpenClaw 启动超时，请稍后重试')
-    },
-    contextDir: join(app.getPath('userData'), 'openclaw-chat'),
-  })
 
-  ipcMain.handle(
-    'openclaw-chat:send',
-    async (
-      event,
-      payload: {
-        text: string
-        token: string
-        history?: OpenClawChatMessage[]
-        knowledgeBaseId?: number
-        sessionId?: number
-        modelId?: string
-      },
-    ) => {
-      const win = BrowserWindow.fromWebContents(event.sender)
-      const push = (channel: string, data: unknown): void => {
-        if (win && !win.isDestroyed()) {
-          win.webContents.send(channel, data)
-        }
-      }
-      try {
-        const result = await openClawChatService!.send(
-          {
-            text: payload.text,
-            token: payload.token,
-            history: payload.history,
-            knowledgeBaseId: payload.knowledgeBaseId,
-            sessionId: payload.sessionId,
-            modelId: payload.modelId,
-          },
-          (chunk) => push('openclaw-chat:message', { content: chunk }),
-          (e) => {
-            if (e.type === 'tool-call') push('openclaw-chat:tool-call', e.toolCall)
-            else if (e.type === 'done') push('openclaw-chat:done', { usage: e.usage })
-            else if (e.type === 'lifecycle') push('openclaw-chat:lifecycle', { lifecycle: e.lifecycle })
-          },
-          (finalContent) => push('openclaw-chat:finalize', { content: finalContent }),
-        )
-        push('openclaw-chat:done', { usage: result.usage })
-        return { ok: true, aborted: result.aborted }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        console.error('[openclaw-chat] send failed:', message)
-        push('openclaw-chat:error', { message })
-        return { ok: false }
-      }
-    },
-  )
-
-  ipcMain.on('openclaw-chat:abort', () => {
-    openClawChatService!.abort()
+  // ===== Hermes 本地直达对话（B1 统一对话入口；计费归引擎层 llm-proxy） =====
+  const getSoulOverrideDir = () => join(app.getPath('userData'), 'hermes-chat', 'soul');
+  const readProfileSoul = (profileId: string): string | null => {
+    try {
+      const overrideFile = join(getSoulOverrideDir(), profileId + '.md');
+      if (existsSync(overrideFile)) return readFileSync(overrideFile, 'utf8');
+      const file = join(getEdictProfilesDir(), profileId + '.md');
+      if (!existsSync(file)) return null;
+      return readFileSync(file, 'utf8');
+    } catch {
+      return null;
+    }
+  };
+  hermesChatService = new HermesChatService({
+    sessionToken: () => getCredential(HERMES_SESSION_TOKEN_CREDENTIAL) ?? '',
+    contextDir: join(app.getPath('userData'), 'hermes-chat'),
+    readSoul: readProfileSoul,
   })
 
   // 登录/刷新 token 时同步写 auth.json（n8n-run-workflow 工具卡读 ST_AUTH_FILE）
-  ipcMain.on('openclaw-chat:sync-auth', (_event, token: unknown) => {
+  ipcMain.on('hermes-chat:sync-auth', (_event, token: unknown) => {
     if (typeof token === 'string' && token.trim()) {
-      openClawChatService!.syncAuthToken(token.trim())
+      hermesChatService!.syncAuthToken(token.trim())
       // 自动化工作台：登录/刷新 token 后更新远程控制连接（IM→设备闭环需要有效 JWT）
       void (async () => {
         const fp = await getDeviceFingerprint()
@@ -677,13 +645,109 @@ function registerIpcHandlers(): void {
   })
 
 
-  // 注入用户 llm-proxy 静态 Key（登录后由渲染层调用；OpenClaw 的 openai provider 指向云端 llm-proxy）
-  ipcMain.on('openclaw-chat:set-proxy-key', (_event, key: string) => {
-    serviceManager.setOpenClawProxyKey(key || '')
+  // 注入用户 llm-proxy 静态 Key（登录后由渲染层调用；Hermes / ST-Claw 模型通道指向云端 llm-proxy）
+  ipcMain.on('hermes-chat:set-proxy-key', (_event, key: string) => {
+    serviceManager.setLlmProxyKey(key || '')
   })
-  // 同步用户首选对话模型到 OpenClaw 配置（agents.defaults.model，新会话默认模型；当前会话由 WS sessions.patch 处理）
-  ipcMain.on('openclaw-chat:set-model', (_event, modelId: string) => {
-    serviceManager.setOpenClawPreferredModel(typeof modelId === 'string' ? modelId : '')
+
+  // ===== Hermes 对话 IPC（:8642 OpenAI 兼容流式；计费归引擎层 llm-proxy） =====
+  ipcMain.handle(
+    'hermes-chat:send',
+    async (
+      event,
+      payload: {
+        text: string
+        token: string
+        history?: HermesChatMessage[]
+        knowledgeBaseId?: number
+        sessionId?: number
+        modelId?: string
+        profileId?: string
+        soul?: string
+        reasoningEffort?: string
+      },
+    ) => {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      const push = (channel: string, data: unknown): void => {
+        if (win && !win.isDestroyed()) {
+          win.webContents.send(channel, data)
+        }
+      }
+      try {
+        await ensureHermes()
+        const result = await hermesChatService!.send(
+          {
+            text: payload.text,
+            token: payload.token,
+            history: payload.history,
+            knowledgeBaseId: payload.knowledgeBaseId,
+            sessionId: payload.sessionId,
+            modelId: payload.modelId || hermesPreferredModel || undefined,
+            profileId: payload.profileId,
+            soul: payload.soul,
+            reasoningEffort: payload.reasoningEffort,
+          },
+          (chunk) => push('hermes-chat:message', { content: chunk }),
+          (e) => {
+            if (e.type === 'tool-call') push('hermes-chat:tool-call', e.toolCall)
+            else if (e.type === 'finalize') push('hermes-chat:finalize', { content: e.content })
+            else if (e.type === 'done') push('hermes-chat:done', { usage: e.usage })
+            else if (e.type === 'lifecycle') push('hermes-chat:lifecycle', e.lifecycle)
+          },
+        )
+        push('hermes-chat:done', { usage: result.usage })
+        return { ok: true, aborted: result.aborted }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error('[hermes-chat] send failed:', message)
+        push('hermes-chat:error', { message })
+        return { ok: false }
+      }
+    },
+  )
+
+  ipcMain.on('hermes-chat:abort', () => {
+    hermesChatService!.abort()
+  })
+
+  // 同步用户首选对话模型（send 未显式指定模型时缺省取用；引擎仍走 llm-proxy 映射）
+  ipcMain.on('hermes-chat:set-model', (_event, modelId: string) => {
+    hermesPreferredModel = typeof modelId === 'string' ? modelId.trim() : ''
+  })
+
+  // Hermes dashboard gateway WS URL（token 内嵌；渲染层建立 JSON-RPC WS）
+  ipcMain.handle('hermes-gateway:get-url', () => {
+    const token = getCredential(HERMES_SESSION_TOKEN_CREDENTIAL) ?? ''
+    if (!token) return { error: 'Hermes 会话 token 缺失' }
+    return { wsUrl: 'ws://127.0.0.1:8642/api/ws?token=' + encodeURIComponent(token) }
+  })
+
+  // 官署人格 SOUL 读取/保存（自定义覆盖优先；无覆盖时回退蓝本）
+  ipcMain.handle('hermes-soul:get', (_event, profileId: unknown) => {
+    const id = typeof profileId === 'string' && profileId.trim() ? profileId.trim() : ''
+    if (!id) return { ok: false, error: '人格 id 为空' }
+    try {
+      const overrideFile = join(getSoulOverrideDir(), id + '.md')
+      if (existsSync(overrideFile)) return { ok: true, id, content: readFileSync(overrideFile, 'utf8'), source: 'custom' }
+      const blueprintFile = join(getEdictProfilesDir(), id + '.md')
+      if (existsSync(blueprintFile)) return { ok: true, id, content: readFileSync(blueprintFile, 'utf8'), source: 'blueprint' }
+      return { ok: false, id, error: '未找到该人格的 SOUL' }
+    } catch (err) {
+      return { ok: false, id, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+  ipcMain.handle('hermes-soul:save', (_event, profileId: unknown, content: unknown) => {
+    const id = typeof profileId === 'string' && profileId.trim() ? profileId.trim() : ''
+    const text = typeof content === 'string' ? content : ''
+    if (!id) return { ok: false, error: '人格 id 为空' }
+    try {
+      const dir = getSoulOverrideDir()
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, id + '.md'), text, 'utf8')
+      return { ok: true, id }
+    } catch (err) {
+      return { ok: false, id, error: err instanceof Error ? err.message : String(err) }
+    }
   })
 
   // 设置页每类默认模型同步（方案 B：chat/vision/image/video/tts → Hermes/ST-Claw 配置 + 重启）
@@ -721,6 +785,16 @@ function registerIpcHandlers(): void {
   ipcMain.handle('hermes-memory:add', (_e, target, text) => handleMemoryOp('add', target, text))
   ipcMain.handle('hermes-memory:replace', (_e, target, match, text) => handleMemoryOp('replace', target, match, text))
   ipcMain.handle('hermes-memory:remove', (_e, target, text) => handleMemoryOp('remove', target, text))
+
+  // ===== Hermes 第三方记忆 Provider 配置（active + env，本地 JSON 持久化） =====
+  ipcMain.handle('hermes-memory-provider:get', () => handleMemoryProviderOp('get'))
+  ipcMain.handle('hermes-memory-provider:set-active', (_e, name) => handleMemoryProviderOp('set-active', name))
+  ipcMain.handle('hermes-memory-provider:set-env', (_e, name, key, value) => handleMemoryProviderOp('set-env', name, key, value))
+
+  // ===== Hermes 工具集启用/停用（config.yaml platform_toolsets.cli） =====
+  ipcMain.handle('hermes-tools:get', () => ({ ok: true, toolsets: getHermesToolsets() }))
+  ipcMain.handle('hermes-tools:set-enabled', (_e, key, enabled) => setHermesToolsetEnabled(typeof key === 'string' ? key : '', enabled === true))
+  ipcMain.handle('hermes-tools:list-mcp', () => ({ ok: true, servers: getHermesMcpServers() }))
 
   // ===== Hermes 逐步编排（团队任务 → 子代理逐节点执行 + 人工/自评确认 + 打回原因重做） =====
   ipcMain.handle(
@@ -909,10 +983,12 @@ ipcMain.handle(
       llmIntegrations.test(args?.baseUrl ?? '', args?.apiKey ?? '', args?.model ?? ''),
   )
 
-  // 从后端同步启用中的 MCP 到 OpenClaw 本地配置（登录后由渲染层触发）
-  ipcMain.handle('mcp:syncFromBackend', async (_e, token: string) =>
-    syncOpenClawMcpFromBackend(typeof token === 'string' ? token : ''),
-  )
+  // 从后端同步启用中的 MCP 到 Hermes 本地配置（登录后由渲染层触发）
+  ipcMain.handle('mcp:syncFromBackend', async (_e, token: string) => {
+    const t = typeof token === 'string' ? token : ''
+    const hermesCfg = join(app.getPath('userData'), 'hermes-home', 'config.yaml')
+    return syncHermesMcpFromBackend(t, hermesCfg, ST_API_BASE)
+  })
 
   // 服务管理
   ipcMain.handle('shell:openExternal', async (_event, url: string) => {
@@ -1036,6 +1112,88 @@ ipcMain.handle(
   ipcMain.handle('service:checkEnv', () => serviceManager.checkEnvironment())
   ipcMain.handle('service:install', (_event, name: ServiceName) => serviceManager.install(name))
 
+  // 服务型模块管理（启用/停用/重载/装配审计）
+  // 模块 MCP 能力口闭环：启用模块声明的 mcpServer 写入 Hermes config.yaml（Hermes 侧 mcp_servers）；
+  // 停用模块按 mcpServer.name 移除，避免失效 server 残留。
+  const syncModuleMcpServers = async (): Promise<void> => {
+    try {
+      const moduleServers = serviceManager.getModuleMcpServers().map((s) => ({ ...s, enabled: true }))
+      const { removed } = listModuleMcpNames(disabledModuleSet(app.getPath('userData')))
+      if (moduleServers.length === 0 && removed.length === 0) return
+      writeHermesMcpServers(join(app.getPath('userData'), 'hermes-home', 'config.yaml'), moduleServers, removed)
+    } catch (err) {
+      console.error('[module-mcp] 同步模块 MCP 配置失败:', err)
+    }
+  }
+
+  const broadcastModules = () => {
+    const win = getMainWindow()
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('modules:changed', {
+        modules: listModules(disabledModuleSet(app.getPath('userData'))),
+      })
+    }
+  }
+
+  ipcMain.handle('modules:list', () => listModules(disabledModuleSet(app.getPath('userData'))))
+  ipcMain.handle('modules:setEnabled', async (_event, id: string, enabled: boolean) => {
+    try {
+      if (typeof id !== 'string' || !id.trim()) return { ok: false, error: '模块 id 非法', added: [], removed: [] }
+      setModuleDisabled(app.getPath('userData'), id.trim(), !enabled)
+      const { added, removed } = await serviceManager.reloadRows()
+      await syncModuleMcpServers()
+      broadcastModules()
+      return { ok: true, added, removed }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err), added: [], removed: [] }
+    }
+  })
+  ipcMain.handle('modules:reload', async () => {
+    try {
+      const { added, removed } = await serviceManager.reloadRows()
+      await syncModuleMcpServers()
+      broadcastModules()
+      return { ok: true, added, removed }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err), added: [], removed: [] }
+    }
+  })
+  ipcMain.handle('modules:uninstall', async (_event, id: string, disposition: 'keep' | 'export' | 'delete') => {
+    try {
+      if (typeof id !== 'string' || !id.trim()) return { ok: false, id: '', disposition, error: '模块 id 非法' }
+      const d = (disposition === 'export' || disposition === 'delete' || disposition === 'keep') ? disposition : 'keep'
+      let exportTargetDir: string | undefined
+      if (d === 'export') {
+        const win = getMainWindow()
+        const r = win
+          ? await dialog.showOpenDialog(win, { title: '选择导出目录', properties: ['openDirectory', 'createDirectory'] })
+          : await dialog.showOpenDialog({ title: '选择导出目录', properties: ['openDirectory', 'createDirectory'] })
+        if (r.canceled || !r.filePaths?.[0]) return { ok: false, id, disposition: d, error: '已取消导出' }
+        exportTargetDir = r.filePaths[0]
+      }
+      const result = await serviceManager.uninstallModule(id, d, exportTargetDir)
+      await syncModuleMcpServers()
+      broadcastModules()
+      return result
+    } catch (err) {
+      return { ok: false, id, disposition, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+  ipcMain.handle('modules:installFromSource', async (_event, source: string, opts?: { expectedSha256?: string; signature?: string; publicKey?: string; allowUnverified?: boolean }) => {
+    try {
+      if (typeof source !== 'string' || !source.trim()) return { ok: false, error: '模块来源不能为空' }
+      const result = await installModuleFromSource({ source, expectedSha256: opts?.expectedSha256, signature: opts?.signature, publicKey: opts?.publicKey, allowUnverified: opts?.allowUnverified })
+      broadcastModules()
+      return result
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+  ipcMain.handle('modules:dump', () => {
+    const modules: ModuleInfo[] = listModules(disabledModuleSet(app.getPath('userData')))
+    return { rows: serviceManager.getAllInfo(), modules }
+  })
+
   // 运行时下载安装位置（方案 B：更改后不迁移，仅对新下载生效）
   ipcMain.handle('service:get-runtime-dir', () => {
     try {
@@ -1079,6 +1237,9 @@ ipcMain.handle(
   serviceManager.on('install-progress', (payload: unknown) => {
     getMainWindow()?.webContents.send('service:install-progress', payload)
   })
+
+  // 启动即同步模块 MCP（启用模块声明的 mcpServer 写入 Hermes config.yaml）
+  void syncModuleMcpServers()
 
   // 应用信息与更新
   ipcMain.handle('app:getVersion', () => app.getVersion())

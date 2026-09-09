@@ -77,7 +77,7 @@ export interface OfficialMeta {
 }
 
 export const OFFICIAL_META: OfficialMeta[] = [
-  { id: "taizi",    name: "太子",   role: "分拣 · 入口（OpenClaw）", emoji: "👑", color: "#d4a017" },
+  { id: "taizi",    name: "太子",   role: "分拣 · 入口（Hermes）", emoji: "👑", color: "#d4a017" },
   { id: "zhongshu", name: "中书省", role: "规划拆解",                emoji: "📝", color: "#d4a017" },
   { id: "menxia",   name: "门下省", role: "审议封驳",                emoji: "🛡", color: "#8b5cf6" },
   { id: "shangshu", name: "尚书省", role: "派发汇总",                emoji: "🏛", color: "#d4a017" },

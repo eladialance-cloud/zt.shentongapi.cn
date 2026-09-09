@@ -1184,6 +1184,7 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
         draftMode: true,
         clientTxnId: 'ow-draft-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
       })
+      if (!job) return
       setActiveJob(job)
       setDraftJobId(job.id)
       setDraftStep(job.currentStep)

@@ -35,9 +35,7 @@ interface ServiceItem {
 }
 
 const SERVICES: ServiceItem[] = [
-  { name: 'openclaw', label: 'OpenClaw', port: 8080 },
   { name: 'n8n', label: 'N8N', port: 5678 },
-  { name: 'mcp', label: 'MCP Gateway', port: 3100 },
   { name: 'hermes', label: 'Hermes Agent', port: 8642 }
 ]
 
@@ -63,9 +61,7 @@ interface InstallState {
 type VerifyResults = Record<ServiceName, boolean | null>
 
 const initialDownloads: Record<ServiceName, DownloadState> = {
-  openclaw: { downloading: false, progress: null, error: null },
   n8n: { downloading: false, progress: null, error: null },
-  mcp: { downloading: false, progress: null, error: null },
   hermes: { downloading: false, progress: null, error: null },
   'video-claw': { downloading: false, progress: null, error: null }
 }
@@ -85,9 +81,7 @@ export default function Onboarding() {
 
   const [current, setCurrent] = useState(0)
   const [verifyResults, setVerifyResults] = useState<VerifyResults>({
-    openclaw: null,
     n8n: null,
-    mcp: null,
     hermes: null,
     'video-claw': null
   })
@@ -348,7 +342,7 @@ export default function Onboarding() {
         {current === 0 && (
           <div>
             <Typography.Paragraph type="secondary">
-              校验内置运行时（OpenClaw / N8N / MCP Gateway / Hermes Agent）的 SHA-256 完整性，缺失或损坏时可重新下载。
+              校验内置运行时（N8N / MCP Gateway / Hermes Agent）的 SHA-256 完整性，缺失或损坏时可重新下载。
             </Typography.Paragraph>
             <Space direction="vertical" style={{ width: '100%', marginBottom: 16 }}>
               {SERVICES.map((svc) => {

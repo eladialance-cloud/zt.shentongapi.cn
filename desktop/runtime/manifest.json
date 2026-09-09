@@ -30,64 +30,6 @@
         "linux-x64": ""
       }
     },
-    "openclaw": {
-      "type": "local",
-      "version": "2026.7.1",
-      "displayName": "OpenClaw",
-      "port": 8080,
-      "entry": {
-        "win32": "openclaw.exe.cmd",
-        "darwin": "openclaw",
-        "linux": "openclaw"
-      },
-      "downloadUrl": {
-        "win32-x64": "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-win-x64.tar.gz",
-        "darwin-x64": "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-mac-x64.tar.gz",
-        "darwin-arm64": "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-mac-arm64.tar.gz",
-        "linux-x64": "https://zt.shentongapi.cn/runtime/openclaw/2026.7.1/openclaw-linux-x64.tar.gz"
-      },
-      "size": {
-        "win32-x64": 98008562,
-        "darwin-x64": 0,
-        "darwin-arm64": 0,
-        "linux-x64": 0
-      },
-      "sha256": {
-        "win32-x64": "185b701ee53a608bbbb70e708c17948cf98116fcb13b44f9cd7354dd0b3ea223",
-        "darwin-x64": "",
-        "darwin-arm64": "",
-        "linux-x64": ""
-      }
-    },
-    "mcp": {
-      "type": "local",
-      "version": "1.0.0",
-      "displayName": "MCP Gateway",
-      "port": 3100,
-      "entry": {
-        "win32": "mcp-gateway.exe.cmd",
-        "darwin": "mcp-gateway",
-        "linux": "mcp-gateway"
-      },
-      "downloadUrl": {
-        "win32-x64": "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-win-x64.tar.gz",
-        "darwin-x64": "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-mac-x64.tar.gz",
-        "darwin-arm64": "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-mac-arm64.tar.gz",
-        "linux-x64": "https://zt.shentongapi.cn/runtime/mcp/1.0.0/mcp-linux-x64.tar.gz"
-      },
-      "size": {
-        "win32-x64": 33060813,
-        "darwin-x64": 0,
-        "darwin-arm64": 0,
-        "linux-x64": 0
-      },
-      "sha256": {
-        "win32-x64": "36d94571f4abcb9c967bd657654e3c4a04a003bee1785ffefeec4ee8ddf4d848",
-        "darwin-x64": "",
-        "darwin-arm64": "",
-        "linux-x64": ""
-      }
-    },
     "hermes": {
       "type": "local",
       "version": "0.20.5",
@@ -111,7 +53,7 @@
         "linux-x64": 0
       },
       "sha256": {
-        "win32-x64": "3e6dfa8bdcac0bbcc87ffcfd30b02f5bbcd2495b604ce9536ba8659459d5be8e",
+        "win32-x64": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "darwin-x64": "",
         "darwin-arm64": "",
         "linux-x64": ""

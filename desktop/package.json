@@ -1,6 +1,6 @@
 {
   "name": "shentong-ai-desktop",
-  "version": "2.0.3",
+  "version": "2.0.5",
   "description": "shentong AI desktop app",
   "license": "MIT",
   "main": "dist/main/index.js",
@@ -9,7 +9,7 @@
     "predev": "tsx scripts/verify-electron.ts --check",
     "dev": "electron-vite dev",
     "build": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && electron-vite build",
-    "build:win": "npm run build && electron-builder --win",
+    "build:win": "npm run build && npm run build:sandbox-runner && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
     "lint": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
@@ -21,9 +21,11 @@
     "pack:all": "bash scripts/build-installer.sh --target all",
     "gen-latest-yml": "tsx scripts/generate-latest-yml.ts",
     "verify-installer": "tsx scripts/verify-installer.ts",
-    "setup:electron": "tsx scripts/verify-electron.ts --repair"
+    "setup:electron": "tsx scripts/verify-electron.ts --repair",
+    "build:sandbox-runner": "node scripts/build-sandbox-runner.mjs"
   },
   "dependencies": {
+    "js-yaml": "^4.3.0",
     "@ant-design/icons": "^5.5.1",
     "@journeyapps/sqlcipher": "^6.0.0",
     "antd": "^5.21.6",

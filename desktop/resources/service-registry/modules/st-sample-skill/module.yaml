@@ -1,0 +1,6 @@
+id: st-sample-skill
+displayName: 示例技能
+name: st-sample-skill
+kind: skill
+version: 1.0.0
+target: hermes

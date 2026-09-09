@@ -4,6 +4,7 @@
  * 次级入口 6 项（技能市场/工作流/渠道/积分/设置/服务）收纳到左下角「更多」弹出菜单
  */
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { Avatar, Dropdown, type MenuProps } from 'antd'
 import {
   LayoutDashboard,
@@ -24,10 +25,12 @@ import {
   Mic,
   Zap,
   QrCode,
+  Bot,
   type LucideIcon,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
 import styles from './styles.module.css'
+import { listModules, onModulesChanged } from '@/api/service-manager-api'
 
 interface NavItem {
   key: string
@@ -40,6 +43,7 @@ interface NavItem {
 const PRIMARY_NAV: NavItem[] = [
   { key: 'dashboard',   label: '工作台',   icon: LayoutDashboard,   path: '/dashboard' },
   { key: 'briefs',      label: '需求对话', icon: MessageSquareText, path: '/chat' },
+  { key: 'hermes-chat',  label: 'Hermes 对话', icon: Bot,        path: '/hermes-chat' },
   { key: 'task-center', label: '任务中心', icon: ListTodo,          path: '/task-center' },
   { key: 'assets',      label: '素材库',   icon: FolderOpen,        path: '/assets' },
   { key: 'publish',     label: '发布中心', icon: Send,              path: '/publish' },
@@ -66,6 +70,33 @@ export default function Sidebar() {
   const navigate = useNavigate()
   const location = useLocation()
   const user = useAuthStore((s) => s.user)
+  const [enabledModules, setEnabledModules] = useState<Set<string>>(new Set())
+  const [modulesLoaded, setModulesLoaded] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    const load = () => {
+      listModules()
+        .then((mods) => {
+          if (!mounted) return
+          setEnabledModules(new Set(mods.filter((m) => m.enabled).map((m) => m.id)))
+          setModulesLoaded(true)
+        })
+        .catch(() => {
+          if (mounted) setModulesLoaded(true)
+        })
+    }
+    void load()
+    const off = onModulesChanged(() => { void load() })
+    return () => {
+      mounted = false
+      off()
+    }
+  }, [])
+
+  const primaryNav = modulesLoaded
+    ? PRIMARY_NAV.filter((item) => item.key !== 'video-claw' || enabledModules.has('video-claw'))
+    : PRIMARY_NAV
 
   const isActive = (path: string): boolean => {
     // /office 不参与前缀匹配（避免成为默认激活项）
@@ -88,7 +119,7 @@ export default function Sidebar() {
   return (
     <aside className={styles.sidebar}>
       <nav className={styles.navList}>
-        {PRIMARY_NAV.map((item) => {
+        {primaryNav.map((item) => {
           const Icon = item.icon
           const active = isActive(item.path)
           return (

@@ -3,8 +3,8 @@
 # 会提示输入 SSH 密码
 #
 # CDN 本地暂存目录结构: <service>/<version>/<service>-win-x64.tar.gz
-#   例如: cdn/openclaw/0.3.0/openclaw-win-x64.tar.gz
-#         cdn/mcp/0.2.0/mcp-win-x64.tar.gz
+#   例如: cdn/n8n/1.62.0/n8n-win-x64.tar.gz
+#         cdn/hermes/0.20.5/hermes-win-x64.tar.gz
 # 服务器目标目录: /opt/shentong/runtime/<service>/<version>/<file>
 # CDN 验证 URL: https://zt.shentongapi.cn/runtime/<service>/<version>/<file>
 

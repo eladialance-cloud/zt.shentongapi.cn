@@ -4,7 +4,7 @@ import type { ServiceName } from '../../electron/shared/types'
 
 describe('ServiceManager Hermes 占位测试', () => {
   test('hermes 是合法的 ServiceName', () => {
-    const names: ServiceName[] = ['openclaw', 'n8n', 'mcp', 'hermes']
+    const names: ServiceName[] = ['n8n', 'hermes', 'video-claw']
     expect(names).toContain('hermes')
   })
 })

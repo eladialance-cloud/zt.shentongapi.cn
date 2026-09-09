@@ -376,7 +376,7 @@
   color: var(--color-text-secondary);
 }
 
-/* ===== OpenClaw 过程面板 ===== */
+/* ===== Hermes 过程面板 ===== */
 .agentPhaseBar {
   display: flex;
   align-items: center;
@@ -909,4 +909,11 @@
 .summaryValueInput {
   flex: 1;
   font-size: 13px;
+}
+
+
+.tokenUsage {
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+  margin-left: auto;
 }

@@ -126,7 +126,7 @@ export default function SkillsConfig() {
   const [quickPickSource, setQuickPickSource] = useState<(typeof COMMUNITY_SOURCES)[0] | null>(null);
   const [quickPickAgent, setQuickPickAgent] = useState("");
 
-  // 技能库（技能市场《我的》）：OpenClaw 内置 / Hermes 已装 / 云端技能包
+  // 技能库（技能市场《我的》）：Hermes 已装 / 云端技能包
   const [library, setLibrary] = useState<EdictLibrarySkill[]>([]);
   const [libLoading, setLibLoading] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -656,7 +656,7 @@ export default function SkillsConfig() {
                         if (!filtered.length) return <div style={{ color: "var(--muted)", fontSize: 12, padding: "20px 0", textAlign: "center" }}>没有匹配的技能（可先到技能市场《我的》查看/安装）</div>;
                         return filtered.map((s) => {
                           const added = agentConfig.agents.find((a) => a.id === addForm.agentId)?.skills?.some((sk) => sk.name === s.name);
-                          const srcLabel = s.source === "openclaw" ? "OpenClaw 内置" : s.source === "hermes" ? "Hermes 已装" : "云端技能包";
+                          const srcLabel = s.source === "hermes" ? "Hermes 已装" : "云端技能包";
                           return (
                             <div key={s.name + "|" + s.source} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "var(--panel2)", borderRadius: 8, border: "1px solid var(--line)" }}>
                               <div style={{ flex: 1, minWidth: 0 }}>

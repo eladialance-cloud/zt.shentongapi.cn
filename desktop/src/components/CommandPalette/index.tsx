@@ -40,6 +40,7 @@ interface NavEntry {
 const NAV_ENTRIES: NavEntry[] = [
   { key: 'dashboard', label: '仪表盘', icon: <HomeOutlined />, path: '/dashboard' },
   { key: 'chat', label: '需求对话', icon: <MessageOutlined />, path: '/chat' },
+  { key: 'hermes-chat', label: 'Hermes 对话', icon: <RobotOutlined />, path: '/hermes-chat' },
   { key: 'video-claw', label: 'ST-Claw', icon: <VideoCameraOutlined />, path: '/video-claw' },
   { key: 'office', label: 'AI 办公室', icon: <DesktopOutlined />, path: '/office' },
   { key: 'knowledge', label: '知识库', icon: <BookOutlined />, path: '/knowledge' },

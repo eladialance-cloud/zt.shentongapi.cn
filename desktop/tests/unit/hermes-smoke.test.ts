@@ -17,7 +17,7 @@ import * as path from 'node:path'
 
 describe('Hermes Agent service integration', () => {
   test('ServiceName type includes hermes at runtime', () => {
-    const names: ServiceName[] = ['openclaw', 'n8n', 'mcp', 'hermes']
+    const names: ServiceName[] = ['n8n', 'hermes', 'video-claw']
     expect(names).toContain('hermes')
   })
 
@@ -30,11 +30,13 @@ describe('Hermes Agent service integration', () => {
     expect(manifest.services.hermes.downloadUrl['win32-x64']).toMatch(/hermes/)
   })
 
-  test('ServiceManager exposes all four base services', () => {
+  test('ServiceManager exposes base services（无 openclaw）', () => {
     const manager = new ServiceManager()
     const all = manager.getAllInfo()
     const names = all.map((s) => s.name)
-    expect(names).toEqual(expect.arrayContaining(['openclaw', 'n8n', 'mcp', 'hermes']))
+    expect(names).toEqual(expect.arrayContaining(['n8n', 'hermes']))
+    expect(names).not.toContain('openclaw')
+    expect(names).not.toContain('mcp')
   })
 
   test('runtime-resolver verifyAll returns hermes', async () => {

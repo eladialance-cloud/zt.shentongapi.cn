@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import Onboarding from "@/pages/Onboarding";
 import Dashboard from "@/pages/Dashboard";
 import Chat from "@/pages/Chat";
+import HermesChat from "@/pages/HermesChat";
 import Credits from "@/pages/Credits";
 import CreditsRecharge from "@/pages/Credits/Recharge";
 import CreditsTransactions from "@/pages/Credits/Transactions";
@@ -100,6 +101,7 @@ const router = createHashRouter([
       { path: "/task-center", element: <TaskCenter /> },
       { path: "/assets", element: <AssetsPage /> },
       { path: "/chat", element: <Chat /> },
+      { path: "/hermes-chat", element: <HermesChat /> },
       { path: "/credits", element: <Credits /> },
       { path: "/credits/recharge", element: <CreditsRecharge /> },
       { path: "/credits/transactions", element: <CreditsTransactions /> },

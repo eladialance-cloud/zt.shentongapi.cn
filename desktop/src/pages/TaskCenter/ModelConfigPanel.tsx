@@ -155,7 +155,7 @@ export default function ModelConfig() {
       </div>
 
       <div style={{ marginTop: 16, fontSize: 11, color: "var(--muted)" }}>
-        💡 模型选项 = 管理后台已启用的大模型；选「跟随全局默认」则沿用全局配置。切换后自动同步到对应官署 Hermes profile；太子（OpenClaw）模型请在对话页选择。
+        💡 模型选项 = 管理后台已启用的大模型；选「跟随全局默认」则沿用全局配置。切换后自动同步到对应官署 Hermes profile；太子（Hermes）模型请在对话页选择。
         {modelWarn && <div style={{ color: "#f0b429", marginTop: 4 }}>⚠️ {modelWarn}</div>}
       </div>
     </div>

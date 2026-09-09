@@ -35,7 +35,7 @@ import type { BriefItem } from '@/api/brief-api'
 import ScheduleModal from './ScheduleModal'
 import { detectScheduleIntent, type ScheduleIntent } from './schedule-intent'
 import { useAuthStore } from '@/store'
-import type { OpenClawChatMessage } from '@shared/types'
+import type { HermesChatMessage } from '@shared/types'
 import {
   subscribeChatStream,
   getChatStreamSnapshot,
@@ -266,7 +266,7 @@ export default function Chat() {
     void loadModels()
   }, [loadModels])
 
-  /** 首选模型同步：当前选择的模型始终作为云端默认对话模型（llm-proxy 解析 OpenClaw 内部模型名时使用）
+  /** 首选模型同步：当前选择的模型始终作为云端默认对话模型（llm-proxy 解析 Hermes 内部模型名时使用）
    * 覆盖首次自动选中、切换会话恢复等未触发 handleModelChange 的场景 */
   useEffect(() => {
     if (!modelId || modelId.startsWith('custom/')) return
@@ -274,12 +274,6 @@ export default function Chat() {
     chatApi.setPreferredChatModel(modelId).catch((err) => {
       if (!cancelled) console.error('[Chat] sync preferred model failed:', err)
     })
-    // 本地 OpenClaw 新会话默认模型同步（sessions.patch 处理当前会话，这里保证新会话也生效）
-    try {
-      window.electronAPI?.openclawChat?.setModel(modelId)
-    } catch (err) {
-      console.error('[Chat] sync local openclaw model failed:', err)
-    }
     return () => {
       cancelled = true
     }
@@ -401,7 +395,7 @@ export default function Chat() {
     }
   }, [])
 
-  /** 发送消息（OpenClaw 本地直达：云端预扣 → 本地 OpenClaw 流式 → 云端结算） */
+  /** 发送消息（Hermes 本地直达：云端预扣 → 本地 Hermes 流式 → 云端结算） */
   const handleSend = useCallback(
     async (content: string, attachments: UploadResult[]) => {
       const session = activeSession
@@ -457,7 +451,7 @@ export default function Chat() {
       officeBridge.onChatMessageSent()
 
       // 2. 最近上下文（最近 10 条文本消息，消息不出本机）
-      const history: OpenClawChatMessage[] = messages
+      const history: HermesChatMessage[] = messages
         .filter(
           (m) =>
             m.content &&
@@ -528,12 +522,12 @@ export default function Chat() {
     [activeSession],
   )
 
-  /** 中断 OpenClaw 对话（本地 abort → 云端退款 → done 事件固化消息） */
+  /** 中断 Hermes 对话（本地 abort → 云端退款 → done 事件固化消息） */
   const handleAbort = useCallback(() => {
     abortChatSend()
   }, [])
 
-  /** 修改模型时同步到会话 + 云端用户默认模型（OpenClaw llm-proxy 解析用） */
+  /** 修改模型时同步到会话 + 云端用户默认模型（Hermes llm-proxy 解析用） */
   const handleModelChange = async (newModelId: string) => {
     setModelId(newModelId)
     if (activeSession && activeSession.modelId !== newModelId) {
@@ -553,12 +547,6 @@ export default function Chat() {
         await chatApi.setPreferredChatModel(newModelId)
       } catch (err) {
         console.error('[Chat] set preferred model failed:', err)
-      }
-      // 本地 OpenClaw 新会话默认模型同步
-      try {
-        window.electronAPI?.openclawChat?.setModel(newModelId)
-      } catch (err) {
-        console.error('[Chat] sync local openclaw model failed:', err)
       }
     }
   }
@@ -735,7 +723,7 @@ export default function Chat() {
         {/* 顶部头部：会话标题 + 历史简报 / 对话设置（上端入口） */}
         <div className={styles.chatHead}>
           <div className={styles.chatHeadTitle}>
-            {activeSession?.title || '和 OpenClaw 对话'}
+            {activeSession?.title || '和 Hermes 对话'}
           </div>
           <div className={styles.chatHeadActions}>
             <Tooltip title="历史简报（调取过往需求，一键带入向导）">
@@ -781,9 +769,9 @@ export default function Chat() {
                   <div className={styles.emptyStateIconWrap}>
                     <RobotOutlined className={styles.emptyStateIcon} />
                   </div>
-                  <div className={styles.emptyStateTitle}>和 OpenClaw 对话</div>
+                  <div className={styles.emptyStateTitle}>和 Hermes 对话</div>
                   <div className={styles.emptyStateTip}>
-                    对话由本地 OpenClaw 驱动，可自动调用 Hermes / N8N / MCP 帮你完成复杂任务。选择左侧对话开始聊天，或点击「新建对话」。也可以切换到老板模式 / 客户会议模式，按步骤收集需求并发布简报。
+                    对话由本地 Hermes Agent（:8642）驱动，经 llm-proxy 计费，消息内容全程本机。可自动调用工具与记忆帮你完成复杂任务。选择左侧对话开始聊天，或点击「新建对话」。
                   </div>
                 </div>
               </div>

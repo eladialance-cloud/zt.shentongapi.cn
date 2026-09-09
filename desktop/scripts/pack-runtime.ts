@@ -1,12 +1,12 @@
 /**
  * 运行时归档打包脚本（非 Electron 主进程代码，在 Node.js 环境直接运行）。
  *
- * 用途：将 npm 包（openclaw、mcp-gateway、n8n）及其生产依赖打包成 tar.gz 归档，
+ * 用途：将 npm 包（hermes-agent、n8n）及其生产依赖打包成 tar.gz 归档，
  * 供 CDN 分发。解压后的目录包含 Windows .cmd 入口包装和 node_modules。
  *
  * 运行方式：
- *   npx tsx scripts/pack-runtime.ts --service openclaw --platform win32-x64
- *   npx tsx scripts/pack-runtime.ts --service mcp --platform win32-x64
+ *   npx tsx scripts/pack-runtime.ts --service hermes --platform win32-x64
+
  *   npx tsx scripts/pack-runtime.ts --service n8n --platform win32-x64
  *   npx tsx scripts/pack-runtime.ts --all --platform win32-x64  # 打包所有 local 服务
  *
@@ -20,7 +20,7 @@
  *   - 在临时目录执行 npm install，生成 Windows .cmd 入口包装，打包为 tar.gz
  *   - 输出到 ../cdn/<service>/<version>/<service>-<os>-<arch>.tar.gz
  *   - npm 包名映射（与 runtime-downloader.ts 的 NPM_PACKAGES 一致）：
- *       openclaw → openclaw，mcp → mcp-gateway，n8n → n8n
+   *       n8n → n8n，hermes → hermes-agent
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -61,9 +61,7 @@ const TMP_DIR = path.join(RUNTIME_DIR, '.tmp');
 
 /** 服务 key → npm 包名映射（与 electron/main/runtime-downloader.ts 的 NPM_PACKAGES 一致） */
 const NPM_PACKAGES: Record<string, string> = {
-  openclaw: 'openclaw',
   n8n: 'n8n',
-  mcp: 'mcp-gateway',
   hermes: 'hermes-agent',
 };
 
@@ -286,7 +284,7 @@ async function packService(
       }
       // 转换为 Windows 风格路径用于 .cmd
       const entryWin = entryRel.replace(/\//g, '\\');
-      // manifest 中 win32 入口文件名（如 openclaw.exe），追加 .cmd 生成包装文件名
+      // manifest 中 win32 入口文件名（如 n8n.exe），追加 .cmd 生成包装文件名
       const entryFile = service.entry['win32'] ?? `${pkgName}.exe`;
       const wrapperName = `${entryFile}.cmd`;
       const wrapperPath = path.join(tmpDir, wrapperName);

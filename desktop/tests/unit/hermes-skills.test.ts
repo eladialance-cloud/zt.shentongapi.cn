@@ -23,7 +23,14 @@ jest.mock("electron", () => ({
 
 jest.mock("../../electron/main/hermes-client");
 
-const BUILTIN = ["st-claw-controller", "video-claw"];
+const BUILTIN = [
+  "st-claw-controller",
+  "video-claw",
+  "edict-create",
+  "hermes-agent",
+  "knowledge-query",
+  "n8n-run-workflow",
+];
 
 describe("parseSkillsList", () => {
   it("解析 JSON 数组输出（含 source/version）", () => {

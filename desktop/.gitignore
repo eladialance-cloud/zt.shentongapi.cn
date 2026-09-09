@@ -26,3 +26,10 @@ cache/
 !runtime/hermes/package.json
 runtime/hermes/node/
 runtime/hermes/python/
+
+# Windows restricted-token sandbox runner (compiled by scripts/build-sandbox-runner.mjs)
+resources/sandbox/*.exe
+
+# Python cache
+__pycache__/
+*.pyc

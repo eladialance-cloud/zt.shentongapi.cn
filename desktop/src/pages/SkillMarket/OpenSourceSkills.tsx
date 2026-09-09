@@ -89,7 +89,7 @@ export default function OpenSourceSkills({
     }
   }, [page, category, keyword]);
 
-  /** 「我的」模式：OpenClaw 内置技能 + 本地已安装的开源技能（source=github） */
+  /** 「我的」模式：Hermes 内置技能 + 本地已安装的开源技能（source=github） */
   const loadInstalledGithub = useCallback(async () => {
     setLoading(true);
     try {
@@ -98,7 +98,7 @@ export default function OpenSourceSkills({
         edictSkillLibrary().catch(() => ({ ok: false as const, skills: [] as EdictLibrarySkill[] })),
       ]);
       setRecords(list.filter((r) => r.type === "skill" && r.source === "github"));
-      setLibSkills((libRes?.skills || []).filter((sk) => sk.source === "openclaw"));
+      setLibSkills((libRes?.skills || []).filter((sk) => sk.source === "hermes"));
     } catch (err) {
       console.warn("[OpenSourceSkills] load installed github failed:", err);
       setRecords([]);
@@ -155,19 +155,19 @@ export default function OpenSourceSkills({
     }
   };
 
-  /** 「我的」：OpenClaw 内置技能 + 本地已安装的开源技能 */
+  /** 「我的」：Hermes 内置技能 + 本地已安装的开源技能 */
   if (mine) {
     return (
       <Spin spinning={loading}>
         {records.length === 0 && libSkills.length === 0 && !loading ? (
           <Empty
-            description="还没有开源技能（OpenClaw 内置技能无需安装，可直接到军机处「技能 → 添加技能」选用）"
+            description="还没有开源技能（Hermes 内置技能无需安装，可直接到军机处「技能 → 添加技能」选用）"
             style={{ marginTop: 48 }}
           />
         ) : (
           <div className={styles.skillGrid}>
             {libSkills.map((sk) => (
-              <Card key={"openclaw-" + sk.name} className={styles.skillCard} bordered={false}>
+              <Card key={"hermes-" + sk.name} className={styles.skillCard} bordered={false}>
                 <div className={styles.skillCardBody}>
                   <div className={styles.skillHeader}>
                     <div className={styles.skillName}>
@@ -177,7 +177,7 @@ export default function OpenSourceSkills({
                       <span>{sk.name}</span>
                     </div>
                     <Tag className={styles.installedTag} color="blue">
-                      OpenClaw 内置
+                      Hermes 内置
                     </Tag>
                   </div>
                   <div
@@ -185,7 +185,7 @@ export default function OpenSourceSkills({
                     style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
                     title={sk.description}
                   >
-                    {sk.description || "OpenClaw 内置技能"}
+                    {sk.description || "Hermes 内置技能"}
                   </div>
                   <div className={styles.skillMeta}>
                     <Tag color="geekblue" style={{ marginRight: 8 }}>{sk.category || "其他"}</Tag>

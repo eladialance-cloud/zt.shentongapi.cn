@@ -5,6 +5,9 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type {
   ServiceName,
   ServiceInfo,
+  ModuleInfo,
+  ModuleDataDisposition,
+  ModuleUninstallResult, ModuleInstallResult,
   ServiceStatusChangedPayload,
   ServiceErrorPayload,
   SyncQueueRow,
@@ -16,15 +19,18 @@ import type {
   MarketItemType,
   InstalledRecord,
   MarketItemDetail,
-  OpenClawChatMessage,
-  OpenClawChatMessagePayload,
   LocalBrief,
   LlmIntegration,
-  OpenClawToolCall,
-  OpenClawChatDonePayload,
-  OpenClawChatLifecyclePayload,
-  OpenClawChatErrorPayload,
+  HermesChatMessage,
+  HermesChatMessagePayload,
+  HermesChatToolCall,
+  HermesChatDonePayload,
+  HermesChatLifecycleInfo,
+  HermesChatErrorPayload,
   HermesMemoryTarget,
+  HermesMemoryProviderConfig,
+  HermesToolsOpResult,
+  HermesMcpListResult,
   HermesMemoryOpResult,
   HermesStatusResult,
   OrchestrateSubmitResult,
@@ -178,6 +184,34 @@ const electronAPI: ElectronAPI = {
     remove: (target: HermesMemoryTarget, text: string) =>
       ipcRenderer.invoke('hermes-memory:remove', target, text) as Promise<HermesMemoryOpResult>,
   },
+
+  hermesMemoryProvider: {
+    get: () =>
+      ipcRenderer.invoke('hermes-memory-provider:get') as Promise<HermesMemoryProviderConfig>,
+    setActive: (name: string) =>
+      ipcRenderer.invoke('hermes-memory-provider:set-active', name) as Promise<HermesMemoryProviderConfig>,
+    setEnv: (name: string, key: string, value: string) =>
+      ipcRenderer.invoke('hermes-memory-provider:set-env', name, key, value) as Promise<HermesMemoryProviderConfig>,
+  },
+
+  hermesTools: {
+    get: () =>
+      ipcRenderer.invoke('hermes-tools:get') as Promise<HermesToolsOpResult>,
+    setEnabled: (key: string, enabled: boolean) =>
+      ipcRenderer.invoke('hermes-tools:set-enabled', key, enabled) as Promise<HermesToolsOpResult>,
+    listMcp: () =>
+      ipcRenderer.invoke('hermes-tools:list-mcp') as Promise<HermesMcpListResult>,
+  },
+  hermesSoul: {
+    get: (profileId: string) =>
+      ipcRenderer.invoke('hermes-soul:get', profileId) as Promise<{ ok: boolean; id?: string; content?: string; source?: 'custom' | 'blueprint'; error?: string }>,
+    save: (profileId: string, content: string) =>
+      ipcRenderer.invoke('hermes-soul:save', profileId, content) as Promise<{ ok: boolean; id?: string; error?: string }>,
+  },
+  hermesGateway: {
+    getUrl: () =>
+      ipcRenderer.invoke('hermes-gateway:get-url') as Promise<{ wsUrl?: string; error?: string }>,
+  },
   hermesOrchestrate: {
     submit: (payload: { token: string; input: OrchestrateInput; autoConfirm?: boolean; reviewEnabled?: boolean; reviewModel?: string }) =>
       ipcRenderer.invoke('hermes-orchestrate:submit', payload) as Promise<OrchestrateSubmitResult>,
@@ -243,10 +277,30 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('market:update', type, id, name, version, pkg) as Promise<{ ok: boolean; dir?: string; error?: string }>,
     syncChat: () => ipcRenderer.invoke('market:syncChat') as Promise<{ ok: boolean; added?: number; error?: string }>
   },
-  openclawMcp: {
-    /** 从后端同步启用中的 MCP 到 OpenClaw 本地配置（登录后调用） */
+  hermesMcp: {
+    /** 从后端同步启用中的 MCP 到 Hermes 本地配置（登录后调用） */
     syncFromBackend: (token: string) =>
       ipcRenderer.invoke('mcp:syncFromBackend', token) as Promise<{ ok: boolean; count?: number; error?: string }>,
+  },
+  modules: {
+    list: () => ipcRenderer.invoke('modules:list') as Promise<ModuleInfo[]>,
+    setEnabled: (id: string, enabled: boolean) =>
+      ipcRenderer.invoke('modules:setEnabled', id, enabled) as Promise<{ ok: boolean; added: string[]; removed: string[]; error?: string }>,
+    reload: () =>
+      ipcRenderer.invoke('modules:reload') as Promise<{ ok: boolean; added: string[]; removed: string[]; error?: string }>,
+    uninstall: (id: string, disposition: ModuleDataDisposition) =>
+      ipcRenderer.invoke('modules:uninstall', id, disposition) as Promise<ModuleUninstallResult>,
+    installFromSource: (source: string, opts?: { expectedSha256?: string; signature?: string; publicKey?: string; allowUnverified?: boolean }) =>
+      ipcRenderer.invoke('modules:installFromSource', source, opts) as Promise<ModuleInstallResult>,
+    dump: () =>
+      ipcRenderer.invoke('modules:dump') as Promise<{ rows: ServiceInfo[]; modules: ModuleInfo[] }>,
+    onChanged: (callback: (payload: { modules: ModuleInfo[] }) => void) => {
+      const handler = (_event: IpcRendererEvent, payload: { modules: ModuleInfo[] }): void => callback(payload)
+      ipcRenderer.on('modules:changed', handler)
+      return () => {
+        ipcRenderer.removeListener('modules:changed', handler)
+      }
+    },
   },
   llmIntegrations: {
     list: () => ipcRenderer.invoke('llm-integrations:list') as Promise<LlmIntegration[]>,
@@ -349,69 +403,68 @@ const electronAPI: ElectronAPI = {
     },
   },
 
-  openclawChat: {
-    /** 注入用户 llm-proxy 静态 Key（登录后调用；OpenClaw openai provider 指向云端 llm-proxy） */
-    setProxyKey: (key: string) => {
-      ipcRenderer.send('openclaw-chat:set-proxy-key', key)
-    },
-    /** 同步用户首选对话模型到 OpenClaw 配置（agents.defaults.model；当前会话由主进程 sessions.patch 处理） */
+
+
+  /** Hermes 本地对话桥接（:8642 OpenAI 兼容流式；计费归 llm-proxy，消息经主进程流式转发） */
+  hermesChat: {
     setModel: (modelId: string) => {
-      ipcRenderer.send('openclaw-chat:set-model', modelId)
+      ipcRenderer.send('hermes-chat:set-model', modelId)
     },
-    send: (text: string, token: string, history?: OpenClawChatMessage[], knowledgeBaseId?: number, sessionId?: number, modelId?: string) =>
-      ipcRenderer.invoke('openclaw-chat:send', { text, token, history, knowledgeBaseId, sessionId, modelId }) as Promise<{ ok: boolean; aborted?: boolean }>,
-    abort: () => {
-      ipcRenderer.send('openclaw-chat:abort')
+    setProxyKey: (key: string) => {
+      ipcRenderer.send('hermes-chat:set-proxy-key', key)
     },
-    /** 同步最新云端 token 到 auth.json（登录/刷新 token 时调用，供工具卡读取） */
     syncAuth: (token: string) => {
-      ipcRenderer.send('openclaw-chat:sync-auth', token)
+      ipcRenderer.send('hermes-chat:sync-auth', token)
     },
-    onMessage: (callback: (payload: OpenClawChatMessagePayload) => void) => {
-      const handler = (_event: IpcRendererEvent, payload: OpenClawChatMessagePayload): void => callback(payload)
-      ipcRenderer.on('openclaw-chat:message', handler)
+    send: (payload: { text: string; token: string; history?: HermesChatMessage[]; knowledgeBaseId?: number; sessionId?: number; modelId?: string; profileId?: string; soul?: string; reasoningEffort?: string }) =>
+      ipcRenderer.invoke('hermes-chat:send', payload) as Promise<{ ok: boolean; aborted?: boolean }>,
+    abort: () => {
+      ipcRenderer.send('hermes-chat:abort')
+    },
+    onMessage: (callback: (payload: HermesChatMessagePayload) => void) => {
+      const handler = (_event: IpcRendererEvent, payload: HermesChatMessagePayload): void => callback(payload)
+      ipcRenderer.on('hermes-chat:message', handler)
       return () => {
-        ipcRenderer.removeListener('openclaw-chat:message', handler)
+        ipcRenderer.removeListener('hermes-chat:message', handler)
       }
     },
-    /** 终审/来源标注后的最终文本（openclaw-chat:finalize；渲染层用其覆盖流式内容） */
-    onFinalize: (callback: (payload: OpenClawChatMessagePayload) => void) => {
-      const handler = (_event: IpcRendererEvent, payload: OpenClawChatMessagePayload): void => callback(payload)
-      ipcRenderer.on('openclaw-chat:finalize', handler)
+    onFinalize: (callback: (payload: HermesChatMessagePayload) => void) => {
+      const handler = (_event: IpcRendererEvent, payload: HermesChatMessagePayload): void => callback(payload)
+      ipcRenderer.on('hermes-chat:finalize', handler)
       return () => {
-        ipcRenderer.removeListener('openclaw-chat:finalize', handler)
+        ipcRenderer.removeListener('hermes-chat:finalize', handler)
       }
     },
-    onToolCall: (callback: (toolCall: OpenClawToolCall) => void) => {
-      const handler = (_event: IpcRendererEvent, toolCall: OpenClawToolCall): void => callback(toolCall)
-      ipcRenderer.on('openclaw-chat:tool-call', handler)
+    onToolCall: (callback: (toolCall: HermesChatToolCall) => void) => {
+      const handler = (_event: IpcRendererEvent, toolCall: HermesChatToolCall): void => callback(toolCall)
+      ipcRenderer.on('hermes-chat:tool-call', handler)
       return () => {
-        ipcRenderer.removeListener('openclaw-chat:tool-call', handler)
+        ipcRenderer.removeListener('hermes-chat:tool-call', handler)
       }
     },
-    /** Agent 生命周期（openclaw-chat:lifecycle）：start → finishing → end/error */
-    onLifecycle: (callback: (payload: OpenClawChatLifecyclePayload) => void) => {
-      const handler = (_event: IpcRendererEvent, payload: OpenClawChatLifecyclePayload): void => callback(payload)
-      ipcRenderer.on('openclaw-chat:lifecycle', handler)
+    onLifecycle: (callback: (info: HermesChatLifecycleInfo) => void) => {
+      const handler = (_event: IpcRendererEvent, info: HermesChatLifecycleInfo): void => callback(info)
+      ipcRenderer.on('hermes-chat:lifecycle', handler)
       return () => {
-        ipcRenderer.removeListener('openclaw-chat:lifecycle', handler)
+        ipcRenderer.removeListener('hermes-chat:lifecycle', handler)
       }
     },
-    onDone: (callback: (payload: OpenClawChatDonePayload) => void) => {
-      const handler = (_event: IpcRendererEvent, payload: OpenClawChatDonePayload): void => callback(payload)
-      ipcRenderer.on('openclaw-chat:done', handler)
+    onDone: (callback: (payload: HermesChatDonePayload) => void) => {
+      const handler = (_event: IpcRendererEvent, payload: HermesChatDonePayload): void => callback(payload)
+      ipcRenderer.on('hermes-chat:done', handler)
       return () => {
-        ipcRenderer.removeListener('openclaw-chat:done', handler)
+        ipcRenderer.removeListener('hermes-chat:done', handler)
       }
     },
-    onError: (callback: (payload: OpenClawChatErrorPayload) => void) => {
-      const handler = (_event: IpcRendererEvent, payload: OpenClawChatErrorPayload): void => callback(payload)
-      ipcRenderer.on('openclaw-chat:error', handler)
+    onError: (callback: (payload: HermesChatErrorPayload) => void) => {
+      const handler = (_event: IpcRendererEvent, payload: HermesChatErrorPayload): void => callback(payload)
+      ipcRenderer.on('hermes-chat:error', handler)
       return () => {
-        ipcRenderer.removeListener('openclaw-chat:error', handler)
+        ipcRenderer.removeListener('hermes-chat:error', handler)
       }
     }
   },
+
   syncQueue: {
     enqueue: (item) => ipcRenderer.invoke('syncQueue:enqueue', item) as Promise<number>,
     getPending: (limit) => ipcRenderer.invoke('syncQueue:getPending', limit) as Promise<SyncQueueRow[]>,

@@ -2,7 +2,7 @@
 // 老板模式 7 键：task/target/audience/platform/style/material/deadline
 // 客户会议模式 8 键：name/goal/audience/platform/material/budget/deadline/done
 // 关键项必填（老板 task/target/platform；客户 name/goal/platform），其余可跳过。
-// 向导为前端驱动状态机：AI 气泡文案由本文件提供，不依赖 OpenClaw 自由发挥。
+// 向导为前端驱动状态机：AI 气泡文案由本文件提供，不依赖 Hermes 自由发挥。
 
 import type { CreateBriefPayload, BriefItem } from '@/api/brief-api'
 

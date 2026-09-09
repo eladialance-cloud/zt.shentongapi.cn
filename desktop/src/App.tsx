@@ -1,4 +1,4 @@
-﻿// 应用根组件 - 全局配置与路由挂载
+// 应用根组件 - 全局配置与路由挂载
 // v2：Kimi 风格主题应用 — system/light/dark + data-theme 驱动 CSS 变量
 
 import { useEffect, useMemo, useState } from 'react'
@@ -52,11 +52,11 @@ export default function App() {
     }
   }, [accessToken])
 
-  // 登录态变化 → 同步用户 llm-proxy 静态 Key 到主进程（注入 OpenClaw，供应商 Key 在服务器）
+  // 登录态变化 → 同步用户 llm-proxy 静态 Key 到主进程（注入 Hermes，供应商 Key 在服务器）
   useEffect(() => {
     let cancelled = false
     const sync = async () => {
-      const api = window.electronAPI?.openclawChat
+      const api = window.electronAPI?.hermesChat
       if (!accessToken) {
         api?.setProxyKey?.('')
         return
@@ -65,7 +65,7 @@ export default function App() {
         const { llmProxyKey } = await fetchLlmProxyKey()
         if (!cancelled) api?.setProxyKey?.(llmProxyKey)
       } catch (err) {
-        console.error('[App] 获取 llm-proxy Key 失败（OpenClaw 对话将不可用）:', err)
+        console.error('[App] 获取 llm-proxy Key 失败（Hermes 对话将不可用）:', err)
       }
     }
     void sync()
@@ -83,3 +83,4 @@ export default function App() {
     </ConfigProvider>
   )
 }
+

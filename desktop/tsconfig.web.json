@@ -1,4 +1,4 @@
-﻿{
+{
   "compilerOptions": {
     "target": "ES2020",
     "module": "ESNext",
@@ -16,7 +16,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@shared/*": ["./electron/shared/*"]
+      "@shared/*": ["./electron/shared/*"],
+      "js-yaml": ["./electron/main/service-registry/js-yaml.d.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "electron/shared/**/*.ts", "tests/**/*.ts"],

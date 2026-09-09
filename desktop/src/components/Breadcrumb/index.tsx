@@ -30,6 +30,7 @@ const ROUTE_LABEL_MAP: Record<string, string> = {
   '/': '首页',
   '/dashboard': '仪表盘',
   '/chat': '对话',
+  '/hermes-chat': 'Hermes 对话',
   '/credits': '积分中心',
   // ===== 工作流 =====
   '/workflows': '工作流',

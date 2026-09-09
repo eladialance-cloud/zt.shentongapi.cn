@@ -1,0 +1,169 @@
+.page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #0f1116;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.titleWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+}
+
+.titleIcon {
+  color: #7c5cff;
+  font-size: 18px;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #eaeaf2;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px 16px;
+}
+
+.alert {
+  margin-bottom: 10px;
+}
+
+.messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.inputBar {
+  padding-top: 12px;
+}
+
+.abortRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: rgba(234, 234, 242, 0.75);
+  font-size: 12px;
+}
+
+/* ===== 会话列表侧栏布局（Hermes 对话产品化） ===== */
+.layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.chatHead {
+  margin: -12px -16px 10px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.chatHeadTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #eaeaf2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.chatHeadActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.modelSelect {
+  min-width: 0;
+}
+
+.modelSelect :global(.ant-select-selector) {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #eaeaf2 !important;
+}
+
+.modelSelect :global(.ant-select-arrow) {
+  color: rgba(234, 234, 242, 0.6);
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: rgba(234, 234, 242, 0.45);
+  gap: 12px;
+  padding-bottom: 60px;
+}
+
+.emptyStateIconWrap {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  background: rgba(124, 92, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.emptyStateIcon {
+  font-size: 30px;
+  color: #7c5cff;
+}
+
+.emptyStateTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: #eaeaf2;
+}
+
+.emptyStateTip {
+  font-size: 13px;
+  color: rgba(234, 234, 242, 0.45);
+  max-width: 420px;
+  text-align: center;
+  line-height: 1.7;
+}
+
+.loadingCenter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  color: rgba(234, 234, 242, 0.5);
+  font-size: 13px;
+}

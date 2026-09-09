@@ -1,0 +1,6 @@
+id: st-sample-agent
+displayName: 示例智能体
+name: st-sample-agent
+kind: agent
+version: 1.0.0
+target: hermes

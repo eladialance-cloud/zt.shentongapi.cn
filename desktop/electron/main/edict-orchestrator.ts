@@ -80,7 +80,7 @@ const PROFILE_LABEL: Record<string, string> = {
 };
 
 export const OFFICIALS: EdictOfficial[] = [
-  { id: "taizi", label: "太子", status: "idle", role: "分拣入口（OpenClaw）" },
+  { id: "taizi", label: "太子", status: "idle", role: "分拣入口（Hermes）" },
   { id: "zhongshu", label: "中书省", status: "idle", role: "规划决策" },
   { id: "menxia", label: "门下省", status: "idle", role: "审议把关" },
   { id: "shangshu", label: "尚书省", status: "idle", role: "执行调度" },

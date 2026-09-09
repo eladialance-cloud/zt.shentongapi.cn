@@ -1,5 +1,5 @@
-﻿// 客户端本地服务管理 - 服务状态面板（Task 16）
-// SubTask 16.1: 三个服务状态卡片（OpenClaw/N8N/MCP）
+// 客户端本地服务管理 - 服务状态面板（Task 16）
+// SubTask 16.1: 三个服务状态卡片（N8N/Hermes/Video-Claw）
 // SubTask 16.3: 监听 service:error 弹窗通知
 // 通过 IPC 实时更新状态 + 轮询 CPU/内存
 
@@ -49,12 +49,11 @@ import type {
 } from "@/types/service-manager";
 import type { HermesStatusResult } from "@shared/types";
 import styles from "./styles.module.css";
+import ModulePanel from "./ModulePanel";
 
 /** 服务图标映射 */
 const SERVICE_ICONS: Record<ServiceName, React.ReactNode> = {
-  openclaw: <CloudServerOutlined className={styles.serviceIcon} />,
   n8n: <ApartmentOutlined className={styles.serviceIcon} />,
-  mcp: <ApiOutlined className={styles.serviceIcon} />,
   hermes: <ApiOutlined className={styles.serviceIcon} />,
   "video-claw": <VideoCameraOutlined className={styles.serviceIcon} />,
 };
@@ -365,6 +364,7 @@ export default function ServiceManager() {
         </span>
       </div>
 
+      <ModulePanel />
       <Spin spinning={loading}>
         {services.length === 0 && !loading ? (
           <div className={styles.emptyWrap}>

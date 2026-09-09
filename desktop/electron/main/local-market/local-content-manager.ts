@@ -1,7 +1,7 @@
 // 本地内容管理器：市场内容（技能/插件/工作流/Agent）下载安装到本地
 //
 // 目录约定（与 service-manager.ts 保持一致）：
-//   openclaw-home = userData/openclaw-home（OPENCLAW_HOME）
+//   hermes-market = userData/hermes-market
 //   hermes-home   = userData/hermes-home（HERMES_HOME）
 //   market        = userData/market（本地清单 + 下载缓存）
 //
@@ -19,6 +19,9 @@ import type {
 } from '../../shared/types';
 import { extractTarGz } from '../runtime-downloader';
 import { ensureN8nAuth, getN8nAuthCookie } from '../n8n-auth';
+import { parseModuleSource, resolveDownloadUrl, verifyModuleAsset } from '../service-registry/module-source';
+import { findContentDir, findModuleRoot, parseModuleYaml } from '../service-registry/module-package';
+import type { ModuleKind } from '../service-registry/types';
 
 /** userData 目录（jest 等无 electron 环境时回退 APPDATA，与 runtime-config 一致） */
 function userDataDir(): string {
@@ -29,9 +32,9 @@ function userDataDir(): string {
   }
 }
 
-/** OpenClaw 数据目录（与 service-manager.ts getOpenClawHome 一致） */
-export function getOpenClawHome(): string {
-  return path.join(userDataDir(), 'openclaw-home');
+/** 本地市场内容目录（OpenClaw 已移除；技能/插件等市场内容统一放 hermes-market，与 Hermes 运行时 hermes-home 分离） */
+export function getHermesMarketHome(): string {
+  return path.join(userDataDir(), 'hermes-market');
 }
 
 /** Hermes 数据目录（与 service-manager.ts getHermesHome 一致） */
@@ -70,9 +73,9 @@ function writeInstalled(records: InstalledRecord[]): void {
 function resolveTargetDir(type: MarketItemType, id: number | string): string {
   switch (type) {
     case 'skill':
-      return path.join(getOpenClawHome(), 'skills', String(id));
+      return path.join(getHermesMarketHome(), 'skills', String(id));
     case 'plugin':
-      return path.join(getOpenClawHome(), 'plugins', String(id));
+      return path.join(getHermesMarketHome(), 'plugins', String(id));
     case 'workflow':
       return path.join(getHermesHome(), 'workflows', String(id));
     case 'agent':
@@ -317,7 +320,7 @@ export async function importCustomDir(
   }
 }
 
-/** 登记对话中 OpenClaw 安装的内容(source=chat),幂等 */
+/** 登记对话中 Hermes 安装的内容(source=chat),幂等 */
 export function registerChatInstalled(
   type: MarketItemType,
   id: number | string,
@@ -399,12 +402,12 @@ function readNameFromDir(
   return fallback;
 }
 
-/** 扫描本地运行时目录,把 OpenClaw/Hermes 已安装但未登记的内容补登记(source=chat) */
+/** 扫描本地运行时目录,把 Hermes 已安装但未登记的内容补登记(source=chat) */
 export function syncChatInstalled(): { ok: boolean; added?: number; error?: string } {
   try {
     const roots: Array<{ type: MarketItemType; root: string; marker: string }> = [
-      { type: 'skill', root: path.join(getOpenClawHome(), 'skills'), marker: 'SKILL.md' },
-      { type: 'plugin', root: path.join(getOpenClawHome(), 'plugins'), marker: 'plugin.json' },
+      { type: 'skill', root: path.join(getHermesMarketHome(), 'skills'), marker: 'SKILL.md' },
+      { type: 'plugin', root: path.join(getHermesMarketHome(), 'plugins'), marker: 'plugin.json' },
       { type: 'workflow', root: path.join(getHermesHome(), 'workflows'), marker: 'workflow.json' },
       { type: 'agent', root: path.join(getHermesHome(), 'agents'), marker: 'agent.json' },
       { type: 'mcp', root: path.join(getHermesHome(), 'mcp'), marker: 'mcp.json' },
@@ -554,7 +557,7 @@ async function importWorkflowToN8n(workflowJson: Record<string, unknown>): Promi
   }
 }
 
-/** Agent → agent.json（本地 Hermes/OpenClaw 加载） */
+/** Agent → agent.json（本地 Hermes 加载） */
 function writeAgentFiles(dir: string, agent: Record<string, unknown>): void {
   fs.writeFileSync(
     path.join(dir, 'agent.json'),
@@ -573,7 +576,7 @@ function writeAgentFiles(dir: string, agent: Record<string, unknown>): void {
         allowedPluginIds: agent.allowedPluginIds ?? [],
         allowedWorkflowIds: agent.allowedWorkflowIds ?? [],
         allowedKnowledgeBaseIds: agent.allowedKnowledgeBaseIds ?? [],
-        runtimeType: agent.runtimeType || 'openclaw',
+        runtimeType: agent.runtimeType || 'hermes',
         pricingStrategy: agent.pricingStrategy || 'model',
         modelConfig: agent.modelConfig ?? null,
         outputRule: agent.outputRule || '',
@@ -743,7 +746,7 @@ export function buildGithubArchiveUrls(
 
 /** GitHub 开源技能直连下载安装：
  *  先探测候选仓库默认分支，再按 默认分支 → main → master → HEAD 依次尝试下载 tar.gz，
- *  解压后定位含 SKILL.md 的目录，安装到 openclaw-home/skills/<sourceId> 并登记 installed.json(source=github)
+ *  解压后定位含 SKILL.md 的目录，安装到 hermes-market/skills/<sourceId> 并登记 installed.json(source=github)
  */
 export async function installGithubSkill(
   sourceId: number,
@@ -754,7 +757,7 @@ export async function installGithubSkill(
     if (!Array.isArray(candidates) || candidates.length === 0) {
       return { ok: false, error: '该技能没有可用的下载地址（仓库解析失败）' };
     }
-    const target = path.join(getOpenClawHome(), 'skills', String(sourceId));
+    const target = path.join(getHermesMarketHome(), 'skills', String(sourceId));
     const staging = target + '.staging';
     safeRemove(staging);
     fs.mkdirSync(staging, { recursive: true });
@@ -824,5 +827,117 @@ export async function installGithubSkill(
     return { ok: true, dir: target };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+
+/**
+ * 从来源安装模块（A5-B：skill/agent 装到 Hermes home；service 型走现有 patch 流程）。
+ * 来源：github:owner/repo[@ref][?path=...] / url:https://...tar.gz / file:C:\\...tar.gz 或目录
+ * 安装策略：staging 目录写入 → 原子 rename → 更新 market/installed.json
+ */
+export interface InstallModuleFromSourceOptions {
+  source: string
+  expectedSha256?: string
+  signature?: string
+  publicKey?: string
+  allowUnverified?: boolean
+}
+
+export async function installModuleFromSource(opts: InstallModuleFromSourceOptions): Promise<{
+  ok: boolean
+  id?: string
+  kind?: ModuleKind
+  name?: string
+  version?: string
+  dir?: string
+  error?: string
+}> {
+  try {
+    const spec = parseModuleSource(opts?.source || '')
+    const downloadUrl = resolveDownloadUrl(spec)
+    if (spec.kind === 'skillhub' || spec.kind === 'hermes') {
+      throw new Error('skillhub/hermes 来源暂需后端提供包地址，请改用 github:/url:/file: 来源')
+    }
+
+    const tmp = path.join(marketRoot(), '.tmp')
+    fs.mkdirSync(tmp, { recursive: true })
+
+    let moduleRoot: string
+    const fileAbs = spec.kind === 'file' ? path.resolve(spec.url || '') : ''
+    const isDirSource = spec.kind === 'file' && fileAbs && fs.existsSync(fileAbs) && fs.statSync(fileAbs).isDirectory()
+
+    const archivePath = path.join(tmp, 'module-' + Date.now() + '.tar.gz')
+    const extractRoot = path.join(tmp, 'module-' + Date.now())
+
+    if (isDirSource) {
+      if (opts?.expectedSha256 || opts?.signature) {
+        throw new Error('目录来源不支持 sha256/签名校验，请把模块打包成 tar.gz 后再校验')
+      }
+      moduleRoot = findModuleRoot(fileAbs, spec.subpath)
+    } else {
+      let buf: Buffer
+      if (spec.kind === 'file') {
+        if (!fileAbs || !fs.existsSync(fileAbs)) throw new Error('本地文件不存在: ' + fileAbs)
+        buf = fs.readFileSync(fileAbs)
+      } else {
+        if (!downloadUrl) throw new Error('无法解析模块下载地址')
+        await downloadArchive(downloadUrl, archivePath)
+        buf = fs.readFileSync(archivePath)
+      }
+      if (!verifyModuleAsset(buf, {
+        expectedSha256: opts?.expectedSha256,
+        signature: opts?.signature,
+        publicKey: opts?.publicKey,
+        allowUnverified: opts?.allowUnverified,
+      })) {
+        throw new Error('模块资产校验失败（sha256/签名不匹配）')
+      }
+      const archiveSrc = spec.kind === 'file' ? fileAbs : archivePath
+      fs.mkdirSync(extractRoot, { recursive: true })
+      await extractTarGz(archiveSrc, extractRoot)
+      moduleRoot = findModuleRoot(extractRoot, spec.subpath)
+      try { fs.unlinkSync(archivePath) } catch { /* ignore */ }
+    }
+
+    const meta = parseModuleYaml(fs.readFileSync(path.join(moduleRoot, 'module.yaml'), 'utf-8'))
+    const kind: ModuleKind = meta.kind
+    if (kind === 'service') {
+      throw new Error('service 型模块请走现有 patch/服务注册流程，本入口仅支持 skill/agent')
+    }
+    const id = meta.id
+    const name = meta.displayName || meta.name || id
+    const version = meta.version || '1.0.0'
+    const contentDir = findContentDir(moduleRoot, kind)
+
+    const target = kind === 'skill'
+      ? path.join(getHermesHome(), 'skills', String(id))
+      : path.join(getHermesHome(), 'agents', String(id))
+    const staging = target + '.staging'
+    safeRemove(staging)
+    fs.mkdirSync(staging, { recursive: true })
+    copyDirContents(contentDir, staging)
+    safeRemove(target)
+    fs.renameSync(staging, target)
+
+    const itemType = kind === 'skill' ? 'skill' as const : 'agent' as const
+    const source: MarketSource = spec.kind === 'github' ? 'github' : 'custom'
+    const records = readInstalled().filter((r) => !(String(r.type) === itemType && String(r.id) === id))
+    records.unshift({
+      type: itemType,
+      id,
+      name,
+      version,
+      dir: target,
+      source,
+      installedAt: new Date().toISOString(),
+    })
+    writeInstalled(records)
+
+    try { safeRemove(extractRoot) } catch { /* ignore */ }
+
+    return { ok: true, id, kind, name, version, dir: target }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
 }

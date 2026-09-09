@@ -219,7 +219,7 @@ export function syncHermesConfig(hermesHome: string, opts: HermesConfigOptions):
   return cfgPath
 }
 
-/** 三省六部 11 个官署 profile id（不含太子：太子=OpenClaw 入口，非 Hermes profile） */
+/** 三省六部 11 个官署 profile id（不含太子：太子=Hermes 对话入口，非官署 profile） */
 export const EDICT_PROFILE_IDS = [
   'zhongshu', 'menxia', 'shangshu', 'libu', 'hubu', 'libu_hr',
   'bingbu', 'xingbu', 'gongbu', 'zaochao', 'qintianjian',

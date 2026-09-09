@@ -20,7 +20,7 @@ import type {
   RuntimeDirInfo,
   ChooseRuntimeDirResult
 } from '@/types/service-manager'
-import type { InstallProgressPayload } from '@shared/types'
+import type { InstallProgressPayload, ModuleInfo, ModuleDataDisposition, ModuleUninstallResult, ModuleInstallResult } from '@shared/types'
 
 /** electronAPI 是否可用（preload 未注入时降级） */
 function getService() {
@@ -29,6 +29,15 @@ function getService() {
     throw new Error('electronAPI.service 不可用（preload 未注入）')
   }
   return svc
+}
+
+/** electronAPI.modules 是否可用 */
+function getModulesApi() {
+  const m = window.electronAPI?.modules
+  if (!m) {
+    throw new Error('electronAPI.modules 不可用（preload 未注入）')
+  }
+  return m
 }
 
 /** 获取所有服务完整信息 */
@@ -104,6 +113,54 @@ export function onServiceError(
   }
 }
 
+/** 列出服务型模块（含停用） */
+export async function listModules(): Promise<ModuleInfo[]> {
+  return (await getModulesApi().list()) as ModuleInfo[]
+}
+
+/** 启用/停用模块（持久化 + 重载服务行 + 广播） */
+export async function setModuleEnabled(
+  id: string,
+  enabled: boolean,
+): Promise<{ ok: boolean; added: string[]; removed: string[]; error?: string }> {
+  return getModulesApi().setEnabled(id, enabled)
+}
+
+/** 手动重载服务行 */
+export async function reloadModules(): Promise<{ ok: boolean; added: string[]; removed: string[]; error?: string }> {
+  return getModulesApi().reload()
+}
+
+/** 装配审计 */
+export async function dumpModules(): Promise<{ rows: ServiceInfo[]; modules: ModuleInfo[] }> {
+  return getModulesApi().dump()
+}
+
+/** 从来源安装模块（skill/agent 装到 Hermes home；service 走 patch 流程） */
+export async function installModuleFromSource(
+  source: string,
+  opts?: { expectedSha256?: string; signature?: string; publicKey?: string; allowUnverified?: boolean },
+): Promise<ModuleInstallResult> {
+  return getModulesApi().installFromSource(source, opts)
+}
+export async function uninstallModule(
+  id: string,
+  disposition: ModuleDataDisposition,
+): Promise<ModuleUninstallResult> {
+  return getModulesApi().uninstall(id, disposition)
+}
+
+/** 监听模块变更广播，返回取消监听函数 */
+export function onModulesChanged(
+  callback: (payload: { modules: ModuleInfo[] }) => void,
+): () => void {
+  try {
+    return getModulesApi().onChanged(callback)
+  } catch {
+    return () => {}
+  }
+}
+
 export default {
   listServices,
   getServiceStatus,
@@ -113,5 +170,11 @@ export default {
   installService,
   onServiceStatusChanged,
   onServiceError,
-  onInstallProgress
+  onInstallProgress,
+  listModules,
+  setModuleEnabled,
+  reloadModules,
+  dumpModules,
+  onModulesChanged,
+  installModuleFromSource,
 }

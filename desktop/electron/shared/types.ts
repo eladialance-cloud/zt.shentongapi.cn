@@ -49,8 +49,8 @@ export type {
 };
 
 
-export type ServiceName = "openclaw" | "n8n" | "mcp" | "hermes" | "video-claw";
-
+export type KnownServiceName = "n8n" | "hermes" | "video-claw";
+export type ServiceName = KnownServiceName | (string & {});
 export type ServiceStatus =
   "running" | "stopped" | "starting" | "error" | "unknown";
 
@@ -70,8 +70,43 @@ export interface ServiceInfo {
   error?: string;
 }
 
+/** 模块清单项（modules:list 返回；kind 当前仅 service） */
+export type ModuleKind = "service" | "skill" | "agent";
+
+export interface ModuleInfo {
+  id: string;
+  displayName: string;
+  kind: ModuleKind;
+  version?: string;
+  enabled: boolean;
+  serviceIds: string[];
+}
+
+/** 卸载模块时云端/本地数据如何处置 */
+export type ModuleDataDisposition = "keep" | "export" | "delete";
+
+export interface ModuleInstallResult {
+  ok: boolean
+  id?: string
+  kind?: ModuleKind
+  name?: string
+  version?: string
+  /** 安装后的落盘目录（hermes-home/skills|<id> 或 hermes-home/agents/<id>） */
+  dir?: string
+  error?: string
+}
+export interface ModuleUninstallResult {
+  ok: boolean;
+  id: string;
+  disposition: ModuleDataDisposition;
+  /** export 时本地导出的目标路径 */
+  exportedPath?: string;
+  /** 云端接口是否未启用（后端未实现时 true，桌面端本地仍按档处置） */
+  endpointUnavailable?: boolean;
+  error?: string;
+}
+
 export interface ServiceEnvCheck {
-  openclaw: boolean;
   n8n: boolean;
   mcp: boolean;
   hermes: boolean;
@@ -268,7 +303,7 @@ export interface DeviceInfo extends DeviceFingerprint {
 /** 市场内容类型 */
 export type MarketItemType = "skill" | "plugin" | "workflow" | "agent" | "mcp";
 
-/** 本地内容来源:官方下载 / 自定义导入 / 对话中 OpenClaw 安装 / GitHub 开源技能直连下载 */
+/** 本地内容来源:官方下载 / 自定义导入 / 对话中安装 / GitHub 开源技能直连下载 */
 export type MarketSource = "official" | "custom" | "chat" | "github";
 
 /** 本地已安装记录（market/installed.json 条目） */
@@ -315,55 +350,38 @@ export interface MarketDownloadResult {
 }
 
 // 通过 contextBridge 暴露给渲染进程的 API 形状
-/** OpenClaw 本地直达对话相关类型 */
-export interface OpenClawChatMessage {
-  role: 'user' | 'assistant';
+/** Hermes 对话桥接类型（B1：:8642 OpenAI 兼容流式；计费归 llm-proxy） */
+export type HermesChatRole = 'user' | 'assistant' | 'system';
+export interface HermesChatMessage {
+  role: HermesChatRole;
   content: string;
 }
-
-export interface OpenClawToolCall {
+export interface HermesChatToolCall {
   id: string;
   name: string;
   input: unknown;
-  /** 工具调用状态：start 开始 / done 完成 / error 失败 */
-  state?: 'start' | 'done' | 'error';
-  /** 工具执行结果摘要（done/error 时） */
+  state?: 'running' | 'done' | 'error';
   output?: string;
 }
-
-export interface OpenClawUsage {
+export interface HermesChatUsage {
   input: number;
   output: number;
   total: number;
 }
-
-/** openclaw-chat:message 推送 payload */
-export interface OpenClawChatMessagePayload {
-  content: string;
-}
-
-/** openclaw-chat:done 推送 payload */
-export interface OpenClawChatDonePayload {
-  usage?: OpenClawUsage;
-}
-
-/** openclaw-chat:error 推送 payload */
-/** OpenClaw Agent 生命周期信息 */
-export interface OpenClawLifecycleInfo {
+export interface HermesChatLifecycleInfo {
   phase: 'start' | 'finishing' | 'end' | 'error';
   stopReason?: string;
   error?: string;
 }
-
-/** openclaw-chat:lifecycle 推送 payload */
-export interface OpenClawChatLifecyclePayload {
-  lifecycle: OpenClawLifecycleInfo;
+export interface HermesChatMessagePayload {
+  content: string;
 }
-
-export interface OpenClawChatErrorPayload {
+export interface HermesChatDonePayload {
+  usage?: HermesChatUsage;
+}
+export interface HermesChatErrorPayload {
   message: string;
 }
-
 /** 自定义大模型接入（仅存本机 userData，OpenAI 兼容端点） */
 export interface LlmIntegrationModel {
   /** 上游模型 ID（如 gpt-4o / deepseek-chat） */
@@ -554,6 +572,46 @@ export interface HermesMemoryOpResult {
   evicted?: string[];
 }
 
+export interface HermesMemoryProviderConfig {
+  /** 当前激活的第三方记忆 Provider 名称（空字符串 = 未激活） */
+  active: string;
+  /** 每个 provider 的 env 键值（API Key 等前缀变量） */
+  providers: Record<string, Record<string, string>>;
+}
+
+export interface HermesToolsetInfo {
+  key: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+}
+
+export interface HermesToolsOpResult {
+  ok: boolean;
+  error?: string;
+  toolsets?: HermesToolsetInfo[];
+}
+
+/** Hermes config.yaml 中 mcp_servers 的只读视图（深瞳侧 MCP 由后端同步管理） */
+export interface HermesMcpServerInfo {
+  name: string;
+  type: "http" | "stdio" | "unknown";
+  transport: "http" | "stdio" | "unknown";
+  enabled: boolean;
+  detail: string;
+  url?: string;
+  command?: string;
+  args: string[];
+  env: Record<string, string>;
+  auth?: string;
+}
+
+export interface HermesMcpListResult {
+  ok: boolean;
+  error?: string;
+  servers?: HermesMcpServerInfo[];
+}
+
 /** 发布平台（桌面端扫码登录用；id 与后端 publish_platforms.platform 一致） */
 export interface PlatformInfo {
   id: string;
@@ -663,6 +721,23 @@ export interface ElectronAPI {
   /** 发布平台账号（桌面端扫码绑定登录态，本地加密存储） */
   platformAccount: PlatformAccountApi;
   /** 桌面端本地视频解析器（对标轻语 videoParser：抖音/快手/B站/小红书/视频号链接 → 本地视频文件） */
+  /** 本地服务型模块管理（启用/停用/重载/装配审计；kind 当前仅 service） */
+  modules: {
+    /** 列出 modules/ 下全部模块（含停用） */
+    list(): Promise<ModuleInfo[]>;
+    /** 启用/停用模块：持久化 + 重载服务行（停用会停进程、从服务列表移除） */
+    setEnabled(id: string, enabled: boolean): Promise<{ ok: boolean; added: string[]; removed: string[]; error?: string }>;
+    /** 手动重载服务行（改 patch 后无需重启 App） */
+    reload(): Promise<{ ok: boolean; added: string[]; removed: string[]; error?: string }>;
+    /** 卸载模块（三档：keep/export/delete；导出时主进程先弹目录选择） */
+    uninstall(id: string, disposition: ModuleDataDisposition): Promise<ModuleUninstallResult>;
+    /** 从来源安装模块（skill/agent 装到 Hermes home；service 走 patch 流程） */
+    installFromSource(source: string, opts?: { expectedSha256?: string; signature?: string; publicKey?: string; allowUnverified?: boolean }): Promise<ModuleInstallResult>;
+    /** 装配审计：最终服务行 + 模块清单（对标 dsh --dump-config） */
+    dump(): Promise<{ rows: ServiceInfo[]; modules: ModuleInfo[] }>;
+    /** 模块启用/停用/重载后广播（渲染端刷新菜单与服务列表） */
+    onChanged(callback: (payload: { modules: ModuleInfo[] }) => void): () => void;
+  };
   videoParser: VideoParserApi;
 
   /** 本地 N8N 工作流真执行（直连 127.0.0.1:5678 webhook） */
@@ -680,6 +755,20 @@ export interface ElectronAPI {
   /** 设置页每类默认模型同步（chat/vision/image/video/tts → Hermes/ST-Claw 配置） */
   modelDefaultsSync(dto: { chat?: string | null; vision?: string | null; image?: string | null; video?: string | null; tts?: string | null } | null): void;
 
+  /** Hermes 本地对话桥接（:8642 OpenAI 兼容流式；计费归 llm-proxy） */
+  hermesChat: {
+    send(payload: { text: string; token: string; history?: HermesChatMessage[]; knowledgeBaseId?: number; sessionId?: number; modelId?: string; profileId?: string; soul?: string; reasoningEffort?: string }): Promise<{ ok: boolean; aborted?: boolean }>;
+    setModel(modelId: string): void;
+    setProxyKey(key: string): void;
+    syncAuth(token: string): void;
+    abort(): void;
+    onMessage(cb: (payload: HermesChatMessagePayload) => void): () => void;
+    onFinalize(cb: (payload: HermesChatMessagePayload) => void): () => void;
+    onToolCall(cb: (tc: HermesChatToolCall) => void): () => void;
+    onLifecycle(cb: (info: HermesChatLifecycleInfo) => void): () => void;
+    onDone(cb: (payload: HermesChatDonePayload) => void): () => void;
+    onError(cb: (payload: HermesChatErrorPayload) => void): () => void;
+  };
   /** 本地 Hermes 技能中心（封装 hermes skills CLI） */
   hermesSkills: {
     list(): Promise<HermesSkillsListResult>;
@@ -704,6 +793,29 @@ export interface ElectronAPI {
     remove(target: HermesMemoryTarget, text: string): Promise<HermesMemoryOpResult>;
   };
 
+  /** Hermes 第三方记忆 Provider 配置（active + env，本地 JSON 持久化） */
+  hermesMemoryProvider: {
+    get(): Promise<HermesMemoryProviderConfig>;
+    setActive(name: string): Promise<HermesMemoryProviderConfig>;
+    setEnv(name: string, key: string, value: string): Promise<HermesMemoryProviderConfig>;
+  };
+
+  /** Hermes 工具集启用/停用（读/写 config.yaml platform_toolsets.cli） */
+  hermesTools: {
+    get(): Promise<HermesToolsOpResult>;
+    setEnabled(key: string, enabled: boolean): Promise<HermesToolsOpResult>;
+    listMcp(): Promise<HermesMcpListResult>;
+  };
+
+  /** 官署人格 SOUL 读取/保存（自定义覆盖优先，回退蓝本） */
+  hermesSoul: {
+    get(profileId: string): Promise<{ ok: boolean; id?: string; content?: string; source?: 'custom' | 'blueprint'; error?: string }>;
+    save(profileId: string, content: string): Promise<{ ok: boolean; id?: string; error?: string }>;
+  };
+  /** Hermes dashboard gateway JSON-RPC WS（带 token 的 url） */
+  hermesGateway: {
+    getUrl(): Promise<{ wsUrl?: string; error?: string }>;
+  };
   /** Hermes 逐步编排（团队任务 → 子代理逐步执行 + 人工/自评确认） */
   hermesOrchestrate: {
     submit(payload: {
@@ -813,8 +925,8 @@ export interface ElectronAPI {
     /** 扫描本地运行时目录补登记 */
     syncChat(): Promise<{ ok: boolean; added?: number; error?: string }>;
   };
-  /** 把后端启用中的 MCP 写入 OpenClaw 本地配置 */
-  openclawMcp: {
+  /** 把后端启用中的 MCP 写入 Hermes 本地配置 */
+  hermesMcp: {
     syncFromBackend(token: string): Promise<{ ok: boolean; count?: number; error?: string }>;
   };
   syncQueue: {
@@ -847,41 +959,10 @@ export interface ElectronAPI {
   };
 
 
-  /** 三省六部看板（OpenClaw 太子 + Hermes 官署执行，edict JSON 看板） */
+  /** 三省六部看板（Hermes 官署执行，edict JSON 看板） */
   edict: EdictAPI;
 
-  /** OpenClaw 本地直达对话（记账在云端，消息走本地 OpenClaw） */
-  openclawChat: {
-    /** 注入用户 llm-proxy 静态 Key（登录后调用；OpenClaw openai provider 指向云端 llm-proxy） */
-    setProxyKey(key: string): void;
-    /** 同步用户首选对话模型到 OpenClaw 配置（agents.defaults.model；当前会话由主进程 sessions.patch 处理） */
-    setModel(modelId: string): void;
-    /** 发送一条消息：本地 OpenClaw 流式对话（扣费由云端 llm-proxy 完成）。流式内容经 onMessage 推送 */
-    send(
-      text: string,
-      token: string,
-      history?: OpenClawChatMessage[],
-      knowledgeBaseId?: number,
-      sessionId?: number,
-      modelId?: string,
-    ): Promise<{ ok: boolean; aborted?: boolean }>;
-    /** 中断当前对话（本地 abort） */
-    abort(): void;
-    /** 同步最新云端 token 到 auth.json（登录/刷新 token 时调用，供工具卡读取） */
-    syncAuth(token: string): void;
-    /** 流式文本块（openclaw-chat:message） */
-    onMessage(cb: (payload: OpenClawChatMessagePayload) => void): () => void;
-    /** 终审/来源标注后的最终文本（openclaw-chat:finalize；渲染层用其覆盖流式内容） */
-    onFinalize(cb: (payload: OpenClawChatMessagePayload) => void): () => void;
-    /** 工具调用（openclaw-chat:tool-call） */
-    onToolCall(cb: (toolCall: OpenClawToolCall) => void): () => void;
-    /** Agent 生命周期（openclaw-chat:lifecycle） */
-    onLifecycle(cb: (payload: OpenClawChatLifecyclePayload) => void): () => void;
-    /** 完成（openclaw-chat:done） */
-    onDone(cb: (payload: OpenClawChatDonePayload) => void): () => void;
-    /** 错误（openclaw-chat:error） */
-    onError(cb: (payload: OpenClawChatErrorPayload) => void): () => void;
-  };
+
 }
 
 
@@ -959,7 +1040,7 @@ export interface EdictAPI {
   updateRemoteSkill(agentId: string, skillName: string): Promise<EdictOp>;
   /** 技能配置：移除远程技能 */
   removeRemoteSkill(agentId: string, skillName: string): Promise<EdictOp>;
-  /** 技能配置：技能库（技能市场《我的》：OpenClaw 内置 / Hermes 已装 / 云端技能包） */
+  /** 技能配置：技能库（技能市场《我的》：Hermes 已装 / 云端技能包） */
   skillLibrary(): Promise<EdictSkillLibraryResult>;
   /** 技能配置：把技能库技能整目录复制到官署 profile */
   copySkill(agentId: string, source: string, skillName: string): Promise<EdictOp>;
@@ -1070,3 +1151,6 @@ export interface InstallProgressPayload {
   status: "downloading" | "extracting" | "verifying" | "completed" | "error";
   message?: string;
 }
+
+/** 已知服务 id 白名单（编译期常量；运行时仍允许动态模块 id，用 KNOWN_SERVICE_NAMES 做 UI/校验过滤） */
+export const KNOWN_SERVICE_NAMES: readonly KnownServiceName[] = ["n8n", "hermes", "video-claw"];

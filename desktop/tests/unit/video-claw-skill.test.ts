@@ -1,12 +1,12 @@
-// video-claw OpenClaw 技能入库测试（Task 5）
-// 验证技能包已内置到桌面端 resources/openclaw/skills/video-claw，
+// video-claw Hermes 技能入库测试（Task 5）
+// 验证技能包已内置到桌面端 resources/hermes/skills/video-claw，
 // 且 SKILL.md 初始化章节已改为“桌面端已自动配置”（无需用户手动初始化）。
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-const SKILL_ROOT = join(__dirname, '../../resources/openclaw/skills/video-claw')
+const SKILL_ROOT = join(__dirname, '../../resources/hermes/skills/video-claw')
 
-describe('video-claw OpenClaw 技能包', () => {
+describe('video-claw Hermes 技能包', () => {
   it('SKILL.md 存在且登记 name: video-claw', () => {
     const p = join(SKILL_ROOT, 'SKILL.md')
     expect(existsSync(p)).toBe(true)

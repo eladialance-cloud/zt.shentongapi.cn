@@ -32,9 +32,9 @@ function showMainWindow(mainWindow: BrowserWindow): void {
 function buildContextMenu(mainWindow: BrowserWindow, serviceManager: ServiceManager): Menu {
   const allStatus = serviceManager.getAllStatus()
   const serviceEntries: { name: ServiceName; label: string }[] = [
-    { name: 'openclaw', label: 'OpenClaw' },
     { name: 'n8n', label: 'N8N' },
-    { name: 'mcp', label: 'MCP' }
+    { name: 'hermes', label: 'Hermes' },
+    { name: 'video-claw', label: 'ST-Claw' }
   ]
 
   return Menu.buildFromTemplate([

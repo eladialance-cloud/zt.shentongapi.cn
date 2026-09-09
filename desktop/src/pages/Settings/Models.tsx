@@ -1,7 +1,7 @@
 // 模型设置（Phase 4：每类默认模型）
 // 分类默认模型：文本对话 chat / 图片识图 vision / 文生图 image（含图生图）/ 视频生成 video / 语音合成 tts
 // 作用：llm-proxy 多模态网关在请求未显式指定模型时，按分类使用这里的默认模型；
-//       OpenClaw/Hermes/N8N 工作流（文案/识图/绘画/视频/语音）未指定模型时自动走分类默认。
+//       Hermes/N8N 工作流（文案/识图/绘画/视频/语音）未指定模型时自动走分类默认。
 //
 // API：
 //   GET  /models                          全量启用模型（含 modelType/modelId）
@@ -49,7 +49,7 @@ const CATEGORY_DEFS: Array<{
   {
     key: 'chat',
     label: '文本对话 chat',
-    desc: '对话/文案/问答，OpenClaw 未指定模型时使用',
+    desc: '对话/文案/问答，Hermes 未指定模型时使用',
     icon: <RobotOutlined />,
     match: (t) => t === 'chat' || t === 'vision' || t === 'reasoning'
   },
@@ -183,7 +183,7 @@ export default function SettingsModels() {
             type="info"
             showIcon
             message="每类默认模型"
-            description="OpenClaw / Hermes / N8N 工作流调用 llm-proxy 网关时，未显式指定模型将按分类使用这里的默认模型（如文案推理用文本对话、图片生成用文生图）；不设置则取管理后台排序权重最靠前的该分类模型。"
+            description="Hermes / N8N 工作流调用 llm-proxy 网关时，未显式指定模型将按分类使用这里的默认模型（如文案推理用文本对话、图片生成用文生图）；不设置则取管理后台排序权重最靠前的该分类模型。"
             style={{ marginBottom: 16 }}
           />
           <Form form={form} layout="vertical">

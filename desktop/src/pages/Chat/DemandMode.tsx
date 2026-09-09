@@ -2,7 +2,7 @@
 // - DemandModeBar：自由对话（默认）/ 老板模式 / 客户会议模式
 // - DemandWizard：对话气泡式逐步提问（AI 问 / 用户答），提供「上一步 / 跳过」，
 //   收集完成显示「需求汇总卡」+「发布简报」；历史简报预填后只问差异点。
-// 步骤键序 / 文案 / 必填规则全部来自 demand-schema 纯函数，不依赖 OpenClaw。
+// 步骤键序 / 文案 / 必填规则全部来自 demand-schema 纯函数，不依赖 Hermes。
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Avatar, Button, Input, Segmented, message } from 'antd'

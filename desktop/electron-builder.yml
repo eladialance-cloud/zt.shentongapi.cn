@@ -33,22 +33,25 @@ extraResources:
   # 逐文件复制到 resources/ 顶层（目录复制会产生 resources/resources/ 嵌套）
   - from: resources/icon.png
     to: icon.png
-  - from: resources/mcp/mcp-gateway-server.js
-    to: mcp/mcp-gateway-server.js
   - from: runtime/manifest.json
     to: runtime/manifest.json
+  # 服务行清单（base + modules/*）；dev 从 desktop/resources/service-registry 读取
+  - from: resources/service-registry/base.patch.yaml
+    to: service-registry/base.patch.yaml
+  - from: resources/service-registry/modules
+    to: service-registry/modules
   # n8n 界面汉化脚本（n8n-trans 用户脚本，注入内嵌 n8n iframe 实现中文界面）
   - from: resources/n8n/n8n-chinese.js
     to: n8n/n8n-chinese.js
   # 内置 Hermes 技能目录（st-claw-controller 等，随包分发；Hermes 启动时同步到 HERMES_HOME/skills）
   - from: resources/hermes/skills
     to: hermes/skills
-  # 内置 OpenClaw 技能目录（缺失会导致 openclaw.json extraDirs 指向失效路径、OpenClaw 启动校验失败）
-  - from: resources/openclaw/skills
-    to: openclaw/skills
   # edict blueprints (official SOUL / kanban state machine / agents / scripts): missing breaks all Hermes features
   - from: resources/edict
     to: edict
+  # 沙箱受限令牌 launcher（C# SandboxRunner.cs 编译产物；模块严格权限档使用，缺省全权限不触发）
+  - from: resources/sandbox/shentong-sandbox-runner.exe
+    to: sandbox/shentong-sandbox-runner.exe
 win:
   target:
     - target: nsis

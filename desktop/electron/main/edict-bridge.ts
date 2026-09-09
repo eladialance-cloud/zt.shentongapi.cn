@@ -105,7 +105,7 @@ function buildHermesCliEnv(): NodeJS.ProcessEnv {
   const root = resolveHermesRoot();
   const ext = process.platform === "win32" ? ".exe" : "";
   // 记账上下文目录（n8n-run-workflow 工具卡读取 ST_AUTH_FILE / ST_ACCOUNTING_FILE）
-  const accountingDir = path.join(app.getPath("userData"), "openclaw-chat");
+  const accountingDir = path.join(app.getPath("userData"), "hermes-chat");
   try {
     fs.mkdirSync(accountingDir, { recursive: true });
   } catch {
@@ -116,7 +116,7 @@ function buildHermesCliEnv(): NodeJS.ProcessEnv {
     HERMES_NODE: path.join(root, "node", "node" + ext),
     HERMES_ENTRY: path.join(root, "node_modules", "hermes-agent", "bin", "hermes.js"),
     HERMES_HOME: path.join(app.getPath("userData"), "hermes-home"),
-    // 官署技能所需环境变量（与 OpenClaw 进程对齐）：n8n-run-workflow 读取 N8N/ST 系列变量，
+    // 官署技能所需环境变量（与 Hermes 进程对齐）：n8n-run-workflow 读取 N8N/ST 系列变量，
     // 看板工具卡读取 EDICT_HOME；确保官署 Hermes CLI 进程内技能脚本可直接运行
     N8N_BASE_URL: "http://127.0.0.1:5678",
     ST_API_BASE,
@@ -144,15 +144,15 @@ const EDICT_PROFILE_DESC: Record<string, string> = {
 /** 六部（执行层）官署：预置 n8n-run-workflow 技能 */
 const N8N_SKILL_AGENTS: readonly string[] = ["hubu", "libu", "bingbu", "xingbu", "gongbu", "libu_hr"];
 
-/** n8n-run-workflow 技能蓝本目录（打包后 resources/openclaw/skills；开发 desktop/resources/openclaw/skills） */
+/** n8n-run-workflow 技能蓝本目录（打包后 resources/hermes/skills；开发 desktop/resources/hermes/skills） */
 function getN8nSkillSourceDir(): string {
   return app.isPackaged
-    ? path.join(process.resourcesPath, "openclaw", "skills", "n8n-run-workflow")
-    : path.join(process.cwd(), "resources", "openclaw", "skills", "n8n-run-workflow");
+    ? path.join(process.resourcesPath, "hermes", "skills", "n8n-run-workflow")
+    : path.join(process.cwd(), "resources", "hermes", "skills", "n8n-run-workflow");
 }
 
 /** 官署 SOUL.md 蓝本目录（打包后 resources/edict/profiles；开发 desktop/resources/edict/profiles） */
-function getEdictProfilesDir(): string {
+export function getEdictProfilesDir(): string {
   return path.join(getEdictResourcesRoot(), "profiles");
 }
 
@@ -340,7 +340,7 @@ export function createEdictDeps(): EdictDeps {
 
   // 编排结束 best-effort 计费回写：POST /api/hermes/executions/report（call_type=orchestrate）
   const reportExecution: EdictDeps["reportExecution"] = async (input) => {
-    const authFile = path.join(app.getPath("userData"), "openclaw-chat", "auth.json");
+    const authFile = path.join(app.getPath("userData"), "hermes-chat", "auth.json");
     let token = "";
     try {
       if (fs.existsSync(authFile)) {
@@ -464,7 +464,7 @@ export async function importTaskAssetsToLibrary(deps: EdictDeps, taskId: string)
     return;
   }
   // 未登录（无 token）→ 不标记，随轮询/重启重试
-  const authFile = path.join(app.getPath("userData"), "openclaw-chat", "auth.json");
+  const authFile = path.join(app.getPath("userData"), "hermes-chat", "auth.json");
   let token = "";
   try {
     if (fs.existsSync(authFile)) {
@@ -903,7 +903,7 @@ export function createEdictExtraDeps(base: EdictDeps, opts: CreateEdictExtraDeps
     stApiBase: ST_API_BASE,
     getAuthToken: () => {
       try {
-        const auth = JSON.parse(fs.readFileSync(path.join(app.getPath("userData"), "openclaw-chat", "auth.json"), "utf-8"));
+        const auth = JSON.parse(fs.readFileSync(path.join(app.getPath("userData"), "hermes-chat", "auth.json"), "utf-8"));
         return typeof auth?.token === "string" ? auth.token : "";
       } catch {
         return "";

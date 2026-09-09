@@ -14,7 +14,8 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@shared/*": ["./electron/shared/*"]
+      "@shared/*": ["./electron/shared/*"],
+      "js-yaml": ["./electron/main/service-registry/js-yaml.d.ts"]
     }
   },
   "include": ["electron/**/*.ts", "scripts/**/*"]

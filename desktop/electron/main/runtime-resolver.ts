@@ -1,14 +1,14 @@
 ﻿// 跨平台运行时路径解析器（Task 2 + Task 9.1）
 //
 // 职责：
-// - 解析 N8N / OpenClaw / MCP Gateway / Hermes Agent 四个本地服务运行时的入口绝对路径
+// - 解析 N8N / Hermes Agent / VideoClaw 本地服务运行时的入口绝对路径
 // - 解析优先级：内置 extraResources → userData 补丁 → 宿主机命令回退
 // - 校验运行时文件完整性（SHA-256，流式处理大文件）
 // - 读取 manifest.json（Task 9.1：比对 builtin 与 userData 的 version 字段，返回较新者）
 //
 // 说明：
-// - 服务 key 即目录名：n8n → runtime/n8n/，mcp → runtime/mcp/（非 mcp-gateway）
-// - 入口文件名在 manifest 的 entry 字段中（如 mcp 服务的 win32 入口是 mcp-gateway.exe）
+// - 服务 key 即目录名：n8n → runtime/n8n/，hermes → runtime/hermes/
+// - 入口文件名在 manifest 的 entry 字段中
 // - 开发环境下 process.resourcesPath 指向 electron 自身目录，需用 process.cwd() 兜底
 
 import { app } from "electron";
@@ -27,8 +27,6 @@ import type {
 /** 宿主机回退命令映射（服务 key -> 命令名 + 默认参数） */
 const HOST_COMMANDS: Record<ServiceName, { cmd: string; args: string[] }> = {
   n8n: { cmd: "n8n", args: ["start"] },
-  openclaw: { cmd: "openclaw", args: [] },
-  mcp: { cmd: "mcp-gateway", args: [] },
   hermes: { cmd: "hermes", args: [] },
   "video-claw": { cmd: "video-claw", args: [] },
 };
@@ -359,12 +357,10 @@ export async function verifyIntegrity(name: ServiceName): Promise<boolean> {
 
 /** 校验所有服务，返回各服务完整性 */
 export async function verifyAll(): Promise<Record<ServiceName, boolean>> {
-  const [n8n, openclaw, mcp, hermes, videoClaw] = await Promise.all([
+  const [n8nValue, hermesValue, videoClawValue] = await Promise.all([
     verifyIntegrity("n8n"),
-    verifyIntegrity("openclaw"),
-    verifyIntegrity("mcp"),
     verifyIntegrity("hermes"),
     verifyIntegrity("video-claw"),
   ]);
-  return { n8n, openclaw, mcp, hermes, "video-claw": videoClaw };
+  return { n8n: n8nValue, hermes: hermesValue, "video-claw": videoClawValue };
 }

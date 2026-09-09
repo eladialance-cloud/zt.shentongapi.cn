@@ -1,0 +1,19 @@
+# ST-Claw 模块样板（tier: module）：
+# id 沿用现有产品服务 id video-claw（runtimeKey/UI/IPC 零涟漪）；tier=module 表达可停用/可隐藏。
+insert:
+  - id: video-claw
+    displayName: ST-Claw
+    tier: module
+    runtimeKey: video-claw
+    port: 8000
+    readyPorts: [3000]
+    launch: video-claw
+    envKey: video-claw
+    preStartKey: video-claw
+    onConfigKey: video-claw
+    restartOn: [proxyKey, modelDefaults]
+    capabilities:
+      webUi:
+        url: http://127.0.0.1:3000
+      httpApi:
+        port: 8000

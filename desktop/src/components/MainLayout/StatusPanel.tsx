@@ -20,12 +20,10 @@ import { getTransactions } from '@/api/credits-api'
 import type { ServiceName, ServiceStatus } from '@/types/service-manager'
 import styles from './styles.module.css'
 
-const SERVICE_ORDER: ServiceName[] = ['openclaw', 'n8n', 'mcp', 'hermes', 'video-claw']
+const SERVICE_ORDER: ServiceName[] = ['n8n', 'hermes', 'video-claw']
 
 const SERVICE_LABELS: Record<ServiceName, string> = {
-  openclaw: 'OpenClaw',
   n8n: 'N8N',
-  mcp: 'MCP',
   hermes: 'Hermes',
   'video-claw': 'ST-Claw'
 }
@@ -62,9 +60,7 @@ export default function StatusPanel({ open, onClose }: StatusPanelProps) {
   const fetchBalance = useCreditsStore((s) => s.fetchBalance)
 
   const [statuses, setStatuses] = useState<Record<ServiceName, ServiceStatus>>({
-    openclaw: 'unknown',
     n8n: 'unknown',
-    mcp: 'unknown',
     hermes: 'unknown',
     'video-claw': 'unknown'
   })

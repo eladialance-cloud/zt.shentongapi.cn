@@ -146,8 +146,8 @@ export default function Login() {
       message.warning("本地数据库初始化失败，已进入降级模式");
     }
 
-    // 同步启用中的 MCP 到 OpenClaw 本地配置（fire-and-forget，失败不阻塞登录）
-    void window.electronAPI?.openclawMcp?.syncFromBackend?.(data.accessToken);
+    // 同步启用中的 MCP 到 Hermes 本地配置（fire-and-forget，失败不阻塞登录）
+    void window.electronAPI?.hermesMcp?.syncFromBackend?.(data.accessToken);
 
     message.success(`欢迎回来，${data.user.username}`);
     navigate("/dashboard", { replace: true });
@@ -247,3 +247,4 @@ export default function Login() {
     </div>
   );
 }
+

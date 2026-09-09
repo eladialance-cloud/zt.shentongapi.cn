@@ -5,21 +5,21 @@
 //   keyboard_type / mouse_click / browser_open / screenshot / system_exec（高危）
 //
 // 启动方式：Electron 主进程带 --shentong-mcp-server 参数进入本模式（见 index.ts）
-// 注册方式：写入 <OPENCLAW_HOME>/.openclaw/openclaw.json 的 mcp.servers（见 registerComputerControlMcp）
+// 注册方式：写入 Hermes config.yaml 的 mcp_servers（见 registerComputerControlMcp）
 //
 // 安全：
 //   - system_exec 标记 high_risk，由上层（remote-control 高危白名单）二次确认后才会走到这里
 //   - browser_open 仅允许 http/https
 //   - file_read 有大小上限；file_write 仅允许绝对路径
 
-import { clipboard, shell } from 'electron'
+import { app, clipboard, shell } from 'electron'
 import { readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import * as readline from 'node:readline'
 import * as path from 'node:path'
-import { writeOpenClawMcpServers } from './openclaw-mcp-sync'
+import { writeHermesMcpServers } from './hermes-mcp-sync'
 
 const execFileAsync = promisify(execFile)
 
@@ -351,15 +351,19 @@ export async function runComputerControlMcpServer(): Promise<void> {
   }
 }
 
-/** 把 computer-control MCP 注册进 OpenClaw mcp.servers（本应用可执行文件 + --shentong-mcp-server） */
+/** 把 computer-control MCP 注册进 Hermes mcp_servers（本应用可执行文件 + --shentong-mcp-server） */
 export function registerComputerControlMcp(): void {
-  writeOpenClawMcpServers([
-    {
-      name: 'computer-control',
-      command: process.execPath,
-      args: ['--shentong-mcp-server'],
-      env: {},
-      enabled: true,
-    },
-  ])
+  const { join } = require('node:path');
+  writeHermesMcpServers(
+    join(app.getPath('userData'), 'hermes-home', 'config.yaml'),
+    [
+      {
+        name: 'computer-control',
+        command: process.execPath,
+        args: ['--shentong-mcp-server'],
+        env: {},
+        enabled: true,
+      },
+    ],
+  )
 }

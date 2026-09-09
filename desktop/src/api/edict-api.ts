@@ -216,7 +216,7 @@ export async function edictRemoveRemoteSkill(agentId: string, skillName: string)
   return getEdict().removeRemoteSkill(agentId, skillName);
 }
 
-/** 技能库：技能市场《我的》（OpenClaw 内置 / Hermes 已装 / 云端技能包） */
+/** 技能库：技能市场《我的》（Hermes 已装 / 云端技能包） */
 export async function edictSkillLibrary(): Promise<EdictSkillLibraryResult> {
   return getEdict().skillLibrary();
 }

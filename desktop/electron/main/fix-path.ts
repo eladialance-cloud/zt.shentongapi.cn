@@ -26,26 +26,6 @@ function findQClawNodePaths(): string[] {
       for (const ver of versions) {
         const nodePath = path.join(qclawRoot, ver, "resources", "node");
         if (fs.existsSync(nodePath)) results.push(nodePath);
-        const openclawNodePath = path.join(
-          qclawRoot,
-          ver,
-          "resources",
-          "openclaw",
-          "config",
-          "bin",
-          "node",
-          "node",
-        );
-        if (fs.existsSync(openclawNodePath)) results.push(openclawNodePath);
-        const openclawNpmPath = path.join(
-          qclawRoot,
-          ver,
-          "resources",
-          "openclaw",
-          "config",
-          "npm-tools",
-        );
-        if (fs.existsSync(openclawNpmPath)) results.push(openclawNpmPath);
       }
     }
   } catch {

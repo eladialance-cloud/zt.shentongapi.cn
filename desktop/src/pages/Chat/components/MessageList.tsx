@@ -24,7 +24,7 @@ interface MessageListProps {
   streaming?: boolean;
   /** 流式期间收到的工具调用 */
   streamingToolCalls?: ChatMessage["toolCalls"];
-  /** OpenClaw Agent 生命周期阶段（过程面板） */
+  /** Hermes Agent 生命周期阶段（过程面板） */
   agentPhase?: "idle" | "start" | "finishing" | "end" | "error";
 }
 
@@ -159,6 +159,11 @@ export function MessageList({
               {/* 元信息 */}
               <div className={styles.messageMeta}>
                 <span>{formatTime(msg.createdAt)}</span>
+                {!isUser && msg.tokenUsage && (
+                  <span className={styles.tokenUsage}>
+                    输入 {msg.tokenUsage.promptTokens} · 输出 {msg.tokenUsage.completionTokens} · 共 {msg.tokenUsage.totalTokens} tokens
+                  </span>
+                )}
                 {!isUser && msg.creditsCost != null && msg.creditsCost > 0 && (
                   <CreditsBadge cost={msg.creditsCost} />
                 )}

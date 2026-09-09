@@ -299,7 +299,7 @@ export async function listChatModels(): Promise<ModelOption[]> {
 }
 
 /**
- * 获取/生成用户 llm-proxy 静态 Key（登录后注入 OpenClaw，供应商 Key 在服务器）
+ * 获取/生成用户 llm-proxy 静态 Key（登录后注入 Hermes，供应商 Key 在服务器）
  * GET /chat/accounting/proxy-key
  */
 export async function fetchLlmProxyKey(): Promise<{ llmProxyKey: string }> {
@@ -307,7 +307,7 @@ export async function fetchLlmProxyKey(): Promise<{ llmProxyKey: string }> {
 }
 
 /**
- * 保存用户默认对话模型（OpenClaw 本地直达对话：llm-proxy 收到 openclaw 内部模型名时按此解析）
+ * 保存用户默认对话模型（Hermes 本地直达对话：llm-proxy 收到 Hermes 内部模型名时按此解析）
  * POST /chat/accounting/preferred-model
  */
 export async function setPreferredChatModel(

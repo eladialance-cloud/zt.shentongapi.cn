@@ -281,11 +281,11 @@ function readProfileModel(deps: EdictExtraDeps, agentId: string): string {
   }
 }
 
-/** 唤醒（确保）指定官署 profile；taizi 为 OpenClaw 入口，仅提示 */
+/** 唤醒（确保）指定官署 profile；taizi 为 Hermes 入口，仅提示 */
 export async function wakeAgent(deps: EdictExtraDeps, agentId: string): Promise<EdictOp> {
   if (!assertSafeAgentId(agentId)) return { ok: false, error: "官署 ID 非法" };
   if (agentId === "taizi" || agentId === "main") {
-    return { ok: true, data: "太子由 OpenClaw 承载，无需唤醒" };
+    return { ok: true, data: "太子由 Hermes 承载，无需唤醒" };
   }
   const r = await deps.ensureProfiles([agentId as (typeof EDICT_PROFILE_IDS)[number]]);
   if (!r.ok) return { ok: false, error: r.reason || "唤醒失败" };
@@ -392,58 +392,8 @@ export async function buildAgentConfig(deps: EdictExtraDeps): Promise<EdictAgent
   return { agents, knownModels };
 }
 
-// ===== 技能库（技能市场《我的》：OpenClaw 内置 / Hermes 已装 / 云端技能包） =====
+// ===== 技能库（技能市场《我的》：Hermes 已装 / 云端技能包） =====
 
-/** OpenClaw 内置技能根（运行时下载目录 + 打包内置 resources/openclaw/skills） */
-function getOpenClawSkillsRoots(deps: EdictExtraDeps): string[] {
-  const candidates = [
-    path.join(deps.runtimeRoot, "openclaw", "node_modules", "openclaw", "skills"),
-    path.join(process.cwd(), "runtime", "openclaw", "node_modules", "openclaw", "skills"),
-    typeof process.resourcesPath === "string" && process.resourcesPath
-      ? path.join(process.resourcesPath, "openclaw", "skills")
-      : "",
-    path.join(process.cwd(), "resources", "openclaw", "skills"),
-  ].filter(Boolean);
-  return candidates.filter((c) => fs.existsSync(c));
-}
-
-/** OpenClaw 内置技能根（兼容单根读取，取第一个存在的） */
-function getOpenClawSkillsRoot(deps: EdictExtraDeps): string {
-  const roots = getOpenClawSkillsRoots(deps);
-  return roots[0] ?? path.join(deps.runtimeRoot, "openclaw", "node_modules", "openclaw", "skills");
-}
-
-/** OpenClaw 技能 → 类别（添加技能弹窗分类筛选用） */
-const SKILL_CATEGORY: Record<string, string> = {
-  coding: "开发",
-  "coding-agent": "开发", github: "开发", "gh-issues": "开发",
-  "node-inspect-debugger": "开发", "python-debugpy": "开发", "diagram-maker": "开发",
-  spike: "开发", oracle: "开发", "skill-creator": "开发", "model-usage": "开发", gemini: "开发",
-  notion: "文档知识", obsidian: "文档知识", "bear-notes": "文档知识", "apple-notes": "文档知识",
-  "nano-pdf": "文档知识", summarize: "文档知识", blogwatcher: "文档知识", "session-logs": "文档知识",
-  himalaya: "沟通协作", gog: "沟通协作", trello: "沟通协作", xurl: "沟通协作", goplaces: "沟通协作",
-  tmux: "运维系统", healthcheck: "运维系统", mcporter: "运维系统", weather: "运维系统",
-  camsnap: "运维系统", "node-connect": "运维系统", clawhub: "运维系统",
-  "meme-maker": "内容创作", "video-frames": "内容创作", songsee: "内容创作",
-  "sherpa-onnx-tts": "内容创作", "openai-whisper": "内容创作", "openai-whisper-api": "内容创作",
-  sag: "内容创作", gifgrep: "内容创作",
-  taskflow: "任务流程", "taskflow-inbox-triage": "任务流程",
-  "1password": "生活硬件", blucli: "生活硬件", eightctl: "生活硬件", openhue: "生活硬件",
-  sonoscli: "生活硬件", "spotify-player": "生活硬件", ordercli: "生活硬件",
-  "things-mac": "生活硬件", peekaboo: "生活硬件",
-};
-
-/** OpenClaw 技能 → 依赖提示 */
-const SKILL_DEPS: Record<string, string> = {
-  "apple-notes": "需 macOS", "apple-reminders": "需 macOS", "bear-notes": "需 macOS",
-  "things-mac": "需 macOS", peekaboo: "需 macOS",
-  github: "需账号", "gh-issues": "需账号", notion: "需账号", gog: "需账号", himalaya: "需账号",
-  trello: "需账号", xurl: "需账号", goplaces: "需账号", "openai-whisper-api": "需账号",
-  sag: "需账号", "1password": "需账号", camsnap: "需账号", openhue: "需账号",
-  sonoscli: "需账号", "spotify-player": "需账号", blucli: "需账号", eightctl: "需账号", ordercli: "需账号",
-  "coding-agent": "需安装 CLI", oracle: "需安装 CLI", gemini: "需安装 CLI",
-  summarize: "需联网", blogwatcher: "需联网", weather: "需联网", "meme-maker": "需联网",
-};
 
 /** 解析 SKILL.md 的 name/description（frontmatter） */
 function parseSkillMeta(skillDir: string): { name: string; description: string } {
@@ -460,30 +410,9 @@ function parseSkillMeta(skillDir: string): { name: string; description: string }
   }
 }
 
-/** 枚举技能库（OpenClaw 内置 + Hermes 已装 + 云端技能包） */
+/** 枚举技能库（Hermes 已装 + 云端技能包） */
 export function listSkillLibrary(deps: EdictExtraDeps): EdictSkillLibraryResult {
   const skills: EdictLibrarySkill[] = [];
-  // 1) OpenClaw 内置（OpenClaw 运行时自带 skills + 桌面端内置 resources/openclaw/skills）
-  try {
-    for (const root of getOpenClawSkillsRoots(deps)) {
-      for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
-        if (!ent.isDirectory()) continue;
-        const dir = path.join(root, ent.name);
-        if (!fs.existsSync(path.join(dir, "SKILL.md"))) continue;
-        const meta = parseSkillMeta(dir);
-        skills.push({
-          name: meta.name,
-          description: meta.description,
-          category: SKILL_CATEGORY[meta.name] || "其他",
-          deps: SKILL_DEPS[meta.name] || "离线可用",
-          source: "openclaw",
-          dir,
-        });
-      }
-    }
-  } catch (err) {
-    console.warn("[edict] OpenClaw 技能枚举失败: " + (err instanceof Error ? err.message : String(err)));
-  }
   // 2) Hermes 已装技能（$HERMES_HOME/skills）
   try {
     const root = path.join(deps.hermesHome, "skills");
@@ -566,13 +495,6 @@ export function listSkillLibrary(deps: EdictExtraDeps): EdictSkillLibraryResult 
 
 /** 按来源+名称解析技能库目录（SKILL.md 所在目录） */
 function resolveLibrarySkillDir(deps: EdictExtraDeps, source: string, skillName: string): string {
-  if (source === "openclaw") {
-    for (const root of getOpenClawSkillsRoots(deps)) {
-      const dir = path.join(root, skillName);
-      if (fs.existsSync(path.join(dir, "SKILL.md"))) return dir;
-    }
-    return "";
-  }
   if (source === "hermes") {
     const dir = path.join(deps.hermesHome, "skills", skillName);
     if (fs.existsSync(path.join(dir, "SKILL.md"))) return dir;

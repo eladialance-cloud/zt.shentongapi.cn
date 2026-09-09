@@ -1,7 +1,7 @@
 // SubTask 10.5: 内置本地服务运行时 - 运行时解析与校验 e2e 测试
 //
 // 测试场景：
-// 1. manifest.json 结构验证：4 个服务、字段完整性、端口正确性
+// 1. manifest.json 结构验证：3 个服务、字段完整性、端口正确性
 // 2. pickNewerManifest 语义化版本比较：null 处理、版本高低、相等时优先 userData
 // 3. manifest 完整性：downloadUrl / entry / sha256 多平台字段覆盖
 //
@@ -79,7 +79,7 @@ function makeManifest(version: string): RuntimeManifest {
 }
 
 /** 全部服务名 */
-const SERVICE_NAMES: ServiceName[] = ['n8n', 'openclaw', 'mcp', 'hermes', 'video-claw']
+const SERVICE_NAMES: ServiceName[] = ['n8n', 'hermes', 'video-claw']
 /** 平台-架构组合（downloadUrl / sha256 字段 key） */
 const PLATFORM_ARCH_KEYS = [
   'win32-x64',
@@ -92,7 +92,7 @@ const PLATFORM_KEYS = ['win32', 'darwin', 'linux']
 
 describe('SubTask 10.5 - 运行时解析与校验', () => {
   describe('Runtime Manifest', () => {
-    it('should load manifest.json with all 5 services', () => {
+    it('should load manifest.json with all 3 services', () => {
       // act
       const manifest = loadManifest()
 
@@ -101,14 +101,8 @@ describe('SubTask 10.5 - 运行时解析与校验', () => {
       expect(typeof manifest.version).toBe('string')
       expect(manifest.services).toBeDefined()
 
-      // assert - services 包含 n8n / openclaw / mcp / hermes 四个 key
-      expect(Object.keys(manifest.services).sort()).toEqual([
-        'hermes',
-        'mcp',
-        'n8n',
-        'openclaw',
-        'video-claw'
-      ])
+      // assert - services 包含 n8n / hermes / video-claw 三个 key
+      expect(Object.keys(manifest.services).sort()).toEqual(['hermes', 'n8n', 'video-claw'])
 
       // assert - 每个服务具备 version / entry / downloadUrl / sha256 字段
       for (const name of SERVICE_NAMES) {
@@ -131,8 +125,7 @@ describe('SubTask 10.5 - 运行时解析与校验', () => {
 
       // assert
       expect(manifest.services.n8n.port).toBe(5678)
-      expect(manifest.services.openclaw.port).toBe(8080)
-      expect(manifest.services.mcp.port).toBe(3100)
+      expect(manifest.services['video-claw'].port).toBe(8000)
       expect(manifest.services.hermes.port).toBe(8642)
     })
   })

@@ -45,7 +45,7 @@ const API_BASE_URL =
 /** 同步最新 token 到主进程 auth.json（n8n-run-workflow 等工具卡读取） */
 function syncAuthToken(token: string | null | undefined): void {
   try {
-    window.electronAPI?.openclawChat?.syncAuth?.(token || "");
+    window.electronAPI?.hermesChat?.syncAuth?.(token || "");
   } catch {
     // 非 Electron 环境忽略
   }
@@ -200,3 +200,4 @@ export const useAuthStore = create<AuthState>()(
     },
   ),
 );
+

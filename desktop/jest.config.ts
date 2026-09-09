@@ -23,8 +23,9 @@ const config: Config = {
     "<rootDir>/runtime/",
   ],
   testPathIgnorePatterns: [
-    // openclaw-chat.test.ts 使用 node:test 运行器（npx tsx --test），jest 会误报「至少一个测试」
-    "<rootDir>/tests/unit/openclaw-chat.test.ts",
+    "<rootDir>/tests/unit/hermes-chat.test.ts",
+    "<rootDir>/tests/unit/hermes-chat-pipeline.test.ts",
+    "<rootDir>/tests/unit/hermes-mcp-sync.test.ts",
   ],
 };
 

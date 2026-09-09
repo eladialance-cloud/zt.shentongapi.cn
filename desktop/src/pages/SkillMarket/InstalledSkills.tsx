@@ -1,5 +1,5 @@
 // 我的-技能包：已安装技能包列表
-// 调用 GET /hermes/skills/installed + 本地市场记录 + OpenClaw 内置技能（军机处技能库来源）
+// 调用 GET /hermes/skills/installed + 本地市场记录（军机处技能库来源）
 
 import { useCallback, useEffect, useState } from "react";
 import { Button, Card, Empty, Spin, Tag, message } from "antd";
@@ -41,14 +41,14 @@ export default function InstalledSkills() {
           version: r.version,
           installDir: r.dir,
         }));
-      // OpenClaw 内置技能（军机处技能库可选用）
+      // Hermes 内置技能（军机处技能库可选用）
       const libSkills: Array<InstalledSkill & { installDir?: string; libSource?: string; category?: string; deps?: string }> = (libRes?.skills || [])
-        .filter((s) => s.source === "openclaw")
+        .filter((s) => s.source === "hermes")
         .map((s, idx) => ({
           id: -1000 - idx,
           name: s.name,
-          description: s.description || "OpenClaw 内置技能",
-          author: "OpenClaw 内置",
+          description: s.description || "Hermes 内置技能",
+          author: "Hermes 内置",
           pricePerMinute: 0,
           installCount: 0,
           mounted: false,
@@ -98,9 +98,9 @@ export default function InstalledSkills() {
                     <ThunderboltOutlined />
                   </div>
                   <span className={styles.skillName}>{skill.name}</span>
-                  {skill.libSource === "openclaw" && <Tag color="blue">OpenClaw 内置</Tag>}
-                  {skill.category && skill.libSource === "openclaw" && <Tag color="geekblue">{skill.category}</Tag>}
-                  {skill.deps && skill.libSource === "openclaw" && <Tag>{skill.deps}</Tag>}
+                  {skill.libSource === "hermes" && <Tag color="blue">Hermes 内置</Tag>}
+                  {skill.category && skill.libSource === "hermes" && <Tag color="geekblue">{skill.category}</Tag>}
+                  {skill.deps && skill.libSource === "hermes" && <Tag>{skill.deps}</Tag>}
                   {skill.mounted && (
                     <Tag color="green">
                       <CheckCircleOutlined /> 已挂载
@@ -123,7 +123,7 @@ export default function InstalledSkills() {
                       : `${skill.pricePerMinute} 积分/分钟`}
                   </span>
                 </div>
-                {skill.libSource === "openclaw" && (
+                {skill.libSource === "hermes" && (
                   <div className={styles.skillActions}>
                     <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
                       可在军机处「技能 → 添加技能」中选择使用

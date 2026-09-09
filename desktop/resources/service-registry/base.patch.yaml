@@ -1,0 +1,19 @@
+insert:
+  - id: n8n
+    displayName: N8N
+    tier: base
+    port: 5678
+    readyTimeoutMs: 90000
+    envKey: n8n
+    postInstallKey: n8n
+  - id: hermes
+    displayName: Hermes Agent
+    tier: base
+    port: 8642
+    launch: hermes
+    envKey: hermes
+    preStartKey: hermes
+    onConfigKey: hermes
+    # modelDefaults 变化才重启（历史行为：Key 更新只重写 config，不重启 Hermes，
+    # 避免打断进行中对话；下次启动/手动重启才读取新 Key）
+    restartOn: [modelDefaults]

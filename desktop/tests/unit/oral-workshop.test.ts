@@ -26,6 +26,17 @@ jest.mock('@/utils/media', () => ({
   default: { resolveMediaUrl: (url: string) => url },
 }))
 
+// ws-client.ts 使用 import.meta.env（Vite 专有），Jest CJS 下需 mock
+jest.mock('@/api/ws-client', () => ({
+  wsClient: { on: jest.fn(), off: jest.fn(), connect: jest.fn(), disconnect: jest.fn(), emit: jest.fn() },
+  default: { on: jest.fn(), off: jest.fn(), connect: jest.fn(), disconnect: jest.fn(), emit: jest.fn() },
+}))
+
+// CoverDesigner 依赖 file-api.ts（顶层 import.meta.env），Jest CJS 下需 mock 整块组件
+jest.mock('@/pages/OralWorkshop/CoverDesigner', () => ({
+  default: () => null,
+}))
+
 describe('OralWorkshop 页面纯函数', () => {
   it('STEP_LABELS 覆盖 7 步', () => {
     expect(Object.keys(STEP_LABELS)).toHaveLength(7)

@@ -88,7 +88,7 @@ export async function listMediaJobs(query?: {
 }
 
 // ===== llm-proxy 多模态网关（统一静态 Key 与账单） =====
-// 桌面端媒体生成改走网关：与 OpenClaw/Hermes/N8N 同一套鉴权与计费（按后台分类模型定价扣费）。
+// 桌面端媒体生成改走网关：与 Hermes/N8N 同一套鉴权与计费（按后台分类模型定价扣费）。
 
 /** llm-proxy 网关基础地址（与 httpClient 同源） */
 const LLM_PROXY_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api'

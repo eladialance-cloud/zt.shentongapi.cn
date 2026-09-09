@@ -936,7 +936,7 @@ function updateLocalManifest(
     ) as RuntimeManifest["services"];
   }
   // 整体刷新该服务条目（entry/port/downloadUrl/sha256/size 等），
-  // 避免 userData 旧 manifest 残留过时字段（如 openclaw.port=51096）
+  // 避免 userData 旧 manifest 残留过时字段（如 hermes.port 等）
   local.services[name] = JSON.parse(
     JSON.stringify(builtin.services[name]),
   ) as ServiceManifest;

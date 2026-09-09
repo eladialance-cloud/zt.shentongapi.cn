@@ -1,6 +1,6 @@
 /**
  * ws 最小类型声明（本地提供，避免额外安装 @types/ws）。
- * 仅覆盖 OpenClaw 网关客户端用到的 API。
+ * 仅覆盖 Hermes/网关客户端用到的 API。
  */
 declare module 'ws' {
   import { EventEmitter } from 'node:events'

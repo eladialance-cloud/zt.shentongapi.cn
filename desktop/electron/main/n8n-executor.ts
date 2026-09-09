@@ -31,7 +31,7 @@ export interface RunN8nWorkflowResult {
 function readCloudToken(): string {
   try {
     const dir = app.getPath('userData');
-    const authFile = join(dir, 'openclaw-chat', 'auth.json');
+    const authFile = join(dir, 'hermes-chat', 'auth.json');
     if (!existsSync(authFile)) return '';
     const parsed = JSON.parse(readFileSync(authFile, 'utf8'));
     return typeof parsed?.token === 'string' ? parsed.token : '';

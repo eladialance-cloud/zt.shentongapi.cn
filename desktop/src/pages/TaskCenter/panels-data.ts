@@ -177,7 +177,7 @@ export const TPL_CATS: { name: string; icon: string }[] = [
   { name: '内容创作', icon: '✍️' },
 ];
 
-/** 官署 id → Hermes profile id（与 OFFICIALS 对齐；taizi 由 OpenClaw 承载） */
+/** 官署 id → Hermes profile id（与 OFFICIALS 对齐；taizi 由 Hermes 承载） */
 export const PROFILE_IDS: Record<string, string> = {
   taizi: "taizi", zhongshu: "zhongshu", menxia: "menxia", shangshu: "shangshu",
   libu: "libu", hubu: "hubu", libu_hr: "libu_hr", bingbu: "bingbu",

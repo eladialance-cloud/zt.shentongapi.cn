@@ -15,9 +15,9 @@ import * as path from 'node:path'
 
 const USERDATA_RT = path.join(process.cwd(), 'test-userdata', 'runtime')
 const BUILTIN_MANIFEST_PATH = path.join(process.cwd(), 'runtime', 'manifest.json')
-const FAKE_SHA = 'fake-sha-for-test'
+const FAKE_SHA = 'a'.repeat(64)
 let originalManifest: string | null = null
-const SVC = 'openclaw'
+const SVC = 'hermes'
 
 function readManifestSha(): string {
   const manifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'runtime', 'manifest.json'), 'utf-8'))
@@ -38,7 +38,7 @@ beforeAll(() => {
 function ensureEntry(): void {
   const dir = path.join(USERDATA_RT, SVC)
   fs.mkdirSync(dir, { recursive: true })
-  const entry = path.join(dir, 'openclaw.exe.cmd')
+  const entry = path.join(dir, 'hermes.exe.cmd')
   if (!fs.existsSync(entry)) fs.writeFileSync(entry, '@echo off\r\n', 'utf-8')
 }
 

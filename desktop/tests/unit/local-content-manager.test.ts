@@ -19,7 +19,7 @@ import {
   installMarketItem,
   uninstallMarketItem,
   listInstalled,
-  getOpenClawHome,
+  getHermesMarketHome,
   getHermesHome,
   buildGithubArchiveUrls,
 } from '../../electron/main/local-market/local-content-manager'
@@ -49,10 +49,10 @@ describe('local-content-manager', () => {
     fs.mkdirSync(TEST_ROOT, { recursive: true })
   })
 
-  it('安装技能包写入 openclaw-home/skills 并更新清单', async () => {
+  it('安装技能包写入 hermes-market/skills 并更新清单', async () => {
     const r = await installMarketItem('skill', 1, '数据分析', '1.0.0', skillPkg as any)
     expect(r.ok).toBe(true)
-    const skillDir = path.join(getOpenClawHome(), 'skills', '1')
+    const skillDir = path.join(getHermesMarketHome(), 'skills', '1')
     expect(fs.existsSync(path.join(skillDir, 'SKILL.md'))).toBe(true)
     expect(fs.existsSync(path.join(skillDir, 'manifest.json'))).toBe(true)
     const manifest = JSON.parse(fs.readFileSync(path.join(skillDir, 'manifest.json'), 'utf-8'))
@@ -98,7 +98,7 @@ describe('local-content-manager', () => {
     await installMarketItem('skill', 1, '数据分析', '1.0.0', skillPkg as any)
     const r = await uninstallMarketItem('skill', 1)
     expect(r.ok).toBe(true)
-    expect(fs.existsSync(path.join(getOpenClawHome(), 'skills', '1'))).toBe(false)
+    expect(fs.existsSync(path.join(getHermesMarketHome(), 'skills', '1'))).toBe(false)
     expect(listInstalled().length).toBe(0)
   })
 

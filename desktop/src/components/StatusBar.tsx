@@ -14,12 +14,10 @@ import {
 import type { ServiceName, ServiceStatus } from '@/types/service-manager'
 import StatusPanel from '@/components/MainLayout/StatusPanel'
 
-const SERVICE_ORDER: ServiceName[] = ['openclaw', 'n8n', 'mcp', 'hermes', 'video-claw']
+const SERVICE_ORDER: ServiceName[] = ['n8n', 'hermes', 'video-claw']
 
 const SERVICE_LABELS: Record<ServiceName, string> = {
-  openclaw: 'OpenClaw',
   n8n: 'N8N',
-  mcp: 'MCP',
   hermes: 'Hermes',
   'video-claw': 'ST-Claw'
 }
@@ -44,9 +42,7 @@ const STATUS_TEXT: Record<ServiceStatus, string> = {
 export default function StatusBar() {
   const navigate = useNavigate()
   const [statuses, setStatuses] = useState<Record<ServiceName, ServiceStatus>>({
-    openclaw: 'unknown',
     n8n: 'unknown',
-    mcp: 'unknown',
     hermes: 'unknown',
     'video-claw': 'unknown'
   })

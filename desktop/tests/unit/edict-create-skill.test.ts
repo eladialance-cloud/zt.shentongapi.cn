@@ -1,17 +1,17 @@
 /**
  * T5.3 轻任务分流验证（工具卡守卫层）
- * 轻任务分流主判定在 OpenClaw 太子人设提示词（LLM 决策，需真机）；
+ * 轻任务分流主判定在 Hermes 太子人设提示词（LLM 决策，需真机）；
  * 本测试验证两层兜底守卫可运行：
  *   1) edict-create.mjs 拒绝空/空白标题（不建任务）
- *   2) 太子人设 taizi-openclaw.md 明确「闲聊/问答不建任务」规则
+ *   2) 太子人设 taizi.md 明确「闲聊/问答不建任务」规则
  *   3) 缺 Hermes Python / EDICT_HOME 时报错而非误建任务
  */
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-const SCRIPT = path.resolve(__dirname, "../../resources/openclaw/skills/edict-create/scripts/edict-create.mjs");
-const TAIZI_SOUL = path.resolve(__dirname, "../../resources/edict/profiles/taizi-openclaw.md");
+const SCRIPT = path.resolve(__dirname, "../../resources/hermes/skills/edict-create/scripts/edict-create.mjs");
+const TAIZI_SOUL = path.resolve(__dirname, "../../resources/edict/profiles/taizi.md");
 
 describe("edict-create 轻任务分流守卫（T5.3）", () => {
   test("无 --title 参数直接拒绝（exit 2）", () => {

@@ -1,0 +1,8 @@
+{
+  "id": "st-sample-agent",
+  "name": "st-sample-agent",
+  "displayName": "示例智能体",
+  "description": "示例智能体，用于验证 A5-B 把 agent 型模块安装到 Hermes 的 agents 目录。",
+  "systemPrompt": "你是一个示例智能体。",
+  "runtimeType": "hermes"
+}
