@@ -26,7 +26,6 @@ import {
   QrCode,
   Bot,
   type LucideIcon,
-  Library,
 } from "lucide-react"
 import { useAuthStore } from '@/store/auth'
 import styles from './styles.module.css'
@@ -45,7 +44,6 @@ const PRIMARY_NAV: NavItem[] = [
   { key: 'hermes-chat',  label: '深瞳机器人', icon: Bot,        path: '/hermes-chat' },
   { key: 'task-center', label: '任务中心', icon: ListTodo,          path: '/task-center' },
   { key: 'assets',      label: '素材库',   icon: FolderOpen,        path: '/assets' },
-  { key: 'materials',   label: '素材管理', icon: Library,           path: '/materials' },
   { key: 'publish',     label: '发布中心', icon: Send,              path: '/publish' },
   { key: 'analytics',   label: '数据分析', icon: BarChart3,         path: '/analytics' },
   { key: 'knowledge',   label: '知识库',   icon: BookOpen,          path: '/knowledge' },

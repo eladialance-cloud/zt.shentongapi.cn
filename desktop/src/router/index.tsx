@@ -54,7 +54,6 @@ import BriefsNew from "@/pages/Briefs/New";
 import BriefsDetail from "@/pages/Briefs/Detail";
 import TaskCenter from "@/pages/TaskCenter";
 import AssetsPage from "@/pages/Assets";
-import MaterialsPage from "@/pages/Materials";
 import Analytics from "@/pages/Analytics";
 import MainLayout from "@/components/MainLayout";
 import { useAuthStore } from "@/store";
@@ -106,7 +105,7 @@ const router = createHashRouter([
       { path: "/briefs/:id", element: <BriefsDetail /> },
       { path: "/task-center", element: <TaskCenter /> },
       { path: "/assets", element: <AssetsPage /> },
-      { path: "/materials", element: <MaterialsPage /> },
+      { path: "/materials", element: <Navigate to="/assets" replace /> },
       { path: "/chat", element: <ChatRedirect /> },
       { path: "/hermes-chat", element: <HermesChat /> },
       { path: "/credits", element: <Credits /> },
