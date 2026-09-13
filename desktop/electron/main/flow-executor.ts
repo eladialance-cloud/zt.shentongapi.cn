@@ -26,6 +26,7 @@ import {
   flowsStateRoot,
 } from './service-registry/whitelist'
 import { getFlowsLlmIntegration } from './service-manager'
+import { assertKnownFlowId as isKnownFlowId, isSafeFlowId } from './policy/n8n-path-policy'
 
 /** 业务流元数据（对应 Python 侧 list_flows 的 _META_FIELDS） */
 export interface FlowMeta {
@@ -125,11 +126,50 @@ function parseJsonOutput(stdout: string): unknown {
  * 直跑一个业务流（独立子进程）。永远 resolve，不抛异常——
  * 失败信息通过返回值传递，调用方（定时任务）据此回执。
  */
+/** 已知业务流 id 缓存（复用 flow:list 的数据源；避免每次执行前都 spawn 一次 Python） */
+const FLOW_ID_CACHE_TTL_MS = 60_000
+let flowIdCache: { at: number; ids: ReadonlySet<string> } | null = null
+
+/** 取已知业务流 id 集合（带 TTL 缓存） */
+async function knownFlowIds(): Promise<ReadonlySet<string>> {
+  if (flowIdCache && Date.now() - flowIdCache.at < FLOW_ID_CACHE_TTL_MS) return flowIdCache.ids
+  const rows = await listFlows()
+  const ids: ReadonlySet<string> = new Set(rows.map((r) => r.id))
+  flowIdCache = { at: Date.now(), ids }
+  return ids
+}
+
+/** 测试用：清空 id 缓存 */
+export function __clearFlowIdCacheForTest(): void {
+  flowIdCache = null
+}
+
+/**
+ * 校验 flowId（安全审计 S-24）：形态校验 + 已知集合比对。
+ * 形态校验始终生效（挡住 `--` 伪参数与路径形态）；集合为空表示引擎无法枚举，此时只靠形态校验。
+ */
+export async function assertKnownFlowId(flowId: string): Promise<boolean> {
+  if (!isSafeFlowId(flowId)) return false
+  return isKnownFlowId(flowId, await knownFlowIds())
+}
+
 export async function runFlow(flowId: string, options: RunFlowOptions = {}): Promise<FlowRunResult> {
   const started = Date.now()
   const id = String(flowId || '').trim()
   if (!id) {
     return { ok: false, flow: '', code: 'PARAM_MISSING', error: '缺少业务流 id', durationMs: 0 }
+  }
+
+  // 安全审计 S-24：id 直接进 Python argv，必须先过形态 + 白名单校验
+  if (!(await assertKnownFlowId(id))) {
+    console.warn('[flow-executor] 拒绝未授权的业务流 id：' + id)
+    return {
+      ok: false,
+      flow: id,
+      code: 'FLOW_NOT_FOUND',
+      error: '未知或不合法的业务流：' + id,
+      durationMs: Date.now() - started,
+    }
   }
 
   const { python, toolBox, moduleRoot, bundled, bootstrap } = resolveCliPaths()

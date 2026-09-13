@@ -6,6 +6,7 @@
 
 import { getN8nWebhookPath } from './n8n-templates';
 import { readAuthToken } from './services/secure-json-store';
+import { sanitizeWebhookPaths } from './policy/n8n-path-policy';
 
 const N8N_BASE = process.env.N8N_BASE_URL || 'http://127.0.0.1:5678';
 
@@ -36,7 +37,8 @@ function readCloudToken(): string {
 export async function runLocalN8nWorkflow(
   input: RunN8nWorkflowInput,
 ): Promise<RunN8nWorkflowResult> {
-  const paths = Array.isArray(input?.paths) ? input.paths.map((p) => String(p).replace(/^\/+|\/+$/g, '')).filter(Boolean) : [];
+  // 安全审计 S-24：路径含 `..` 时请求会落到 N8N 的 /rest/* 管理接口，而该请求携带云端 JWT
+  const paths = sanitizeWebhookPaths(input?.paths);
   if (paths.length === 0) {
     return { ok: false, error: '缺少工作流 webhook 路径' };
   }
