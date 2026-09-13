@@ -76,11 +76,12 @@ describe('MembershipService', () => {
   });
 
   it('getStatus：未过期专业版返回完整 features', async () => {
-    const f = makeRepos({ memberships: [{ userId: 2, level: 'pro', status: 'active', expiresAt: future(10) }] });
+    const exp = future(10);
+    const f = makeRepos({ memberships: [{ userId: 2, level: 'pro', status: 'active', expiresAt: exp }] });
     const s = await newService(f).getStatus(2);
     assert.equal(s.level, 'pro');
     assert.equal(s.features.publish, 'full');
-    assert.equal(s.expiresAt?.getTime() ?? 0, future(10).getTime());
+    assert.equal(s.expiresAt?.getTime() ?? 0, exp.getTime());
   });
 
   it('getStatus：到期自动降级免费并返回宽限期', async () => {

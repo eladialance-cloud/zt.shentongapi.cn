@@ -23,6 +23,7 @@ const config: Config = {
     "<rootDir>/runtime/",
   ],
   testPathIgnorePatterns: [
+    // 以下三个用例走 node:test 运行器（npx tsx --test tests/unit/<文件名>），jest 跑不了：node:test 文件会报「至少一个测试」，hermes-chat.test.ts 在 jsdom 环境缺 TextEncoder。2026-09-13 实测 tsx 下分别 13/8/6 全过。
     "<rootDir>/tests/unit/hermes-chat.test.ts",
     "<rootDir>/tests/unit/hermes-chat-pipeline.test.ts",
     "<rootDir>/tests/unit/hermes-mcp-sync.test.ts",
