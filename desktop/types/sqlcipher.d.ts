@@ -1,6 +1,9 @@
-// Type definitions for @journeyapps/sqlcipher
-// Copied from node_modules/@journeyapps/sqlcipher/lib/sqlite3.d.ts
-// Used for TypeScript compilation on Windows where sqlcipher native module cannot be installed
+// Type definitions for @journeyapps/sqlcipher —— 本仓库自行维护的类型声明（非 node_modules 副本）
+//
+// S-45（2026-09-13 定稿，方案 A）：本产品不做本地加密库，package.json 不再声明该依赖，
+// 因此 electron/main/local-db 中的 typeof import('@journeyapps/sqlcipher') 只能靠
+// tsconfig.node.json 的 paths 映射（"@journeyapps/sqlcipher": ["./types/sqlcipher.d.ts"]）解析到本文件。
+// 运行时该模块并不存在（try/catch require 失败 → 降级走云端），本文件只解决编译期类型。
 
 /// <reference types="node" />
 

@@ -116,36 +116,20 @@ jobs:
 
       # ===== 3. Install Dependencies =====
       # 使用 --legacy-peer-deps 解决 vite@8 与 electron-vite@5 的 peer dependency 冲突
-      # @journeyapps/sqlcipher@6.0.0 不支持 Windows (os: darwin,linux only)
-      # 方案: 用 jq 移除 sqlcipher 依赖 -> npm install -> 复制类型声明文件
       # 注意: 禁用 postinstall 脚本，避免 tsx 尚未安装时执行 verify-electron.ts
+      # S-45（2026-09-13 定稿，方案 A）：本产品不做本地加密库，package.json 已无 @journeyapps/sqlcipher，
+      # 因此这里不再需要「删依赖 + 造 stub 模块 + 下载 prebuilt binary」，详见 desktop/electron-builder.yml。
       - name: Install Dependencies
         shell: bash
         run: |
-          # 移除 sqlcipher 依赖（避免 Windows 上 node-gyp 编译失败）
-          node -e "const p=require('./package.json'); delete p.dependencies['@journeyapps/sqlcipher']; require('fs').writeFileSync('package.json', JSON.stringify(p,null,2))"
-          
-          # 安装其他依赖（禁用 postinstall，避免 tsx 未就绪时执行）
+          # 安装依赖（禁用 postinstall，避免 tsx 未就绪时执行）
           npm install --legacy-peer-deps --ignore-scripts
-          
+
           # 修复 rolldown 原生绑定版本不匹配问题
           # 获取当前安装的 rolldown 版本，安装对应版本的 binding 包
           ROLLDOWN_VERSION=$(node -e "console.log(require('./node_modules/rolldown/package.json').version)")
           echo "rolldown version: $ROLLDOWN_VERSION"
           npm install @rolldown/binding-win32-x64-msvc@$ROLLDOWN_VERSION --legacy-peer-deps --ignore-scripts || true
-          
-          # 创建 sqlcipher 类型声明目录并复制
-          mkdir -p node_modules/@journeyapps/sqlcipher/lib
-          cp types/sqlcipher.d.ts node_modules/@journeyapps/sqlcipher/lib/sqlite3.d.ts
-          
-          # 创建最小 stub 入口文件，使 Electron 打包后 require('@journeyapps/sqlcipher') 不崩溃
-          # 应用代码中使用 try/catch 包裹 require，返回 null 时自动进入降级模式
-          printf '%s\n' '// Stub: @journeyapps/sqlcipher native module is not available in this build.' '// The application will fall back to cloud API when this module returns null.' 'module.exports = null' > node_modules/@journeyapps/sqlcipher/lib/sqlite3.js
-          
-          # 创建最小 package.json
-          node -e "require('fs').writeFileSync('node_modules/@journeyapps/sqlcipher/package.json', JSON.stringify({name:'@journeyapps/sqlcipher',version:'6.0.0',main:'lib/sqlite3.js',types:'lib/sqlite3.d.ts'},null,2))"
-          
-          echo "Created sqlcipher stub module"
         env:
           ELECTRON_MIRROR: ${{ env.ELECTRON_MIRROR }}
           ELECTRON_BUILDER_BINARIES_MIRROR: ${{ env.ELECTRON_BUILDER_BINARIES_MIRROR }}
@@ -156,54 +140,13 @@ jobs:
       - name: ✅ Download Electron Binary
         run: npx tsx scripts/verify-electron.ts --repair
 
-      # ===== 5. Fix sqlcipher Native Module =====
-      # @journeyapps/sqlcipher@6.0.0 不支持 Windows (os: darwin,linux only)
-      # 安装步骤已保留类型声明，这里下载 Windows prebuilt binary
-      - name: 🔧 Fix sqlcipher Native Module
-        run: |
-          $sqlcipherDir = "node_modules\@journeyapps\sqlcipher"
-          $nodeFile = "$sqlcipherDir\build\Release\node_sqlite3.node"
-          
-          # 创建目录结构
-          New-Item -ItemType Directory -Force -Path "$sqlcipherDir\build\Release" | Out-Null
-          
-          # 下载 Windows prebuilt binary (从 5.3.1 的 release)
-          # N-API v6 binary 与 Electron 41 (N-API v9) ABI 兼容
-          $url = "https://github.com/journeyapps/node-sqlcipher/releases/download/v5.3.1/sqlcipher-v5.3.1-electron-v116-win32-x64.tar.gz"
-          $tempFile = "$env:TEMP\sqlcipher-win32.tar.gz"
-          $extractDir = "$env:TEMP\sqlcipher-extract"
-          
-          Write-Host "📥 Downloading sqlcipher Windows binary..."
-          try {
-            Invoke-WebRequest -Uri $url -OutFile $tempFile -UseBasicParsing -TimeoutSec 60
-            New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
-            tar -xzf $tempFile -C $extractDir 2>$null
-            $extractedNode = Get-ChildItem $extractDir -Recurse -Filter "node_sqlite3.node" | Select-Object -First 1
-            if ($extractedNode) {
-              Copy-Item $extractedNode.FullName $nodeFile -Force
-              Write-Host "✅ sqlcipher binary installed: $(((Get-Item $nodeFile).Length) / 1KB) KB"
-            } else {
-              Write-Host "⚠️ Extracted binary not found"
-            }
-          } catch {
-            Write-Host "⚠️ Download failed: $($_.Exception.Message)"
-          }
-          
-          # 如果下载失败，创建空占位文件（构建时跳过 sqlcipher 运行时功能）
-          if (-not (Test-Path $nodeFile)) {
-            Write-Host "⚠️ Using placeholder - sqlcipher features disabled in this build"
-            [byte[]]$bytes = @(0x4D, 0x5A)  # MZ header (minimal PE)
-            [System.IO.File]::WriteAllBytes($nodeFile, $bytes)
-          }
-        shell: pwsh
-
-      # ===== 6. Download Runtime =====
+      # ===== 5. Download Runtime =====
       - name: 🔄 Download Runtime
         run: npx tsx scripts/fetch-runtime.ts --win
         continue-on-error: true
         # CDN 可能未就绪，失败不阻断（安装后首次启动会在线下载）
 
-      # ===== 6.5 Download Hermes Python Runtime =====
+      # ===== 5.5 Download Hermes Python Runtime =====
       # 将 Python 3.11 嵌入版打包进安装包，避免用户机器没有 Python 时 Hermes 无法启动
       - name: 🐍 Download Hermes Python Runtime
         run: |
@@ -268,7 +211,7 @@ jobs:
           Write-Host "✅ Hermes Python runtime ready at $pythonDir"
         shell: pwsh
 
-      # ===== 6.6 Verify bundled Python (env-components 硬依赖) =====
+      # ===== 5.6 Verify bundled Python (env-components 硬依赖) =====
       # 防回归：runtime/hermes/python 缺失 → 安装包不带内置 Python →
       # 「环境组件」全部显示未安装且无法安装、业务流引擎/微信域桥/抖音服务回退宿主机 python 而启动失败
       # （2026-09-13 修复的历史遗漏：CI 早就生成该目录，但 electron-builder 没打包进去）
@@ -284,7 +227,7 @@ jobs:
           & $python -m pip --version
           Write-Host "✅ bundled python ready: $python ($((Get-Item $python).Length) bytes)"
 
-      # ===== 7. Inject API Base URL =====
+      # ===== 6. Inject API Base URL =====
       - name: ⚙️ Inject API Config
         if: ${{ github.event.inputs.api_base || true }}
         run: |
@@ -296,11 +239,11 @@ jobs:
           Write-Host "✅ .env.production: VITE_API_BASE_URL=$apiBase; VITE_WS_URL=$($wsBase)/api"
         shell: pwsh
 
-      # ===== 8. TypeCheck =====
+      # ===== 7. TypeCheck =====
       - name: 🔍 TypeCheck
         run: npm run typecheck
 
-      # ===== 9. Build (electron-vite) =====
+      # ===== 8. Build (electron-vite) =====
       - name: Build (electron-vite)
         run: npm run build
         env:
@@ -308,12 +251,12 @@ jobs:
           NODE_NO_WARNINGS: 1
         shell: bash
 
-      # ===== 9.5 Build Windows sandbox runner (restricted-token launcher) =====
+      # ===== 8.5 Build Windows sandbox runner (restricted-token launcher) =====
       - name: 🔨 Build Sandbox Runner
         run: npm run build:sandbox-runner
         shell: pwsh
 
-      # ===== 10. Verify getElectronPath NOT in bundle =====
+      # ===== 9. Verify getElectronPath NOT in bundle =====
       - name: 🛡️ Verify Bundle Integrity
         run: |
           $found = Select-String -Path "dist\main\index.js" -Pattern "getElectronPath" -Quiet
@@ -326,7 +269,7 @@ jobs:
           }
         shell: pwsh
 
-      # ===== 11. Package (electron-builder) =====
+      # ===== 10. Package (electron-builder) =====
       - name: 📦 Package Installer (NSIS)
         run: npx electron-builder --win
         env:
@@ -334,7 +277,7 @@ jobs:
           # GitHub Actions Windows: 16GB RAM 足够 NSIS 压缩
           # 本地 6GB 可用会被 SIGKILL，CI 无此问题
 
-      # ===== 12. Normalize installer output directory =====
+      # ===== 11. Normalize installer output directory =====
       # electron-builder.yml 配置 output: dist/installer-v${version}
       # 后续脚本和 workflow 步骤统一使用 dist/installer
       # 这里把 versioned 目录内容复制到 dist/installer
@@ -357,7 +300,7 @@ jobs:
           }
         shell: pwsh
 
-      # ===== 12a. Verify packaged runtime manifest =====
+      # ===== 11a. Verify packaged runtime manifest =====
       # 防回归：extraResources 打包失败会导致运行时下载全部失败（2026-08-06 事故根因）
       - name: ✅ Verify packaged runtime manifest
         shell: pwsh
@@ -377,7 +320,7 @@ jobs:
           }
           Write-Host "✅ packaged python: $packagedPython ($((Get-Item $packagedPython).Length) bytes)"
 
-      # ===== 12b. Rename zip artifacts =====
+      # ===== 11b. Rename zip artifacts =====
       - name: 🏷️ Rename zip artifacts
         run: |
           $pkg = Get-Content "package.json" -Raw | ConvertFrom-Json
@@ -392,15 +335,15 @@ jobs:
           }
         shell: pwsh
 
-      # ===== 13. Generate latest.yml =====
+      # ===== 12. Generate latest.yml =====
       - name: 📄 Generate latest.yml
         run: npx tsx scripts/generate-latest-yml.ts
 
-      # ===== 14. Verify Installer =====
+      # ===== 13. Verify Installer =====
       - name: ✅ Verify Installer
         run: npx tsx scripts/verify-installer.ts
 
-      # ===== 15. Create user download file =====
+      # ===== 14. Create user download file =====
       - name: 📋 Create Download File
         run: |
           $pkg = Get-Content "package.json" -Raw | ConvertFrom-Json
@@ -421,7 +364,7 @@ jobs:
           }
         shell: pwsh
 
-      # ===== 16. Upload Artifacts =====
+      # ===== 15. Upload Artifacts =====
       - name: 📤 Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -432,7 +375,7 @@ jobs:
             desktop/dist/installer/latest.yml
           retention-days: 30
 
-                  # ===== 17. 部署步骤已移除（仅构建，安装包手动下载上传）=====
+                  # ===== 16. 部署步骤已移除（仅构建，安装包手动下载上传）=====
       # 2026-08-08: 不再自动上传服务器。构建产物在运行页 Artifacts（desktop-windows-latest）中下载，
       # 手动 scp 到服务器 /opt/shentong/updates/ 并 zip（见 scripts/DEPLOY-SOP.md）。
 

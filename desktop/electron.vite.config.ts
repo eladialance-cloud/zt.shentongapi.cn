@@ -12,14 +12,11 @@ if (!env.VITE_API_BASE_URL) {
 
 // H-08 upgrade Electron 31->41 / vite 5->8 / electron-vite 2->5 fix:
 // vite@8's rolldown strictly resolves all imports, including native module transitive deps.
-// H-08b upgrade @journeyapps/sqlcipher 5.3.1->6.0.0:
-//   - 6.0.0 removed @mapbox/node-pre-gyp (and its mock-aws-s3/aws-sdk/nock/npmlog/rimraf
-//     optional dep chain, which introduced 6 path traversal CVEs via tar@6.2.1)
-//   - 6.0.0 uses bindings + node-addon-api (node-gyp source compile)
-// Declare native modules and their transitive deps as external, consistent with vite@5 behavior.
-const nativeModuleOptionalDeps = [
-  'bindings',
-  'node-addon-api',
+// S-45（2026-09-13 定稿，方案 A）：本产品不做本地加密库，package.json 已移除 @journeyapps/sqlcipher。
+// 主进程 local-db 仍保留 try/catch require → 生产构建下必然走降级路径（本地读写回退云端 API）。
+// 这里必须继续把它列为 external：rolldown 对字符串字面量 require() 会尝试解析，
+// 一旦试图打包就会直接构建失败（该模块在 node_modules 里本就不存在）。
+const optionalNativeModules = [
   '@journeyapps/sqlcipher'
 ]
 
@@ -28,7 +25,7 @@ const nativeModuleOptionalDeps = [
 const electronExternalDeps = [
   'electron',
   'electron-updater',
-  ...nativeModuleOptionalDeps
+  ...optionalNativeModules
 ]
 
 export default defineConfig({

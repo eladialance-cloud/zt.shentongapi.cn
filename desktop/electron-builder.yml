@@ -16,17 +16,11 @@ files:
   - "!*.config.*"
   # 安全网：防止 npm electron 包被误打包进 asar
   - "!node_modules/electron{,/**/*}"
-  # H-08b fix: 包含 sqlcipher stub 模块，使运行时 require('@journeyapps/sqlcipher') 不崩溃
-  - node_modules/@journeyapps/sqlcipher/package.json
-  - node_modules/@journeyapps/sqlcipher/lib/sqlite3.js
-  - node_modules/@journeyapps/sqlcipher/lib/sqlite3.d.ts
 asar: true
-# H-08b workaround: @journeyapps/sqlcipher 6.0.0 移除了 Windows os 支持（os: ["darwin", "linux"]），
-# 没有 prebuilt binary，源码编译需要 Visual Studio Build Tools。
-# 此处复用 5.3.1 时代的 N-API v6 Windows prebuilt binary（ABI 稳定，与 Electron 41 N-API v9 兼容），
-# 已手动放置于 node_modules/@journeyapps/sqlcipher/build/Release/node_sqlite3.node。
-# 禁用 npmRebuild 防止 electron-builder 调用 @electron/rebuild 覆盖该 binary。
-# 详细说明见 fix-technical-doc.md Task 15 SubTask 15.5/15.6 与 README.md。
+# S-45（2026-09-13 定稿，方案 A）：本产品不做本地加密库 —— package.json 不含 sqlcipher，
+# 安装包也不再带 stub 模块 / prebuilt binary。主进程 local-db 的 require 必然失败并走降级路径：
+# 本地读写一律回退云端 API，渲染层启动自检会明确提示用户（见 electron/shared/local-db-status.ts）。
+# 保留 npmRebuild/nodeGypRebuild=false：本项目已无原生模块，禁止 electron-builder 做无意义重建。
 npmRebuild: false
 nodeGypRebuild: false
 extraResources:

@@ -17,9 +17,11 @@ import {
   type LocalDbStatus,
 } from '../../shared/local-db-status'
 
-// H-08b fix: @journeyapps/sqlcipher@6.0.0 没有 Windows prebuilt binary，且 Electron 41 ABI=145
-// 与 5.3.1 的 binary 不兼容。因此把 sqlcipher 作为 optional dependency 动态加载。
-// 加载失败时自动进入降级模式（所有本地 DB 操作走云端 API），避免应用启动崩溃。
+// S-45（2026-09-13 定稿，方案 A）：本产品不做本地加密库 —— package.json 已移除
+// @journeyapps/sqlcipher，安装包里也不再带 stub / prebuilt binary，因此下面这段 require
+// 在生产构建里必然抛 MODULE_NOT_FOUND。保留 try/catch 是为了让「降级」是预期路径而非启动崩溃：
+// 加载失败 → handleDegradation → 本地 DB 操作抛 DBDegradedException → 渲染层回退云端 API。
+// 类型来自 types/sqlcipher.d.ts（经 tsconfig.node.json 的 paths 映射），与运行时是否存在无关。
 let sqlite3: typeof import('@journeyapps/sqlcipher') | null = null
 try {
   sqlite3 = require('@journeyapps/sqlcipher')

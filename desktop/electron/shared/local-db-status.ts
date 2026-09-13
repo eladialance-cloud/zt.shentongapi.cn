@@ -1,7 +1,7 @@
 /**
  * 本地库降级状态（安全审计 S-45）。
  *
- * 背景：@journeyapps/sqlcipher 在 Windows 生产构建里不可用（无预编译二进制，CI 会移除该依赖），
+ * 背景：S-45 决策（方案 A，2026-09-13 定稿）下本产品不做本地加密库，package.json 不含 @journeyapps/sqlcipher，
  * local-db 的 require 失败后进入 handleDegradation → 所有查询抛 DBDegradedException → 渲染层回退云端 API。
  * 原实现只把一行 error 留在主进程 console 里，渲染层从未读取 isDegraded()/db:degraded，
  * 于是「本地加密存储」在用户视角是**静默失效**的（产品文案与实际不一致）。
@@ -29,7 +29,7 @@ export interface LocalDbStatus {
   degraded: boolean
   /** 是否已成功打开本地加密库 */
   initialized: boolean
-  /** 本构建是否包含 sqlcipher 原生模块 */
+  /** 本构建是否包含 sqlcipher 原生模块（S-45 起打包产物恒为 false，字段保留以兼容既有渲染层契约） */
   moduleAvailable: boolean
   /** 降级原因码（未降级为 null） */
   code: LocalDbDegradedCode | null

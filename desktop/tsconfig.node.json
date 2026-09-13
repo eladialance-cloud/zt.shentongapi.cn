@@ -15,7 +15,8 @@
     "baseUrl": ".",
     "paths": {
       "@shared/*": ["./electron/shared/*"],
-      "js-yaml": ["./electron/main/service-registry/js-yaml.d.ts"]
+      "js-yaml": ["./electron/main/service-registry/js-yaml.d.ts"],
+      "@journeyapps/sqlcipher": ["./types/sqlcipher.d.ts"]
     }
   },
   "include": ["electron/**/*.ts", "scripts/**/*"]
