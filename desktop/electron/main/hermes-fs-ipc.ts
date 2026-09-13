@@ -1,70 +1,17 @@
 // Hermes 对话 B/C 批：文件 / 目录 / 终端 / 最近上下文文件夹 的本地桌面 IPC
 // 说明：深瞳侧主进程，供 HermesChat 的 WorktreePanel / FileViewer /
 // RemoteFolderPicker / ContextFolderChip 使用。web 预览标注（inspect）暂为兜底。
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { readFile, readdir, stat } from 'node:fs/promises'
-import { extname, join } from 'node:path'
+import { extname } from 'node:path'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { getMainWindow } from './windows/main-window'
 import { inspectWebPreview, cancelWebPreviewInspection } from './web-preview-inspector'
 import { evaluateOpenPath, evaluateReadPath } from './policy/path-policy'
+import { allowedRoots, grantRoot, pushRecentContextFolder, readContextFolders } from './services/allowed-roots'
 
-const CONTEXT_FOLDER_FILE = (): string =>
-  join(app.getPath('userData'), 'hermes-context-folders.json')
+// 允许根注册表见 services/allowed-roots.ts（与云端远程控制通道共用同一份事实，避免口径不一致被绕过）
 
-function readContextFolders(): string[] {
-  try {
-    const p = CONTEXT_FOLDER_FILE()
-    if (!existsSync(p)) return []
-    const parsed = JSON.parse(readFileSync(p, 'utf-8'))
-    return Array.isArray(parsed) ? (parsed as string[]) : []
-  } catch {
-    return []
-  }
-}
-
-function writeContextFolders(list: string[]): void {
-  try {
-    mkdirSync(app.getPath('userData'), { recursive: true })
-    writeFileSync(CONTEXT_FOLDER_FILE(), JSON.stringify(list.slice(0, 50), null, 2), 'utf-8')
-  } catch {
-    /* ignore */
-  }
-}
-
-function pushRecentContextFolder(path: string): void {
-  if (!path) return
-  const list = readContextFolders().filter((x) => x !== path)
-  list.unshift(path)
-  writeContextFolders(list)
-}
-
-/**
- * 会话内已授权的根目录（安全审计 S-03 / S-21 / S-22）
- *
- * 来源只有两个，且都是**用户显式动作**：
- *  1. 原生目录选择对话框（fs:select-folder）；
- *  2. 选择/切换会话上下文目录（fs:set-session-context-folder，RemoteFolderPicker 的 onSelect 会调用它）。
- *
- * 设计说明：
- * - 只保留内存态 + 既有 readContextFolders() 持久列表，不额外持久化，避免允许根无限扩张；
- * - **不含 userData**（否则 auth.json / llm-integrations.json 又会变成可读目标）；
- * - 不含盘符根与用户主目录，避免一次误选把整机放开。
- */
-const sessionGrantedRoots = new Set<string>()
-
-function grantRoot(dir: unknown): void {
-  if (typeof dir !== 'string') return
-  const trimmed = dir.trim()
-  if (!trimmed) return
-  sessionGrantedRoots.add(trimmed)
-}
-
-function allowedRoots(): string[] {
-  const merged = [...sessionGrantedRoots, ...readContextFolders()]
-  return Array.from(new Set(merged.filter((r) => typeof r === 'string' && r.trim().length > 0)))
-}
 
 function openTerminalInDirectory(dir: string): Promise<boolean> {
   return new Promise((resolve) => {

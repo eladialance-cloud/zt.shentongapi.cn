@@ -17,6 +17,8 @@ import { readFile, stat } from 'node:fs/promises'
 import { shell } from 'electron'
 import { io, type Socket } from 'socket.io-client'
 import { runLocalN8nWorkflow } from './n8n-executor'
+import { evaluateOpenPath, evaluateReadPath, type PathDenyReason } from './policy/path-policy'
+import { allowedRoots } from './services/allowed-roots'
 import { getMainWindow } from './windows/main-window'
 import type {
   RemoteControlPlatform,
@@ -34,13 +36,41 @@ const PENDING_CONFIRMATION_TIMEOUT_MS = 5 * 60 * 1000
 /** 待确认轮询清理间隔 */
 const PENDING_CLEANUP_INTERVAL_MS = 60_000
 
-/** 高危操作白名单 */
+/**
+ * 高危操作白名单（安全审计 S-04）
+ *
+ * file_read / file_open / run_scenario 与 delete_file 同级：
+ * - file_read / file_open：云端可指定本机任意路径，读取内容或拉起本机程序；
+ * - run_scenario：步骤里可带 system（任意系统命令）与 file_open，是前两者的放大版。
+ * 三者都必须先经过二次确认，不能由服务端静默执行。
+ */
 const HIGH_RISK_OPERATIONS: ReadonlySet<RemoteCommandType> = new Set([
   'delete_file',
   'format_disk',
   'execute_system_command',
-  'modify_system_config'
+  'modify_system_config',
+  'file_read',
+  'file_open',
+  'run_scenario'
 ])
+
+/** 路径拒绝原因 → 用户可读文案（回传 IM，便于用户知道该去授权哪个目录） */
+function describeDenyReason(reason: PathDenyReason): string {
+  switch (reason) {
+    case 'EMPTY':
+      return '路径为空'
+    case 'UNC':
+      return '不支持网络共享路径（UNC）'
+    case 'NOT_ABSOLUTE':
+      return '必须是绝对路径'
+    case 'OUTSIDE_ROOTS':
+      return '路径不在任何已授权目录内'
+    case 'EXECUTABLE':
+      return '不允许打开可执行文件'
+    default:
+      return '路径被安全策略拒绝'
+  }
+}
 
 /** 系统命令最大执行时长（60 秒） */
 const SYSTEM_COMMAND_TIMEOUT_MS = 60_000
@@ -532,7 +562,7 @@ export class RemoteControlManager extends EventEmitter {
         await this.sendResult({
           commandId: command.commandId,
           status: 'need_confirmation',
-          description: `高危操作「${command.type}」需要确认：${command.raw}`,
+          description: `高危操作「${command.type}」需要确认：${command.raw}（路径/参数见原始命令）`,
           message: '该操作需要确认，请回复「确认」以执行'
         })
         return
@@ -887,10 +917,31 @@ export class RemoteControlManager extends EventEmitter {
     }
   }
 
+  /**
+   * 云端通道路径裁决（安全审计 S-04）。
+   * 云端不在场，所以只允许用户显式授权过的目录（与本地 Hermes 文件 IPC 共用同一份 allowedRoots）；
+   * 一个目录都没授权时一律拒绝（fail-closed），避免恢复成「服务端可读整机」。
+   */
+  private guardRemotePath(
+    mode: 'read' | 'open',
+    rawPath: string,
+  ): { ok: true; path: string } | { ok: false; message: string } {
+    const roots = allowedRoots()
+    if (roots.length === 0) {
+      return {
+        ok: false,
+        message: '本机未授权任何目录：请先在桌面端 Hermes 文件面板选择允许访问的文件夹',
+      }
+    }
+    const decision = mode === 'open' ? evaluateOpenPath(rawPath, roots) : evaluateReadPath(rawPath, roots)
+    if (decision.ok) return { ok: true, path: decision.path }
+    return { ok: false, message: '路径不在允许范围（' + describeDenyReason(decision.reason) + '）' }
+  }
+
   /** 读取本地文件（256KB 内返回内容，超过只返回元信息；二进制转 base64） */
   private async executeFileRead(command: RemoteCommand): Promise<void> {
-    const filePath = String(command.payload.path ?? command.payload.name ?? '').trim()
-    if (!filePath) {
+    const requestedPath = String(command.payload.path ?? command.payload.name ?? '').trim()
+    if (!requestedPath) {
       await this.sendResult({
         commandId: command.commandId,
         status: 'failed',
@@ -898,6 +949,17 @@ export class RemoteControlManager extends EventEmitter {
       })
       return
     }
+    // S-04：云端读文件必须落在用户显式授权的目录内
+    const guard = this.guardRemotePath('read', requestedPath)
+    if (!guard.ok) {
+      await this.sendResult({
+        commandId: command.commandId,
+        status: 'failed',
+        message: guard.message
+      })
+      return
+    }
+    const filePath = guard.path
     try {
       const fileStat = await stat(filePath)
       if (!fileStat.isFile()) {
@@ -958,8 +1020,8 @@ export class RemoteControlManager extends EventEmitter {
 
   /** 用系统默认程序打开文件/文件夹 */
   private async executeFileOpen(command: RemoteCommand): Promise<void> {
-    const filePath = String(command.payload.path ?? command.payload.name ?? '').trim()
-    if (!filePath) {
+    const requestedPath = String(command.payload.path ?? command.payload.name ?? '').trim()
+    if (!requestedPath) {
       await this.sendResult({
         commandId: command.commandId,
         status: 'failed',
@@ -967,6 +1029,17 @@ export class RemoteControlManager extends EventEmitter {
       })
       return
     }
+    // S-04：云端拉本机程序必须落在授权目录内，且策略层会拒绝可执行文件后缀
+    const guard = this.guardRemotePath('open', requestedPath)
+    if (!guard.ok) {
+      await this.sendResult({
+        commandId: command.commandId,
+        status: 'failed',
+        message: guard.message
+      })
+      return
+    }
+    const filePath = guard.path
     try {
       const errorMessage = await shell.openPath(filePath)
       if (errorMessage) {
@@ -1077,8 +1150,13 @@ export class RemoteControlManager extends EventEmitter {
       case 'file_open': {
         const path = String(step.path ?? '').trim()
         if (!path) return { ok: false, error: 'file_open 步骤缺少路径' }
-        const errorMessage = await shell.openPath(path)
-        return errorMessage ? { ok: false, error: errorMessage } : { ok: true, output: `已打开：${path}` }
+        // S-04：场景步骤与 executeFileOpen 走同一份路径裁决，避免用 run_scenario 绕过
+        const guard = this.guardRemotePath('open', path)
+        if (!guard.ok) return { ok: false, error: guard.message }
+        const errorMessage = await shell.openPath(guard.path)
+        return errorMessage
+          ? { ok: false, error: errorMessage }
+          : { ok: true, output: `已打开：${guard.path}` }
       }
       case 'workflow': {
         const workflowId = String(step.workflowId ?? step.id ?? '').trim()
