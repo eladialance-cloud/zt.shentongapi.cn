@@ -4,7 +4,12 @@ import { app, BrowserWindow, shell, session } from 'electron'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { ServiceManager } from '../service-manager'
-import { isAllowedWebviewUrl, hardenWebviewPreferences, hardenAttachedWebContents } from '../security'
+import {
+  isAllowedExternalUrl,
+  isAllowedWebviewUrl,
+  hardenWebviewPreferences,
+  hardenAttachedWebContents,
+} from '../security'
 
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
@@ -47,8 +52,14 @@ export function createMainWindow(_serviceManager: ServiceManager, isDev: boolean
   })
 
   // 外部链接在系统浏览器打开
+  // S-12：修复前对 details.url 不做任何校验就交给 shell.openExternal，
+  // 而 window.open('file:///...') 或自定义协议（ms-msdt:、search-ms: 等）会被系统关联程序拉起。
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    if (isAllowedExternalUrl(details.url)) {
+      void shell.openExternal(details.url)
+    } else {
+      console.warn('[SECURITY] Blocked window.open: ' + String(details.url))
+    }
     return { action: 'deny' }
   })
 
@@ -64,7 +75,13 @@ export function createMainWindow(_serviceManager: ServiceManager, isDev: boolean
       (isDev && !!process.env['ELECTRON_RENDERER_URL'] && lower.startsWith(process.env['ELECTRON_RENDERER_URL'].toLowerCase()))
     if (!isAllowed) {
       event.preventDefault()
-      shell.openExternal(url)
+      // S-12（同类根因）：同样的未校验 openExternal —— 导航被拦截后把原始 URL（可能是
+      // file:///.../x.exe 或 ms-msdt: 等自定义协议）交给系统关联程序执行。
+      if (isAllowedExternalUrl(url)) {
+        void shell.openExternal(url)
+      } else {
+        console.warn('[SECURITY] Blocked navigation + openExternal: ' + String(url))
+      }
     }
   })
 

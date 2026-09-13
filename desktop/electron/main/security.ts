@@ -36,9 +36,11 @@ export function isAllowedAppNavigationUrl(
   }
 
   const rendererUrl = pathToFileURL(rendererHtmlPath);
-  return (
-    url.protocol === "file:" && url.href.split("#")[0] === rendererUrl.href
-  );
+  // 同时剥离 hash 与 query：应用自身 index.html 带查询串（如 ?a=1）仍属同页导航。
+  // 修复前只剥离 hash，带 query 的自身导航会被误判为外部地址 —— 与 main-window.ts 内联判断不一致
+  // （该不一致由 tests/unit/security.test.ts 的 TDD 用例发现）。
+  const target = url.href.split("#")[0].split("?")[0];
+  return url.protocol === "file:" && target === rendererUrl.href;
 }
 
 export function isAllowedWebviewUrl(
