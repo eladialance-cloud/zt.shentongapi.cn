@@ -74,7 +74,7 @@ const PLATFORM_TAG: Record<VersionPlatform, { color: string; icon: ReactNode; te
 // 当前作为静态参考数据展示各服务运行时版本号
 const RUNTIME_VERSIONS: Array<{ name: string; version: string; port: number }> = [
   { name: 'N8N', version: '1.62.0', port: 5678 },
-  { name: 'OpenClaw', version: '0.3.0', port: 8080 },
+  { name: 'Hermes', version: '0.20.5', port: 8642 },
   { name: 'MCP Gateway', version: '0.2.0', port: 3100 }
 ]
 

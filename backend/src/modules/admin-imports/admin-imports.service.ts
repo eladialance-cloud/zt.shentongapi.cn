@@ -568,7 +568,7 @@ export class AdminImportsService implements OnModuleInit {
         } else {
           const row = await this.skillRepo.save(this.skillRepo.create({
             name: d.name, displayName: d.displayName, description: d.description,
-            skillType: 'skill', runtimeType: String(d.payload.runtimeType ?? 'openclaw'),
+            skillType: 'skill', runtimeType: String(d.payload.runtimeType ?? 'markdown-only'),
             category: d.category, sourceUrl: d.sourceRepo,
             sourceType: 'github', sourceRepo: d.sourceRepo, sourcePath: d.sourcePath, githubTopics: d.githubTopics,
             skillMdPath: d.payload.skillMdPath as string | undefined,

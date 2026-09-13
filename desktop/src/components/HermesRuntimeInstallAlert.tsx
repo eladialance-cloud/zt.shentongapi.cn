@@ -67,12 +67,12 @@ export default function HermesRuntimeInstallAlert({
     <Alert
       type="warning"
       showIcon
-      message="需要安装 Hermes 运行时"
+      message="需要安装深瞳机器人运行时"
       description={
         <Space direction="vertical" size={8} style={{ width: "100%" }}>
           <span>
-            本地 Hermes 运行时（约 130MB）未安装。它与「本地服务管理」共用同一套运行时，
-            装一次即可、无需重复下载；安装后即可使用技能中心 / 进化页 / Hermes 编排，
+            本地深瞳机器人运行时（约 130MB）未安装。它与「本地服务管理」共用同一套运行时，
+            装一次即可、无需重复下载；安装后即可使用技能中心 / 进化页 / 深瞳机器人编排，
             也可到「本地服务管理」页手动安装。
           </span>
           {downloading ? (
@@ -89,7 +89,7 @@ export default function HermesRuntimeInstallAlert({
             loading={downloading}
             onClick={() => void handleInstall()}
           >
-            {downloading ? "下载中…" : "安装 Hermes 运行时"}
+            {downloading ? "下载中…" : "安装深瞳机器人运行时"}
           </Button>
         </Space>
       }

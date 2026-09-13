@@ -5,7 +5,7 @@ import { CurrentUser, ICurrentUser } from '../../../common/decorators/current-us
 import { ChatAccountingService } from '../services/chat-accounting.service';
 
 /**
- * OpenClaw 本地直达对话记账接口（JWT 保护，未登录 401）
+ * 本地直达对话记账接口（JWT 保护，未登录 401）
  * - GET  /api/chat/accounting/proxy-key       返回/生成用户 llm-proxy 静态 Key
  * - POST /api/chat/accounting/preferred-model 保存用户默认对话模型
  * - POST /api/chat/accounting/tool            有定价工作流额外扣费

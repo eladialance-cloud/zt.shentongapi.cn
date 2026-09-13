@@ -22,7 +22,7 @@ Write-Host "=== [2/5] git reset --mixed $base（索引/HEAD 回到基线，工�
 if ($LASTEXITCODE -ne 0) { throw "reset --mixed 失败" }
 
 Write-Host "=== [3/5] 暂存技能副本源码（.gitignore 自动排除 node_modules/.next/__pycache__）==="
-& $git add -A -- "video-claw" "desktop/resources/openclaw/skills/video-claw"
+& $git add -A -- "video-claw" "desktop/resources/hermes/skills/video-claw"
 if ($LASTEXITCODE -ne 0) { throw "git add 技能副本失败" }
 
 Write-Host "=== [3.5/5] 暂存两个提交的其余变更（桌面端代码/脚本/manifest，按 git 记录清单）==="

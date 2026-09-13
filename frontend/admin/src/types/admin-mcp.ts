@@ -5,7 +5,7 @@
 export type McpTransportType = 'stdio' | 'http' | 'streamable-http'
 
 /** MCP 服务类型 */
-export type McpServiceType = 'openclaw' | 'codex' | 'n8n' | 'custom'
+export type McpServiceType = 'codex' | 'n8n' | 'custom'
 
 /** MCP 服务状态 */
 export type McpServerStatus = 'pending' | 'connected' | 'failed' | 'disabled'

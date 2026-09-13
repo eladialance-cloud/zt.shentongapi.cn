@@ -3,7 +3,8 @@
  * 轻任务分流主判定在 Hermes 太子人设提示词（LLM 决策，需真机）；
  * 本测试验证两层兜底守卫可运行：
  *   1) edict-create.mjs 拒绝空/空白标题（不建任务）
- *   2) 太子人设 taizi.md 明确「闲聊/问答不建任务」规则
+ *   2) 太子人设 profiles/taizi.md 明确「闲聊/问答不建任务」规则
+ *      （断言字符串对齐 P1 SOUL 改写后的 v1.0 文案，语义锚点保持四条不变）
  *   3) 缺 Hermes Python / EDICT_HOME 时报错而非误建任务
  */
 import { spawnSync } from "node:child_process";
@@ -36,9 +37,13 @@ describe("edict-create 轻任务分流守卫（T5.3）", () => {
 
   test("太子人设含轻任务分流规则（闲聊/问答不建任务）", () => {
     const soul = fs.readFileSync(TAIZI_SOUL, "utf-8");
-    expect(soul).toContain("直接回复（不建任务）");
+    // ① 闲聊/信息查询走直接回复、不建任务（话术示例）
+    expect(soul).toContain("直接回复，不建任务");
+    // ② 分拣必须区分闲聊/问答与正式旨意
     expect(soul).toContain("闲聊/问答");
-    expect(soul).toContain("宁可少建任务");
-    expect(soul).toContain("不创建任务");
+    // ③ 宁可少建也不把闲聊当旨意
+    expect(soul).toContain("宁可少建也不把闲聊当旨意");
+    // ④ 边界与禁用：闲聊、单纯信息查询不得创建任务
+    expect(soul).toContain("不得创建任务");
   });
 });

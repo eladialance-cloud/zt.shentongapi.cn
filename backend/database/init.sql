@@ -129,7 +129,7 @@ CREATE TABLE `task_team_members` (
 
 -- -----------------------------------------------------------------------------
 -- 6. Agent 表 (eco_agents) - 文档 3.2.1
---    包含 OpenClaw 集成字段
+--    包含运行时字段
 -- -----------------------------------------------------------------------------
 CREATE TABLE `eco_agents` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'Agent ID',
@@ -155,17 +155,16 @@ CREATE TABLE `eco_agents` (
   `revenue` INT NOT NULL DEFAULT 0 COMMENT '累计收益 (积分)',
   `rejection_reason` VARCHAR(512) DEFAULT NULL COMMENT '审核拒绝原因',
   `published_at` DATETIME DEFAULT NULL COMMENT '上架时间',
-  `openclaw_agent_id` VARCHAR(64) DEFAULT NULL COMMENT 'OpenClaw 引擎 Agent ID',
   `source_type` VARCHAR(16) NOT NULL DEFAULT 'user' COMMENT '来源类型 (official/user/imported)',
   `source_name` VARCHAR(128) DEFAULT NULL COMMENT '来源名称',
   `source_repo_url` VARCHAR(512) DEFAULT NULL COMMENT '来源仓库 URL',
   `source_file_path` VARCHAR(512) DEFAULT NULL COMMENT '来源仓库相对路径',
   `source_category` VARCHAR(64) DEFAULT NULL COMMENT '来源分类',
   `source_version` VARCHAR(32) DEFAULT NULL COMMENT '来源版本',
-  `runtime_type` VARCHAR(16) NOT NULL DEFAULT 'openclaw' COMMENT '运行时类型 (openclaw/hermes/hybrid)',
+  `runtime_type` VARCHAR(16) NOT NULL DEFAULT 'hermes' COMMENT '运行时类型 (hermes/hybrid)',
   `is_official` TINYINT NOT NULL DEFAULT 0 COMMENT '是否官方 Agent (0=否/1=是)',
   `official_visible` TINYINT NOT NULL DEFAULT 1 COMMENT '是否在前端官方列表展示 (0=否/1=是)',
-  `sync_status` VARCHAR(16) NOT NULL DEFAULT 'pending' COMMENT 'OpenClaw 同步状态 (pending/synced/failed)',
+  `sync_status` VARCHAR(16) NOT NULL DEFAULT 'pending' COMMENT '同步状态 (pending/synced/failed)',
   `sync_error` VARCHAR(512) DEFAULT NULL COMMENT '同步失败原因',
   `user_id` BIGINT UNSIGNED NOT NULL COMMENT '归属用户 ID',
   `knowledge_base_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '当前挂载知识库 ID',
@@ -175,7 +174,6 @@ CREATE TABLE `eco_agents` (
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uniq_agents_openclaw_agent_id` (`openclaw_agent_id`),
   UNIQUE KEY `idx_agents_source_repo_file` (`source_repo_url`, `source_file_path`),
   KEY `idx_agents_creator_id` (`creator_id`),
   KEY `idx_agents_user_id` (`user_id`),

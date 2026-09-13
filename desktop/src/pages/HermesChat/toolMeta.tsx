@@ -332,10 +332,17 @@ const KEYWORD_TO_KEY: ReadonlyArray<readonly [string, string]> = [
   ["web", "web"],
 ];
 
+/** 工具名可能来自缺字段的历史记录，先收敛成字符串再处理，绝不假设它是 string */
+function toolNameText(toolName: unknown): string {
+  return typeof toolName === "string" ? toolName.trim() : "";
+}
+
 /** Map an individual tool name to a toolset icon key, or "" if unknown. */
-export function iconKeyForTool(toolName: string): string {
+export function iconKeyForTool(toolName: unknown): string {
+  const raw = toolNameText(toolName);
+  if (!raw) return "";
   const base = (
-    toolName.includes("__") ? toolName.split("__").pop()! : toolName
+    raw.includes("__") ? raw.split("__").pop()! : raw
   )
     .trim()
     .toLowerCase();
@@ -347,15 +354,17 @@ export function iconKeyForTool(toolName: string): string {
 }
 
 /** "execute_code" → "Execute Code"; strips MCP "server__" prefixes. */
-export function humanizeToolName(toolName: string): string {
-  const base = toolName.includes("__") ? toolName.split("__").pop()! : toolName;
+export function humanizeToolName(toolName: unknown): string {
+  const raw = toolNameText(toolName);
+  if (!raw) return "Tool";
+  const base = raw.includes("__") ? raw.split("__").pop()! : raw;
   const words = base
     .replace(/[_-]+/g, " ")
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .trim()
     .split(/\s+/)
     .filter(Boolean);
-  if (words.length === 0) return toolName;
+  if (words.length === 0) return "Tool";
   return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
 
@@ -365,7 +374,7 @@ export function ToolGlyph({
   size = 13,
   className,
 }: {
-  toolName: string;
+  toolName?: string;
   size?: number;
   className?: string;
 }): React.JSX.Element {

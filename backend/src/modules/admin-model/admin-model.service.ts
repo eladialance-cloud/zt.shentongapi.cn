@@ -458,13 +458,13 @@ export class AdminModelService implements OnModuleInit {
     return { response };
   }
 
-  /** 手动同步 OpenClaw（占位实现） */
+  /** 手动同步（占位实现） */
   async sync(id: number) {
     const model = await this.modelRepo.findOne({ where: { id } });
     if (!model) {
       BusinessException.throw(ErrorCode.NOT_FOUND, '模型不存在');
     }
-    // 占位：实际同步逻辑由后续任务接入 OpenClaw 实现
+    // 占位：实际同步逻辑由后续任务接入实现
   }
 
   // ============ 供应商体系 ============

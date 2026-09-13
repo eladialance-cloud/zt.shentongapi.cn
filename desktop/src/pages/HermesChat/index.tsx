@@ -1,15 +1,19 @@
 // Hermes 对话（独立入口）：直接与本地 Hermes Agent（:8642）流式对话
-// 链路：createHermesChat() → IPC → 主进程 HermesChatService → Hermes /v1/chat/completions
+// 链路：createHermesGatewayHandle() → /api/ws JSON-RPC（session.create/resume → prompt.submit → 事件流），保留持久化/沉淀/officeBridge
 // 计费归引擎层 llm-proxy；消息内容全程本机。复用 Chat 页面消息列表/输入组件，保持视觉一致。
 // 阶段 2：对齐会话持久化 + 沉淀提示（SedimentNotice）+ officeBridge 事件流水线。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Alert, Button, Select, Space, Spin, Tag, Tooltip, Modal, List, Tabs, Input } from 'antd'
-import { RobotOutlined, ArrowLeftOutlined, LoadingOutlined, SettingOutlined, QuestionCircleOutlined } from '@ant-design/icons'
+import { RobotOutlined, SettingOutlined, QuestionCircleOutlined } from '@ant-design/icons'
 import { createHermesChat, type HermesChatHandle } from '@/api/hermes-chat-api'
 import { createHermesGatewayHandle, type HermesGatewayHandle } from '@/services/hermes-gateway-client'
 import { readLocalPref, writeLocalPref, normalizePersonaId, normalizeMemoryTarget, PERSONA_STORAGE_KEY, MEMORY_TARGET_STORAGE_KEY, REASONING_EFFORT_STORAGE_KEY } from './prefs'
-import { MessageList } from '@/pages/Chat/components/MessageList'
+import { MessageList as UpstreamMessageList } from './upstream/MessageList'
+import { ChatEmptyState as UpstreamChatEmptyState } from './upstream/ChatEmptyState'
+import './upstream/upstreamChat.css'
+import type { ChatMessage as UpstreamChatMessage, ClarifyMessage as UpstreamClarifyMessage } from './upstream/types'
+import type { Attachment as UpstreamAttachment } from './upstream/attachments'
 import { MessageInput } from '@/pages/Chat/components/MessageInput'
 import { SessionList } from '@/pages/Chat/components/SessionList'
 import { ConversationSettings } from '@/pages/Chat/ConversationSettings'
@@ -34,9 +38,19 @@ import type { SedimentNotice as SedimentNoticeData } from '@/store/chat-stream'
 import HermesRuntimeInstallAlert from '@/components/HermesRuntimeInstallAlert'
 import { parseSlashCommand, LOCAL_COMMAND_NAMES, AGENT_ONLY_COMMAND_NAMES, SLASH_HELP, type ParsedSlashCommand } from './slash'
 import { MemoryProviderPanel } from './MemoryProviderPanel'
-import { ContextGauge } from './ContextGauge'
-import { ReasoningEffortPicker } from './ReasoningEffortPicker'
+import { ChatInput as UpstreamChatInput, type ChatInputHandle as UpstreamChatInputHandle } from './upstream/ChatInput'
+import UpstreamSoul from './upstream/Soul'
+import { contextWindowForModel } from './contextWindow'
+import { ModelPicker as UpstreamModelPicker } from './upstream/ModelPicker'
+import { ReasoningEffortPicker as UpstreamReasoningEffortPicker } from './upstream/ReasoningEffortPicker'
+import { normalizeToolCalls, toolCallText } from '@/utils/tool-call-normalize'
+import type { ModelGroup as UpstreamModelGroup } from './upstream/types'
 import HermesTools from './HermesTools'
+import { WebPreviewPanel as UpstreamWebPreviewPanel } from './upstream/WebPreviewPanel'
+import { ContextFolderChip as UpstreamContextFolderChip } from './upstream/ContextFolderChip'
+import { WorktreePanel as UpstreamWorktreePanel } from './upstream/WorktreePanel'
+import { RemoteFolderPicker as UpstreamRemoteFolderPicker } from './upstream/RemoteFolderPicker'
+import { QueuedMessages as UpstreamQueuedMessages } from './upstream/QueuedMessages'
 import { normalizeReasoningEffort, type ReasoningEffort } from './reasoningEffort'
 import styles from './styles.module.css'
 
@@ -49,6 +63,68 @@ interface StreamState {
 }
 
 const EMPTY_STREAM: StreamState = { content: '', toolCalls: [], phase: 'idle', usage: undefined, error: '' }
+interface QueuedDraft {
+  text: string
+  attachments: UpstreamAttachment[]
+}
+/** 深瞳消息/流式状态 → 上游 Hermes ChatMessage[]（保留气泡/工具行/markdown 渲染） */
+function toUpstreamAttachment(
+  att: NonNullable<ChatMessage['attachments']>[number],
+  index: number,
+): UpstreamAttachment {
+  const isImg = /^image\//.test(att.mimeType || '')
+  return {
+    // id 必须跨渲染稳定：旧写法用 Math.random() 会导致每次渲染 key 变化、附件节点被反复卸载重建
+    id: att.fileId || att.url || att.fileName || `att-${index}`,
+    kind: isImg ? 'image' : 'text-file',
+    name: att.fileName || '附件',
+    mime: att.mimeType || '',
+    size: att.fileSize || 0,
+    dataUrl: isImg ? att.url : undefined,
+    path: isImg ? undefined : att.url,
+  }
+}
+
+function mapToolStatus(s: ToolCallInfo['status'] | undefined): 'running' | 'completed' | 'failed' {
+  return s === 'running' ? 'running' : s === 'failed' ? 'failed' : 'completed'
+}
+
+function toUpstreamMessages(msgs: ChatMessage[], stream: StreamState, clarify: UpstreamClarifyMessage[] = []): UpstreamChatMessage[] {
+  const out: UpstreamChatMessage[] = []
+  for (const m of msgs) {
+    if (m.role === 'system') continue
+    const role = m.role === 'user' ? 'user' : 'agent'
+    const base = {
+      id: String(m.id),
+      role: role as 'user' | 'agent',
+      content: m.content,
+      timestamp: m.createdAt ? new Date(m.createdAt).getTime() : undefined,
+    }
+    if (m.role === 'user') {
+      out.push({ ...base, attachments: m.attachments?.map((a, i) => toUpstreamAttachment(a, i)) })
+      continue
+    }
+    // 历史里的 toolCalls 形状不受库约束（旧版本写入 / OpenAI function 形状 /
+    // 双编码 JSON 串），统一归一化后再渲染，避免 name 缺失把整页打崩。
+    if (m.toolCalls) {
+      for (const tc of normalizeToolCalls(m.toolCalls)) {
+        out.push({ id: `tc-${tc.id}`, kind: 'tool_call', role: 'agent', callId: tc.id, name: tc.name, args: toolCallText(tc.input), status: mapToolStatus(tc.status) })
+        if (tc.output != null) {
+          out.push({ id: `tr-${tc.id}`, kind: 'tool_result', role: 'agent', callId: tc.id, name: tc.name, content: toolCallText(tc.output) })
+        }
+      }
+    }
+    out.push({ ...base, attachments: m.attachments?.map((a, i) => toUpstreamAttachment(a, i)) })
+  }
+  for (const tc of stream.toolCalls) {
+    out.push({ id: `stc-${tc.id}`, kind: 'tool_call', role: 'agent', callId: tc.id, name: tc.name || 'tool', args: toolCallText(tc.input), status: mapToolStatus(tc.status) })
+  }
+  if (stream.content) {
+    out.push({ id: '__stream__', role: 'agent', content: stream.content, pending: true })
+  }
+  for (const m of clarify) out.push(m)
+  return out
+}
 
 /** 依据所选模型单价估算本次积分成本（上游 token 追踪的本地估算；无单价则返回 0） */
 function estimateCost(usage: HermesChatUsage | undefined, models: ModelOption[], modelId: string): number {
@@ -91,9 +167,159 @@ function upsertTool(list: ToolCallInfo[], tc: HermesChatToolCall): ToolCallInfo[
   return next
 }
 
+type GatewayPayload = Record<string, unknown>
+
+function gwText(payload: unknown, ...keys: string[]): string {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return ""
+  const p = payload as GatewayPayload
+  for (const k of keys) {
+    const v = p[k]
+    if (typeof v === "string" && v.trim()) return v
+    if (typeof v === "number" || typeof v === "boolean") return String(v)
+    if (typeof v === "object" && v) {
+      const o = v as GatewayPayload
+      if (typeof o.text === "string") return o.text
+      if (typeof o.output_text === "string") return o.output_text
+      if (typeof o.content === "string") return o.content
+      try { return JSON.stringify(o) } catch { return "" }
+    }
+    if (Array.isArray(v)) {
+      return v.map((x) => (typeof x === "string" ? x : x && typeof x === "object" ? gwText(x, "text", "output_text") : "")).join("")
+    }
+  }
+  return ""
+}
+
+function gwUsage(payload: unknown): HermesChatUsage | undefined {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined
+  const u = (payload as GatewayPayload).usage
+  if (!u || typeof u !== "object") return undefined
+  const up = u as GatewayPayload
+  const n = (v: unknown): number => { const x = Number(v); return Number.isFinite(x) ? x : 0 }
+  const input = n(up.input ?? up.prompt ?? up.prompt_tokens ?? up.promptTokens)
+  const output = n(up.output ?? up.completion ?? up.completion_tokens ?? up.completionTokens)
+  const total = n(up.total ?? up.total_tokens ?? up.totalTokens) || input + output
+  return input || output || total ? { input, output, total } : undefined
+}
+
+function gwToolFromEvent(type: string, payload: unknown): HermesChatToolCall | undefined {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined
+  const p = payload as GatewayPayload
+  const name = gwText(p, "name", "tool", "function", "function_name")
+  if (!name) return undefined
+  const input = p.args ?? p.input ?? p.arguments ?? undefined
+  const outVal = p.result ?? p.output ?? p.content ?? undefined
+  const status = typeof p.status === "string" ? p.status : ""
+  let state: HermesChatToolCall["state"] = "running"
+  if (status === "completed" || status === "done" || type === "tool.complete" || type === "tool.done") state = "done"
+  else if (status === "failed" || status === "error" || p.error) state = "error"
+  return {
+    id: gwText(p, "call_id", "tool_call_id", "id") || name,
+    name,
+    input: typeof input === "object" ? input : input,
+    state,
+    ...(outVal !== undefined ? { output: typeof outVal === "string" ? outVal : JSON.stringify(outVal) } : {}),
+  }
+}
+
+function gwClarifyFromEvent(payload: unknown): UpstreamClarifyMessage | undefined {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined
+  const p = payload as GatewayPayload
+  const requestId = gwText(p, "request_id", "requestId", "id")
+  if (!requestId) return undefined
+  const question = gwText(p, "question", "prompt", "message", "text")
+  if (!question.trim()) return undefined
+  const choicesRaw = Array.isArray(p.choices) ? p.choices : []
+  const choices = choicesRaw.map((ch) => typeof ch === "string" ? ch : gwText(ch, "text", "label", "value")).filter((ch) => !!ch.trim())
+  return {
+    id: `clarify-${requestId}`,
+    kind: "clarify",
+    role: "agent",
+    requestId,
+    question,
+    choices,
+  }
+}
+function base64FromDataUrl(dataUrl: string | undefined): string {
+  if (!dataUrl) return ''
+  const comma = dataUrl.indexOf(',')
+  return comma >= 0 ? dataUrl.slice(comma + 1) : ''
+}
+
+function base64EncodeUtf8(value: string): string {
+  const bytes = new TextEncoder().encode(value)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary)
+}
+
+function dashboardDataUrlForTextAttachment(att: UpstreamAttachment): string | null {
+  if (att.kind !== 'text-file' || typeof att.text !== 'string') return null
+  const mime = att.mime || 'text/plain'
+  return 'data:' + mime + ';base64,' + base64EncodeUtf8(att.text)
+}
+
+function safeAttachmentFilename(name: string | undefined, index: number): string {
+  const trimmed = (name || '').trim()
+  return trimmed || 'image-' + (index + 1) + '.png'
+}
+
+function safeFileAttachmentName(name: string | undefined, index: number): string {
+  const trimmed = (name || '').trim()
+  return trimmed || 'attachment-' + (index + 1)
+}
+
+function upstreamToDeepAttachment(a: UpstreamAttachment): NonNullable<ChatMessage['attachments']>[number] {
+  return {
+    fileId: a.id,
+    fileName: a.name,
+    fileSize: a.size || 0,
+    mimeType: a.mime || '',
+    url: a.kind === 'image' ? a.dataUrl || '' : a.path || a.dataUrl || '',
+  }
+}
+
+async function syncAttachmentsForSubmit(
+  g: HermesGatewayHandle,
+  sessionId: string,
+  attachments: UpstreamAttachment[],
+): Promise<{ ok: boolean; refs: string[]; error?: string }> {
+  const images = attachments.filter((a) => a.kind === 'image')
+  const files = attachments.filter((a) => a.kind !== 'image')
+  const refs: string[] = []
+  for (let i = 0; i < images.length; i++) {
+    const att = images[i]
+    const contentBase64 = base64FromDataUrl(att.dataUrl)
+    if (!contentBase64) return { ok: false, refs: [], error: '无法读取图片附件 ' + att.name }
+    const r = await g.request<{ attached?: boolean; message?: string }>('image.attach_bytes', {
+      session_id: sessionId,
+      content_base64: contentBase64,
+      filename: safeAttachmentFilename(att.name, i),
+    })
+    if (!r.ok || !r.result?.attached) return { ok: false, refs: [], error: r.error || r.result?.message || '图片附件 ' + att.name + ' 上传失败' }
+  }
+  for (let i = 0; i < files.length; i++) {
+    const att = files[i]
+    const params: Record<string, unknown> = { session_id: sessionId, name: safeFileAttachmentName(att.name, i) }
+    if (att.kind === 'text-file') {
+      const dataUrl = dashboardDataUrlForTextAttachment(att)
+      if (!dataUrl) return { ok: false, refs: [], error: '附件 ' + att.name + ' 不是文本文件' }
+      params.data_url = dataUrl
+    } else if (att.kind === 'path-ref' && att.path) {
+      params.path = att.path
+    } else {
+      return { ok: false, refs: [], error: '附件 ' + att.name + ' 类型不支持' }
+    }
+    const r = await g.request<{ attached?: boolean; ref_text?: string; message?: string }>('file.attach', params)
+    if (!r.ok || !r.result?.attached) return { ok: false, refs: [], error: r.error || r.result?.message || '附件 ' + att.name + ' 上传失败' }
+    if (r.result?.ref_text) refs.push(r.result.ref_text)
+  }
+  return { ok: true, refs }
+}
 export default function HermesChat() {
   const navigate = useNavigate()
   const [committed, setCommitted] = useState<ChatMessage[]>([])
+  const [clarifyMessages, setClarifyMessages] = useState<UpstreamClarifyMessage[]>([])
   const [stream, setStreamState] = useState<StreamState>(EMPTY_STREAM)
   const [sending, setSending] = useState(false)
   const [ready, setReady] = useState<boolean | null>(null)
@@ -101,7 +327,7 @@ export default function HermesChat() {
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const [sedimentNotice, setSedimentNotice] = useState<SedimentNoticeData | null>(null)
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null)
-  const [sessionTitle, setSessionTitle] = useState('和 Hermes 对话')
+  const [sessionTitle, setSessionTitle] = useState('和深瞳机器人对话')
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
   const [selectedModel, setSelectedModel] = useState('custom/deep-shentong')
   const [loadingHistory, setLoadingHistory] = useState(false)
@@ -132,10 +358,13 @@ export default function HermesChat() {
   const [gw, setGw] = useState<{ connected: boolean; checking: boolean; error?: string }>({ connected: false, checking: false })
   const [soulOpen, setSoulOpen] = useState(false)
   const [soulProfileId, setSoulProfileId] = useState('')
-  const [soulContent, setSoulContent] = useState('')
-  const [soulSource, setSoulSource] = useState<'custom' | 'blueprint' | ''>('')
-  const [soulLoading, setSoulLoading] = useState(false)
-  const [soulSaving, setSoulSaving] = useState(false)
+  const [webPreviewOpen, setWebPreviewOpen] = useState(false)
+  const [webPreviewUrl, setWebPreviewUrl] = useState('')
+  const [contextFolder, setContextFolder] = useState<string | null>(null)
+  const [worktreeOpen, setWorktreeOpen] = useState(false)
+  const [folderPickerOpen, setFolderPickerOpen] = useState(false)
+  const [queue, setQueue] = useState<QueuedDraft[]>([])
+
 
   const handleRef = useRef<HermesChatHandle | null>(null)
   const streamRef = useRef<StreamState>(EMPTY_STREAM)
@@ -143,6 +372,8 @@ export default function HermesChat() {
   const idRef = useRef(0)
   // 阶段 2：会话持久化 + 沉淀 + Office 事件所需的近一轮快照
   const sessionIdRef = useRef<number | null>(null)
+  // Hermes gateway 运行时会话 id（/api/ws 的 session.create/resume 返回，区别于后端 sessionIdRef）
+  const hermesRuntimeSidRef = useRef<string | null>(null)
   const abortedRef = useRef(false)
   const replyGeneratedRef = useRef(false)
   const lastUserMessageRef = useRef('')
@@ -150,6 +381,9 @@ export default function HermesChat() {
   const lastKbRef = useRef<number | undefined>(undefined)
   const lastModelRef = useRef<string | undefined>(undefined)
   const localMsgIdsRef = useRef<Set<number>>(new Set())
+  const queueRef = useRef<QueuedDraft[]>([])
+  const flushingRef = useRef(false)
+  const sendDraftRef = useRef<(text: string, attachments?: UpstreamAttachment[]) => Promise<void>>(async () => {})
 
   const setStream = useCallback((updater: (s: StreamState) => StreamState) => {
     streamRef.current = updater(streamRef.current)
@@ -158,15 +392,20 @@ export default function HermesChat() {
 
   /** 选择会话 → 加载历史 + 设置当前会话/模型 */
   const handleSelectSession = useCallback(async (next: ChatSession | null) => {
+    queueRef.current = []
+    setQueue([])
+    flushingRef.current = false
     if (!next) {
       setActiveSessionId(null)
       sessionIdRef.current = null
       setCommitted([])
+      setClarifyMessages([])
       setStreamState(EMPTY_STREAM)
       finalizedRef.current = false
       abortedRef.current = false
       localMsgIdsRef.current.clear()
-      setSessionTitle('和 Hermes 对话')
+      hermesRuntimeSidRef.current = null
+      setSessionTitle('和深瞳机器人对话')
       return
     }
     setActiveSessionId(next.id)
@@ -174,15 +413,18 @@ export default function HermesChat() {
     setSelectedModel(next.modelId)
     setKnowledgeBaseId(next.knowledgeBaseId)
     setAgentId(next.agentId)
-    setSessionTitle(next.title || '和 Hermes 对话')
+    setSessionTitle(next.title || '和深瞳机器人对话')
     localMsgIdsRef.current.clear()
+    hermesRuntimeSidRef.current = null
     setLoadingHistory(true)
     try {
       const res = await chatApi.listMessages(next.id, { page: 1, pageSize: 100 })
       setCommitted((res.list || []).filter((m) => m.role !== 'system'))
+      setClarifyMessages([])
     } catch (err) {
       console.warn('[HermesChat] 加载会话消息失败:', err)
       setCommitted([])
+      setClarifyMessages([])
     } finally {
       setLoadingHistory(false)
     }
@@ -222,6 +464,16 @@ export default function HermesChat() {
     })()
     return () => { cancelled = true }
   }, [])
+
+  /** 深链支持：/chat?agentId= 或市场页跳转携带的 agentId，进入后预选对应 Agent */
+  const [searchParams] = useSearchParams()
+  useEffect(() => {
+    const raw = searchParams.get('agentId')
+    if (!raw) return
+    const parsed = Number(raw)
+    if (!Number.isInteger(parsed) || parsed <= 0) return
+    setAgentId(parsed)
+  }, [searchParams])
 
   /** 加载知识库（我的 + 官方） */
   useEffect(() => {
@@ -364,6 +616,7 @@ export default function HermesChat() {
     switch (name) {
       case 'new':
         setCommitted([])
+        setClarifyMessages([])
         streamRef.current = EMPTY_STREAM
         setStreamState(EMPTY_STREAM)
         finalizedRef.current = false
@@ -371,18 +624,21 @@ export default function HermesChat() {
         replyGeneratedRef.current = false
         localMsgIdsRef.current.clear()
         sessionIdRef.current = null
+        hermesRuntimeSidRef.current = null
         setActiveSessionId(null)
-        setSessionTitle('和 Hermes 对话')
+        setSessionTitle('和深瞳机器人对话')
         setRefreshTrigger((t) => t + 1)
         break
       case 'clear':
         setCommitted([])
+        setClarifyMessages([])
         streamRef.current = EMPTY_STREAM
         setStreamState(EMPTY_STREAM)
         finalizedRef.current = false
         abortedRef.current = false
         replyGeneratedRef.current = false
         localMsgIdsRef.current.clear()
+        hermesRuntimeSidRef.current = null
         break
       case 'model':
         setSettingsOpen(true)
@@ -403,7 +659,7 @@ export default function HermesChat() {
       }
       case 'version': {
         const v = status?.status?.version ?? status?.stats?.hermes_version ?? '未知'
-        appendLocalMessage('⚙️ Hermes 版本：' + v)
+        appendLocalMessage('⚙️ 深瞳机器人版本：' + v)
         break
       }
       case 'persona':
@@ -447,13 +703,13 @@ export default function HermesChat() {
         appendLocalMessage('⚙️ 快速模式（/fast）规划中。')
         break
       case 'status':
-        appendLocalMessage('⚙️ Hermes 状态：' + (ready === null ? '检测中' : ready ? '运行中' : '未启动') + (status?.status?.version ? ' · 版本 ' + status.status.version : '') + '。')
+        appendLocalMessage('⚙️ 深瞳机器人状态：' + (ready === null ? '检测中' : ready ? '运行中' : '未启动') + (status?.status?.version ? ' · 版本 ' + status.status.version : '') + '。')
         break
       case 'debug': {
         const tokenTotal = committed.reduce((n, m) => n + (m.tokenUsage?.totalTokens || ((m.tokenUsage?.promptTokens || 0) + (m.tokenUsage?.completionTokens || 0))), 0)
         const personaName = personaOptions.find((x) => x.id === personaId)?.label ?? '未设置'
         appendLocalMessage([
-          '⚙️ Hermes 调试信息：',
+          '⚙️ 深瞳机器人调试信息：',
           '状态：' + (ready === null ? '检测中' : ready ? '运行中' : '未启动'),
           '模型：' + selectedModel,
           '人格：' + personaName,
@@ -475,6 +731,7 @@ export default function HermesChat() {
       case 'compact':
       case 'compress':
         setCommitted([])
+        setClarifyMessages([])
         streamRef.current = EMPTY_STREAM
         setStreamState(EMPTY_STREAM)
         appendLocalMessage('⚙️ 已压缩上下文，历史已清空（后续对话将重新开始）。')
@@ -489,12 +746,14 @@ export default function HermesChat() {
         break
       case 'reset':
         setCommitted([])
+        setClarifyMessages([])
         streamRef.current = EMPTY_STREAM
         setStreamState(EMPTY_STREAM)
         finalizedRef.current = false
         abortedRef.current = false
         replyGeneratedRef.current = false
         localMsgIdsRef.current.clear()
+        hermesRuntimeSidRef.current = null
         appendLocalMessage('⚙️ 已重置上下文。')
         break
       case 'reload-skills':
@@ -503,7 +762,7 @@ export default function HermesChat() {
         })
         break
       case 'curator':
-        appendLocalMessage('⚙️ Curator（技能使用排序）状态：待 Hermes 网关返回 usage-rank 数据。')
+        appendLocalMessage('⚙️ Curator（技能使用排序）状态：待深瞳机器人网关返回 usage-rank 数据。')
         break
       case 'tools':
         setToolsOpen(true)
@@ -551,7 +810,12 @@ export default function HermesChat() {
 
   const gatewayRef = useRef<HermesGatewayHandle | null>(null)
   if (!gatewayRef.current) {
-    gatewayRef.current = createHermesGatewayHandle({ wsUrl: () => window.electronAPI?.hermesGateway?.getUrl() ?? Promise.resolve({ error: 'gateway api 不可用' }) })
+    try {
+      gatewayRef.current = createHermesGatewayHandle({ wsUrl: () => window.electronAPI?.hermesGateway?.getUrl() ?? Promise.resolve({ error: 'gateway api 不可用' }) })
+    } catch (err) {
+      console.warn('[HermesChat] gateway 句柄创建失败:', err)
+      gatewayRef.current = null
+    }
   }
   const gateway = gatewayRef.current
 
@@ -569,11 +833,12 @@ export default function HermesChat() {
   const runAgentGatewayCommand = useCallback(async (parsed: ParsedSlashCommand) => {
     const conn = await ensureGateway()
     if (!conn.connected) {
-      appendLocalMessage('⚙️ 该命令（/' + parsed.name + '）需 Hermes gateway，当前未连接。请在「服务」页确认 Hermes 运行后再试。')
+      appendLocalMessage('⚙️ 该命令（/' + parsed.name + '）需深瞳机器人网关，当前未连接。请在「服务」页确认深瞳机器人运行后再试。')
       return
     }
-    appendLocalMessage('⚙️ 正在通过 Hermes gateway 执行 /' + parsed.name + ' ...')
-    const r = await gateway!.request('slash.exec', { command: parsed.raw })
+    appendLocalMessage('⚙️ 正在通过深瞳机器人网关执行 /' + parsed.name + ' ...')
+    const sid = hermesRuntimeSidRef.current || ''
+    const r = await gateway!.request('slash.exec', { command: parsed.raw.replace(/^\/+/, ''), session_id: sid })
     if (r.ok) {
       const out = typeof r.result === 'string' ? r.result : r.result == null ? '(无返回)' : JSON.stringify(r.result)
       appendLocalMessage('⚙️ /' + parsed.name + ' 完成：' + out)
@@ -582,42 +847,58 @@ export default function HermesChat() {
     }
   }, [ensureGateway, appendLocalMessage, gateway])
 
+  /** Clarify 卡片应答：经 gateway 透传真实 clarify.respond，成功后本地翻转已解决 */
+  const handleClarifyRespond = useCallback(async (requestId: string, answer: string): Promise<boolean> => {
+    if (!gateway) { appendLocalMessage('⚙️ Clarify 应答需深瞳机器人网关。'); return false }
+    if (!gateway.connected) {
+      const conn = await ensureGateway()
+      if (!conn.connected) { appendLocalMessage('⚙️ Clarify 应答需深瞳机器人网关，当前未连接。'); return false }
+    }
+    const r = await gateway.request('clarify.respond', { request_id: requestId, answer })
+    if (!r.ok) { appendLocalMessage('⚙️ Clarify 应答失败：' + (r.error || '未知错误')); return false }
+    return true
+  }, [gateway, ensureGateway, appendLocalMessage])
+
+  /** 本地将 clarify 卡片标为已解决（只读态） */
+  const handleClarifyResolved = useCallback((requestId: string, answer: string) => {
+    setClarifyMessages((prev) => prev.map((m) => m.requestId === requestId ? { ...m, answer, resolved: true } : m))
+  }, [])
+
   useEffect(() => {
     void ensureGateway()
     const t = window.setInterval(() => void ensureGateway(), 6000)
     return () => window.clearInterval(t)
   }, [ensureGateway])
 
-  /** 打开 SOUL 编辑器（读覆盖/蓝本） */
-  const openSoulEditor = useCallback(async (profileId: string) => {
+  /** 打开 SOUL 编辑器（上游 Soul 组件自行读写） */
+  const openSoulEditor = useCallback((profileId: string) => {
     setSoulProfileId(profileId)
     setSoulOpen(true)
-    setSoulLoading(true)
-    setSoulSource('')
-    try {
-      const r = await window.electronAPI?.hermesSoul?.get(profileId)
-      if (r?.ok) { setSoulContent(r.content || ''); setSoulSource(r.source || '') }
-      else { setSoulContent(''); setSoulSource('') }
-    } catch { setSoulContent(''); setSoulSource('') }
-    finally { setSoulLoading(false) }
   }, [])
 
-  const saveSoul = useCallback(async () => {
-    const api = window.electronAPI?.hermesSoul
-    if (!api || !soulProfileId) return
-    setSoulSaving(true)
-    try {
-      const r = await api.save(soulProfileId, soulContent)
-      if (r.ok) { setSoulOpen(false); appendLocalMessage('⚙️ 已保存 ' + soulProfileId + ' 的 SOUL 人设。') }
-      else appendLocalMessage('⚙️ 保存 SOUL 失败：' + (r.error || '未知错误'))
-    } catch (err) {
-      appendLocalMessage('⚙️ 保存 SOUL 失败：' + (err instanceof Error ? err.message : String(err)))
-    } finally { setSoulSaving(false) }
-  }, [soulProfileId, soulContent, appendLocalMessage])
+  /** 忙碌队列：上一轮结束后自动发送下一条排队消息（忠实上游 QueuedMessages 的排队模型） */
+  const flushQueue = useCallback(() => {
+    if (flushingRef.current) return
+    if (queueRef.current.length === 0) return
+    const next = queueRef.current.shift()!
+    setQueue([...queueRef.current])
+    flushingRef.current = true
+    void sendDraftRef.current(next.text, next.attachments).catch((err) => {
+      // 发送未能启动（会话/网关等前置步骤抛错，此时不会走到 commit）：复位队列锁并把
+      // 消息放回队首，否则 flushingRef 永远为 true，后续排队消息全部静默丢弃。
+      flushingRef.current = false
+      queueRef.current.unshift(next)
+      setQueue([...queueRef.current])
+      setSending(false)
+      const msg = err instanceof Error ? err.message : String(err)
+      setStream((s) => ({ ...s, phase: 'error', error: msg }))
+    })
+  }, [])
 
   const commit = useCallback((statusOk: 'done' | 'error') => {
     if (finalizedRef.current) return
     finalizedRef.current = true
+    setClarifyMessages([])
     const s = streamRef.current
     const sessionId = sessionIdRef.current || 0
     const assistant: ChatMessage = {
@@ -662,7 +943,10 @@ export default function HermesChat() {
 
     streamRef.current = EMPTY_STREAM
     setStreamState(EMPTY_STREAM)
-  }, [modelOptions, selectedModel])
+    // 忙碌队列：上一轮结束后自动发送下一条排队消息
+    flushingRef.current = false
+    flushQueue()
+  }, [modelOptions, selectedModel, setClarifyMessages, flushQueue])
 
   useEffect(() => {
     // 状态轮询：健康 + Hermes 状态；运行时缺失时给一键安装（HermesRuntimeInstallAlert）
@@ -734,9 +1018,180 @@ export default function HermesChat() {
     return () => un.forEach((off) => off())
   }, [handle, setStream, commit])
 
-  const send = useCallback(
-    async (text: string) => {
-      if (!text.trim() || sending || !handle) return
+  // Hermes gateway 运行时会话：session.resume → 失败则 session.create 带历史种子
+  const ensureHermesRuntimeSession = useCallback(async (): Promise<string> => {
+    const profileParam = personaId && personaId !== "default" ? { profile: personaId } : {}
+    const existing = hermesRuntimeSidRef.current
+    if (existing) {
+      try {
+        const resumed = await gateway!.request<{ session_id?: string }>("session.resume", { session_id: existing, cols: 96, ...profileParam })
+        if (resumed.ok && resumed.result?.session_id) {
+          hermesRuntimeSidRef.current = resumed.result.session_id
+          return resumed.result.session_id
+        }
+      } catch {
+        hermesRuntimeSidRef.current = null
+      }
+    }
+    const seed = committed
+      .filter((m) => (m.role === "user" || m.role === "assistant") && !localMsgIdsRef.current.has(m.id))
+      .slice(-24)
+      .map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.content }))
+    const created = await gateway!.request<{ session_id?: string }>("session.create", {
+      cols: 96,
+      ...(seed.length ? { messages: seed } : {}),
+      ...profileParam,
+    })
+    if (!created.ok || !created.result?.session_id) throw new Error(created.error || "session.create 未返回 session_id")
+    hermesRuntimeSidRef.current = created.result.session_id
+    return created.result.session_id
+  }, [gateway, personaId, committed])
+
+  /** 授权/拒绝命令：直接以用户消息经 prompt.submit 打给当前暂停的 Hermes 回合（不走 slash.exec） */
+  const sendControl = useCallback(async (command: '/approve' | '/deny') => {
+    if (!gateway) { appendLocalMessage('⚙️ /' + command.slice(1) + ' 需深瞳机器人网关。'); return }
+    const conn = gateway.connected ? { connected: true } : await ensureGateway()
+    if (!conn.connected) { appendLocalMessage('⚙️ /' + command.slice(1) + ' 需深瞳机器人网关，当前未连接。'); return }
+    setSending(true)
+    officeBridge.onChatMessageSent()
+    const userMsg: ChatMessage = {
+      id: ++idRef.current,
+      sessionId: sessionIdRef.current || 0,
+      userId: 0,
+      role: 'user',
+      content: command,
+      status: 'done',
+      createdAt: new Date(),
+    }
+    setCommitted((prev) => [...prev, userMsg])
+    const prevSessionId = sessionIdRef.current
+    const sessionId = await ensureHermesSession(prevSessionId, command, { modelId: selectedModel, knowledgeBaseId }, pipelineDeps)
+    sessionIdRef.current = sessionId
+    if (sessionId > 0) {
+      persistHermesMessage(sessionId, { role: 'user', content: command }, pipelineDeps)
+      if (sessionId !== prevSessionId) {
+        setActiveSessionId(sessionId)
+        setSessionTitle(command === '/approve' ? '审批通过 · 深瞳机器人' : '审批拒绝 · 深瞳机器人')
+        setRefreshTrigger((t) => t + 1)
+      }
+    }
+    try {
+      const runtimeSid = await ensureHermesRuntimeSession()
+      const r = await gateway.request('prompt.submit', {
+        session_id: runtimeSid,
+        text: command,
+        ...(personaId && personaId !== 'default' ? { profile: personaId } : {}),
+      })
+      if (!r.ok) throw new Error(r.error || 'prompt.submit 失败')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      officeBridge.onSystemError(msg)
+      appendLocalMessage('⚙️ /' + command.slice(1) + ' 失败：' + msg)
+      setSending(false)
+    }
+  }, [gateway, ensureGateway, ensureHermesSession, ensureHermesRuntimeSession, appendLocalMessage, selectedModel, knowledgeBaseId, personaId])
+
+  // Hermes gateway(/api/ws) 事件流：message.delta / message.complete / tool.* / error → 更新流并提交
+  useEffect(() => {
+    if (!gateway) return
+    const off = gateway.onEvent((e) => {
+      if (e.type === "message.start") {
+        setStream((s) => ({ ...s, phase: "start" }))
+        return
+      }
+      if (e.type === "message.delta") {
+        if (!replyGeneratedRef.current) {
+          replyGeneratedRef.current = true
+          officeBridge.onReplyGenerated()
+        }
+        const text = gwText(e.payload, "text", "delta")
+        if (text) setStream((s) => ({ ...s, content: s.content + text }))
+        return
+      }
+      if (e.type === "reasoning.delta" || e.type === "thinking.delta") return
+      if (e.type === "tool.start" || e.type === "tool.progress" || e.type === "tool.generating" || e.type === "tool.complete" || e.type === "tool.done") {
+        const tc = gwToolFromEvent(e.type, e.payload)
+        if (tc) {
+          officeBridge.onToolCall(tc.name)
+          if (isRetrieveTool(tc.name)) officeBridge.onAgentRetrieve()
+          setStream((s) => ({ ...s, toolCalls: upsertTool(s.toolCalls, tc) }))
+        }
+        return
+      }
+      if (e.type === "clarify.request") {
+        const cm = gwClarifyFromEvent(e.payload)
+        if (cm) {
+          setClarifyMessages((prev) => prev.some((m) => m.requestId === cm.requestId) ? prev : [...prev, cm])
+        }
+        return
+      }
+      if (e.type === "background.complete" || e.type === "background.done") {
+        const p = (e.payload && typeof e.payload === "object" ? e.payload : {}) as { task_id?: string; text?: string }
+        const label = p.task_id ? "[bg " + p.task_id + "] " : "[bg] "
+        const body = String(p.text ?? "").trim() || "(no output)"
+        const id = ++idRef.current
+        localMsgIdsRef.current.add(id)
+        const bgMsg: ChatMessage = { id, sessionId: sessionIdRef.current || 0, userId: 0, role: "assistant", content: label + body, status: "done", createdAt: new Date() }
+        setCommitted((prev) => [...prev, bgMsg])
+        return
+      }
+      if (e.type === "background.error" || e.type === "background.failed") {
+        const bgErr = typeof e.payload === "string" ? e.payload : JSON.stringify(e.payload ?? "")
+        appendLocalMessage("⚙️ /btw 后台失败：" + bgErr)
+        return
+      }
+      if (e.type === "message.complete") {
+        if (abortedRef.current) { setSending(false); return }
+        const errText = gwText(e.payload, "error")
+        const failed = !!errText
+        const text = gwText(e.payload, "text", "rendered") || streamRef.current.content
+        const usage = gwUsage(e.payload)
+        if (failed) officeBridge.onSystemError(errText)
+        setStream((s) => ({ ...s, content: text, usage: usage ?? s.usage, phase: failed ? "error" : "end" }))
+        setSending(false)
+        commit(failed ? "error" : "done")
+        return
+      }
+      if (e.type === "error" || e.type === "gateway.error") {
+        const msg = typeof e.payload === "string" ? e.payload : JSON.stringify(e.payload)
+        if (!abortedRef.current) officeBridge.onSystemError(msg)
+        setStream((s) => ({ ...s, phase: "error", error: msg }))
+        setSending(false)
+        commit("error")
+        return
+      }
+    })
+    return off
+  }, [gateway, setStream, commit])
+
+
+  /** 旁支问题（/btw、/bg、/background、💭 快捷提问）：后台并发 agent，不阻塞主回合 */
+  const sendBackground = useCallback(async (raw: string) => {
+    const question = raw.replace(/^\/(btw|bg|background)\s*/i, '').replace(/^💭\s*/, '').trim()
+    if (!question) return
+    if (!gateway) { appendLocalMessage('⚙️ /btw 需深瞳机器人网关。'); return }
+    const conn = gateway.connected ? { connected: true } : await ensureGateway()
+    if (!conn.connected) { appendLocalMessage('⚙️ /btw 需深瞳机器人网关，当前未连接。'); return }
+    const id = ++idRef.current
+    localMsgIdsRef.current.add(id)
+    const userMsg: ChatMessage = { id, sessionId: sessionIdRef.current || 0, userId: 0, role: 'user', content: '💭 ' + question, status: 'done', createdAt: new Date() }
+    setCommitted((prev) => [...prev, userMsg])
+    try {
+      const runtimeSid = await ensureHermesRuntimeSession()
+      const r = await gateway.request('prompt.background', {
+        session_id: runtimeSid,
+        text: question,
+        ...(personaId && personaId !== 'default' ? { profile: personaId } : {}),
+      })
+      if (!r.ok) throw new Error(r.error || 'prompt.background 失败')
+    } catch (err) {
+      appendLocalMessage('⚙️ /btw 失败：' + (err instanceof Error ? err.message : String(err)))
+    }
+  }, [gateway, ensureGateway, ensureHermesRuntimeSession, appendLocalMessage, personaId])
+
+  const sendRaw = useCallback(
+    async (text: string, attachments?: UpstreamAttachment[]) => {
+      if (!text.trim()) return
       const parsedSlash = parseSlashCommand(text)
       if (parsedSlash) {
         if (parsedSlash.name === 'retry') {
@@ -746,10 +1201,13 @@ export default function HermesChat() {
             return
           }
           text = lastUser.content
+        } else if (parsedSlash.name === 'btw' || parsedSlash.name === 'bg' || parsedSlash.name === 'background') {
+          void sendBackground(text)
+          return
         } else if (LOCAL_COMMAND_NAMES.has(parsedSlash.name)) {
           handleLocalSlashCommand(parsedSlash)
           return
-        } else if (AGENT_ONLY_COMMAND_NAMES.has(parsedSlash.name)) {
+        } else if (AGENT_ONLY_COMMAND_NAMES.has(parsedSlash.name) && parsedSlash.name !== 'approve' && parsedSlash.name !== 'deny') {
           void runAgentGatewayCommand(parsedSlash)
           return
         } else {
@@ -783,6 +1241,7 @@ export default function HermesChat() {
         userId: 0,
         role: 'user',
         content: text,
+        attachments: attachments?.length ? attachments.map(upstreamToDeepAttachment) : undefined,
         status: 'done',
         createdAt: new Date(),
       }
@@ -796,47 +1255,134 @@ export default function HermesChat() {
         persistHermesMessage(sessionId, { role: 'user', content: text }, pipelineDeps)
         if (sessionId !== prevSessionId) {
           setActiveSessionId(sessionId)
-          setSessionTitle(text.slice(0, 50) || '和 Hermes 对话')
+          setSessionTitle(text.slice(0, 50) || '和深瞳机器人对话')
           setRefreshTrigger((t) => t + 1)
         }
       }
 
-      const history = committed
-        .filter((m) => (m.role === 'user' || m.role === 'assistant') && !localMsgIdsRef.current.has(m.id))
-        .map((m): { role: 'user' | 'assistant'; content: string } => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }))
+      const gwConn = await ensureGateway()
       try {
-        await handle.send(text, history, knowledgeBaseId, sessionId, selectedModel, personaId || undefined, undefined, reasoningEffort)
-      } catch {
-        // 错误已由 onError 提交；此处兜底，避免流式残留
-        if (!abortedRef.current) commit('error')
-      } finally {
-        setSending(false)
+        if (!gwConn.connected || !gateway) {
+          throw new Error('深瞳机器人网关未连接，请到「服务」页重启深瞳机器人服务后重试')
+        }
+        const runtimeSid = await ensureHermesRuntimeSession()
+        let submitText = text
+        if (attachments && attachments.length) {
+          const synced = await syncAttachmentsForSubmit(gateway, runtimeSid, attachments)
+          if (!synced.ok) throw new Error(synced.error || '附件上传失败')
+          if (synced.refs.length) submitText = [synced.refs.join('\n'), text].filter(Boolean).join('\n\n')
+        }
+        const submit = await gateway!.request('prompt.submit', {
+          session_id: runtimeSid,
+          text: submitText,
+          ...(personaId && personaId !== 'default' ? { profile: personaId } : {}),
+        })
+        if (!submit.ok) throw new Error(submit.error || 'prompt.submit 失败')
+      } catch (err) {
+        if (!abortedRef.current) {
+          const msg = err instanceof Error ? err.message : String(err)
+          officeBridge.onSystemError(msg)
+          setStream((s) => ({ ...s, phase: 'error', error: msg }))
+          setSending(false)
+          commit('error')
+        }
       }
     },
-    [committed, sending, handle, commit, selectedModel, handleLocalSlashCommand, appendLocalMessage, personaId, runAgentGatewayCommand],
+    [committed, commit, selectedModel, handleLocalSlashCommand, appendLocalMessage, personaId, runAgentGatewayCommand, ensureGateway, ensureHermesRuntimeSession, sendBackground],
+  )
+
+  sendDraftRef.current = sendRaw
+
+  /** 对外的发送入口：忙碌（Agent 处理中）时把消息放入 busy 队列；空闲时直接发送 */
+  const send = useCallback(
+    async (text: string, attachments?: UpstreamAttachment[]) => {
+      if (!text.trim()) return
+      const parsedSlash = parseSlashCommand(text)
+      // 非阻塞斜杠命令（后台 / 本地 / agent 网关 / 未知）忙碌时也立即处理，不入队列
+      if (parsedSlash) {
+        if (parsedSlash.name === 'btw' || parsedSlash.name === 'bg' || parsedSlash.name === 'background') {
+          void sendBackground(text)
+          return
+        }
+        if (parsedSlash.name === 'retry') {
+          // /retry 需要解析上一条用户消息 → 走普通发送，进入排队
+        } else if (LOCAL_COMMAND_NAMES.has(parsedSlash.name)) {
+          handleLocalSlashCommand(parsedSlash)
+          return
+        }
+        if (AGENT_ONLY_COMMAND_NAMES.has(parsedSlash.name) && parsedSlash.name !== 'approve' && parsedSlash.name !== 'deny') {
+          void runAgentGatewayCommand(parsedSlash)
+          return
+        }
+        if (parsedSlash.name !== 'retry') {
+          appendLocalMessage('⚙️ 未知斜杠命令：/' + parsedSlash.name + '，输入 /help 查看可用命令。')
+          return
+        }
+      }
+      if (sending || flushingRef.current) {
+        const draft: QueuedDraft = { text, attachments: attachments ?? [] }
+        queueRef.current = [...queueRef.current, draft]
+        setQueue([...queueRef.current])
+        return
+      }
+      await sendRaw(text, attachments)
+    },
+    [sending, sendRaw, sendBackground, handleLocalSlashCommand, runAgentGatewayCommand, appendLocalMessage],
   )
 
   const abort = useCallback(() => {
     abortedRef.current = true
+    setClarifyMessages([])
     handle?.abort()
+    const sid = hermesRuntimeSidRef.current
+    if (gateway && sid) void gateway.request('session.interrupt', { session_id: sid }).catch(() => undefined)
     setSending(false)
-  }, [handle])
+    // 中断当前回合，同时释放忙碌锁：若队列仍有消息，会在下一轮 commit 时继续发送
+    flushingRef.current = false
+  }, [handle, gateway])
 
   const statusLabel = ready === null ? '检测中' : ready ? '运行中' : '未启动'
   const statusColor = ready === null ? 'default' : ready ? 'success' : 'error'
 
   const showEmpty = !loadingHistory && committed.length === 0 && !sending && !stream.content && !stream.error
 
+  const upstreamMessages = useMemo(() => toUpstreamMessages(committed, stream, clarifyMessages), [committed, stream, clarifyMessages])
+  const chatInputRef = useRef<UpstreamChatInputHandle>(null)
+  const contextWindow = contextWindowForModel(selectedModel)
+  const modelGroups = useMemo<UpstreamModelGroup[]>(() => {
+    const byProvider: Record<string, UpstreamModelGroup> = {}
+    for (const m of modelOptions) {
+      const provider = m.provider || 'custom'
+      const label = m.name || m.id
+      if (!byProvider[provider]) byProvider[provider] = { provider, providerLabel: provider, models: [] }
+      byProvider[provider].models.push({ provider, model: m.id, label, baseUrl: '' })
+    }
+    return Object.values(byProvider)
+  }, [modelOptions])
+
+  const selectedModelLabel = useMemo(
+    () => modelOptions.find((m) => m.id === selectedModel)?.name || selectedModel,
+    [modelOptions, selectedModel],
+  )
+
+  useEffect(() => {
+    function handleWebPreviewNavigate(e: Event): void {
+      const url = (e as CustomEvent<string>).detail
+      if (url) { setWebPreviewUrl(url); setWebPreviewOpen(true) }
+    }
+    document.addEventListener('web-preview:navigate', handleWebPreviewNavigate)
+    return () => document.removeEventListener('web-preview:navigate', handleWebPreviewNavigate)
+  }, [])
+
   return (
-    <div className={styles.page}>
+    <div className={`${styles.page} hermes-chat-upstream`} data-theme="dark">
       <header className={styles.header}>
-        <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/chat')} />
         <div className={styles.titleWrap}>
           <RobotOutlined className={styles.titleIcon} />
-          <span className={styles.title}>Hermes 对话</span>
+          <span className={styles.title}>深瞳机器人</span>
         </div>
         <Space size="small" wrap>
-          <Tooltip title="本地 Hermes Agent 健康状态（:8642）">
+          <Tooltip title="深瞳机器人健康状态（本地 :8642）">
             <Tag color={statusColor}>{statusLabel}</Tag>
           </Tooltip>
           {status?.status?.version ? <Tag>{String(status.status.version)}</Tag> : null}
@@ -864,17 +1410,6 @@ export default function HermesChat() {
           <div className={styles.chatHead}>
             <div className={styles.chatHeadTitle}>{sessionTitle}</div>
             <div className={styles.chatHeadActions}>
-              <Select
-                className={styles.modelSelect}
-                size="small"
-                value={selectedModel}
-                onChange={handleModelChange}
-                popupMatchSelectWidth={false}
-                options={modelOptions.map((m) => ({ value: m.id, label: m.name || m.id }))}
-                style={{ minWidth: 150 }}
-              />
-              {stream.usage?.input != null && <ContextGauge model={selectedModel} used={stream.usage.input} />}
-              <ReasoningEffortPicker value={reasoningEffort} onChange={handleReasoningEffortChange} />
               <Tooltip title="斜杠命令帮助（/help）">
                 <Button
                   type="text"
@@ -905,8 +1440,8 @@ export default function HermesChat() {
               type="warning"
               showIcon
               className={styles.alert}
-              message="本地 Hermes Agent 未就绪，发送消息将尝试自动启动。"
-              description="若启动失败，请到「服务」页检查 Hermes 服务状态。"
+              message="深瞳机器人未就绪，发送消息将尝试自动启动。"
+              description="若启动失败，请到「服务」页检查深瞳机器人服务状态。"
             />
           ) : null}
           {stream.error && (
@@ -929,42 +1464,86 @@ export default function HermesChat() {
                 <Spin size="small" /> 加载历史消息...
               </div>
             ) : showEmpty ? (
-              <div className={styles.emptyState}>
-                <div className={styles.emptyStateIconWrap}>
-                  <RobotOutlined className={styles.emptyStateIcon} />
-                </div>
-                <div className={styles.emptyStateTitle}>和 Hermes 对话</div>
-                <div className={styles.emptyStateTip}>
-                  对话由本地 Hermes Agent（:8642）驱动，经 llm-proxy 计费，消息内容全程本机。可自动调用工具与记忆帮你完成复杂任务。选择左侧对话开始聊天，或点击「新建对话」。输入 /help 查看可用斜杠命令。
-                </div>
-              </div>
+              <UpstreamChatEmptyState onSelectSuggestion={(text) => void send(text)} />
             ) : (
-              <MessageList
-                messages={committed}
-                streamingContent={stream.content}
-                streaming={sending}
-                streamingToolCalls={stream.toolCalls}
-                agentPhase={stream.phase === 'idle' ? 'idle' : (stream.phase as 'start' | 'finishing' | 'end' | 'error')}
+              <UpstreamMessageList
+                messages={upstreamMessages}
+                isLoading={sending}
+                toolProgress={stream.phase === 'start' ? 'Agent 正在思考…' : stream.phase === 'finishing' ? '正在整理结果…' : null}
+                onApprove={() => void sendControl('/approve')}
+                onDeny={() => void sendControl('/deny')}
+                onClarifyResolved={handleClarifyResolved}
+                onClarifyRespond={handleClarifyRespond}
+                agentAvatar={{ name: '深瞳机器人' }}
               />
             )}
           </div>
 
           <div className={styles.inputBar}>
-            {sending ? (
-              <div className={styles.abortRow}>
-                <LoadingOutlined /> Hermes 正在生成...
-                <Button size="small" danger onClick={abort}>中断</Button>
-              </div>
-            ) : null}
-            <MessageInput
-              onSend={(content) => void send(content)}
-              sending={sending}
+            <UpstreamQueuedMessages
+              messages={queue}
+              onRemove={(index) => {
+                queueRef.current = queueRef.current.filter((_, i) => i !== index)
+                setQueue([...queueRef.current])
+              }}
+            />
+            <UpstreamChatInput
+              ref={chatInputRef}
+              isLoading={sending}
+              hasSession={!!activeSessionId}
+              sessionId={activeSessionId ? String(activeSessionId) : undefined}
+              contextUsage={
+                stream.usage?.input != null ? { used: stream.usage.input, window: contextWindow } : null
+              }
+              onSubmit={(text, atts) => void send(text, atts)}
+              onQuickAsk={(text) => void sendBackground(text)}
               onAbort={abort}
-              onOpenGeneration={(type) => { setGenerationType(type); setGenerationOpen(true) }}
-              placeholder="和 Hermes 聊天，Enter 发送，Shift+Enter 换行..."
+              toolbarExtras={
+                <>
+                  <UpstreamModelPicker
+                    active
+                    currentModel={selectedModel}
+                    currentProvider={(selectedModel.split('/')[0]) || 'custom'}
+                    currentBaseUrl=""
+                    modelGroups={modelGroups}
+                    displayModel={selectedModelLabel}
+                    onOpen={() => void loadModels()}
+                    onSelectModel={(provider, model, baseUrl) => void handleModelChange(model)}
+                  />
+                  <UpstreamReasoningEffortPicker value={reasoningEffort} onChange={handleReasoningEffortChange} />
+                  <Button size="small" onClick={() => setWebPreviewOpen((v) => !v)}>{webPreviewOpen ? '关闭网页' : '网页预览'}</Button>
+                  <UpstreamContextFolderChip
+                    contextFolder={contextFolder}
+                    show
+                    worktreeVisible={worktreeOpen}
+                    onPickFolder={() => setFolderPickerOpen(true)}
+                    onClearFolder={() => setContextFolder(null)}
+                    onToggleWorktree={() => setWorktreeOpen((v) => !v)}
+                    onSelectRecentFolder={(path) => setContextFolder(path)}
+                  />
+                </>
+              }
             />
           </div>
         </div>
+        {webPreviewOpen && (
+          <UpstreamWebPreviewPanel
+            initialUrl={webPreviewUrl || 'https://example.com'}
+            onClose={() => setWebPreviewOpen(false)}
+            onInspectElement={(payload) => void send(`[网页标注] ${payload.selector} ${payload.comment}`)}
+          />
+        )}
+        <UpstreamRemoteFolderPicker
+          initialPath={contextFolder}
+          open={folderPickerOpen}
+          onCancel={() => setFolderPickerOpen(false)}
+          onSelect={(path) => { setContextFolder(path); setFolderPickerOpen(false); void (window as any).electronAPI?.fs?.setSessionContextFolder?.(path) }}
+        />
+        {worktreeOpen && contextFolder && (
+          <UpstreamWorktreePanel
+            folderPath={contextFolder}
+          />
+        )}
       </div>
         <ScheduleModal
           open={!!schedulePick}
@@ -1023,12 +1602,12 @@ export default function HermesChat() {
             )}
           />
           <div style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
-            选择后将注入该官署 SOUL.md 作为 Hermes 对话人设；留空使用默认人格。
+            选择后将注入该官署 SOUL.md 作为深瞳机器人对话人设；留空使用默认人格。
           </div>
         </Modal>
 
         <Modal
-          title="Hermes 记忆"
+          title="深瞳机器人记忆"
           open={memoryOpen}
           onCancel={() => setMemoryOpen(false)}
           footer={null}
@@ -1070,7 +1649,7 @@ export default function HermesChat() {
                   rows={2}
                   value={memoryDraft}
                   onChange={(e) => setMemoryDraft(e.target.value)}
-                  placeholder="输入要沉淀到本机 Hermes 记忆的内容..."
+                  placeholder="输入要沉淀到本机深瞳机器人记忆的内容..."
                 />
                 <Button type="primary" onClick={() => void handleAddMemory()}>添加</Button>
               </div>
@@ -1083,24 +1662,11 @@ export default function HermesChat() {
           open={soulOpen}
           onCancel={() => setSoulOpen(false)}
           footer={[
-            <Button key="cancel" onClick={() => setSoulOpen(false)}>取消</Button>,
-            <Button key="save" type="primary" loading={soulSaving} onClick={() => void saveSoul()}>保存</Button>,
+            <Button key="close" onClick={() => setSoulOpen(false)}>关闭</Button>,
           ]}
-          width={560}
+          width={680}
         >
-          {soulLoading ? <Spin /> : (
-            <>
-              <div style={{ marginBottom: 8, color: '#888', fontSize: 12 }}>
-                {soulSource === 'custom' ? '当前使用自定义 SOUL（已覆盖蓝本）。' : soulSource === 'blueprint' ? '当前为蓝本人设，保存后将作为自定义覆盖。' : ''}
-              </div>
-              <Input.TextArea
-                rows={14}
-                value={soulContent}
-                onChange={(e) => setSoulContent(e.target.value)}
-                style={{ fontFamily: 'monospace' }}
-              />
-            </>
-          )}
+          <UpstreamSoul profile={soulProfileId} />
         </Modal>
 
         <HermesTools

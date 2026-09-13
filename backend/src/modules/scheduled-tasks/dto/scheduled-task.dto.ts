@@ -18,6 +18,12 @@ export class CreateScheduledTaskDto {
   @IsInt()
   teamId?: number;
 
+  @ApiPropertyOptional({ description: '归属官署/角色 id（如 ceo；缺省不限）', example: 'ceo' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  agentId?: string;
+
   @ApiProperty({ description: '重复类型', enum: ['once', 'daily', 'weekly'], example: 'daily' })
   @IsIn(['once', 'daily', 'weekly'])
   repeatType: 'once' | 'daily' | 'weekly';
@@ -26,6 +32,22 @@ export class CreateScheduledTaskDto {
   @IsOptional()
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'runTime 格式须为 HH:mm' })
   runTime?: string;
+
+  @ApiPropertyOptional({ description: '执行方式', enum: ['llm', 'flow'], example: 'flow' })
+  @IsOptional()
+  @IsIn(['llm', 'flow'])
+  executeKind?: 'llm' | 'flow';
+
+  @ApiPropertyOptional({ description: '业务流 id（executeKind=flow 时必填）', example: 'secretary-daily-poster' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  flowId?: string;
+
+  @ApiPropertyOptional({ description: '业务流参数（JSON 对象字符串）', example: '{"date":"2026-09-11"}' })
+  @IsOptional()
+  @IsString()
+  flowParams?: string;
 
   @ApiPropertyOptional({ description: '每周触发星期 1-7（weekly 必填；1=周一）', example: 1 })
   @IsOptional()
@@ -57,6 +79,12 @@ export class UpdateScheduledTaskDto {
   @IsInt()
   teamId?: number;
 
+  @ApiPropertyOptional({ description: '归属官署/角色 id' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  agentId?: string;
+
   @ApiPropertyOptional({ description: '重复类型', enum: ['once', 'daily', 'weekly'] })
   @IsOptional()
   @IsIn(['once', 'daily', 'weekly'])
@@ -66,6 +94,17 @@ export class UpdateScheduledTaskDto {
   @IsOptional()
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'runTime 格式须为 HH:mm' })
   runTime?: string;
+
+  @ApiPropertyOptional({ description: '执行方式', enum: ['llm', 'flow'] })
+  @IsOptional()
+  @IsIn(['llm', 'flow'])
+  executeKind?: 'llm' | 'flow';
+
+  @ApiPropertyOptional({ description: '业务流 id（executeKind=flow 时使用）' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  flowId?: string;
 
   @ApiPropertyOptional({ description: '每周触发星期 1-7' })
   @IsOptional()
@@ -77,6 +116,11 @@ export class UpdateScheduledTaskDto {
   @IsOptional()
   @IsString()
   dueAt?: string;
+
+  @ApiPropertyOptional({ description: '业务流参数（JSON 对象字符串）' })
+  @IsOptional()
+  @IsString()
+  flowParams?: string;
 
   @ApiPropertyOptional({ description: '启用/暂停/恢复', enum: ['active', 'paused'] })
   @IsOptional()

@@ -256,14 +256,17 @@ describe('service-registry dependsOn 版本范围（A2）', () => {
 
 
 describe('service-registry patch-loader（dev 路径真实文件）', () => {
-  test('loadAllRows：base 3 行（无 openclaw）+ video-claw 模块行，顺序与旧 startAll 一致', () => {
+  test('loadAllRows：base（n8n+hermes）+ 模块行（unified-toolbox + video-claw），保持稳定顺序', () => {
     const rows = loadAllRows()
-    expect(ids(rows)).toEqual(['n8n', 'hermes', 'video-claw'])
-    expect(rows[2].tier).toBe('module')
-    expect(rows[2].capabilities.webUi?.url).toBe('http://127.0.0.1:3000')
+    expect(ids(rows)).toEqual(['n8n', 'hermes', 'unified-toolbox', 'video-claw'])
+    expect(rows[3].tier).toBe('module')
+    expect(rows[3].capabilities.webUi?.url).toBe('http://127.0.0.1:3000')
+    // unified-toolbox 模块行随默认开启进入装配，断言其声明了 MCP server
+    expect(rows[2].id).toBe('unified-toolbox')
+    expect(rows[2].capabilities.mcpServer?.name).toBe('unified-toolbox')
   })
 
-  test('listModuleMcpNames：当前 video-claw 未声明 mcpServer → 空（能力口为空操作）', () => {
-    expect(listModuleMcpNames()).toEqual({ enabled: [], removed: [] })
+  test('listModuleMcpNames：仅声明 mcpServer 的模块进入 enabled（unified-toolbox）', () => {
+    expect(listModuleMcpNames()).toEqual({ enabled: ['unified-toolbox'], removed: [] })
   })
 })

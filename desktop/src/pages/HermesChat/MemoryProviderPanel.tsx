@@ -30,7 +30,7 @@ export function MemoryProviderPanel(_props: MemoryProviderPanelProps) {
   }, []);
 
   const load = useCallback(async () => {
-    if (!api) { setError('当前环境未启用 Hermes 记忆 Provider 配置'); setLoading(false); return; }
+    if (!api) { setError('当前环境未启用深瞳机器人记忆 Provider 配置'); setLoading(false); return; }
     setLoading(true);
     try {
       const next = await api.get();
@@ -81,7 +81,7 @@ export function MemoryProviderPanel(_props: MemoryProviderPanelProps) {
         type="info"
         showIcon
         style={{ marginBottom: 12 }}
-        message="第三方记忆 Provider 为 Hermes 提供高级长期记忆；内置记忆（MEMORY.md / USER.md）始终保留。此面板管理激活与密钥，实际调用第三方存储需填入 API Key 并完成联调。"
+        message="第三方记忆 Provider 为深瞳机器人提供高级长期记忆；内置记忆（MEMORY.md / USER.md）始终保留。此面板管理激活与密钥，实际调用第三方存储需填入 API Key 并完成联调。"
       />
       {error && <Alert type="error" showIcon style={{ marginBottom: 12 }} message={error} />}
       <div style={{ marginBottom: 8, color: '#888', fontSize: 12 }}>

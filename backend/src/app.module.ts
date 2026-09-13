@@ -74,6 +74,7 @@ import { MediaGenerationModule } from './modules/media-generation/media-generati
 import { OralWorkshopModule } from './modules/oral-workshop/oral-workshop.module';
 import { AutomationModule } from './modules/automation/automation.module';
 import { RemoteModule } from './modules/remote/remote.module';
+import { ModuleAdminModule } from './modules/module-admin/module-admin.module';
 import { MediaAssetsModule } from './modules/media-assets/media-asset.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -165,6 +166,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     MediaAssetsModule,
     AutomationModule,
     RemoteModule,
+    ModuleAdminModule,
   ],
   controllers: [AppController],
   providers: [

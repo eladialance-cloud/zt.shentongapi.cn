@@ -13,7 +13,7 @@ interface Props {
 export default function SedimentNotice({ notice, onUndo, onDismiss }: Props) {
   const [undoing, setUndoing] = useState(false)
   if (!notice) return null
-  const targetLabel = notice.target === "knowledge_base" ? "知识库" : "Hermes 记忆"
+  const targetLabel = notice.target === "knowledge_base" ? "知识库" : "深瞳机器人记忆"
   return (
     <div style={{ padding: "0 16px", marginBottom: 8 }}>
       <Alert

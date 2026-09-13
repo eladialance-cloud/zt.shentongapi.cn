@@ -5,6 +5,7 @@
 // 并把云端 token 注入 payload（与 n8n-run-workflow 技能行为对齐）。
 
 import { app } from 'electron';
+import { getN8nWebhookPath } from './n8n-templates';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -97,4 +98,16 @@ export async function runLocalN8nWorkflow(
   } finally {
     clearTimeout(timer);
   }
+}
+/** 按模板 id 触发本地 n8n 工作流：由模板元数据解析 webhook 路径后复用 runLocalN8nWorkflow */
+export async function runN8nTemplate(
+  templateId: string,
+  payload?: unknown,
+  timeoutMs?: number,
+): Promise<RunN8nWorkflowResult> {
+  const path = getN8nWebhookPath(templateId);
+  if (!path) {
+    return { ok: false, error: '未知工作流模板: ' + templateId };
+  }
+  return runLocalN8nWorkflow({ paths: [path], payload, timeoutMs });
 }

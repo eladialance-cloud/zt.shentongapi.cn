@@ -32,11 +32,10 @@ import { MediaGenerationModule } from '../media-generation/media-generation.modu
  * - LlmClientService: LLM 流式调用客户端
  *
  * 路由策略 (v0.6.0):
- *   用户消息 → runtimeType=openclaw → OpenClaw 远程Agent
- *            → runtimeType=hermes   → Hermes 本地Agent
+ *   用户消息 → runtimeType=hermes → Hermes 本地Agent
  *            → 默认                → LLM 直连
  *
- * 注: Hermes/OpenClaw/MCP/Task/Codex 等服务通过 NestJS 全局 DI 解析，
+ * 注: Hermes/MCP/Task/Codex 等服务通过 NestJS 全局 DI 解析，
  *     不在 imports 中引入，避免循环依赖导致 502。
  */
 @Module({

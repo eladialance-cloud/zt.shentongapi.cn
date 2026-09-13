@@ -63,7 +63,7 @@ else { Write-Host "  (无，使用默认 userData/runtime)" }
 
 # 4) 宿主机命令回退（如果 userData 未装时会用到）
 Write-Host "`n[4] 宿主机命令（PATH 回退检测）"
-foreach ($cmd in @("openclaw", "n8n", "mcp-gateway", "hermes")) {
+foreach ($cmd in @("n8n", "hermes", "video-claw")) {
   $hit = Get-Command $cmd -ErrorAction SilentlyContinue
   if ($hit) { Write-Host "  $cmd -> $($hit.Source)" }
   else { Write-Host "  $cmd -> (未在 PATH)" }

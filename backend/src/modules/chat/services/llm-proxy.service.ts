@@ -297,7 +297,7 @@ export class LlmProxyService {
                   })}\n\n`);
                 }
               },
-              // 流式透传上游 tool_calls delta（OpenClaw 等网关客户端原样接收并本地执行工具）
+              // 流式透传上游 tool_calls delta（网关客户端原样接收并本地执行工具）
               onToolCallDelta: (toolCalls: unknown[]) => {
                 if (isStream) {
                   push(`data: ${JSON.stringify({
@@ -527,7 +527,7 @@ export class LlmProxyService {
   /**
    * 解析请求模型：
    * - custom/<id> 或后台已上线的模型 → 原样使用（按后台供应商直连）
-   * - OpenClaw 内部模型名（openclaw/default、gpt-5.5 等）或未知模型 → 用户默认对话模型
+   * - 客户端内部默认模型名（deep-shentong、gpt-5.5、openai/gpt-5.5 等）或未知模型 → 用户默认对话模型
    * - 兜底 DEFAULT_LLM_MODEL / deepseek-chat
    */
   private async resolveModelId(modelFromRequest: string, userId: number): Promise<string> {
@@ -537,9 +537,9 @@ export class LlmProxyService {
       if (extracted && extracted !== 'deep-shentong') return extracted;
     }
 
-    // OpenClaw 内部模型别名（openclaw/default、openai/gpt-5.5 等）不视为用户显式选择：
-    // 优先使用用户默认对话模型，避免后台启用了同名模型时把用户选择顶掉（桌面端一直回 gpt-5.5 的根因）
-    if (this.isOpenClawInternalModel(modelFromRequest)) {
+    // 客户端内部默认模型别名（deep-shentong、gpt-5.5、openai/gpt-5.5 等）不视为用户显式选择：
+    // 优先使用用户默认对话模型，避免后台启用了同名模型时把用户选择顶掉（客户端一直回默认名 gpt-5.5 的根因）
+    if (this.isClientDefaultModel(modelFromRequest)) {
       const aliasUser = await this.userRepository.findOne({
         where: { id: userId },
         select: ['id', 'defaultChatModel'],
@@ -565,12 +565,10 @@ export class LlmProxyService {
     return process.env.DEFAULT_LLM_MODEL || 'deepseek-chat';
   }
 
-  /** OpenClaw 本地网关内部模型别名（openclaw/default 及内置默认模型 openai/gpt-5.5），不视为用户显式选择 */
-  private isOpenClawInternalModel(model: string): boolean {
+  /** 客户端内部默认模型别名（deep-shentong、gpt-5.5、openai/gpt-5.5），不视为用户显式选择 */
+  private isClientDefaultModel(model: string): boolean {
     const m = (model || '').trim().toLowerCase();
     return (
-      m === 'openclaw' ||
-      m.startsWith('openclaw/') ||
       m === 'deep-shentong' ||
       m === 'gpt-5.5' ||
       m === 'openai/gpt-5.5'

@@ -52,7 +52,7 @@ curl -X POST "http://localhost:8000/api/sandbox/video" \
 ```python
 # 直接从后端目录复制
 backend_path = "/code/result/sandbox/videos/{record_id}.mp4"
-local_path = "~/.openclaw/workspace/temp_imgs/{record_id}.mp4"
+local_path = "$HERMES_HOME/workspace/temp_imgs/{record_id}.mp4"
 shutil.copy2(backend_path, local_path)
 ```
 

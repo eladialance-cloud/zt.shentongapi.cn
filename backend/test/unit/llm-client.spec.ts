@@ -4,7 +4,7 @@
  *
  * 覆盖：
  *   1. 无 toolExecutor + 上游返回 tool_calls → onToolCallsDone 回调（替代 onDone），onDone 不被调用
- *   2. onToolCallDelta 收到流式原始 delta（代理网关原样转发给 OpenClaw）
+ *   2. onToolCallDelta 收到流式原始 delta（代理网关原样转发给 Hermes）
  */
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';

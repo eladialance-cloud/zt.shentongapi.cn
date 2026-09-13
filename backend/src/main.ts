@@ -25,7 +25,7 @@ async function bootstrap() {
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
 
-  // 放宽 JSON 请求体限制（OpenClaw 会话上下文 + 工具 schema 可能超过默认 100kb，导致 llm-proxy 413）
+  // 放宽 JSON 请求体限制（会话上下文 + 工具 schema 可能超过默认 100kb，导致 llm-proxy 413）
   app.useBodyParser('json', { limit: '20mb' });
 
   const configService = app.get(ConfigService);

@@ -65,6 +65,6 @@ export const EXCLUDE_PATTERNS: string[] = [
 export const DEFAULT_MODEL_ID = 'gpt-4o-mini';
 export const DEFAULT_CREATOR_ID = 1;
 export const DEFAULT_PRICE_PER_CALL = 0;
-export const DEFAULT_RUNTIME_TYPE = 'openclaw' as const;
+export const DEFAULT_RUNTIME_TYPE = 'hermes' as const;
 export const BATCH_SIZE = 50;
 export const CLONE_TIMEOUT_MS = 120_000;

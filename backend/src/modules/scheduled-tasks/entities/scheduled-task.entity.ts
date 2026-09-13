@@ -21,9 +21,26 @@ export class ScheduledTaskEntity {
   @Column({ name: "team_id", type: "bigint", nullable: true })
   teamId?: number | null;
 
+  /** 归属官署/角色 id（如 CEO 对应角色 id；NULL = 不限，仅到团队） */
+  @Index("idx_scheduled_tasks_agent")
+  @Column({ name: "agent_id", type: "varchar", length: 64, nullable: true })
+  agentId?: string | null;
+
   /** once | daily | weekly */
   @Column({ name: "repeat_type", type: "varchar", length: 16, default: "once" })
   repeatType: string;
+
+  /** 执行方式：llm=交给机器人（Hermes）逐步编排；flow=直跑业务流引擎（确定型） */
+  @Column({ name: "execute_kind", type: "varchar", length: 8, default: "llm" })
+  executeKind: string;
+
+  /** 业务流 id（executeKind=flow 时使用，对应桌面端随包业务流引擎的 flow-id） */
+  @Column({ name: "flow_id", type: "varchar", length: 64, nullable: true })
+  flowId?: string | null;
+
+  /** 业务流参数（JSON 对象字符串） */
+  @Column({ name: "flow_params", type: "text", nullable: true })
+  flowParams?: string | null;
 
   /** 每日/每周触发时间 HH:mm（24h） */
   @Column({ name: "run_time", type: "varchar", length: 8, nullable: true })

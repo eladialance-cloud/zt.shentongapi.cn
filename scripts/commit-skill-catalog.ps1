@@ -1,4 +1,4 @@
-﻿# 一键提交+推送：开源技能库清单（技能源）+ 管理后台管理 + 桌面端直连下载 + OpenClaw 配置修复
+﻿# 一键提交+推送：开源技能库清单（技能源）+ 管理后台管理 + 桌面端直连下载 + Hermes 配置修复
 $ErrorActionPreference = "Stop"
 $git = "C:\Users\Administrator\.cache\codex-runtimes\codex-primary-runtime\dependencies\native\git\cmd\git.exe"
 Set-Location "D:\二次开发"
@@ -24,7 +24,7 @@ $files = @(
   "desktop/electron-builder.yml",
   "desktop/electron/main/index.ts",
   "desktop/electron/main/local-market/local-content-manager.ts",
-  "desktop/electron/main/openclaw-mcp-sync.ts",
+  "desktop/electron/main/hermes-mcp-sync.ts",
   "desktop/electron/main/runtime-downloader.ts",
   "desktop/electron/main/service-manager.ts",
   "desktop/electron/preload/index.ts",
@@ -36,7 +36,7 @@ $files = @(
 )
 & $git add $files
 if ($LASTEXITCODE -ne 0) { Write-Host "[ERROR] git add 失败"; exit 1 }
-& $git commit -m "feat(skill-market): 开源技能库清单入库技能源+管理后台编辑/批量删除/分类筛选+桌面端GitHub直连下载安装+OpenClaw配置修复"
+& $git commit -m "feat(skill-market): 开源技能库清单入库技能源+管理后台编辑/批量删除/分类筛选+桌面端GitHub直连下载安装+Hermes配置修复"
 if ($LASTEXITCODE -ne 0) { Write-Host "[WARN] commit 失败（可能无变更或冲突），继续尝试 push"; }
 & $git push https://github.com/eladialance-cloud/zt.shentongapi.cn.git main
 & $git push https://github.com/eladialance-cloud/zt.shentongapi.cn.git main:upgrade/electron-41

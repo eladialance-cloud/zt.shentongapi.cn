@@ -181,7 +181,7 @@ async function main() {
         sourceFilePath,       // source_file_path
         dir,                  // source_category
         '1.0',                // source_version
-        'openclaw',           // runtime_type
+        'hermes',            // runtime_type
         true,                 // is_official
         true,                 // official_visible
         'pending',            // sync_status

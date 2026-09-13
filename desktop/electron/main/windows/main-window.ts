@@ -1,12 +1,14 @@
 // 主窗口管理
 
-import { BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell, session } from 'electron'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { ServiceManager } from '../service-manager'
+import { isAllowedWebviewUrl, hardenWebviewPreferences, hardenAttachedWebContents } from '../security'
 
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
+let webviewHardenRegistered = false
 
 /** 标记应用正在退出，允许窗口真正关闭（而非最小化到托盘） */
 export function setQuitting(value: boolean): void {
@@ -27,7 +29,8 @@ export function createMainWindow(_serviceManager: ServiceManager, isDev: boolean
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      webviewTag: true
     }
   })
 
@@ -64,6 +67,28 @@ export function createMainWindow(_serviceManager: ServiceManager, isDev: boolean
       shell.openExternal(url)
     }
   })
+
+  // Web 预览 <webview>：仅放行 web-preview 分区，并强制安全偏好（对齐上游 security.ts）
+  mainWindow.webContents.on('will-attach-webview', (event, webPreferences, params) => {
+    const isWebPreview = params.partition === 'web-preview'
+    if (!isAllowedWebviewUrl(params.src, isWebPreview)) {
+      event.preventDefault()
+      console.warn('[SECURITY] Blocked webview attachment for untrusted URL')
+      return
+    }
+    hardenWebviewPreferences(webPreferences)
+  })
+
+  // 对所有 webview 来宾内容统一收紧窗口打开/导航（web 预览除外）
+  if (!webviewHardenRegistered) {
+    webviewHardenRegistered = true
+    app.on('web-contents-created', (_event, contents) => {
+      if (contents.getType() === 'webview') {
+        const isWebPreview = contents.session === session.fromPartition('web-preview')
+        hardenAttachedWebContents(contents, isWebPreview)
+      }
+    })
+  }
 
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])

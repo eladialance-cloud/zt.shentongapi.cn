@@ -9,7 +9,6 @@ import { Input, Spin, Tag } from 'antd'
 import type { InputRef } from 'antd'
 import {
   HomeOutlined,
-  MessageOutlined,
   VideoCameraOutlined,
   DesktopOutlined,
   BookOutlined,
@@ -39,8 +38,7 @@ interface NavEntry {
 
 const NAV_ENTRIES: NavEntry[] = [
   { key: 'dashboard', label: '仪表盘', icon: <HomeOutlined />, path: '/dashboard' },
-  { key: 'chat', label: '需求对话', icon: <MessageOutlined />, path: '/chat' },
-  { key: 'hermes-chat', label: 'Hermes 对话', icon: <RobotOutlined />, path: '/hermes-chat' },
+  { key: 'hermes-chat', label: '深瞳机器人', icon: <RobotOutlined />, path: '/hermes-chat' },
   { key: 'video-claw', label: 'ST-Claw', icon: <VideoCameraOutlined />, path: '/video-claw' },
   { key: 'office', label: 'AI 办公室', icon: <DesktopOutlined />, path: '/office' },
   { key: 'knowledge', label: '知识库', icon: <BookOutlined />, path: '/knowledge' },
@@ -138,7 +136,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
   /** 常用动作（依赖当前值构建） */
   const ACTION_ENTRIES: ActionEntry[] = useMemo(
     () => [
-      { key: 'new-chat', label: '新建需求对话', icon: <PlusOutlined />, run: () => go('/chat') },
+      { key: 'new-chat', label: '新建对话', icon: <PlusOutlined />, run: () => go('/hermes-chat') },
       { key: 'toggle-theme', label: '切换主题（浅色/深色）', icon: <BulbOutlined />, run: () => toggleTheme() },
       { key: 'open-market', label: '打开市场', icon: <AppstoreOutlined />, run: () => go('/skill-market') },
       { key: 'open-settings', label: '打开设置', icon: <SettingOutlined />, run: () => go('/settings') },

@@ -63,7 +63,7 @@ export async function ensureHermesSession(
   if (current != null && current > 0) return current
   try {
     const session = await deps.createSession({
-      title: title?.slice(0, 50) || 'Hermes 对话',
+      title: title?.slice(0, 50) || '深瞳机器人',
       modelId: opts.modelId || 'custom/deep-shentong',
       ...(opts.knowledgeBaseId ? { knowledgeBaseId: opts.knowledgeBaseId } : {}),
     })

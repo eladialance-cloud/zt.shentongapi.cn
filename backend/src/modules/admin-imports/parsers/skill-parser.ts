@@ -61,7 +61,7 @@ export class SkillParser implements ImportParser {
     const triggerKeywords = toKeywords(fm.trigger);
     const payload: Record<string, unknown> = {
       skillType: 'skill',
-      runtimeType: 'openclaw',
+      runtimeType: 'markdown-only',
       skillMdPath: file.path,
       triggerKeywords,
     };

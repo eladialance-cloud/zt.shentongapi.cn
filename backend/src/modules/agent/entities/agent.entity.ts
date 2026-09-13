@@ -102,10 +102,6 @@ export class AgentEntity extends BaseEntity {
   @Column({ name: 'published_at', type: 'datetime', nullable: true })
   publishedAt?: Date;
 
-  @Index({ unique: true })
-  @Column({ name: 'openclaw_agent_id', length: 64, nullable: true })
-  openclawAgentId?: string;
-
   @Column({
     name: 'source_type',
     type: 'enum',
@@ -132,10 +128,10 @@ export class AgentEntity extends BaseEntity {
   @Column({
     name: 'runtime_type',
     type: 'enum',
-    enum: ['openclaw', 'hermes', 'hybrid'],
-    default: 'openclaw',
+    enum: ['hermes', 'hybrid'],
+    default: 'hermes',
   })
-  runtimeType: 'openclaw' | 'hermes' | 'hybrid';
+  runtimeType: 'hermes' | 'hybrid';
 
   @Column({ name: 'is_official', type: 'boolean', default: false })
   isOfficial: boolean;

@@ -27,7 +27,7 @@ interface DockItem {
 
 const DOCK_ITEMS: DockItem[] = [
   { key: 'office',    icon: Building2,     label: 'AI 办公室',  shortcut: '⌘1', path: '/office'      },
-  { key: 'chat',      icon: MessageSquare,  label: '对话',       shortcut: '⌘2', path: '/chat'        },
+  { key: 'chat',      icon: MessageSquare,  label: '对话',       shortcut: '⌘2', path: '/hermes-chat' },
   { key: 'knowledge', icon: BookOpen,       label: '知识库',     shortcut: '⌘4', path: '/knowledge'   },
   { key: 'agents',    icon: Bot,            label: '智能体',     shortcut: '⌘5', path: '/agent-market' },
   { key: 'settings',  icon: Settings,       label: '设置',       shortcut: '⌘7', path: '/settings'    },

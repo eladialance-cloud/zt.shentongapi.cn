@@ -13,6 +13,7 @@ import type {
   EdictMorningBrief,
   EdictNotifyConfig,
   EdictOfficial,
+  EdictOfficialTable,
   EdictOp,
   EdictPipelineResult,
   EdictRemoteSkillsResult,
@@ -93,6 +94,33 @@ export async function edictRun(taskId: string, opts?: { maxVetoRounds?: number }
 /** 官署状态 */
 export async function edictOfficials(): Promise<EdictOfficial[]> {
   return getEdict().officials();
+}
+
+/** 官署详情：飞书表清单（未配置链接时回退规范默认表） */
+export async function edictOfficialTables(agentId: string): Promise<{ ok: boolean; tables?: EdictOfficialTable[]; error?: string }> {
+  return getEdict().officialTables(agentId);
+}
+
+/** 官署详情：保存飞书表清单（含链接回填） */
+export async function edictSaveOfficialTables(
+  agentId: string,
+  tables: EdictOfficialTable[],
+): Promise<{ ok: boolean; error?: string }> {
+  return getEdict().saveOfficialTables(agentId, tables);
+}
+
+/** 官署详情：SOUL 原文 + 占位符渲染预览 */
+export async function edictOfficialSoul(agentId: string): Promise<{
+  ok: boolean;
+  agentId?: string;
+  content?: string;
+  rendered?: string;
+  replaced?: number;
+  missing?: string[];
+  tables?: EdictOfficialTable[];
+  error?: string;
+}> {
+  return getEdict().officialSoul(agentId);
 }
 
 /** 军机处统计 */

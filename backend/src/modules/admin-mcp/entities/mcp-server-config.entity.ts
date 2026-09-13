@@ -42,10 +42,10 @@ export class McpServerConfigEntity extends BaseEntity {
   @Column({
     name: 'service_type',
     type: 'enum',
-    enum: ['openclaw', 'codex', 'n8n', 'custom'],
+    enum: ['codex', 'n8n', 'custom'],
     default: 'custom',
   })
-  serviceType: 'openclaw' | 'codex' | 'n8n' | 'custom';
+  serviceType: 'codex' | 'n8n' | 'custom';
 
   @Column({ type: 'boolean', default: true })
   enabled: boolean;

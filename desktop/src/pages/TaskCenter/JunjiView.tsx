@@ -3,7 +3,7 @@
  * 数据源：IPC edict:officials / edict:stats / edict:board（推送 edict:board-updated 实时刷新）
  */
 import { useCallback, useEffect, useState } from "react";
-import { Button, Drawer, Empty, Spin } from "antd";
+import { Button, Drawer, Empty, Segmented, Spin } from "antd";
 import {
   isEdictAvailable,
   edictAgentConfig,
@@ -24,6 +24,9 @@ import {
 } from "./edict-data";
 import styles from "./edict.module.css";
 import CourtCeremony from "./CourtCeremony";
+import OfficialTablesTab from "./OfficialTablesTab";
+import OfficialScheduledTab from "./OfficialScheduledTab";
+import OfficialRunLogTab from "./OfficialRunLogTab";
 
 const STATUS_CLASS: Record<OfficialCard["status"], string> = {
   idle: styles.statusIdle,
@@ -36,6 +39,7 @@ export default function JunjiView({ onNavigateModels, onNavigateBoard }: { onNav
   const [available] = useState<boolean>(() => isEdictAvailable());
   const [loading, setLoading] = useState(true);
   const [drawerOfficial, setDrawerOfficial] = useState<OfficialCard | null>(null);
+  const [drawerTab, setDrawerTab] = useState<"overview" | "tables" | "scheduled" | "logs">("overview");
   const [officials, setOfficials] = useState<OfficialCard[]>([]);
   const [stats, setStats] = useState<ReturnType<typeof buildJunjiStats>>({
     issuedToday: 0, executing: 0, doneToday: 0, rejected: 0, byState: {}, avgMinutes: 0,
@@ -47,6 +51,10 @@ export default function JunjiView({ onNavigateModels, onNavigateBoard }: { onNav
   const [modelsLoading, setModelsLoading] = useState(false);
   const [courtOpen, setCourtOpen] = useState(false);
   const closeCourt = useCallback(() => setCourtOpen(false), []);
+
+  useEffect(() => {
+    if (drawerOfficial) setDrawerTab("overview");
+  }, [drawerOfficial]);
 
   const loadAll = useCallback(async () => {
     try {
@@ -307,10 +315,23 @@ export default function JunjiView({ onNavigateModels, onNavigateBoard }: { onNav
         title={`${drawerOfficial?.emoji ?? ""} ${drawerOfficial?.name ?? ""} · 官署详情`}
         open={!!drawerOfficial}
         onClose={() => setDrawerOfficial(null)}
-        width={380}
+        width={560}
       >
         {drawerOfficial && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <Segmented
+              block
+              value={drawerTab}
+              onChange={(v) => setDrawerTab(v as typeof drawerTab)}
+              options={[
+                { label: "概览", value: "overview" },
+                { label: "飞书表", value: "tables" },
+                { label: "定时任务", value: "scheduled" },
+                { label: "执行日志", value: "logs" },
+              ]}
+            />
+            {drawerTab === "overview" && (
+            <>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div
                 style={{
@@ -402,6 +423,11 @@ export default function JunjiView({ onNavigateModels, onNavigateBoard }: { onNav
             >
               查看该官署任务（回看板）
             </Button>
+            </>
+            )}
+            {drawerTab === "tables" && <OfficialTablesTab agentId={drawerOfficial.id} />}
+            {drawerTab === "scheduled" && <OfficialScheduledTab agentId={drawerOfficial.id} />}
+            {drawerTab === "logs" && <OfficialRunLogTab agentId={drawerOfficial.id} />}
           </div>
         )}
       </Drawer>

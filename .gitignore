@@ -105,6 +105,15 @@ backend/uploads/
 *.bak-v*
 
 # Scratch/temp artifacts (never commit)
+.tmp-eb-cache/
+.tmp-eb-stage/
+.tmp-probe/
+.tmp-*.mjs
+.tmp-*.js
+_refs/
+_probe_sandbox*
+_sbx_*.cmd
+
 $null
 0
 _app.asar

@@ -8,6 +8,7 @@ import { app, BrowserWindow, net, safeStorage, session, shell } from 'electron'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getMainWindow } from './windows/main-window'
+import { detectScanPhaseFromText, hasSessionCookie, type ScanPhase } from './scan-heuristics'
 import type { PlatformInfo, PlatformSetupLoginResult, PlatformTestLoginResult } from '../shared/types'
 
 /** 平台预设（id 与后端 publish_platforms.platform 一致） */
@@ -57,10 +58,24 @@ const PLATFORMS: PlatformPreset[] = [
   },
   {
     id: 'wx_channels',
-    displayName: '蝴蝶号',
+    displayName: '微信视频号',
     loginUrl: 'https://channels.weixin.qq.com/',
     publishUrl: 'https://channels.weixin.qq.com/platform/post/create',
     homeUrl: 'https://channels.weixin.qq.com/',
+  },
+  {
+    id: 'weibo',
+    displayName: '微博',
+    loginUrl: 'https://weibo.com/',
+    publishUrl: 'https://weibo.com/compose',
+    homeUrl: 'https://weibo.com/',
+  },
+  {
+    id: 'zhihu',
+    displayName: '知乎',
+    loginUrl: 'https://www.zhihu.com/',
+    publishUrl: 'https://zhuanlan.zhihu.com/write',
+    homeUrl: 'https://www.zhihu.com/',
   },
 ]
 
@@ -484,4 +499,263 @@ export function removeSession(platform: string): { ok: boolean } {
     writeSessionMap(map)
   }
   return { ok: true }
+}
+
+// ==================== 扫码登录事件流（扫码状态实时推送） ====================
+
+/** 扫码阶段（类型来自 scan-heuristics） */
+export type { ScanPhase }
+
+/** 扫码状态事件（主进程 → 渲染层广播） */
+export interface ScanStatusEvent {
+  platform: string
+  scanId: string
+  phase: ScanPhase
+  /** 是否可重试（expired 时为 true，渲染层可展示「刷新二维码」） */
+  retryable: boolean
+  displayName?: string
+  message?: string
+}
+
+export interface ScanStartResult {
+  ok: boolean
+  scanId?: string
+  expiresAt?: number
+  error?: string
+}
+
+/** 活跃扫码会话（同一时间仅允许一个，避免多个登录窗并存） */
+interface ActiveScan {
+  scanId: string
+  platform: string
+  win: BrowserWindow
+  settle: (result: PlatformSetupLoginResult) => void
+}
+
+let activeScan: ActiveScan | null = null
+let scanSeq = 0
+
+/** 广播扫码状态到主窗口（渲染层监听 platform-account:scan-status） */
+let scanEventSink: ((event: ScanStatusEvent) => void) | null = null
+
+/** 注册扫码状态广播器（index.ts 在创建主窗口后注入） */
+export function setScanEventSink(sink: (event: ScanStatusEvent) => void): void {
+  scanEventSink = sink
+}
+
+function emitScan(platform: string, scanId: string, phase: ScanPhase, extra?: { displayName?: string; message?: string }): void {
+  const event: ScanStatusEvent = {
+    platform,
+    scanId,
+    phase,
+    retryable: phase === 'expired' || phase === 'error',
+    ...(extra?.displayName ? { displayName: extra.displayName } : {}),
+    ...(extra?.message ? { message: extra.message } : {}),
+  }
+  try {
+    scanEventSink?.(event)
+  } catch {
+    /* 广播失败不影响扫码流程 */
+  }
+}
+
+/** 取消当前扫码（用户点「取消」或重新扫码时） */
+export function cancelScan(reason = '已取消扫码'): { ok: boolean } {
+  const scan = activeScan
+  if (!scan) return { ok: true }
+  activeScan = null
+  emitScan(scan.platform, scan.scanId, 'error', { message: reason })
+  try {
+    scan.settle({ ok: false, error: reason })
+    scan.win.destroy()
+  } catch {
+    /* 窗口可能已销毁 */
+  }
+  return { ok: true }
+}
+
+/** 判断页面二维码阶段：复用 scan-heuristics（纯函数，便于单测） */
+
+/** 检测 cookies 中是否出现会话标志：复用 scan-heuristics */
+
+/**
+ * 启动扫码登录（事件流版）：立即返回 scanId，登录窗后台打开；
+ * 后续阶段（waiting/scanned/expired/success/error）通过 scan-status 事件推送。
+ * 扫码成功后仍写入本地加密会话（与 setupLogin 共用 writeSession）。
+ */
+export function startScan(platform: string): ScanStartResult {
+  const preset = PLATFORMS.find((p) => p.id === platform)
+  if (!preset) return { ok: false, error: '未知平台: ' + platform }
+
+  // 已在扫码中：先取消旧会话，保证同一时间只有一个登录窗
+  if (activeScan) cancelScan('已开启新的扫码登录')
+
+  const scanId = `scan_${Date.now()}_${++scanSeq}`
+  const partition = 'persist:oral-platform-' + platform
+  const parent = getMainWindow() ?? undefined
+  const win = new BrowserWindow({
+    width: 480,
+    height: 720,
+    parent,
+    autoHideMenuBar: true,
+    title: preset.displayName + ' · 扫码登录',
+    webPreferences: {
+      partition,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  })
+
+  let settled = false
+  let lastPhase: ScanPhase = 'waiting'
+  const deadline = Date.now() + 10 * 60 * 1000
+
+  const settle = (result: PlatformSetupLoginResult, phase?: ScanPhase, message?: string): void => {
+    if (settled) return
+    settled = true
+    clearInterval(watchdog)
+    clearTimeout(timeoutTimer)
+    if (activeScan?.scanId === scanId) activeScan = null
+    const finalPhase: ScanPhase = phase ?? (result.ok ? 'success' : 'error')
+    emitScan(platform, scanId, finalPhase, {
+      ...(result.ok && result.displayName ? { displayName: result.displayName } : {}),
+      ...(message ? { message } : ((result as { error?: string }).error ? { message: (result as { error?: string }).error! } : {})),
+    })
+    try {
+      win.destroy()
+    } catch {
+      /* 已销毁 */
+    }
+  }
+
+  activeScan = { scanId, platform, win, settle: (r) => settle(r) }
+  emitScan(platform, scanId, 'waiting')
+
+  const collectAndSucceed = async (): Promise<void> => {
+    try {
+      const ses = session.fromPartition(partition)
+      const cookies = await ses.cookies.get({})
+      if (!cookies || cookies.length === 0) return
+      const cookiesJson = JSON.stringify(cookies)
+      let displayName = ''
+      try {
+        const title = await win.webContents.executeJavaScript('document.title')
+        if (typeof title === 'string' && title.trim()) {
+          displayName = title.replace(/\s+/g, ' ').trim().slice(0, 40)
+        }
+      } catch {
+        /* 取不到标题留空 */
+      }
+      writeSession(platform, cookiesJson, displayName)
+      settle({ ok: true, cookiesJson, displayName }, 'success', '登录成功，登录态已加密保存至本地')
+    } catch (err) {
+      settle({ ok: false, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  // 阶段轮询：检测二维码失效/已扫描 + 会话 Cookie 出现
+  const watchdog = setInterval(() => {
+    if (settled) return
+    void (async () => {
+      try {
+        const ses = session.fromPartition(partition)
+        const cookies = await ses.cookies.get({})
+        if (hasSessionCookie(cookies)) {
+          await collectAndSucceed()
+          return
+        }
+        let title = ''
+        let body = ''
+        try {
+          const probe = (await win.webContents.executeJavaScript(
+            'JSON.stringify({ t: document.title, b: (document.body && document.body.innerText || "").slice(0, 3000) })',
+          )) as string
+          const parsed = JSON.parse(probe) as { t?: string; b?: string }
+          title = parsed.t ?? ''
+          body = parsed.b ?? ''
+        } catch {
+          return
+        }
+        const phase = detectScanPhaseFromText(title, body)
+        if (phase !== lastPhase) {
+          lastPhase = phase
+          lastPhase = phase
+          if (phase === 'expired') {
+            emitScan(platform, scanId, 'expired', { message: '二维码已失效，请刷新后重新扫码' })
+          } else if (phase === 'scanned') {
+            emitScan(platform, scanId, 'scanned', { message: '已扫码，请在手机上确认登录' })
+          }
+        }
+      } catch {
+        /* 页面尚未就绪，下一轮再试 */
+      }
+    })()
+  }, 2500)
+
+  const timeoutTimer = setTimeout(() => {
+    settle({ ok: false, error: '登录超时（10 分钟），请重新扫码' }, 'expired', '扫码超时，请刷新二维码重试')
+  }, 10 * 60 * 1000)
+
+  win.on('closed', () => {
+    if (settled) return
+    void (async () => {
+      try {
+        const ses = session.fromPartition(partition)
+        const cookies = await ses.cookies.get({})
+        if (cookies && cookies.length > 0) {
+          await collectAndSucceed()
+          return
+        }
+      } catch {
+        /* 收集失败按未登录处理 */
+      }
+      settle({ ok: false, error: '登录窗口已关闭，未获取到登录 Cookie' }, 'error', '登录窗口已关闭，未获取到登录态')
+    })()
+  })
+
+  let loginHost = ''
+  try {
+    loginHost = new URL(preset.loginUrl).host
+  } catch {
+    loginHost = ''
+  }
+  win.webContents.on('did-navigate', (_event, url) => {
+    if (settled) return
+    let host = ''
+    let protocol = ''
+    try {
+      const u = new URL(url)
+      host = u.host
+      protocol = u.protocol
+    } catch {
+      return
+    }
+    if (protocol !== 'http:' && protocol !== 'https:') return
+    if (host === loginHost) return
+    void collectAndSucceed()
+  })
+
+  void win.loadURL(preset.loginUrl).catch((err) => {
+    settle(
+      { ok: false, error: '登录页加载失败: ' + (err instanceof Error ? err.message : String(err)) },
+      'error',
+      '登录页加载失败，请检查网络',
+    )
+  })
+
+  return { ok: true, scanId, expiresAt: deadline }
+}
+
+/** 查询当前扫码状态（渲染层页面刷新后可用于恢复状态） */
+export function getScanStatus(platform: string): { active: boolean; scanId?: string } {
+  if (activeScan && activeScan.platform === platform) {
+    return { active: true, scanId: activeScan.scanId }
+  }
+  return { active: false }
+}
+
+/** 校验本地会话是否仍有效（桌面端主动探测，复用 testLogin） */
+export async function verifySession(platform: string): Promise<PlatformTestLoginResult> {
+  return testLogin(platform)
 }

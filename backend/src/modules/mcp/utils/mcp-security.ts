@@ -300,14 +300,14 @@ export interface StdioProbePlan {
  * 生成 stdio 探测执行计划：
  * - 仅官方目录条目（source === 'official' 且存在 catalogId）允许后端执行
  * - 执行用目录的 command/args（白名单校验后），env 取 server.env
- * - 自定义 stdio 服务器一律不执行，引导用户使用官方目录或本地 OpenClaw
+ * - 自定义 stdio 服务器一律不执行，引导用户使用官方目录或本地运行时
  */
 export function buildStdioProbePlan(
   server: { source: string; catalogId?: number | null; env?: Record<string, string> },
   catalog?: { enabled: boolean; command?: string; args?: string[] } | null,
 ): StdioProbePlan {
   if (server.source !== 'official' || !server.catalogId) {
-    return { allow: false, reason: '自定义 stdio 服务器不支持后端探测，请使用官方目录条目或本地 OpenClaw 运行' };
+    return { allow: false, reason: '自定义 stdio 服务器不支持后端探测，请使用官方目录条目或本地运行时运行' };
   }
   if (!catalog || !catalog.enabled) {
     return { allow: false, reason: '官方目录条目不存在或已下架' };

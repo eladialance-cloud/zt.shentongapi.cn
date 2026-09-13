@@ -22,7 +22,7 @@ INSERT INTO landing_blocks (id, name, type, sort_order, is_enabled, data) VALUES
 ('hero', '首页主视觉', 'hero', 1, TRUE, JSON_OBJECT(
   'title', '打造AI自动化公司',
   'subtitle', '8大AI员工 24h 自主工作',
-  'description', '基于OpenClaw运行时与Hermes编排中枢，1人即可启动并管理一支AI团队，实现全链路自动化运营。',
+  'description', '基于Hermes编排中枢，1人即可启动并管理一支AI团队，实现全链路自动化运营。',
   'cta_primary', JSON_OBJECT('text', '立即体验', 'link', '/register'),
   'cta_secondary', JSON_OBJECT('text', '了解更多', 'link', '#features')
 )),
@@ -34,10 +34,9 @@ INSERT INTO landing_blocks (id, name, type, sort_order, is_enabled, data) VALUES
   )
 )),
 ('foundation', '技术基座', 'cards', 3, TRUE, JSON_OBJECT(
-  'title', '四大技术基座',
+  'title', '三大技术基座',
   'subtitle', '企业级AI基础设施',
   'cards', JSON_ARRAY(
-    JSON_OBJECT('icon', 'openclaw', 'title', 'OpenClaw', 'desc', 'AI运行时与任务调度'),
     JSON_OBJECT('icon', 'hermes', 'title', 'Hermes', 'desc', '智能编排中枢'),
     JSON_OBJECT('icon', 'n8n', 'title', 'N8N', 'desc', '工作流引擎'),
     JSON_OBJECT('icon', 'mcp', 'title', 'MCP', 'desc', '模型上下文协议')

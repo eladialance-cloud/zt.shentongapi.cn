@@ -4,7 +4,7 @@
 
 CREATE TABLE IF NOT EXISTS `eco_runtime_versions` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `service_name` VARCHAR(32) NOT NULL COMMENT '服务名称 (openclaw/n8n/mcp)',
+  `service_name` VARCHAR(32) NOT NULL COMMENT '服务名称 (n8n/hermes/video-claw)',
   `version` VARCHAR(32) NOT NULL COMMENT '版本号',
   `platform` VARCHAR(16) NOT NULL COMMENT '平台 (win32-x64/linux-x64/darwin-x64/darwin-arm64)',
   `download_url` VARCHAR(512) NOT NULL COMMENT '下载地址',

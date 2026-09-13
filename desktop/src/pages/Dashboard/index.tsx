@@ -109,7 +109,7 @@ interface QuickEntry {
 
 const QUICK_ENTRIES: QuickEntry[] = [
   { key: 'brief', label: '新建需求', icon: FileText, path: '/briefs/new' },
-  { key: 'chat', label: '发起对话', icon: MessageSquare, path: '/chat' },
+  { key: 'chat', label: '发起对话', icon: MessageSquare, path: '/hermes-chat' },
   { key: 'video', label: '生成视频', icon: Clapperboard, path: '/video-claw' },
   { key: 'workflow', label: '创建工作流', icon: Workflow, path: '/workflow' },
   { key: 'knowledge', label: '新建知识库', icon: BookOpen, path: '/knowledge' },
@@ -258,7 +258,7 @@ export default function Dashboard() {
           size="large"
           className={styles.heroBtn}
           icon={<Plus size={18} />}
-          onClick={() => navigate('/chat')}
+          onClick={() => navigate('/hermes-chat')}
         >
           新建任务 · 先聊需求
         </Button>
@@ -441,7 +441,7 @@ export default function Dashboard() {
                 <span>最近任务</span>
                 <span
                   className={styles.cardMore}
-                  onClick={() => navigate('/chat')}
+                  onClick={() => navigate('/hermes-chat')}
                   role="button"
                   tabIndex={0}
                 >
@@ -456,7 +456,7 @@ export default function Dashboard() {
                     <div
                       key={task.id}
                       className={styles.taskRow}
-                      onClick={() => navigate('/chat')}
+                      onClick={() => navigate('/hermes-chat')}
                       role="button"
                       tabIndex={0}
                     >

@@ -14,7 +14,10 @@ export type LaunchKind =
   | 'default' // 直接用 runtime-resolver resolved.args（n8n 等）
   | 'hermes' // serve --port ... --skip-build
   | 'video-claw' // serve
-
+  | 'unified-toolbox' // Electron-as-Node 直接运行打包的 MCP server，无需 runtime manifest
+  | 'wx-gateway' // 启动外部 Python 微信域桥服务（授权 SDK 绑定层）
+  | 'douyin' // 启动外部 Python 抖音采集/转写服务（只读流水线，高风险硬关闭）
+  | 'flows' // 启动外部 Python 业务流引擎（12 个业务流编排，高风险由引擎内闸门关闭）
 export type RestartTrigger = 'proxyKey' | 'modelDefaults'
 
 /** 沙箱档位（P2 起决定 spawnSandboxed 用哪种 preset；缺省 = 无沙箱，维持现状） */
@@ -97,7 +100,7 @@ export interface ServiceRow {
   disabled: boolean
 }
 
-const KNOWN_LAUNCH: ReadonlySet<string> = new Set(['default', 'hermes', 'video-claw'])
+const KNOWN_LAUNCH: ReadonlySet<string> = new Set(['default', 'hermes', 'video-claw', 'unified-toolbox', 'wx-gateway', 'douyin', 'flows'])
 const KNOWN_RESTART: ReadonlySet<string> = new Set(['proxyKey', 'modelDefaults'])
 const KNOWN_PERMISSIONS: ReadonlySet<string> = new Set(['read-only', 'workspace-write', 'danger-full-access'])
 

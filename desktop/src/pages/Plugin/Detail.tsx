@@ -152,7 +152,7 @@ export default function PluginDetail() {
   const handleUse = () => {
     if (!plugin) return
     message.info(`即将使用插件 ${plugin.name}，请在对话页选择该插件`)
-    navigate('/chat')
+    navigate('/hermes-chat')
   }
 
   const handleBack = () => {

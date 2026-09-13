@@ -1,4 +1,4 @@
-﻿# 深瞳AI 桌面端发布 SOP（2026-08-25 实战验证）
+﻿﻿﻿# 深瞳AI 桌面端发布 SOP（2026-08-25 实战验证）
 
 > 从「改代码」到「用户下载到新版本」的完整流程。按顺序执行，每步有验证点。
 > 适用：Windows 桌面端发布（版本 x.y.z）。
@@ -63,12 +63,28 @@ curl -sI https://zt.shentongapi.cn/desktop/ShenTongAI-Setup-X.X.X-x64.exe.zip | 
 ## 6. 官网下载更新（数据库，最容易漏！）
 
 - 官网「客户端下载」的版本号和下载链接**不读服务器文件**，读数据库 `client_versions` 表。
-- 管理后台 → **客户端版本管理** → 新增记录：
-  - 版本号：`X.X.X`
-  - 平台：Windows
-  - 下载地址：`/desktop/ShenTongAI-Setup-X.X.X-x64.exe.zip`
-  - 启用：是；同时**停用旧版本记录**（否则官网可能仍显示旧版）
-- 不做这步：官网下载页仍显示旧版本、旧下载链接。
+- ⚠️ **生产库是 `shentong`，不是仓库 `docker-compose.yml` 默认的 `ai_agent`**：服务器 `.env` 里 `MYSQL_DATABASE=shentong`，后端取 `DB_DATABASE=${MYSQL_DATABASE:-ai_agent}`。改 `ai_agent.client_versions` 完全无效（那是历史遗留库）。2026-09-10 实测踩过这一遍。
+- ⚠️ `shentong-backend` / `shentong-nginx` **不在 Docker 里**（`docker ps` 只有 mysql / redis / qdrant / maxkb），后端与 nginx 是宿主机进程，因此仓库里 `deploy/nginx.conf` 的路径与线上不一致（线上静态目录是 `/opt/shentong/updates/`）。
+- 先看「现在官网会推哪个版本」——这是唯一判据，改库前后都该跑：
+
+```powershell
+curl.exe -s "https://zt.shentongapi.cn/api/version/check?platform=win&currentVersion=0.0.0"
+```
+
+- 推荐走管理后台 → **客户端版本管理**：新增 `X.X.X` / 平台 Windows / 下载地址 `/desktop/ShenTongAI-Setup-X.X.X-x64.exe.zip` / 启用；同时**停用旧记录**。
+- 命令行等价操作：容器内已设 `MYSQL_PWD`（值等于 `MYSQL_ROOT_PASSWORD`），所以**不需要 `-p` 输密码**；SQL 经 stdin 传给远端 mysql，**不要粘到 bash 提示符下**（会被当命令执行，报 `command not found`）。
+
+```powershell
+$sql = @'
+UPDATE client_versions SET is_active=0 WHERE platform='win';
+INSERT INTO client_versions (version,platform,download_url,changelog,force_update,grayscale_percent,published_at,is_active)
+VALUES ('X.X.X','win','/desktop/ShenTongAI-Setup-X.X.X-x64.exe.zip','',0,100,NOW(),1);
+'@
+$sql | ssh ubuntu@129.204.227.200 'sudo docker exec -i shentong-mysql mysql -uroot shentong'
+```
+
+- 注意 `platform` 值必须是 `win`（建表注释里写的是 `windows`，容易写错；写错则查询匹配不到）。
+- 不做这步的后果：官网下载页仍显示旧版本；若旧记录指向服务器上已删除的文件（如 `0.9.9`），用户点下载直接 404。
 
 ## 7. 验收清单（全过才算发布完成）
 
@@ -77,7 +93,7 @@ curl -sI https://zt.shentongapi.cn/desktop/ShenTongAI-Setup-X.X.X-x64.exe.zip | 
 - [ ] 官网下载页显示 `X.X.X` 且下载按钮可用（依赖第 6 步）
 - [ ] 桌面端「检查更新」提示升级到 `X.X.X`，升级后可正常启动
 
-## 8. 实战踩坑记录（2026-08-25，v1.2.6 → v1.2.7）
+## 8. 实战踩坑记录（2026-08-25 v1.2.6→v1.2.7；2026-09-10 v2.0.12→v2.0.13；2026-09-10 v2.0.13→v2.0.14）
 
 1. **zip 文件名必须带 Setup**：服务器只有不带 Setup 的 zip 时，带 Setup 的链接 404。修复：服务器 `zip -j ShenTongAI-Setup-*.exe.zip ShenTongAI-Setup-*.exe`。
 2. **CI artifact 里没有 zip**：`electron-builder --win` 只产出 exe；zip 需服务器端生成（或本地 Compress-Archive）。
@@ -85,6 +101,9 @@ curl -sI https://zt.shentongapi.cn/desktop/ShenTongAI-Setup-X.X.X-x64.exe.zip | 
 4. **版本号重复**：本地手工打与线上重复的版本号；正确做法是走 CI 自动构建新版本。
 5. **本机沙箱限制**：写 `.git`、联网（scp/ssh/push）需要授权；自动审批服务故障时只能由用户手动执行命令。
 6. **本机离线打包（备胎，不推荐）**：`winCodeSign` 缓存为空、`app-builder-bin` 缺失时，可用 `ELECTRON_BUILDER_CACHE=<工作区缓存>` + `--config.electronDist=<node_modules/electron/dist>` 离线打包；正式发布优先 CI。
+7. **`.env.production` 的 `VITE_WS_URL` 指向不存在的域名**：v2.0.12 打进去的是 `https://api.shentong.ai/api`（DNS 根本解析不到），且 `build-and-upload.ps1` / `build-installer.ps1` / `build-installer.sh` 只写 `VITE_API_BASE_URL`、漏写 `VITE_WS_URL`，导致打包后 WS 回退到 `http://localhost:3001`。正确值应由 API 推导：`wsBase = apiBase 去掉末尾 /api`，`VITE_WS_URL=$wsBase/api`（线上 nginx 是 `location /api/socket.io/`）。验收：搜索打包产物 `dist/main/index.js` 与 `dist/renderer/assets/*.js`，除 appId `com.shentong.ai` 外不应出现 `shentong.ai`。
+8. **改库改错库**：生产是 `shentong`，仓库默认 `ai_agent`，见第 6 节。
+9. **`electron-builder --dir` 不写 `app-update.yml`（v2.0.14 踩到）**：`app-update.yml` 由 `PublishManager` 的 `onAfterPack` 钩子写入，而该钩子只在 targets 里含 nsis 等 Windows target 时才触发。离线打包若只跑 `--win --dir`、再 `--prepackaged` 重打 NSIS，装机后 `resources/` 里**没有** `app-update.yml`，客户端永远收不到自动更新（且构建期零报错）。正确顺序：① 先跑一次完整 `--win`（写出 `app-update.yml` 并首次生成 NSIS）→ ② 删掉 `win-unpacked\version` 与 `win-unpacked\resources\default_app.asar`（自定义 electronDist 不会自动清理）→ ③ 再 `--win --prepackaged win-unpacked` 重打最终 NSIS。验收：`win-unpacked\resources` 必须同时有 `app-update.yml`、`app.asar`、`elevate.exe`，且**没有** `default_app.asar`。
 
 ## 9. 相关文件
 

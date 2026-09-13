@@ -18,7 +18,7 @@ import { CreateTagDto, UpdateTagDto, BindTagsDto } from './dto/agent-tag.dto';
 
 /**
  * 管理端 Agent 扩展控制器
- * 部门分类管理 + 标签库管理 + 版本管理 + 同步更新
+ * 部门分类管理 + 标签库管理 + 版本管理
  */
 @ApiTags('管理端-Agent 扩展')
 @ApiBearerAuth()
@@ -118,13 +118,5 @@ export class AdminAgentExtController {
   @ApiOperation({ summary: '提升 Agent 版本号' })
   bumpVersion(@Param('agentId', ParseIntPipe) agentId: number) {
     return this.service.bumpVersion(agentId);
-  }
-
-  // ============ 同步更新 ============
-
-  @Post('agents/:agentId/sync')
-  @ApiOperation({ summary: '同步 Agent 到 OpenClaw' })
-  syncToOpenClaw(@Param('agentId', ParseIntPipe) agentId: number) {
-    return this.service.syncToOpenClaw(agentId);
   }
 }

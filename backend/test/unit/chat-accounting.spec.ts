@@ -1,5 +1,5 @@
 /**
- * OpenClaw 对话记账单元测试（v2：扣费收敛到 llm-proxy）
+ * Hermes 对话记账单元测试（v2：扣费收敛到 llm-proxy）
  * 运行: node -r ts-node/register --test test/unit/chat-accounting.spec.ts
  */
 import { describe, it } from 'node:test';
@@ -53,7 +53,7 @@ describe('ChatAccountingService.chargeTool', () => {
     const r = await svc.chargeTool(1, 20);
     assert.equal(r.charged, 20);
     assert.equal(freezeCalls[0].amount, 20);
-    assert.match(freezeCalls[0].sourceId, /^openclaw_tool_/);
+    assert.match(freezeCalls[0].sourceId, /^tool_/);
     assert.equal(settleCalls[0].id, 99);
   });
 

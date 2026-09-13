@@ -19,12 +19,12 @@ STAGE_NAME_MAP = {
 }
 
 
-def build_openclaw_message(stage: str, result: Dict[str, Any]) -> str:
-    openclaw_msg = result.get("openclaw_hint", "")
-    if not openclaw_msg and result.get("requires_intervention", False):
+def build_hermes_message(stage: str, result: Dict[str, Any]) -> str:
+    hermes_msg = result.get("hermes_hint", "")
+    if not hermes_msg and result.get("requires_intervention", False):
         stage_name = STAGE_NAME_MAP.get(stage, stage)
-        openclaw_msg = f"{stage_name}完成，需要用户确认。请展示给用户并等待用户确认后才能调用 /continue。"
-    return openclaw_msg
+        hermes_msg = f"{stage_name}完成，需要用户确认。请展示给用户并等待用户确认后才能调用 /continue。"
+    return hermes_msg
 
 
 def make_progress_channel():
@@ -120,7 +120,7 @@ async def stream_workflow_task(
             "stage": stage,
             "status": status_snapshot,
             "requires_intervention": result.get("requires_intervention", False),
-            "openclaw": build_openclaw_message(stage, result),
+            "hermes": build_hermes_message(stage, result),
         }
         if include_payload_summary:
             payload["payload_summary"] = result.get("payload")

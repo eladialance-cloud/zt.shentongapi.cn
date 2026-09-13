@@ -1,0 +1,6 @@
+flask>=3.0
+# 微信自动化后端：开源 wxauto（MIT）—— 不使用任何商业闭源增强内核。
+# 真机核对后请把版本固化（不同 wxauto 版本适配的 PC 微信版本不同）。
+# 未安装时服务仍可启动：能力返回 BACKEND_MISSING，/api/health 正常。
+wxauto
+

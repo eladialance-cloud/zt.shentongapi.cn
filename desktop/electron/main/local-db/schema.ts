@@ -105,6 +105,24 @@ CREATE TABLE IF NOT EXISTS local_briefs (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 7. 本地定时任务执行日志表（RRClaw cron_run_logs 对标；独立于任务本体，记录每次触发）
+CREATE TABLE IF NOT EXISTS local_scheduled_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id VARCHAR(64) UNIQUE NOT NULL,
+  scheduled_id BIGINT NOT NULL,
+  user_id BIGINT NOT NULL,
+  title VARCHAR(255),
+  execute_kind VARCHAR(16) DEFAULT 'llm',
+  flow_id VARCHAR(64),
+  status VARCHAR(16) DEFAULT 'running',
+  error_message TEXT,
+  result_summary TEXT,
+  duration_ms INT,
+  team_task_id BIGINT,
+  started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  finished_at DATETIME
+);
+
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_local_chat_sessions_user_id ON local_chat_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_local_chat_messages_session_id ON local_chat_messages(session_id);
@@ -112,4 +130,6 @@ CREATE INDEX IF NOT EXISTS idx_local_workflow_executions_user_id ON local_workfl
 CREATE INDEX IF NOT EXISTS idx_local_plugin_call_logs_user_id ON local_plugin_call_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_local_sync_queue_status ON local_sync_queue(status);
 CREATE INDEX IF NOT EXISTS idx_local_briefs_user_id ON local_briefs(user_id);
+CREATE INDEX IF NOT EXISTS idx_local_scheduled_runs_scheduled_id ON local_scheduled_runs(scheduled_id);
+CREATE INDEX IF NOT EXISTS idx_local_scheduled_runs_user_id ON local_scheduled_runs(user_id);
 `

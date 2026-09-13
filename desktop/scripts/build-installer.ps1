@@ -91,18 +91,16 @@ try {
     Write-OK "运行时下载完成"
 
     # ===== 步骤 3:注入 API 地址 =====
-    if ($ApiBase) {
-        Write-Step "步骤 3/7:注入生产环境 API 地址"
-        $envFile = ".env.production"
-        $envContent = "# 生产环境配置`nVITE_API_BASE_URL=$ApiBase`n"
-        Set-Content -Path $envFile -Value $envContent -Encoding UTF8 -NoNewline
-        # 确保末尾有换行
-        Add-Content -Path $envFile -Value ""
-        Write-OK "已写入 $envFile"
-        Write-Info "VITE_API_BASE_URL=$ApiBase"
-    } else {
-        Write-Step "步骤 3/7:跳过 API 地址注入(未指定 -ApiBase)"
-    }
+    if (-not $ApiBase) { $ApiBase = "https://zt.shentongapi.cn/api" }
+    Write-Step "步骤 3/7:注入生产环境 API 地址"
+    # API 与 WebSocket 同源：socket.io 走 <wsBase>/api/socket.io（见 deploy/nginx.conf）
+    $wsBase = $ApiBase -replace '/api/?$', ''
+    $envFile = ".env.production"
+    $envContent = "# 生产环境配置`nVITE_API_BASE_URL=$ApiBase`nVITE_WS_URL=$wsBase/api`n"
+    [IO.File]::WriteAllText((Join-Path (Get-Location) $envFile), $envContent, (New-Object System.Text.UTF8Encoding($false)))
+    Write-OK "已写入 $envFile"
+    Write-Info "VITE_API_BASE_URL=$ApiBase"
+    Write-Info "VITE_WS_URL=$wsBase/api"
 
     # ===== 步骤 4:编译 =====
     Write-Step "步骤 4/7:编译主进程 + preload + 渲染进程"

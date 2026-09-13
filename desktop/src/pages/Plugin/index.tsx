@@ -147,7 +147,7 @@ export default function PluginMarket({ embedded = false }: { embedded?: boolean 
   /** 使用插件 → 跳转对话页 */
   const handleUse = (plugin: Plugin) => {
     message.info(`即将使用插件 ${plugin.name}，请在对话页选择该插件`);
-    navigate("/chat");
+    navigate("/hermes-chat");
   };
 
   /** 返回 */

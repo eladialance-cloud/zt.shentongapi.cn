@@ -200,14 +200,14 @@ export default function Landing() {
       <section className={`${styles.hero} ${visibleSections.has('hero') ? styles.visible : ''}`} id="hero">
         <div className={styles.heroInner}>
           <span className={styles.heroTag}>
-            OpenClaw + Hermes 基座 · 8大AI员工 · 真实项目闭环运营
+            Hermes 基座 · 8大AI员工 · 真实项目闭环运营
           </span>
           <h1 className={styles.heroTitle}>
             <span className={styles.heroTitleLine1}>打造AI自动化公司</span>
             <span className={styles.heroTitleLine2}>8大AI员工 24h 自主工作</span>
           </h1>
           <p className={styles.heroDesc}>
-            基于OpenClaw运行时与Hermes编排中枢，构建8大AI员工协同体系，覆盖获客、转化、交付、复购全链路，1人即可运营一家AI自动化公司。          </p>
+            基于Hermes编排中枢，构建8大AI员工协同体系，覆盖获客、转化、交付、复购全链路，1人即可运营一家AI自动化公司。          </p>
           <div className={styles.heroStats}>
             {heroStats.map((stat) => (
               <div key={stat.label} className={styles.heroStat}>
@@ -232,7 +232,7 @@ export default function Landing() {
       <section className={`${styles.section} ${visibleSections.has('foundation') ? styles.visible : ''}`} id="foundation">
         <div className={styles.container}>
           <p className={styles.sectionLabel}>AI RUNTIME & ORCHESTRATION</p>
-          <h2 className={styles.sectionTitle}>OpenClaw + Hermes · AI团队基座</h2>
+          <h2 className={styles.sectionTitle}>Hermes · AI团队基座</h2>
           <div className={styles.foundationGrid}>
             {foundationCards.map((card) => (
               <article key={card.name} className={styles.featureCard}>
@@ -541,7 +541,7 @@ export default function Landing() {
           <div>
             <div className={styles.footerBrandName}>深瞳AI</div>
             <p className={styles.footerBrandDesc}>
-              基于OpenClaw + Hermes的AI自动化公司运营平台，8大AI员工驱动业务闭环。            </p>
+              基于Hermes的AI自动化公司运营平台，8大AI员工驱动业务闭环。            </p>
           </div>
           <div className={styles.footerLinks}>
             <strong className={styles.footerLinksTitle}>快捷链接</strong>

@@ -26,7 +26,7 @@ metadata:
 ## 项目结构
 
 ```
-video-claw/                    ← OpenClaw 调用的 skill 根目录
+video-claw/                    ← Hermes 调用的 skill 根目录
 ├── video-claw/                    ← 前后端项目代码
 │   ├── backend/                  ← FastAPI 后端（端口 8000）
 │   │   ├── api/                  ← API 路由、Schema 和服务
@@ -39,7 +39,7 @@ video-claw/                    ← OpenClaw 调用的 skill 根目录
 │   │           ├── video/        ← 主流程视频产物
 │   │           └── task/         ← Pipeline 产物：<task_id>/
 │   └── frontend/                 ← Next.js 前端（端口 3000）
-├── references/                   ← OpenClaw 调用时的参考文档
+├── references/                   ← Hermes 调用时的参考文档
 │   ├── init_project/             ← 项目初始化
 │   ├── run_project/              ← 服务启动
 │   ├── workflow/                 ← 六阶段工作流 API

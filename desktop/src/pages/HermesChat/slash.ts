@@ -43,13 +43,13 @@ export const SLASH_HELP = [
   '- `/image`：打开文生图',
   '- `/video`：打开文生视频',
   '- `/usage`：查看本次会话 token 用量',
-  '- `/version`：查看 Hermes 版本',
+  '- `/version`：查看深瞳机器人版本',
   '- `/persona`：查看当前人格设置',
   '- `/skills`：技能市场',
   '- `/tools`：查看工具 / 能力（工具集开关 / MCP / 技能）',
-  '- `/memory`：本地 Hermes 记忆（USER.md / MEMORY.md）',
+  '- `/memory`：本地深瞳机器人记忆（USER.md / MEMORY.md）',
   '- `/settings`：设置',
-  '- `/status`：Hermes 运行状态',
+  '- `/status`：深瞳机器人运行状态',
   '- `/debug`：调试信息（模型/人格/会话/token）',
   '- `/undo`：撤回上一条回复',
   '- `/retry`：重发上一条消息',
@@ -60,5 +60,5 @@ export const SLASH_HELP = [
   '- `/learn` / `/remember` / `/recall`：记忆面板',
   '- `/office` / `/agents` / `/schedules` / `/gateway` / `/kanban`：跳转对应页面',
   '',
-  'Agent 网关命令（`/web` `/browse` `/code` `/shell` `/btw` `/approve` `/deny` `/goal` `/steer` `/queue` `/update` `/file`）经 Hermes gateway 执行；可先 /help /status 了解当前状态。'
+  'Agent 网关命令（`/web` `/browse` `/code` `/shell` `/btw` `/approve` `/deny` `/goal` `/steer` `/queue` `/update` `/file`）经深瞳机器人网关执行；可先 /help /status 了解当前状态。'
 ].join('\n')

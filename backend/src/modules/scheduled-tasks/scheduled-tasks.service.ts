@@ -55,7 +55,14 @@ export class ScheduledTasksService {
     private readonly repo: Repository<ScheduledTaskEntity>,
   ) {}
 
-  private assertValid(repeatType: string, runTime?: string | null, weekday?: number | null, dueAt?: Date | null) {
+  private assertValid(
+    repeatType: string,
+    runTime?: string | null,
+    weekday?: number | null,
+    dueAt?: Date | null,
+    executeKind?: string | null,
+    flowId?: string | null,
+  ) {
     if (repeatType === 'once' && !dueAt) {
       throw new BadRequestException('once 类型需提供 dueAt');
     }
@@ -65,11 +72,16 @@ export class ScheduledTasksService {
     if (repeatType === 'weekly' && (weekday == null || weekday < 1 || weekday > 7)) {
       throw new BadRequestException('weekly 类型需提供 weekday(1-7)');
     }
+    if (executeKind === 'flow' && !flowId) {
+      throw new BadRequestException('执行方式为业务流时需提供 flowId');
+    }
   }
 
   async create(userId: number, dto: CreateScheduledTaskDto): Promise<ScheduledTaskEntity> {
     const { repeatType, runTime, weekday, dueAt } = buildFields(dto);
-    this.assertValid(repeatType, runTime, weekday, dueAt);
+    const executeKind = dto.executeKind ?? 'llm';
+    const flowId = dto.flowId ?? null;
+    this.assertValid(repeatType, runTime, weekday, dueAt, executeKind, flowId);
     const nextRunAt = computeNextRunAt(repeatType, runTime, weekday, dueAt);
     if (!nextRunAt) throw new BadRequestException('无法计算下次触发时间，请检查时间字段');
     const entity = this.repo.create({
@@ -77,12 +89,16 @@ export class ScheduledTasksService {
       title: dto.title,
       description: dto.description ?? null,
       teamId: dto.teamId ?? null,
+      agentId: dto.agentId ?? null,
       repeatType,
       runTime: runTime ?? null,
       weekday: weekday ?? null,
       dueAt: dueAt ?? null,
       nextRunAt,
       status: 'active',
+      executeKind,
+      flowId,
+      flowParams: dto.flowParams ?? null,
     });
     return this.repo.save(entity);
   }
@@ -106,17 +122,23 @@ export class ScheduledTasksService {
     const runTime = dto.runTime ?? item.runTime ?? null;
     const weekday = dto.weekday ?? item.weekday ?? null;
     const dueAt = dto.dueAt ? new Date(dto.dueAt) : item.dueAt ?? null;
-    this.assertValid(repeatType, runTime, weekday, dueAt);
+    const executeKind = dto.executeKind ?? item.executeKind ?? 'llm';
+    const flowId = dto.flowId !== undefined ? dto.flowId : item.flowId ?? null;
+    this.assertValid(repeatType, runTime, weekday, dueAt, executeKind, flowId);
     Object.assign(item, {
       title: dto.title ?? item.title,
       description: dto.description !== undefined ? dto.description : item.description,
       teamId: dto.teamId !== undefined ? dto.teamId : item.teamId,
+      agentId: dto.agentId !== undefined ? dto.agentId : item.agentId,
       repeatType,
       runTime: runTime ?? null,
       weekday: weekday ?? null,
       dueAt: dueAt ?? null,
       nextRunAt: computeNextRunAt(repeatType, runTime, weekday, dueAt),
       status: dto.status ?? (item.status === 'failed' ? 'active' : item.status),
+      executeKind,
+      flowId,
+      flowParams: dto.flowParams !== undefined ? dto.flowParams : item.flowParams,
     });
     return this.repo.save(item);
   }

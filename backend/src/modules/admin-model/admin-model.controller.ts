@@ -44,7 +44,7 @@ import {
  *   POST   /admin/models/:id/enable           上架
  *   POST   /admin/models/:id/disable          下架
  *   POST   /admin/models/:id/test             测试模型
- *   POST   /admin/models/:id/sync             手动同步 OpenClaw
+ *   POST   /admin/models/:id/sync             手动同步
  *   POST   /admin/models/batch-enable         批量上架/下架
  *   POST   /admin/models/batch-price          批量改价
  *   GET    /admin/models/export               导出配置 JSON
@@ -290,7 +290,7 @@ export class AdminModelController {
   }
 
   @Post(':id/sync')
-  @ApiOperation({ summary: '手动同步 OpenClaw' })
+  @ApiOperation({ summary: '手动同步' })
   async sync(@Param('id', ParseIntPipe) id: number) {
     await this.service.sync(id);
   }

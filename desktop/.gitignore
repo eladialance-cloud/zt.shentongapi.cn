@@ -33,3 +33,6 @@ resources/sandbox/*.exe
 # Python cache
 __pycache__/
 *.pyc
+
+# unified-toolbox MCP server built by scripts/build-unified-toolbox.mjs
+resources/service-registry/modules/unified-toolbox/mcp-server.js

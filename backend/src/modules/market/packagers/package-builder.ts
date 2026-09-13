@@ -128,7 +128,7 @@ export function buildAgentPackage(agent: AgentEntity): MarketPackage {
         allowedPluginIds: agent.allowedPluginIds || [],
         allowedWorkflowIds: agent.allowedWorkflowIds || [],
         allowedKnowledgeBaseIds: agent.allowedKnowledgeBaseIds || [],
-        runtimeType: agent.runtimeType || 'openclaw',
+        runtimeType: agent.runtimeType || 'hermes',
         pricingStrategy: agent.pricingStrategy || 'model',
         modelConfig: agent.modelConfig || null,
         outputRule: agent.outputRule || '',

@@ -109,9 +109,12 @@ export async function checkHealth(endpoint = 'http://127.0.0.1:8642'): Promise<b
   try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 5000)
-    const res = await fetch(`${endpoint}/health`, { signal: controller.signal })
+    // Hermes 0.20.x headless 无 /health(404)，真实健康端点是 /api/health(200+ok:true)
+    const res = await fetch(`${endpoint}/api/health`, { signal: controller.signal })
     clearTimeout(timeout)
-    return res.ok
+    if (!res.ok) return false
+    const data = await res.json().catch(() => null)
+    return data?.ok === true
   } catch {
     return false
   }

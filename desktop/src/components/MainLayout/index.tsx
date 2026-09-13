@@ -64,6 +64,17 @@ export default function MainLayout() {
     startScheduledRunner(() => useAuthStore.getState().accessToken);
     return () => stopScheduledRunner();
   }, []);
+
+  // 主进程「后台常驻」引擎状态变化：开启时停用渲染层轮询，避免双触发
+  useEffect(() => {
+    const api = window.electronAPI?.cronEngine;
+    if (!api?.onEvent) return;
+    return api.onEvent((payload) => {
+      if (payload?.type !== "state") return;
+      if (payload.enabled) stopScheduledRunner();
+      else startScheduledRunner(() => useAuthStore.getState().accessToken);
+    });
+  }, []);
   return (
     <div className={styles.layout}>
       <TopBar />

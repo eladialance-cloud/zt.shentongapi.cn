@@ -15,9 +15,11 @@
  *   请先执行 `npm install`(tsx 已在 devDependencies 中声明)后再运行。
  *
  * 行为说明:
- *   - 由于实际 CDN 地址(https://cdn.shentong.ai/...)尚未部署,下载会失败。
- *   - 下载失败时打印警告但不中断构建(process.exit(0)),
- *     并在 manifest.json 中保持空 SHA-256,以便安装后首次启动触发 RuntimeDownloader 在线下载。
+ *   - 下载失败时打印警告但不中断构建(process.exit(0))。
+ *   - 下载失败**不会清空**清单中已有的 SHA-256:运行时下载器(runtime-downloader.ts)
+ *     对空哈希的策略是「拒绝下载」(防供应链篡改),清空会让该服务在客户端永远装不上,
+ *     构建期的网络抖动不应产生这种破坏性副作用。
+ *   - 只有清单本来就没有该平台哈希时才保持为空(安装后首次启动走在线下载兜底)。
  */
 
 import https from 'node:https';
@@ -184,11 +186,11 @@ async function processService(
   service: ServiceEntry,
   platform: PlatformKey,
   manifestChanged: { value: boolean },
-): Promise<void> {
+): Promise<boolean> {
   const url = service.downloadUrl[platform];
   if (!url) {
     warn(`service "${serviceKey}" has no downloadUrl for ${platform}, skip.`);
-    return;
+    return false;
   }
 
   const serviceDir = path.join(RUNTIME_DIR, serviceKey);
@@ -217,15 +219,19 @@ async function processService(
       service.sha256[platform] = sha256;
       manifestChanged.value = true;
     }
+    return true;
   } catch (e) {
     // 下载/解压失败:按 spec 要求,打印警告但不中断构建。
     const message = e instanceof Error ? e.message : String(e);
     warn(`[${serviceKey}/${platform}] download/extract failed: ${message}`);
-    warn(`[${serviceKey}/${platform}] leaving sha256 empty, will fall back to on-demand download.`);
-    if (service.sha256[platform] !== '') {
-      service.sha256[platform] = '';
-      manifestChanged.value = true;
+    // 保留清单中已有的 sha256(若有):runtime-downloader 对空哈希是「拒绝下载」,
+    // 清空会让客户端永远装不上该服务,而构建期网络失败通常只是暂时的。
+    if (!service.sha256[platform]) {
+      warn(
+        `[${serviceKey}/${platform}] sha256 仍为空(清单无历史值),客户端首次启动将走在线下载兜底。`,
+      );
     }
+    return false;
   } finally {
     // 清理临时下载文件(无论成功失败)。
     await rm(tmpFile, { force: true });
@@ -255,14 +261,13 @@ async function main(): Promise<void> {
         continue;
       }
       anyAttempted = true;
-      const before = service.sha256[platform] ?? '';
-      await processService(serviceKey, service, platform, manifestChanged);
-      const after = service.sha256[platform] ?? '';
-      if (after && after === before && after !== '') {
-        // 之前已有且未变化,视为成功。
+      // 以「本次是否真的下载成功」为判据。sha256 在下载失败时会沿用清单历史值,
+      // 若用「哈希非空」当成功信号,CDN 不可达就会被漏报。
+      const downloaded = await processService(serviceKey, service, platform, manifestChanged);
+      if (downloaded) {
         allFailed = false;
-      } else if (after) {
-        allFailed = false;
+      } else if (!service.sha256[platform]) {
+        warn(`[${serviceKey}/${platform}] 清单无 sha256 且下载失败,客户端下载校验会拒绝。`);
       }
     }
   }

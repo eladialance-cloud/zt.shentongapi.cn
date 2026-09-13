@@ -90,6 +90,17 @@ export default defineConfig({
             "script-src 'self' 'unsafe-inline' 'unsafe-eval';"
           )
         }
+      },
+      {
+        // Fix: Vite 8 adds crossorigin to <link rel="stylesheet">; Electron file:// drops stylesheet => naked HTML.
+        name: 'strip-css-crossorigin',
+        apply: 'build' as const,
+        transformIndexHtml(html: string) {
+          return html.replace(
+            /(<link\s+[^>]*rel="stylesheet"[^>]*?)\s+crossorigin(=[^\s>]*)?(\s[^>]*>)/g,
+            '$1$3'
+          )
+        }
       }
     ],
     resolve: {

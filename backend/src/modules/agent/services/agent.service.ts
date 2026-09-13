@@ -385,7 +385,7 @@ export class AgentService {
       tags: [],
       userId,
       sourceType: 'user',
-      runtimeType: 'openclaw',
+      runtimeType: 'hermes',
       isOfficial: false,
       officialVisible: true,
       syncStatus: 'pending',

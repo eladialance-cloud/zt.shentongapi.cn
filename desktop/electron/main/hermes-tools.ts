@@ -32,6 +32,9 @@ const TOOLSET_DEFS: Array<{ key: string; label: string; description: string }> =
   { key: "cronjob", label: "定时任务", description: "创建周期任务" },
   { key: "moa", label: "多智能体", description: "多智能体协作" },
   { key: "todo", label: "待办", description: "维护待办清单" },
+  { key: "toolbox", label: "工具箱", description: "调用统一工具箱能力（飞书/MySQL 等）" },
+  { key: "wx", label: "微信", description: "调用微信域桥能力（发消息/好友/朋友圈等，默认关闭）" },
+  { key: "douyin", label: "抖音", description: "调用抖音采集/转写能力（采集/转写/入库，发布私信默认关闭）" },
 ]
 
 export function hermesHomeDir(): string {

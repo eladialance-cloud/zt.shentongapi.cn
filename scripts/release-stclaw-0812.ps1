@@ -29,21 +29,21 @@ Step "0" ("提交功能改动 (v" + $version + ")")
   "backend/src/modules/chat/services/llm-proxy.service.ts" `
   "desktop/electron/main/index.ts" `
   "desktop/electron/main/llm-integrations.ts" `
-  "desktop/electron/main/openclaw-chat.ts" `
+  "desktop/electron/main/hermes-chat.ts" `
   "desktop/electron/main/service-manager.ts" `
   "desktop/electron/main/video-claw-config.ts" `
   "desktop/electron/preload/index.ts" `
   "desktop/electron/shared/types.ts" `
   "desktop/package.json" `
   "desktop/package-lock.json" `
-  "desktop/resources/openclaw/skills/video-claw" `
+  "desktop/resources/hermes/skills/video-claw" `
   "desktop/src/api/llm-integrations-api.ts" `
-  "desktop/src/api/openclaw-chat-api.ts" `
+  "desktop/src/api/hermes-chat-api.ts" `
   "desktop/src/pages/Chat/index.tsx" `
   "desktop/src/pages/Settings/LlmIntegrations.tsx" `
   "desktop/src/pages/Settings/index.tsx" `
   "desktop/src/store/chat-stream.ts" `
-  "desktop/tests/unit/openclaw-chat.test.ts" `
+  "desktop/tests/unit/hermes-chat.test.ts" `
   "desktop/tests/unit/video-claw-config.test.ts" `
   "desktop/scripts/build-installer.ps1" `
   "scripts/build-video-claw-runtime.ps1" `

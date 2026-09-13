@@ -119,7 +119,7 @@ export function HermesTools({ open, onClose }: HermesToolsProps): JSX.Element {
 
   const toolsTab = (
     <div>
-      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="工具集开关写入 Hermes config.yaml `platform_toolsets.cli`，Hermes 重启后生效；MCP 由深瞳后端同步管理。" />
+      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="工具集开关写入深瞳机器人 config.yaml `platform_toolsets.cli`，深瞳机器人重启后生效；MCP 由深瞳后端同步管理。" />
       {loading ? (
         <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>
       ) : toolsets.length === 0 ? (
@@ -176,7 +176,7 @@ export function HermesTools({ open, onClose }: HermesToolsProps): JSX.Element {
           ))}
         </div>
       )}
-      <div className={styles.footerNote}>MCP 的增删改由深瞳后端管理；此页仅展示 Hermes config 当前配置，并从后端同步启用项。</div>
+      <div className={styles.footerNote}>MCP 的增删改由深瞳后端管理；此页仅展示深瞳机器人 config 当前配置，并从后端同步启用项。</div>
     </div>
   )
 
@@ -212,7 +212,7 @@ export function HermesTools({ open, onClose }: HermesToolsProps): JSX.Element {
   )
 
   return (
-    <Modal open={open} onCancel={onClose} footer={null} width={840} title="Hermes 工具 / 能力" destroyOnClose>
+    <Modal open={open} onCancel={onClose} footer={null} width={840} title="深瞳机器人工具 / 能力" destroyOnClose>
       <Tabs
         activeKey={active}
         onChange={(k) => setActive(k as TabKey)}

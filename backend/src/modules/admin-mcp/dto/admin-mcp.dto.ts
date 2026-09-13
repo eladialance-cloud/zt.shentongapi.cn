@@ -47,8 +47,8 @@ export class CreateServerConfigDto {
   @IsObject()
   headers?: Record<string, string>;
 
-  @IsEnum(['openclaw', 'codex', 'n8n', 'custom'])
-  serviceType: 'openclaw' | 'codex' | 'n8n' | 'custom';
+  @IsEnum(['codex', 'n8n', 'custom'])
+  serviceType: 'codex' | 'n8n' | 'custom';
 }
 
 /**
@@ -92,8 +92,8 @@ export class UpdateServerConfigDto {
   headers?: Record<string, string>;
 
   @IsOptional()
-  @IsEnum(['openclaw', 'codex', 'n8n', 'custom'])
-  serviceType?: 'openclaw' | 'codex' | 'n8n' | 'custom';
+  @IsEnum(['codex', 'n8n', 'custom'])
+  serviceType?: 'codex' | 'n8n' | 'custom';
 
   @IsOptional()
   @IsBoolean()
@@ -225,8 +225,8 @@ export class McpQueryDto {
   keyword?: string;
 
   @IsOptional()
-  @IsEnum(['openclaw', 'codex', 'n8n', 'custom'])
-  serviceType?: 'openclaw' | 'codex' | 'n8n' | 'custom';
+  @IsEnum(['codex', 'n8n', 'custom'])
+  serviceType?: 'codex' | 'n8n' | 'custom';
 
   @IsOptional()
   @IsEnum(['pending', 'connected', 'failed', 'disabled'])

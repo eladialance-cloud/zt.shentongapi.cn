@@ -6,6 +6,7 @@ import { Public } from "../../../common/decorators/public.decorator";
 import { CurrentUser } from "../../../common/decorators/current-user.decorator";
 import { ChannelService } from "../services/channel.service";
 import { PublishService } from "../services/publish.service";
+import { CHANNEL_PLATFORMS } from "../channel-platforms";
 
 @ApiTags("渠道管理")
 @ApiBearerAuth()
@@ -21,6 +22,13 @@ export class ChannelController {
   @ApiOperation({ summary: "健康检查" })
   health() {
     return this.channelService.health();
+  }
+
+  @Public()
+  @Get("platforms")
+  @ApiOperation({ summary: "可选渠道平台（含连接方式/是否支持入站回调）" })
+  listPlatforms() {
+    return CHANNEL_PLATFORMS;
   }
 
   // ============ 渠道 CRUD ============
@@ -44,6 +52,8 @@ export class ChannelController {
       webhookToken?: string;
       teamId?: number;
       agentId?: number;
+      agentRef?: string;
+      accountId?: string;
     },
   ) {
     return this.channelService.createChannel(userId, body);
@@ -66,6 +76,15 @@ export class ChannelController {
     @Body() body: Record<string, any>,
   ) {
     return this.channelService.updateChannel(userId, Number(channelId), body);
+  }
+
+  @Post(":channelId/test")
+  @ApiOperation({ summary: "测试渠道连接（静态校验 + 适配器 healthCheck）" })
+  testChannelConnection(
+    @CurrentUser("userId") userId: number,
+    @Param("channelId") channelId: string,
+  ) {
+    return this.channelService.testConnection(userId, Number(channelId));
   }
 
   @Delete(":channelId")
@@ -127,6 +146,7 @@ export class ChannelController {
     return this.publishService.updatePlan(userId, Number(planId), body);
   }
 
+  @Get("publish/plans/:planId")
   @ApiOperation({ summary: "发布计划详情" })
   getPublishPlan(
     @CurrentUser("userId") userId: number,

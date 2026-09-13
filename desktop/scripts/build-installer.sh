@@ -111,15 +111,18 @@ fi
 ok "运行时下载完成"
 
 # ===== 步骤 3:注入 API 地址 =====
-if [[ -n "$API_BASE" ]]; then
-    step "步骤 3/7:注入生产环境 API 地址"
-    echo "# 生产环境配置" > .env.production
-    echo "VITE_API_BASE_URL=$API_BASE" >> .env.production
-    ok "已写入 .env.production"
-    info "VITE_API_BASE_URL=$API_BASE"
-else
-    step "步骤 3/7:跳过 API 地址注入(未指定 --api-base)"
-fi
+API_BASE="${API_BASE:-https://zt.shentongapi.cn/api}"
+step "步骤 3/7:注入生产环境 API 地址"
+# API 与 WebSocket 同源：socket.io 走 <wsBase>/api/socket.io（见 deploy/nginx.conf）
+WS_BASE="${API_BASE%/api}"
+{
+    echo "# 生产环境配置"
+    echo "VITE_API_BASE_URL=$API_BASE"
+    echo "VITE_WS_URL=$WS_BASE/api"
+} > .env.production
+ok "已写入 .env.production"
+info "VITE_API_BASE_URL=$API_BASE"
+info "VITE_WS_URL=$WS_BASE/api"
 
 # ===== 步骤 4:编译 =====
 step "步骤 4/7:编译主进程 + preload + 渲染进程"

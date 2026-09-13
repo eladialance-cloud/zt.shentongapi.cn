@@ -144,7 +144,7 @@ export default function AgentMarket({ embedded = false }: { embedded?: boolean }
   };
 
   const handleUse = (agent: Agent) => {
-    navigate(`/chat?agentId=${agent.id}`);
+    navigate(`/hermes-chat?agentId=${agent.id}`);
   };
 
   const handleToggleFav = async (agent: Agent) => {

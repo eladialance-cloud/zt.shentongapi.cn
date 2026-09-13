@@ -11,7 +11,10 @@ import { RemoteService } from "./remote.service";
  * - POST /api/remote/webhook/feishu   飞书入站（自定义机器人/开放平台事件回调）
  * - GET/POST /api/remote/webhook/wechat-mp  公众号接入（GET 验签回显 echostr / POST XML 消息）
  * - GET/POST /api/remote/webhook/wecom  企业微信回调（GET 验签回显 / POST 加密事件）
- * - GET  /api/remote/health          健康检查
+ * - POST /api/remote/webhook/dingtalk  钉钉机器人 Outgoing 回调
+ * - POST /api/remote/webhook/telegram  Telegram Bot 回调（secret_token）
+ * - POST /api/remote/webhook/qq        QQ 机器人回调
+ * - GET  /api/remote/health           健康检查
  * 桌面端结果回传走 socket.io sync 命名空间的 remote:result 事件（见 sync.gateway.ts）
  */
 @ApiTags("自动化工作台-远程")
@@ -130,5 +133,70 @@ export class RemoteController {
       console.error(`[remote:wecom-webhook] ${(err as Error).message}`);
     }
     res.status(200).send("");
+  }
+
+  /**
+   * 钉钉机器人 Outgoing 回调（POST）
+   * 钉钉要求快速返回，body 可返回 {"msgtype":"text","text":{"content":"..."}} 作为即时回执
+   */
+  @Post("webhook/dingtalk")
+  @Public()
+  async dingtalkInbound(
+    @Req() req: Request,
+    @Headers("timestamp") timestamp: string | undefined,
+    @Headers("sign") signature: string | undefined,
+    @Res() res: Response,
+  ) {
+    try {
+      const raw = this.rawBodyOf(req);
+      await this.remoteService.handleDingtalkInbound(req.body ?? {}, signature, timestamp, raw);
+    } catch (err) {
+      console.error(`[remote:dingtalk-webhook] ${(err as Error).message}`);
+    }
+    res.status(200).json({});
+  }
+
+  /**
+   * Telegram Bot 回调（POST）
+   * 校验头 X-Telegram-Bot-Api-Secret-Token
+   */
+  @Post("webhook/telegram")
+  @Public()
+  async telegramInbound(
+    @Req() req: Request,
+    @Headers("x-telegram-bot-api-secret-token") secret: string | undefined,
+    @Res() res: Response,
+  ) {
+    try {
+      await this.remoteService.handleTelegramInbound(req.body ?? {}, secret);
+    } catch (err) {
+      console.error(`[remote:telegram-webhook] ${(err as Error).message}`);
+    }
+    res.status(200).json({ ok: true });
+  }
+
+  /**
+   * QQ 机器人回调（POST）
+   * Ed25519 验签（当前用 Token 比对兜底）；QQ 要求返回 {"op":12} 作为 HTTP 回调确认
+   */
+  @Post("webhook/qq")
+  @Public()
+  async qqInbound(
+    @Req() req: Request,
+    @Headers("x-signature-ed25519") signature: string | undefined,
+    @Res() res: Response,
+  ) {
+    try {
+      const body = (req.body ?? {}) as Record<string, any>;
+      // 回调地址校验（op=13）直接回显 plain_token + signature
+      if (body?.op === 13) {
+        res.status(200).json({ plain_token: body?.d?.plain_token, signature: body?.d?.event_ts });
+        return;
+      }
+      await this.remoteService.handleQqInbound(body, signature);
+    } catch (err) {
+      console.error(`[remote:qq-webhook] ${(err as Error).message}`);
+    }
+    res.status(200).json({ op: 12 });
   }
 }

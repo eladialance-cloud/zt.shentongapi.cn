@@ -94,9 +94,9 @@ foreach ($t in $targets) {
 
 Write-Host ''
 Write-Host '----------------------------------------'
-Write-Host '  端口占用诊断（帮助定位 OpenClaw/N8N 启动失败）'
+Write-Host '  端口占用诊断（帮助定位 N8N/Hermes 启动失败）'
 Write-Host '----------------------------------------'
-foreach ($port in 8080, 5678, 3100, 8642) {
+foreach ($port in 5678, 8642, 8000, 3100) {
     $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
     if ($conn) {
         foreach ($c in $conn) {
@@ -120,14 +120,15 @@ $runtimeRoots = $runtimeRoots | Select-Object -Unique
 foreach ($root in $runtimeRoots) {
     if (-not (Test-Path $root)) { continue }
     Write-Host "[运行时根目录] $root"
-    foreach ($svc in @('openclaw','n8n','mcp','hermes')) {
+    foreach ($svc in @('n8n','hermes','video-claw','mcp')) {
         $dir = Join-Path $root $svc
         if (-not (Test-Path $dir)) { Write-Host "  - $svc 未安装"; continue }
-        $cmd = Join-Path $dir 'openclaw.exe.cmd'
+        $cmd = $null
         switch ($svc) {
-            'n8n'    { $cmd = Join-Path $dir 'n8n.exe.cmd' }
-            'mcp'    { $cmd = Join-Path $dir 'mcp-gateway.exe.cmd' }
-            'hermes' { $cmd = Join-Path $dir 'hermes.exe.cmd' }
+            'n8n'        { $cmd = Join-Path $dir 'n8n.exe.cmd' }
+            'hermes'     { $cmd = Join-Path $dir 'hermes.exe.cmd' }
+            'video-claw' { $cmd = Join-Path $dir 'video-claw.exe.cmd' }
+            'mcp'        { $cmd = Join-Path $dir 'mcp-gateway.exe.cmd' }
         }
         if (-not (Test-Path $cmd)) { Write-Host "  - $svc 入口缺失：$cmd"; continue }
         try {
@@ -150,7 +151,7 @@ if ($runtimeNodeProcs) {
     foreach ($p in $runtimeNodeProcs) {
         Write-Host "  发现可能遗留的运行时进程 PID=$($p.Id) 路径=$($p.Path)"
     }
-    $ans = Read-Host '  是否结束以上进程（清理后释放 8080/5678 等端口）？[y/N]'
+    $ans = Read-Host '  是否结束以上进程（清理后释放 5678/8642 等端口）？[y/N]'
     if ($ans -match '^[yY]') {
         foreach ($p in $runtimeNodeProcs) {
             try { Stop-Process -Id $p.Id -Force -ErrorAction Stop; Write-Host "  已结束 PID=$($p.Id)" }

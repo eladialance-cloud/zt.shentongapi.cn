@@ -1,0 +1,33 @@
+tools:
+  - name: feishu.create_table
+    capability: feishu
+    params:
+      - app_token
+      - table_name
+      - fields
+    description: 在飞书多维表格（bitable）中创建数据表（fields 为 JSON 字符串：[{name,type}]）
+  - name: feishu.list_tables
+    capability: feishu
+    params:
+      - app_token
+    description: 列出飞书多维表格 app 下的所有数据表
+  - name: feishu.add_records
+    capability: feishu
+    params:
+      - app_token
+      - table_id
+      - records
+    description: 批量写入记录（records 为 JSON 字符串：[{字段名:值}]）
+  - name: feishu.list_records
+    capability: feishu
+    params:
+      - app_token
+      - table_id
+      - page_size
+      - page_token
+    description: 读取记录（支持分页，page_size 默认 100）
+  - name: mysql.query
+    capability: mysql
+    params:
+      - sql
+    description: 执行 MySQL 查询并返回结果集（默认只读）

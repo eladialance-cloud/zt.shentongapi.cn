@@ -7,13 +7,8 @@ export class ChannelEntity extends BaseEntity {
   @Column({ length: 64 })
   name: string;
 
-  @Column({
-    type: "enum",
-    enum: [
-      "wechat_mp", "wechat_work", "feishu_bot",
-      "dingtalk_bot", "telegram_bot",
-    ],
-  })
+  /** 平台标识：取值受 channel-platforms.ts 约束（后端为 VARCHAR，新增平台不需要改表枚举） */
+  @Column({ length: 32 })
   platform: string;
 
   @Column({
@@ -49,6 +44,15 @@ export class ChannelEntity extends BaseEntity {
   @Index()
   @Column({ name: "agent_id", type: "bigint", nullable: true })
   agentId?: number;
+
+  /** 绑定的官署/角色 id（可选，如 bingbu/libu；对标 RRClaw 渠道账号绑定 AI 员工） */
+  @Column({ name: "agent_ref", length: 64, nullable: true })
+  agentRef?: string;
+
+  /** 账号标识（同一平台多账号：默认 default；清洗为小写字母数字-下划线） */
+  @Index()
+  @Column({ name: "account_id", length: 64, nullable: true })
+  accountId?: string;
 
   @Column({ name: "last_message_at", type: "datetime", nullable: true })
   lastMessageAt?: Date;

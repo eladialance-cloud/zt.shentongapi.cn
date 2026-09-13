@@ -6,6 +6,8 @@ declare global {
   interface Window {
     electronAPI: ElectronAPI;
     runtime: RuntimeAPI;
+    hermesAPI?: any;
+    electron?: any;
   }
 }
 
@@ -14,5 +16,7 @@ declare module "*.module.css" {
   const classes: { readonly [key: string]: string };
   export default classes;
 }
+
+
 
 export {};

@@ -4,6 +4,10 @@ import { ChannelService } from "../channel/services/channel.service";
 import { FeishuBotAdapter } from "../channel/adapters/feishu-bot.adapter";
 import { WechatMpAdapter } from "../channel/adapters/wechat-mp.adapter";
 import { WecomAdapter } from "../channel/adapters/wecom.adapter";
+import { DingtalkBotAdapter } from "../channel/adapters/dingtalk-bot.adapter";
+import { TelegramBotAdapter } from "../channel/adapters/telegram-bot.adapter";
+import { WecomBotAdapter } from "../channel/adapters/wecom-bot.adapter";
+import { QqBotAdapter } from "../channel/adapters/qq-bot.adapter";
 import { InboundMessage } from "../channel/adapters/channel-adapter.interface";
 import { ChannelEntity } from "../channel/entities/channel.entity";
 import { SyncGateway } from "../sync/sync.gateway";
@@ -46,6 +50,10 @@ export class RemoteService {
     private readonly feishuAdapter: FeishuBotAdapter,
     private readonly wechatMpAdapter: WechatMpAdapter,
     private readonly wecomAdapter: WecomAdapter,
+    private readonly dingtalkAdapter: DingtalkBotAdapter,
+    private readonly telegramAdapter: TelegramBotAdapter,
+    private readonly wecomBotAdapter: WecomBotAdapter,
+    private readonly qqBotAdapter: QqBotAdapter,
     private readonly syncGateway: SyncGateway,
     private readonly automationService: AutomationService,
   ) {
@@ -64,7 +72,7 @@ export class RemoteService {
 
   /** 按平台取最早激活渠道（单账号场景兜底） */
   private async findChannelByPlatform(
-    platform: "feishu_bot" | "wechat_mp" | "wechat_work",
+    platform: string,
   ): Promise<ChannelEntity | null> {
     const list = await this.channelService.findActiveChannelsByPlatform(platform);
     return list[0] ?? null;
@@ -279,6 +287,105 @@ export class RemoteService {
   }
 
   /**
+   * 处理钉钉机器人 Outgoing 回调
+   * 多账号：逐个已激活钉钉渠道用各自 secret 验签，命中即归属该渠道。
+   */
+  async handleDingtalkInbound(
+    payload: unknown,
+    signature?: string,
+    timestamp?: string,
+    rawBody?: string,
+  ): Promise<{ ok: boolean }> {
+    const channels = await this.channelService.findActiveChannelsByPlatform("dingtalk_bot");
+    if (!channels.length) {
+      this.logger.warn("[remote] 无已激活的钉钉渠道绑定，忽略入站消息");
+      return { ok: false };
+    }
+    let channel: ChannelEntity | null = null;
+    for (const cand of channels) {
+      const creds = this.channelService.decryptCredentials(cand) ?? {};
+      const secret = creds.secret ?? creds.appSecret ?? "";
+      if (this.dingtalkAdapter.verifySignature(payload, signature ?? "", secret, timestamp, rawBody)) {
+        channel = cand;
+        break;
+      }
+    }
+    if (!channel) {
+      this.logger.warn("[remote] 钉钉签名校验失败（无渠道 secret 匹配），拒绝处理");
+      return { ok: false };
+    }
+    const inbound = this.dingtalkAdapter.parseInboundMessage(payload);
+    if (!inbound) {
+      this.logger.warn("[remote] 无法解析钉钉入站消息");
+      return { ok: false };
+    }
+    return this.routeInboundMessage(channel, inbound);
+  }
+
+  /**
+   * 处理 Telegram Bot 回调（secret_token 校验）
+   */
+  async handleTelegramInbound(
+    payload: unknown,
+    secretHeader?: string,
+  ): Promise<{ ok: boolean }> {
+    const channels = await this.channelService.findActiveChannelsByPlatform("telegram_bot");
+    if (!channels.length) {
+      this.logger.warn("[remote] 无已激活的 Telegram 渠道绑定，忽略入站消息");
+      return { ok: false };
+    }
+    let channel: ChannelEntity | null = null;
+    for (const cand of channels) {
+      const creds = this.channelService.decryptCredentials(cand) ?? {};
+      const secret = creds.webhookSecret ?? "";
+      if (this.telegramAdapter.verifySignature(payload, secretHeader ?? "", secret)) {
+        channel = cand;
+        break;
+      }
+    }
+    if (!channel) {
+      this.logger.warn("[remote] Telegram secret_token 校验失败，拒绝处理");
+      return { ok: false };
+    }
+    const inbound = this.telegramAdapter.parseInboundMessage(payload);
+    if (!inbound) {
+      // 非文本更新（如编辑/加群）直接确认丢弃
+      return { ok: true };
+    }
+    return this.routeInboundMessage(channel, inbound);
+  }
+
+  /**
+   * 处理 QQ 机器人回调（Token 比对）
+   */
+  async handleQqInbound(
+    payload: unknown,
+    signature?: string,
+  ): Promise<{ ok: boolean }> {
+    const channels = await this.channelService.findActiveChannelsByPlatform("qq_bot");
+    if (!channels.length) {
+      this.logger.warn("[remote] 无已激活的 QQ 机器人渠道绑定，忽略入站消息");
+      return { ok: false };
+    }
+    let channel: ChannelEntity | null = null;
+    for (const cand of channels) {
+      const creds = this.channelService.decryptCredentials(cand) ?? {};
+      const token = creds.token ?? cand.webhookToken ?? "";
+      if (this.qqBotAdapter.verifySignature(payload, signature ?? "", token)) {
+        channel = cand;
+        break;
+      }
+    }
+    if (!channel) {
+      this.logger.warn("[remote] QQ 机器人 Token 校验失败，拒绝处理");
+      return { ok: false };
+    }
+    const inbound = this.qqBotAdapter.parseInboundMessage(payload);
+    if (!inbound) return { ok: true };
+    return this.routeInboundMessage(channel, inbound);
+  }
+
+  /**
    * 公共路由：文本指令 → 确认回复 → 在线检查 → 场景分流 → 命令推送
    */
   private async routeInboundMessage(
@@ -449,7 +556,7 @@ export class RemoteService {
     this.syncGateway.pushToUser(channel.userId, "remote:command", {
       commandId,
       text: inbound.content?.trim() ?? "",
-      source: "feishu",
+      source: channel.platform,
       ...extra,
       replyContext,
     });
@@ -480,6 +587,26 @@ export class RemoteService {
       });
     } else if (channel.platform === "wechat_work") {
       result = await this.wecomAdapter.sendMessage(credentialsJson, {
+        targetExternalId: senderExternalId,
+        content,
+      });
+    } else if (channel.platform === "dingtalk_bot") {
+      result = await this.dingtalkAdapter.sendMessage(credentialsJson, {
+        targetExternalId: senderExternalId,
+        content,
+      });
+    } else if (channel.platform === "telegram_bot") {
+      result = await this.telegramAdapter.sendMessage(credentialsJson, {
+        targetExternalId: senderExternalId,
+        content,
+      });
+    } else if (channel.platform === "wecom_bot") {
+      result = await this.wecomBotAdapter.sendMessage(credentialsJson, {
+        targetExternalId: senderExternalId,
+        content,
+      });
+    } else if (channel.platform === "qq_bot") {
+      result = await this.qqBotAdapter.sendMessage(credentialsJson, {
         targetExternalId: senderExternalId,
         content,
       });

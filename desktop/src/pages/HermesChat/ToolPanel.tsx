@@ -83,12 +83,12 @@ export function ToolPanel({ open, onClose, gateway, onNavigate }: ToolPanelProps
   }, [onNavigate, onClose])
 
   return (
-    <Modal title="Hermes 工具 / 命令目录" open={open} onCancel={onClose} footer={null} width={560}>
+    <Modal title="深瞳机器人工具 / 命令目录" open={open} onCancel={onClose} footer={null} width={560}>
       <Alert
         type="info"
         showIcon
         style={{ marginBottom: 12 }}
-        message={source === 'gateway' ? '来源：Hermes 网关 commands.catalog' : '来源：本地工具目录（网关未连接或未返回目录）'}
+        message={source === 'gateway' ? '来源：深瞳机器人网关 commands.catalog' : '来源：本地工具目录（网关未连接或未返回目录）'}
       />
       {loading ? (
         <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>

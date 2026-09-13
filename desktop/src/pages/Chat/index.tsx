@@ -723,7 +723,7 @@ export default function Chat() {
         {/* 顶部头部：会话标题 + 历史简报 / 对话设置（上端入口） */}
         <div className={styles.chatHead}>
           <div className={styles.chatHeadTitle}>
-            {activeSession?.title || '和 Hermes 对话'}
+            {activeSession?.title || '和深瞳机器人对话'}
           </div>
           <div className={styles.chatHeadActions}>
             <Tooltip title="历史简报（调取过往需求，一键带入向导）">
@@ -769,9 +769,9 @@ export default function Chat() {
                   <div className={styles.emptyStateIconWrap}>
                     <RobotOutlined className={styles.emptyStateIcon} />
                   </div>
-                  <div className={styles.emptyStateTitle}>和 Hermes 对话</div>
+                  <div className={styles.emptyStateTitle}>和深瞳机器人对话</div>
                   <div className={styles.emptyStateTip}>
-                    对话由本地 Hermes Agent（:8642）驱动，经 llm-proxy 计费，消息内容全程本机。可自动调用工具与记忆帮你完成复杂任务。选择左侧对话开始聊天，或点击「新建对话」。
+                    对话由深瞳机器人（本地 :8642）驱动，经 llm-proxy 计费，消息内容全程本机。可自动调用工具与记忆帮你完成复杂任务。选择左侧对话开始聊天，或点击「新建对话」。
                   </div>
                 </div>
               </div>

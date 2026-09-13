@@ -281,6 +281,6 @@ export class McpService {
   }
 
   async callTool(userIdOrOptions: any, options?: any) {
-    return { ok: false, message: '工具调用由本地 OpenClaw 执行，后端不提供直调' };
+    return { ok: false, message: '工具调用由本地运行时执行，后端不提供直调' };
   }
 }

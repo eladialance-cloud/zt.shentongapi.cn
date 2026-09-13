@@ -375,6 +375,30 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       }
     };
 
+    /** 幂等创建索引（已存在则跳过；Table doesn't exist 等错误不阻塞启动） */
+    const ensureIndex = async (table: string, name: string, columns: string) => {
+      try {
+        const [row] = await queryRunner.query(
+          `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${table}' AND INDEX_NAME = '${name}' LIMIT 1`
+        );
+        if (row) return;
+      } catch (e) {
+        logger.warn(`ensureIndex 检查失败 ${table}.${name}: ${(e as Error).message}`);
+      }
+      try {
+        await queryRunner.query(`ALTER TABLE ${table} ADD INDEX \`${name}\` (${columns})`);
+        logger.log(`Added index: ${table}.${name}`);
+      } catch (e) {
+        const msg = String((e as Error).message || e);
+        if (/Duplicate key name/i.test(msg)) {
+          logger.warn(`Index already exists (skip): ${table}.${name}`);
+        } else {
+          logger.warn(`Index not created ${table}.${name}: ${msg}`);
+        }
+      }
+    };
+
     // teams 补齐新团队实体所需列（旧表可能是 owner_id 结构）
     const teamCols: Array<[string, string]> = [
       ['name', "VARCHAR(128) NOT NULL DEFAULT '' COMMENT '团队名称'"],
@@ -1103,14 +1127,14 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
     }
 
 
-    // users.default_chat_model 列（OpenClaw 本地直达对话：用户默认对话模型，llm-proxy 据此解析 openclaw 内部模型名）
+    // users.default_chat_model 列（本地直达对话：用户默认对话模型，llm-proxy 据此解析客户端内部模型名）
     const [defaultModelCol] = await queryRunner.query(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'default_chat_model'`
     );
     if (!defaultModelCol) {
       await queryRunner.query(
-        `ALTER TABLE users ADD COLUMN default_chat_model VARCHAR(64) DEFAULT NULL COMMENT '用户默认对话模型(OpenClaw llm-proxy 解析用)' AFTER notification_settings`
+        `ALTER TABLE users ADD COLUMN default_chat_model VARCHAR(64) DEFAULT NULL COMMENT '用户默认对话模型(llm-proxy 解析用)' AFTER notification_settings`
       );
       logger.log('Added column: users.default_chat_model');
     }
@@ -1519,6 +1543,26 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       INDEX idx_scheduled_tasks_next (next_run_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='定时任务'`);
     logger.log('Ensured table: task_scheduled_tasks');
+
+    // 定时任务执行方式：llm=交给机器人（Hermes）编排；flow=直跑业务流引擎（确定型，对标 RRClaw）
+    await ensureColumn('task_scheduled_tasks', 'execute_kind', "VARCHAR(8) NOT NULL DEFAULT 'llm' COMMENT '执行方式 llm|flow'");
+    await ensureColumn('task_scheduled_tasks', 'flow_id', "VARCHAR(64) DEFAULT NULL COMMENT '业务流 id（flow 时使用）'");
+    await ensureColumn('task_scheduled_tasks', 'flow_params', "TEXT DEFAULT NULL COMMENT '业务流参数（JSON）'");
+    // 归属官署/角色 id（官署详情页按官署展示与创建定时任务）
+    await ensureColumn('task_scheduled_tasks', 'agent_id', "VARCHAR(64) DEFAULT NULL COMMENT '归属官署/角色 id'");
+    await ensureIndex('task_scheduled_tasks', 'idx_scheduled_tasks_agent', 'agent_id');
+
+    // 渠道平台注册表改造：platform 由 enum 放宽为 VARCHAR(32)（新增平台不改表枚举）；
+    // 并补 账号 ID / 绑定官署 两列，支持同平台多账号 + 账号绑定 AI 员工（对标 RRClaw）
+    try {
+      await queryRunner.query(`ALTER TABLE create_publish_channels MODIFY COLUMN platform VARCHAR(32) NOT NULL COMMENT '平台标识(见 channel-platforms.ts)'`);
+      logger.log('Altered column: create_publish_channels.platform -> VARCHAR(32)');
+    } catch (e) {
+      logger.warn(`alter platform 失败(可忽略): ${(e as Error).message}`);
+    }
+    await ensureColumn('create_publish_channels', 'account_id', "VARCHAR(64) DEFAULT NULL COMMENT '账号 ID（同平台多账号，默认 default）'");
+    await ensureColumn('create_publish_channels', 'agent_ref', "VARCHAR(64) DEFAULT NULL COMMENT '绑定官署/角色 id（如 bingbu/libu）'");
+    await ensureIndex('create_publish_channels', 'idx_channels_account', 'user_id,platform,account_id');
 
     // task_team_tasks：支持无团队执行（execute_mode=auto/agent 时 team_id 为空）
     const [ttTeamIdCol] = await queryRunner.query(

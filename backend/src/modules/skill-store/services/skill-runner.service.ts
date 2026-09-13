@@ -37,7 +37,7 @@ export class SkillRunnerService {
   /**
    * 执行技能
    * - 仅 published 技能可执行
-   * - 按 runtimeType 分派：markdown-only/openclaw-skill → 会话；python-cli/node-cli → 子进程；docker/rest-api → 暂不支持
+   * - 按 runtimeType 分派：markdown-only → 会话；python-cli/node-cli → 子进程；docker/rest-api → 暂不支持
    * - 写入 SkillInstallLog（action='execute'），成功时自增 callCount
    */
   async execute(
@@ -76,7 +76,6 @@ export class SkillRunnerService {
       let output: unknown;
       switch (pkg.runtimeType) {
         case 'markdown-only':
-        case 'openclaw-skill':
           output = await this.executeAsOpcSkill(pkg, input, userId);
           break;
         case 'python-cli':
@@ -226,7 +225,7 @@ export class SkillRunnerService {
 
   /**
    * 健康检查：按 runtimeType 校验关键文件是否存在。
-   * markdown-only/openclaw-skill → skillMdPath；python-cli/node-cli → entryPoint；docker → installPath/Dockerfile。
+   * markdown-only → skillMdPath；python-cli/node-cli → entryPoint；docker → installPath/Dockerfile。
    * 写入 SkillInstallLog（action='health_check'）。
    */
   async healthCheck(packageId: number) {
@@ -242,7 +241,6 @@ export class SkillRunnerService {
     try {
       switch (pkg.runtimeType) {
         case 'markdown-only':
-        case 'openclaw-skill':
           if (pkg.skillMdPath) {
             await fs.access(pkg.skillMdPath);
             healthy = true;

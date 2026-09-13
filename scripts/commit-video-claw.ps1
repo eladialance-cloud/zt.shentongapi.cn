@@ -8,11 +8,11 @@ $git = "C:\Users\Administrator\.cache\codex-runtimes\codex-primary-runtime\depen
 
 # ---- 1. 同步 vendored -> resources（单一真源 = 仓库根 video-claw/）----
 $src = Join-Path (Resolve-Path ".") "video-claw"
-$dst = Join-Path (Resolve-Path ".") "desktop\resources\openclaw\skills\video-claw"
+$dst = Join-Path (Resolve-Path ".") "desktop\resources\hermes\skills\video-claw"
 if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $dst | Out-Null
 & robocopy $src $dst /E /NFL /NDL /NJH /NJS | Out-Null
-Write-Host "[OK] 已同步 video-claw -> resources/openclaw/skills/video-claw"
+Write-Host "[OK] 已同步 video-claw -> resources/hermes/skills/video-claw"
 
 # ---- 2. git add ----
 & $git add `
@@ -33,7 +33,7 @@ Write-Host "[OK] 已同步 video-claw -> resources/openclaw/skills/video-claw"
   "desktop/tests/unit/video-claw-manifest.test.ts" `
   "desktop/tests/unit/video-claw-config.test.ts" `
   "desktop/tests/unit/video-claw-skill.test.ts" `
-  "desktop/resources/openclaw/skills/video-claw" `
+  "desktop/resources/hermes/skills/video-claw" `
   "scripts/build-video-claw-runtime.ps1" `
   "scripts/upload-video-claw-runtime.ps1" `
   "scripts/runtime-templates/video-claw" `

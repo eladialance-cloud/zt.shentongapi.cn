@@ -3,9 +3,37 @@ import { httpClient } from "./http-client";
 import type {
   Channel, CreateChannelDto, UpdateChannelDto,
   PublishPlan, CreatePublishPlanDto,
+  ChannelPlatformMeta,
 } from "@/types/channel";
 
+// ============ 渠道平台元数据 ============
+
+/** GET /channels/platforms（服务端可选平台清单；失败回退到本地内置清单） */
+export async function listChannelPlatforms(): Promise<ChannelPlatformMeta[]> {
+  const { CHANNEL_PLATFORMS } = await import("@/types/channel");
+  try {
+    const list = await httpClient.get<ChannelPlatformMeta[]>("/channels/platforms");
+    return Array.isArray(list) && list.length > 0 ? list : CHANNEL_PLATFORMS;
+  } catch {
+    return CHANNEL_PLATFORMS;
+  }
+}
+
 // ============ 渠道管理 ============
+
+/**
+ * 测试渠道连接（凭证完整性 + 适配器 healthCheck；服务端执行，20s 超时）
+ * 优先走桌面端主进程（复用远端 token），浏览器/网页端回退直连后端。
+ */
+export async function testChannelConnection(
+  id: number,
+): Promise<{ ok: boolean; online: boolean; message: string; platform: string }> {
+  const api = (window as unknown as { electronAPI?: { platformAccount?: { testChannel?: (id: number) => Promise<{ ok: boolean; online: boolean; message: string; platform: string }> } } }).electronAPI
+  if (api?.platformAccount?.testChannel) {
+    return api.platformAccount.testChannel(id)
+  }
+  return httpClient.post<{ ok: boolean; online: boolean; message: string; platform: string }>(`/channels/${id}/test`)
+}
 
 /** GET /channels */
 export async function listChannels(): Promise<Channel[]> {
@@ -80,7 +108,9 @@ export async function cancelPublish(id: number): Promise<PublishPlan> {
 }
 
 export default {
+  listChannelPlatforms,
   listChannels, createChannel, getChannel, updateChannel, deleteChannel,
+  testChannelConnection,
   listPublishPlans, createPublishPlan, getPublishPlan,
   updatePublishPlan,
   submitForReview, reviewPlan, executePublish, cancelPublish,

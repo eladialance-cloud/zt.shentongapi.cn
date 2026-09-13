@@ -1,4 +1,8 @@
-﻿// 运行时内容指纹（sha256 标记）测试：验证"版本号相同但内容已更新"的旧残留能被识别
+// 运行时内容指纹（sha256 标记）测试：验证"版本号相同但内容已更新"的旧残留能被识别
+//
+// 隔离说明：被测算符经 process.cwd() 解析内置清单。若直接在仓库 desktop/runtime/manifest.json
+// 上注入假 sha，会与并行读取该清单的用例（runtime-bundled.e2e、video-claw-manifest）竞态，
+// 且进程被中断时会把假 sha 留在工作区。故本用例把 cwd 切到临时目录，只在临时目录内造清单。
 jest.mock('electron', () => {
   const path = require('node:path')
   return {
@@ -11,23 +15,29 @@ jest.mock('electron', () => {
 })
 import { isServiceContentStale, loadManifest } from '../../electron/main/runtime-resolver'
 import * as fs from 'node:fs'
+import * as os from 'node:os'
 import * as path from 'node:path'
 
-const USERDATA_RT = path.join(process.cwd(), 'test-userdata', 'runtime')
-const BUILTIN_MANIFEST_PATH = path.join(process.cwd(), 'runtime', 'manifest.json')
+const REAL_CWD = process.cwd()
+const TEST_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'st-runtime-content-'))
+const USERDATA_RT = path.join(TEST_ROOT, 'test-userdata', 'runtime')
+const BUILTIN_MANIFEST_PATH = path.join(TEST_ROOT, 'runtime', 'manifest.json')
 const FAKE_SHA = 'a'.repeat(64)
-let originalManifest: string | null = null
 const SVC = 'hermes'
 
 function readManifestSha(): string {
-  const manifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'runtime', 'manifest.json'), 'utf-8'))
+  const manifest = JSON.parse(fs.readFileSync(BUILTIN_MANIFEST_PATH, 'utf-8'))
   const key = process.platform + '-' + process.arch
   return manifest.services[SVC].sha256[key]
 }
 
 beforeAll(() => {
+  // 先把真实清单复制进临时目录，再切 cwd，确保被测算符解析到的是临时副本
+  fs.mkdirSync(path.dirname(BUILTIN_MANIFEST_PATH), { recursive: true })
+  fs.copyFileSync(path.join(REAL_CWD, 'runtime', 'manifest.json'), BUILTIN_MANIFEST_PATH)
+  process.chdir(TEST_ROOT)
   // 清单 sha 可能为空（免校验开发构建）→ 注入假 sha，使指纹校验用例可确定性执行
-  originalManifest = fs.readFileSync(BUILTIN_MANIFEST_PATH, 'utf-8')
+  const originalManifest = fs.readFileSync(BUILTIN_MANIFEST_PATH, 'utf-8')
   const manifest = JSON.parse(originalManifest) as { services: Record<string, { sha256?: Record<string, string> }> }
   const key = process.platform + '-' + process.arch
   manifest.services[SVC].sha256 = manifest.services[SVC].sha256 ?? {}
@@ -43,11 +53,9 @@ function ensureEntry(): void {
 }
 
 afterAll(() => {
-  if (originalManifest != null) {
-    fs.writeFileSync(BUILTIN_MANIFEST_PATH, originalManifest, 'utf-8')
-  }
+  process.chdir(REAL_CWD)
   try {
-    fs.rmSync(USERDATA_RT, { recursive: true, force: true })
+    fs.rmSync(TEST_ROOT, { recursive: true, force: true })
   } catch {
     // ignore
   }
@@ -83,9 +91,8 @@ describe('isServiceContentStale 内容指纹校验', () => {
   })
 
   test('内置清单文件缺失时回退到内嵌清单（内嵌 sha 为空视为免校验）', () => {
-    const builtinPath = path.join(process.cwd(), 'runtime', 'manifest.json')
-    const backupPath = builtinPath + '.bak-test'
-    fs.renameSync(builtinPath, backupPath)
+    const backupPath = BUILTIN_MANIFEST_PATH + '.bak-test'
+    fs.renameSync(BUILTIN_MANIFEST_PATH, backupPath)
     try {
       ensureEntry()
       fs.writeFileSync(path.join(USERDATA_RT, SVC, '.runtime-sha256'), 'deadbeef', 'utf-8')
@@ -96,7 +103,7 @@ describe('isServiceContentStale 内容指纹校验', () => {
       // P0-1: 内嵌清单已带真实 sha 且指纹不一致 → 判定过期（触发完整性重装）
       expect(isServiceContentStale(SVC)).toBe(true)
     } finally {
-      fs.renameSync(backupPath, builtinPath)
+      fs.renameSync(backupPath, BUILTIN_MANIFEST_PATH)
     }
   })
 })

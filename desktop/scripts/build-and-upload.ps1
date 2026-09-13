@@ -73,12 +73,14 @@ try {
             Write-OK "运行时下载完成"
         }
         
-        # 1.3 注入 API 地址
-        if ($ApiBase) {
-            $envFile = ".env.production"
-            "VITE_API_BASE_URL=$ApiBase" | Set-Content $envFile -Encoding UTF8
-            Write-OK "API 地址已注入: $ApiBase"
-        }
+        # 1.3 注入 API 地址（API 与 WebSocket 同源：socket.io 走 <wsBase>/api/socket.io）
+        if (-not $ApiBase) { $ApiBase = "https://zt.shentongapi.cn/api" }
+        $wsBase = $ApiBase -replace '/api/?$', ''
+        $envFile = ".env.production"
+        $envContent = "# 生产环境配置`nVITE_API_BASE_URL=$ApiBase`nVITE_WS_URL=$wsBase/api`n"
+        [IO.File]::WriteAllText((Join-Path (Get-Location) $envFile), $envContent, (New-Object System.Text.UTF8Encoding($false)))
+        Write-OK "API 地址已注入: $ApiBase"
+        Write-OK "WebSocket 地址已注入: $wsBase/api"
         
         # 1.4 编译
         Write-Info "编译中..."

@@ -31,6 +31,8 @@ function makeFakeService() {
     markStepRunning: async (_jobId: number, step: string) => { calls.running.push(step); },
     parseShots: () => null,
     parsePipAssets: () => null,
+    // 执行器 runVideoEdit 会解析 job.editSegments；测试任务不带分段方案 → 与真实实现一致地返回 null
+    parseEditSegments: () => null,
     markStepDone: async (_jobId: number, step: string, result?: Record<string, unknown>) => { calls.done.push({ step, result }); },
     markStepFailed: async (_jobId: number, step: string, error: string) => { calls.failed.push({ step, error }); },
   };
@@ -287,7 +289,6 @@ describe('OralWorkshopExecutor', () => {
     assert.equal(count, 2);
     assert.equal(calls.done.length, 2);
   });
-});
 
   it('processJob：videoEdit 双语字幕调用 LLM 翻译并渲染中英双行', async () => {
     const { service, calls } = makeFakeService();
@@ -323,3 +324,4 @@ describe('OralWorkshopExecutor', () => {
     assert.ok(assText.includes('第二句！\\NSecond sentence!'));
     assert.ok(runCommands.length >= 1);
   });
+});

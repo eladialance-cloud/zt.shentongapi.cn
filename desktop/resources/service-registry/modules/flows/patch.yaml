@@ -1,0 +1,18 @@
+insert:
+  - id: flows
+    displayName: 业务流引擎
+    tier: module
+    # F3-A（路线 A）：12 个高频业务流由 Python 承载真实编排，n8n 侧只做 webhook 触发。
+    # 服务本身只在本机做编排与落库；高风险业务流（加好友 / 内容推送 / 私域群发 / 多轮私信）
+    # 由模块内风控闸门默认关闭，需 FLOWS_ENABLE_HIGH_RISK=1 才可执行。
+    # 服务行默认 disabled：与其它外部 Python 模块（wx-gateway / douyin）一致，
+    # 真机验证（Python+flask 就绪、LLM 已配置、n8n 端到端跑通）后再经用户拍板开启。
+    disabled: true
+    port: 9040
+    launch: flows
+    envKey: flows
+    preStartKey: flows
+    postInstallKey: flows
+    capabilities:
+      httpApi:
+        port: 9040

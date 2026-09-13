@@ -158,7 +158,7 @@ test('run: create→全流程成功，status=succeeded 且 steps 全 done，草�
   assert.equal(row.name, 'quick-reply');
   assert.equal(row.displayName, '快捷回复');
   assert.equal(row.description, '快捷回复');
-  assert.equal(row.runtimeType, 'openclaw');
+  assert.equal(row.runtimeType, 'markdown-only');
   assert.equal(row.sourceUrl, 'https://github.com/a/b');
   assert.equal(row.sourceType, 'github');
   assert.equal(row.status, 'draft');

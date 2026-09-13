@@ -5,7 +5,7 @@
 --   1. create_hermes_skills 表缺失多个字段（exec_config, category, avg_rating, rating_count, tags, changelog）
 --   2. create_hermes_skill_ratings 表完全缺失
 --   3. eco_n8n_webhook_logs 表缺失 signature_provided 和 status 字段
---   4. eco_openclaw_instances 表 DROP+CREATE 改为 CREATE IF NOT EXISTS
+--   4. eco_openclaw_instances 已下线（迁移 1788451200011 清理）
 --   5. create_hermes_call_logs 索引名称与 Entity 定义不一致
 --   6. 部分表缺少 ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 声明
 -- 执行方式：docker exec -i shentong-mysql mysql -u root -p<password> ai_agent < p2_fix_missing_tables.sql
@@ -68,7 +68,7 @@ ALTER TABLE `eco_n8n_webhook_logs` ADD COLUMN `signature_provided` BOOLEAN NOT N
 ALTER TABLE `eco_n8n_webhook_logs` ADD COLUMN `status` VARCHAR(32) NOT NULL DEFAULT 'processed' COMMENT '处理状态: processed/signature_failed/instance_not_found';
 
 -- =====================================================
--- 4. eco_openclaw_instances 表：修正索引与 Entity 一致
+-- 4. eco_openclaw_instances 表：已下线，不再创建/修正
 --    Entity: openclaw-instance.entity.ts
 --    - user_id 上有普通索引
 --    - agent_id 上有普通索引
@@ -77,24 +77,8 @@ ALTER TABLE `eco_n8n_webhook_logs` ADD COLUMN `status` VARCHAR(32) NOT NULL DEFA
 --    如需新建（表不存在时），使用以下定义
 -- =====================================================
 
--- 仅在表不存在时创建（安全方式，不删除已有数据）
--- 注意：如果表已存在且数据需要保留，请勿执行以下 CREATE 语句
--- 以下语句仅在表不存在时生效
-CREATE TABLE IF NOT EXISTS `eco_openclaw_instances` (
-  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
-  `user_id` BIGINT NOT NULL COMMENT '用户ID',
-  `agent_id` BIGINT NULL COMMENT '关联 eco_agents 表 id',
-  `openclaw_agent_id` VARCHAR(64) NOT NULL COMMENT 'OpenClaw 侧 agentId',
-  `endpoint` VARCHAR(256) NOT NULL DEFAULT 'http://localhost:8080' COMMENT 'OpenClaw API 地址',
-  `status` ENUM('online','offline','error') DEFAULT 'offline',
-  `last_heartbeat_at` DATETIME NULL COMMENT '最后心跳时间',
-  `config` JSON NULL COMMENT 'SOUL.md/工具策略/MCP 配置等',
-  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX `idx_openclaw_user` (`user_id`),
-  INDEX `idx_openclaw_agent` (`agent_id`),
-  UNIQUE INDEX `uniq_openclaw_agent_id` (`openclaw_agent_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='OpenClaw 运行时实例注册表';
+-- OpenClaw 实例表（已下线，不再创建）
+-- 由迁移 1788451200011-DropOpenClawInstances 清理；旧库升级后该表将被 DROP。
 
 -- =====================================================
 -- 5. create_hermes_call_logs 表：修正索引名称
@@ -142,4 +126,4 @@ ALTER TABLE `create_hermes_skills` ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE
 -- 检查索引名称：
 --   SHOW INDEX FROM create_hermes_call_logs;
 --   SHOW INDEX FROM create_hermes_skill_ratings;
---   SHOW INDEX FROM eco_openclaw_instances;
+--   （OpenClaw 实例表已下线，无需校验）

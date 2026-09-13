@@ -11,6 +11,7 @@ import { get as httpGet } from 'node:http'
 import { get as httpsGet } from 'node:https'
 import { LlmIntegrationsStore } from './llm-integrations'
 import { HermesChatService, waitForLocalPort } from './hermes-chat'
+import { registerHermesFsIpc } from './hermes-fs-ipc'
 import type { HermesChatMessage } from './hermes-chat'
 import { HERMES_SESSION_TOKEN_CREDENTIAL } from './hermes-client'
 import { getCredential } from './services/credential-store'
@@ -41,6 +42,8 @@ import { disabledModuleSet, setModuleDisabled } from './service-registry/module-
 import type { ModuleInfo } from '../shared/types'
 import { ensureN8nAuth } from './n8n-auth'
 import { runLocalN8nWorkflow } from './n8n-executor'
+import { runFlow, listFlows } from './flow-executor'
+import { checkEnvComponents, installEnvComponent } from './env-components'
 import { ensureN8nI18n } from './n8n-i18n'
 import { writeHermesMcpServers, syncHermesMcpFromBackend } from './hermes-mcp-sync'
 import { AppUpdater } from './updater'
@@ -68,7 +71,8 @@ import {
 } from './local-market/local-content-manager'
 import type { MarketItemType } from '../shared/types'
 import type { ServiceName, SyncQueueItem, SyncQueueRow } from '../shared/types'
-import type { LocalBrief } from '../shared/types'
+import type { LocalBrief, LocalScheduledRun } from '../shared/types'
+import type { EnvComponentStatus } from '../shared/types'
 import { createStepRunner, type OrchestrateDeps, type OrchestrateInput, type StepRunnerDeps, type StepRunnerHandle, type TeamMemberProfile, type TeamTaskStatus } from './hermes-orchestrator'
 import { buildMemberProfiles, type MemberRow } from './hermes-member-profile'
 import { listSkills, searchSkills, installSkill, updateSkills, uninstallSkill, checkSkills, installSkillLocal } from './hermes-skills'
@@ -84,10 +88,22 @@ import {
   saveSession,
   setupLogin,
   testLogin,
+  startScan,
+  getScanStatus,
+  cancelScan,
+  verifySession,
+  setScanEventSink,
 } from './platform-login'
 import { registerVideoParserIpc } from './video-parser'
-import { createEdictDeps, createEdictExtraDeps, ensureEdictHermesProfiles, registerEdictIpc, getEdictProfilesDir } from './edict-bridge'
+import { createEdictDeps, createEdictExtraDeps, ensureEdictHermesProfiles, registerEdictIpc, getEdictProfilesDir, getEdictDataRoot } from './edict-bridge'
 import { registerEdictExtraIpc } from './edict-extra'
+import { registerOfficialDetailIpc } from './official-detail'
+import { registerFeishuIpc, buildFeishuClient, type FeishuSettingsDeps } from './feishu-settings'
+import { initBitable } from './feishu-bitable'
+import { registerTeamIpc } from './team-ipc'
+import { setCredential, deleteCredential } from './services/credential-store'
+import { CronEngine, createCronEngine, defaultCronEngineStatePath, type CronScheduledTask } from './cron-engine'
+import { createCronService, CRON_DAEMON_FLAG } from './cron-service'
 
 // ===== Hermes 编排依赖（团队驱动执行） =====
 
@@ -383,6 +399,139 @@ function buildStepRunnerDeps(token: string, taskKey: string, input: OrchestrateI
   }
 }
 
+// ===== 无人值守定时任务引擎（主进程常驻；对标 RRClaw 计划任务） =====
+// 把定时触发从「渲染进程（关窗口即停）」搬到主进程：窗口最小化到托盘后仍继续执行。
+let cronEngine: CronEngine | null = null
+
+/** 兼容后端统一响应包装 { code, data } 与裸值 */
+function unwrapData<T>(json: unknown): T {
+  if (json && typeof json === 'object' && 'data' in (json as Record<string, unknown>)) {
+    return (json as Record<string, unknown>).data as T
+  }
+  return json as T
+}
+
+/** llm 路径执行器：创建团队任务 + 提交 Hermes 逐步编排（复用现有 stepRunners 与成员装载） */
+async function runScheduledViaHermes(token: string, item: CronScheduledTask): Promise<{ teamTaskId: number }> {
+  const auth = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }
+  let teamId = item.teamId ?? null
+  if (!teamId) {
+    const res = await fetch(ST_API_BASE + '/teams', { headers: auth, signal: AbortSignal.timeout(15000) })
+    if (!res.ok) throw new Error('拉取团队失败: HTTP ' + res.status)
+    const teams = unwrapData<Array<{ id?: number }>>(await res.json())
+    teamId = Array.isArray(teams) ? teams[0]?.id ?? null : null
+  }
+  if (!teamId) throw new Error('没有可用团队，请先在团队页创建团队')
+  const execRef = `sched:${item.id}:${Date.now()}`
+  const createRes = await fetch(`${ST_API_BASE}/teams/${teamId}/tasks`, {
+    method: 'POST',
+    headers: auth,
+    body: JSON.stringify({ title: item.title, description: item.description ?? item.title, executionRef: execRef }),
+    signal: AbortSignal.timeout(15000),
+  })
+  if (!createRes.ok) throw new Error('创建团队任务失败: HTTP ' + createRes.status)
+  const created = unwrapData<{ id: number }>(await createRes.json())
+  const teamTaskId = created?.id
+  if (typeof teamTaskId !== 'number') throw new Error('创建团队任务返回缺少 id')
+
+  const input: OrchestrateInput = {
+    executionRef: execRef,
+    teamTaskId,
+    teamId,
+    executeMode: 'team',
+    task: item.title,
+    teamMembers: await loadTeamMembers(token, teamId),
+  }
+  input.reviewEnabled = true // 无人值守默认开启 Hermes 评审
+  const taskKey = 'team:' + teamTaskId
+  if (!stepRunners.has(taskKey)) {
+    stepAutoConfirm.set(taskKey, true)
+    const handle = createStepRunner(input, buildStepRunnerDeps(token, taskKey, input))
+    stepRunners.set(taskKey, handle)
+    void handle
+      .wait()
+      .then(() => undefined)
+      .catch((e) => console.error('[cron-engine] step-runner 任务执行失败:', e))
+      .finally(() => {
+        stepRunners.delete(taskKey)
+        stepAutoConfirm.delete(taskKey)
+      })
+  }
+  return { teamTaskId }
+}
+
+/** 启动主进程定时任务引擎 + 注册开关 IPC */
+function bootstrapCronEngine(): void {
+  cronEngine = createCronEngine({
+    stApiBase: ST_API_BASE,
+    getToken: () => readRemoteToken() || null,
+    runLlm: runScheduledViaHermes,
+    createRun: async (input) => {
+      if (localDb.isDegraded()) return null
+      try {
+        const runId = `sr_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+        const r = await localDb.run(
+          `INSERT INTO local_scheduled_runs (run_id, scheduled_id, user_id, title, execute_kind, flow_id, status, team_task_id)
+           VALUES (?, ?, ?, ?, ?, ?, 'running', ?)`,
+          [runId, input.scheduledId, input.userId, input.title ?? null, input.executeKind, input.flowId ?? null, input.teamTaskId ?? null],
+        )
+        return r.lastID ?? null
+      } catch (err) {
+        console.warn('[cron-engine] 写执行日志失败:', err)
+        return null
+      }
+    },
+    finishRun: async (id, patch) => {
+      if (localDb.isDegraded()) return
+      try {
+        await localDb.run(
+          `UPDATE local_scheduled_runs
+             SET status = ?, error_message = ?, result_summary = ?, duration_ms = ?, finished_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+          [patch.status, patch.errorMessage ?? null, patch.resultSummary ?? null, patch.durationMs ?? null, id],
+        )
+      } catch (err) {
+        console.warn('[cron-engine] 回填执行日志失败:', err)
+      }
+    },
+    notify: (payload) => {
+      const win = getMainWindow()
+      if (win && !win.isDestroyed()) win.webContents.send('cron-engine:event', payload)
+    },
+    statePath: defaultCronEngineStatePath(app.getPath('userData')),
+    logger: {
+      info: (m) => console.log('[cron-engine] ' + m),
+      warn: (m) => console.warn('[cron-engine] ' + m),
+      error: (m) => console.error('[cron-engine] ' + m),
+    },
+  })
+  ipcMain.handle('cron-engine:get-state', () => cronEngine?.getState() ?? null)
+  ipcMain.handle('cron-engine:set-enabled', (_e, enabled: unknown) => cronEngine?.setEnabled(enabled === true) ?? null)
+  ipcMain.handle('cron-engine:run-now', async (_e, taskId: number) => {
+    if (!cronEngine) return { executed: false, error: '引擎未启动' }
+    return cronEngine.runNow(taskId)
+  })
+  // 守护服务（Windows 计划任务）：让定时任务在客户端完全退出后仍能执行
+  const cronService = createCronService({ execPath: process.execPath, isPackaged: app.isPackaged })
+  ipcMain.handle('cron-service:status', () => cronService.status())
+  ipcMain.handle('cron-service:install', () => cronService.install())
+  ipcMain.handle('cron-service:uninstall', () => cronService.uninstall())
+  cronEngine.start()
+}
+
+/** 定时守护模式启动序列（--shentong-cron-daemon；无窗口/托盘，仅主进程定时引擎） */
+async function startCronDaemon(): Promise<void> {
+  try {
+    app.setAppUserModelId('com.shentong.ai')
+  } catch {
+    /* ignore */
+  }
+  await app.whenReady()
+  cleanupStaleTempFiles()
+  console.log('[cron-daemon] 定时守护启动（无窗口模式）')
+  bootstrapCronEngine()
+}
+
 // 日志落盘：主进程 console 输出同步写入 userData/logs/main.log，便于远程排查
 // 注意：必须先禁用 electron-log 的 console 传输，否则 log.* → console 传输 → console.*(已包装) → log.* 会递归；
 // 且在 stdout/stderr 管道断开（EPIPE）时会无限触发 uncaughtException（7-26 日志已出现）
@@ -494,6 +643,9 @@ if (process.argv.includes('--shentong-mcp-server')) {
       process.exit(1)
     })
   })
+} else if (process.argv.includes(CRON_DAEMON_FLAG)) {
+  // 定时守护模式：计划任务登录拉起，不建窗口/托盘，仅跑主进程定时引擎（客户端完全退出也继续执行）
+  void startCronDaemon()
 } else {
   const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
@@ -521,6 +673,14 @@ if (!gotLock) {
 
     const mainWindow = createMainWindow(serviceManager, isDev)
     createTray(mainWindow, serviceManager)
+    // 扫码登录阶段推进广播到主窗口（waiting/scanned/expired/success/error）
+    setScanEventSink((event) => {
+      try {
+        if (!mainWindow.isDestroyed()) mainWindow.webContents.send('platform-account:scan-status', event)
+      } catch {
+        /* 窗口广播失败不影响扫码 */
+      }
+    })
     // n8n 界面汉化注入（n8n-trans 用户脚本，幂等）：n8n 每次加载即把汉化脚本注入内嵌 iframe
     ensureN8nI18n()
 
@@ -536,6 +696,9 @@ if (!gotLock) {
     appUpdater = new AppUpdater(mainWindow)
     appUpdater.checkForUpdates()
     registerIpcHandlers()
+    registerHermesFsIpc()
+    // 无人值守定时任务引擎（主进程常驻）：窗口关闭/最小化到托盘后仍按到期执行
+    bootstrapCronEngine()
     // 自动化工作台 D4：开机自启（托盘常驻，保证 IM→设备闭环开机即用）
     try {
       app.setLoginItemSettings({ openAtLogin: true })
@@ -555,6 +718,7 @@ if (!gotLock) {
   // 应用退出前标记，允许窗口真正关闭
   app.on('before-quit', () => {
     setQuitting(true)
+    cronEngine?.stop()
     void serviceManager.stopAll()
     remoteControl.destroy()
   })
@@ -634,6 +798,64 @@ function registerIpcHandlers(): void {
     }),
     {}
   )
+  // 官署详情：飞书表清单 / SOUL 占位符渲染（定时任务与执行日志走既有 scheduled-task / scheduledRuns API）
+  const disposeOfficialDetailIpc = registerOfficialDetailIpc({
+    dataRoot: getEdictDataRoot(),
+    readSoul: (id) => {
+      try {
+        const overrideFile = join(getSoulOverrideDir(), id + '.md')
+        if (existsSync(overrideFile)) return readFileSync(overrideFile, 'utf8')
+        const bp = join(getEdictProfilesDir(), id + '.md')
+        if (!existsSync(bp)) return null
+        return readFileSync(bp, 'utf8')
+      } catch {
+        return null
+      }
+    },
+  })
+  // 飞书平台设置 + 多维表格一键创建
+  const feishuDeps: FeishuSettingsDeps = {
+    getCredential: (k) => getCredential(k),
+    setCredential: (k, v) => setCredential(k, v),
+    deleteCredential: (k) => deleteCredential(k),
+  }
+  const initFeishuBitable = async () => {
+    const client = buildFeishuClient(feishuDeps)
+    if (!client) return { ok: false, error: '飞书凭证未配置' }
+    return initBitable({
+      client,
+      dataRoot: getEdictDataRoot(),
+      resourcesRoot: app.isPackaged ? process.resourcesPath : join(process.cwd(), 'resources'),
+      onProgress: (p) => {
+        const win = getMainWindow()
+        if (win && !win.isDestroyed()) win.webContents.send('feishu:init-progress', p)
+      },
+    })
+  }
+  const disposeFeishuIpc = registerFeishuIpc({
+    ...feishuDeps,
+    initTables: initFeishuBitable,
+  })
+
+  // 一键组队（套餐 → 飞书表 + SOUL + Agent + 定时任务）
+  const disposeTeamIpc = registerTeamIpc({
+    hermesHome: join(app.getPath('userData'), 'hermes-home'),
+    edictProfilesDir: getEdictProfilesDir(),
+    edictDataRoot: getEdictDataRoot(),
+    initBitable: initFeishuBitable,
+    ensureAgents: (ids) => ensureEdictHermesProfiles(ids),
+    stApiBase: ST_API_BASE,
+    getAuthToken: readRemoteToken,
+    emitProgress: (p) => {
+      const win = getMainWindow()
+      if (win && !win.isDestroyed()) win.webContents.send('team:creation-progress', p)
+    },
+  })
+  app.on('will-quit', () => {
+    disposeFeishuIpc()
+    disposeTeamIpc()
+  })
+
   // 引导 11 个官署 Hermes profiles（幂等：缺失创建 + SOUL.md 注入 + config.yaml 同步），失败不影响启动
   ensureEdictHermesProfiles().then((r) => {
     if (r.created.length) console.log('[edict-bridge] 已引导官署 profiles: ' + r.created.join(','))
@@ -642,6 +864,7 @@ function registerIpcHandlers(): void {
   app.on('will-quit', () => {
     disposeEdictIpc()
     disposeEdictExtraIpc()
+    disposeOfficialDetailIpc()
   })
 
 
@@ -1069,6 +1292,14 @@ ipcMain.handle(
   ipcMain.handle('n8n:run-workflow', async (_event, input: { paths?: string[]; payload?: unknown; timeoutMs?: number }) =>
     runLocalN8nWorkflow({ paths: input?.paths ?? [], payload: input?.payload, timeoutMs: input?.timeoutMs }))
 
+  // 业务流直跑（对标 RRClaw 确定型定时任务：直接跑随包 Python 业务流引擎，不走 LLM 现场编排）
+  ipcMain.handle('flow:run', async (_event, flowId: string, options?: { params?: Record<string, unknown>; timeoutMs?: number }) =>
+    runFlow(typeof flowId === 'string' ? flowId : '', {
+      params: options?.params,
+      timeoutMs: options?.timeoutMs,
+    }))
+  ipcMain.handle('flow:list', async () => listFlows())
+
   // 发布平台账号（桌面端扫码绑定登录态；管理后台只控制平台开关）
   ipcMain.handle('platform-account:get-platforms', () => getSupportedPlatforms())
   ipcMain.handle('platform-account:setup-login', (_e, platform: string) =>
@@ -1097,6 +1328,41 @@ ipcMain.handle(
   ipcMain.handle('platform-account:remove-session', (_e, platform: string) =>
     removeSession(typeof platform === 'string' ? platform : ''),
   )
+  // 扫码登录事件流：立即返回 scanId，阶段推进通过 platform-account:scan-status 广播
+  ipcMain.handle('platform-account:start-scan', (_e, platform: string) =>
+    startScan(typeof platform === 'string' ? platform : ''),
+  )
+  ipcMain.handle('platform-account:get-scan-status', (_e, platform: string) =>
+    getScanStatus(typeof platform === 'string' ? platform : ''),
+  )
+  ipcMain.handle('platform-account:cancel-scan', () => cancelScan())
+  ipcMain.handle('platform-account:verify-session', (_e, platform: string) =>
+    verifySession(typeof platform === 'string' ? platform : ''),
+  )
+  // 渠道凭证真实校验：转调后端 POST /channels/:id/test（后端适配器 healthCheck）
+  ipcMain.handle('platform-account:test-channel', async (_e, channelId: number) => {
+    try {
+      const token = readRemoteToken()
+      if (!token) return { ok: false, online: false, message: '未登录，请先登录后测试', platform: '' }
+      const base = ST_API_BASE.replace(/\/api$/, '')
+      const res = await fetch(`${base}/api/channels/${Number(channelId)}/test`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(20000),
+      })
+      const body = (await res.json().catch(() => null)) as { data?: { ok?: boolean; online?: boolean; message?: string; platform?: string } } | null
+      const data = body?.data
+      if (!data) return { ok: false, online: false, message: `后端返回异常（HTTP ${res.status}）`, platform: '' }
+      return {
+        ok: data.ok ?? true,
+        online: Boolean(data.online),
+        message: data.message ?? '',
+        platform: data.platform ?? '',
+      }
+    } catch (err) {
+      return { ok: false, online: false, message: (err as Error).message, platform: '' }
+    }
+  })
 
   // 本地视频解析器（对标轻语 video-parser：抖音/快手/B站/小红书/视频号链接 → 本地视频文件）
   registerVideoParserIpc()
@@ -1110,6 +1376,10 @@ ipcMain.handle(
   ipcMain.handle('service:stop', (_event, name: ServiceName) => serviceManager.stop(name))
   ipcMain.handle('service:restart', (_event, name: ServiceName) => serviceManager.restart(name))
   ipcMain.handle('service:checkEnv', () => serviceManager.checkEnvironment())
+  ipcMain.handle('service:checkEnvComponents', () => checkEnvComponents())
+  ipcMain.handle('service:installEnvComponent', (_e, id: EnvComponentStatus['id']) =>
+    installEnvComponent(id),
+  )
   ipcMain.handle('service:install', (_event, name: ServiceName) => serviceManager.install(name))
 
   // 服务型模块管理（启用/停用/重载/装配审计）
@@ -1538,6 +1808,93 @@ ipcMain.handle(
       )
     } catch (err) {
       console.error('[ipc] db:briefs:markSynced failed:', err)
+    }
+  })
+
+  // ===== 定时任务执行日志（独立于任务本体，对标 RRClaw cron_run_logs） =====
+  // 每次定时触发写一条 running；执行结束回填 success/error + 耗时 + 摘要。降级模式返回空。
+  const mapScheduledRun = (row: Record<string, unknown>): LocalScheduledRun => ({
+    id: row.id as number,
+    runId: row.run_id as string,
+    scheduledId: row.scheduled_id as number,
+    userId: row.user_id as number,
+    title: (row.title as string) ?? undefined,
+    executeKind: (row.execute_kind as 'llm' | 'flow') ?? 'llm',
+    flowId: (row.flow_id as string) ?? null,
+    status: (row.status as LocalScheduledRun['status']) ?? 'running',
+    errorMessage: (row.error_message as string) ?? null,
+    resultSummary: (row.result_summary as string) ?? null,
+    durationMs: (row.duration_ms as number) ?? null,
+    teamTaskId: (row.team_task_id as number) ?? null,
+    startedAt: row.started_at as string,
+    finishedAt: (row.finished_at as string) ?? null
+  })
+
+  ipcMain.handle('db:scheduledRuns:create', async (_event, input: {
+    scheduledId: number
+    userId: number
+    title?: string
+    executeKind: 'llm' | 'flow'
+    flowId?: string | null
+    teamTaskId?: number | null
+  }): Promise<LocalScheduledRun | null> => {
+    if (localDb.isDegraded()) return null
+    try {
+      const runId = `sr_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+      const result = await localDb.run(
+        `INSERT INTO local_scheduled_runs (run_id, scheduled_id, user_id, title, execute_kind, flow_id, status, team_task_id)
+         VALUES (?, ?, ?, ?, ?, ?, 'running', ?)`,
+        [runId, input.scheduledId, input.userId, input.title ?? null, input.executeKind, input.flowId ?? null, input.teamTaskId ?? null]
+      )
+      const row = await localDb.get<Record<string, unknown>>('SELECT * FROM local_scheduled_runs WHERE id = ?', [result.lastID])
+      return row ? mapScheduledRun(row) : null
+    } catch (err) {
+      console.error('[ipc] db:scheduledRuns:create failed:', err)
+      return null
+    }
+  })
+
+  ipcMain.handle('db:scheduledRuns:finish', async (_event, id: number, patch: {
+    status: 'success' | 'error'
+    errorMessage?: string | null
+    resultSummary?: string | null
+    durationMs?: number | null
+  }): Promise<void> => {
+    if (localDb.isDegraded()) return
+    try {
+      await localDb.run(
+        `UPDATE local_scheduled_runs
+           SET status = ?, error_message = ?, result_summary = ?, duration_ms = ?, finished_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [patch.status, patch.errorMessage ?? null, patch.resultSummary ?? null, patch.durationMs ?? null, id]
+      )
+    } catch (err) {
+      console.error('[ipc] db:scheduledRuns:finish failed:', err)
+    }
+  })
+
+  ipcMain.handle('db:scheduledRuns:list', async (_event, scheduledId?: number, limit = 50): Promise<LocalScheduledRun[]> => {
+    if (localDb.isDegraded()) return []
+    try {
+      const rows = scheduledId
+        ? await localDb.all<Record<string, unknown>>(
+            'SELECT * FROM local_scheduled_runs WHERE scheduled_id = ? ORDER BY id DESC LIMIT ?',
+            [scheduledId, limit]
+          )
+        : await localDb.all<Record<string, unknown>>('SELECT * FROM local_scheduled_runs ORDER BY id DESC LIMIT ?', [limit])
+      return rows.map(mapScheduledRun)
+    } catch (err) {
+      console.error('[ipc] db:scheduledRuns:list failed:', err)
+      return []
+    }
+  })
+
+  ipcMain.handle('db:scheduledRuns:remove', async (_event, id: number): Promise<void> => {
+    if (localDb.isDegraded()) return
+    try {
+      await localDb.run('DELETE FROM local_scheduled_runs WHERE id = ?', [id])
+    } catch (err) {
+      console.error('[ipc] db:scheduledRuns:remove failed:', err)
     }
   })
 

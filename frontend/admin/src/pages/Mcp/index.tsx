@@ -92,21 +92,18 @@ const TRANSPORT_COLOR: Record<McpTransportType, string> = {
 }
 
 const SERVICE_TYPE_OPTIONS: Array<{ label: string; value: McpServiceType }> = [
-  { label: 'OpenClaw', value: 'openclaw' },
   { label: 'Codex', value: 'codex' },
   { label: 'N8N', value: 'n8n' },
   { label: '自定义', value: 'custom' }
 ]
 
 const SERVICE_TYPE_LABEL: Record<McpServiceType, string> = {
-  openclaw: 'OpenClaw',
   codex: 'Codex',
   n8n: 'N8N',
   custom: '自定义'
 }
 
 const SERVICE_TYPE_COLOR: Record<McpServiceType, string> = {
-  openclaw: 'blue',
   codex: 'purple',
   n8n: 'magenta',
   custom: 'default'

@@ -1,5 +1,5 @@
 // 预加载脚本 - 通过 contextBridge 暴露安全 API 给渲染进程
-// 启用 contextIsolation: true，nodeIntegration: false
+// 启用 contextIsolation: true,nodeIntegration: false
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type {
@@ -20,6 +20,10 @@ import type {
   InstalledRecord,
   MarketItemDetail,
   LocalBrief,
+  LocalScheduledRun,
+  CronEngineState,
+  CronEngineEvent,
+  CronServiceStatus,
   LlmIntegration,
   HermesChatMessage,
   HermesChatMessagePayload,
@@ -39,11 +43,13 @@ import type {
   OrchestrateStepActionPayload,
   PlatformAccountApi,
   PlatformInfo,
+  PlatformScanStatusEvent,
   EdictAPI,
   EdictBoard,
   EdictTask,
   EdictOp,
   EdictOfficial,
+  EdictOfficialTable,
   EdictStats,
   EdictPipelineResult,
   EdictAgentConfig,
@@ -69,6 +75,8 @@ const electronAPI: ElectronAPI = {
     stop: (name: ServiceName) => ipcRenderer.invoke('service:stop', name),
     restart: (name: ServiceName) => ipcRenderer.invoke('service:restart', name),
     checkEnv: () => ipcRenderer.invoke('service:checkEnv'),
+    checkEnvComponents: () => ipcRenderer.invoke('service:checkEnvComponents'),
+    installEnvComponent: (id) => ipcRenderer.invoke('service:installEnvComponent', id),
     install: (name: ServiceName) => ipcRenderer.invoke('service:install', name),
     getRuntimeDir: () => ipcRenderer.invoke('service:get-runtime-dir'),
     chooseRuntimeDir: () => ipcRenderer.invoke('service:set-runtime-dir'),
@@ -145,6 +153,23 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('platform-account:save-session', platform, cookiesJson, displayName),
     removeSession: (platform: string) =>
       ipcRenderer.invoke('platform-account:remove-session', platform),
+    startScan: (platform: string) =>
+      ipcRenderer.invoke('platform-account:start-scan', platform) as Promise<{ ok: boolean; scanId?: string; expiresAt?: number; error?: string }>,
+    getScanStatus: (platform: string) =>
+      ipcRenderer.invoke('platform-account:get-scan-status', platform) as Promise<{ active: boolean; scanId?: string }>,
+    cancelScan: () =>
+      ipcRenderer.invoke('platform-account:cancel-scan') as Promise<{ ok: boolean }>,
+    verifySession: (platform: string) =>
+      ipcRenderer.invoke('platform-account:verify-session', platform),
+    testChannel: (channelId: number) =>
+      ipcRenderer.invoke('platform-account:test-channel', channelId) as Promise<{ ok: boolean; online: boolean; message: string; platform: string }>,
+    onScanStatus: (callback: (event: PlatformScanStatusEvent) => void) => {
+      const handler = (_event: IpcRendererEvent, payload: PlatformScanStatusEvent): void => callback(payload)
+      ipcRenderer.on('platform-account:scan-status', handler)
+      return () => {
+        ipcRenderer.removeListener('platform-account:scan-status', handler)
+      }
+    },
   },
   videoParser: {
     extractUrl: (text: string) =>
@@ -161,6 +186,81 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('n8n:run-workflow', input) as Promise<{ ok: boolean; data?: unknown; error?: string; path?: string }>,
   },
 
+  flow: {
+    run: (flowId: string, options?: { params?: Record<string, unknown>; timeoutMs?: number }) =>
+      ipcRenderer.invoke('flow:run', flowId, options) as Promise<{
+        ok: boolean
+        flow: string
+        code?: string
+        error?: string
+        data?: unknown
+        steps?: unknown
+        durationMs: number
+      }>,
+    list: () =>
+      ipcRenderer.invoke('flow:list') as Promise<
+        Array<{
+          id: string
+          title?: string
+          role?: string
+          risk?: string
+          trigger?: string
+          params?: Record<string, string>
+          steps?: string[]
+          produces?: string
+        }>
+      >,
+  },
+
+  feishu: {
+    getSettings: () => ipcRenderer.invoke('feishu:get-settings'),
+    saveSettings: (input: { appId?: string; appSecret?: string }) =>
+      ipcRenderer.invoke('feishu:save-settings', input),
+    testConnection: () => ipcRenderer.invoke('feishu:test-connection'),
+    initTables: () => ipcRenderer.invoke('feishu:init-tables'),
+    onInitProgress: (cb: (p: { step: string; message?: string }) => void) => {
+      const listener = (_e: IpcRendererEvent, p: { step: string; message?: string }) => cb(p)
+      ipcRenderer.on('feishu:init-progress', listener)
+      return () => ipcRenderer.removeListener('feishu:init-progress', listener)
+    },
+  },
+  team: {
+    listPresets: () => ipcRenderer.invoke('team:list-presets'),
+    creationStatus: () => ipcRenderer.invoke('team:creation-status'),
+    create: (presetId: string) => ipcRenderer.invoke('team:create', presetId),
+    writeSoul: (official: string) => ipcRenderer.invoke('team:write-soul', official),
+    listCrons: (official: string) => ipcRenderer.invoke('team:list-crons', official),
+    syncSoul: (officials?: string[]) => ipcRenderer.invoke('team:sync-soul', officials),
+    soulStatus: () => ipcRenderer.invoke('team:soul-status'),
+    onCreationProgress: (cb: (p: unknown) => void) => {
+      const h = (_e: unknown, d: unknown) => cb(d)
+      ipcRenderer.on('team:creation-progress', h)
+      return () => ipcRenderer.removeListener('team:creation-progress', h)
+    },
+  },
+  fs: {
+    readFile: (filePath: string, maxBytes?: number) =>
+      ipcRenderer.invoke('fs:read-file', filePath, maxBytes) as Promise<{ content: string; truncated: boolean } | null>,
+    readImageFile: (filePath: string) =>
+      ipcRenderer.invoke('fs:read-image-file', filePath) as Promise<string | null>,
+    openFileInEditor: (filePath: string) =>
+      ipcRenderer.invoke('fs:open-file-in-editor', filePath) as Promise<boolean>,
+    openTerminal: (dirPath: string) =>
+      ipcRenderer.invoke('fs:open-terminal', dirPath) as Promise<boolean>,
+    readDirectory: (dirPath: string) =>
+      ipcRenderer.invoke('fs:read-directory', dirPath) as Promise<{ name: string; isDirectory: boolean }[] | null>,
+    selectFolder: () => ipcRenderer.invoke('fs:select-folder') as Promise<string | null>,
+    listRecentContextFolders: (limit?: number) =>
+      ipcRenderer.invoke('fs:list-recent-context-folders', limit) as Promise<string[]>,
+    setSessionContextFolder: (folder: string | null) =>
+      ipcRenderer.invoke('fs:set-session-context-folder', folder) as Promise<boolean>,
+  },
+  webPreview: {
+    inspect: (webContentsId: number) =>
+      ipcRenderer.invoke('web-preview-inspect', webContentsId) as Promise<{ selector: string; rect: { left: number; top: number; width: number; height: number } } | null>,
+    cancelInspection: (webContentsId: number) =>
+      ipcRenderer.invoke('web-preview-cancel-inspection', webContentsId) as Promise<void>,
+  },
   modelDefaultsSync: (dto) => ipcRenderer.send('model-defaults:sync', dto),
   hermesSkills: {
     list: () => ipcRenderer.invoke('hermes-skills:list'),
@@ -241,11 +341,11 @@ const electronAPI: ElectronAPI = {
     getFingerprint: () => ipcRenderer.invoke('device:getFingerprint')
   },
   db: {
-    // 登录后调用：派生密钥 → 初始化 SQLCipher；失败返回 false（降级模式）
+    // 登录后调用:派生密钥 → 初始化 SQLCipher;失败返回 false(降级模式)
     initialize: (userToken: string) => ipcRenderer.invoke('db:initialize', userToken) as Promise<boolean>,
-    // 同步查询降级状态（sendSync 阻塞，仅读布尔值，开销极小）
+    // 同步查询降级状态(sendSync 阻塞,仅读布尔值,开销极小)
     isDegraded: () => ipcRenderer.sendSync('db:isDegraded') as boolean,
-    // 登出时关闭数据库（fire-and-forget）
+    // 登出时关闭数据库(fire-and-forget)
     close: () => {
       ipcRenderer.send('db:close')
     },
@@ -255,7 +355,37 @@ const electronAPI: ElectronAPI = {
       update: (id, patch) => ipcRenderer.invoke('db:briefs:update', id, patch) as Promise<LocalBrief | undefined>,
       remove: (id) => ipcRenderer.invoke('db:briefs:remove', id) as Promise<void>,
       markSynced: (clientBriefId) => ipcRenderer.invoke('db:briefs:markSynced', clientBriefId) as Promise<void>
+    },
+    scheduledRuns: {
+      // 定时任务执行日志(独立于任务本体,每次触发一条)
+      create: (input) => ipcRenderer.invoke('db:scheduledRuns:create', input) as Promise<LocalScheduledRun | null>,
+      finish: (id, patch) => ipcRenderer.invoke('db:scheduledRuns:finish', id, patch) as Promise<void>,
+      list: (scheduledId, limit) =>
+        ipcRenderer.invoke('db:scheduledRuns:list', scheduledId, limit) as Promise<LocalScheduledRun[]>,
+      remove: (id) => ipcRenderer.invoke('db:scheduledRuns:remove', id) as Promise<void>
     }
+  },
+  cronEngine: {
+    // 无人值守定时任务引擎(主进程常驻;窗口关闭/最小化到托盘后仍执行)
+    getState: () => ipcRenderer.invoke('cron-engine:get-state') as Promise<CronEngineState | null>,
+    setEnabled: (enabled: boolean) =>
+      ipcRenderer.invoke('cron-engine:set-enabled', enabled) as Promise<CronEngineState | null>,
+    runNow: (taskId: number) =>
+      ipcRenderer.invoke('cron-engine:run-now', taskId) as Promise<{ executed: boolean; error?: string }>,
+    // 引擎执行事件(触发结果 / 开关变更);返回取消订阅
+    onEvent: (callback: (payload: CronEngineEvent) => void) => {
+      const handler = (_e: IpcRendererEvent, payload: CronEngineEvent) => callback(payload)
+      ipcRenderer.on('cron-engine:event', handler)
+      return () => ipcRenderer.removeListener('cron-engine:event', handler)
+    },
+  },
+  cronService: {
+    // 守护服务(Windows 计划任务):客户端完全退出后仍能执行定时任务
+    status: () => ipcRenderer.invoke('cron-service:status') as Promise<CronServiceStatus>,
+    install: () =>
+      ipcRenderer.invoke('cron-service:install') as Promise<{ ok: boolean; error?: string; status?: CronServiceStatus }>,
+    uninstall: () =>
+      ipcRenderer.invoke('cron-service:uninstall') as Promise<{ ok: boolean; error?: string; status?: CronServiceStatus }>,
   },
   market: {
     install: (type: MarketItemType, id: number, name: string, version: string, pkg: Record<string, unknown>) =>
@@ -278,7 +408,7 @@ const electronAPI: ElectronAPI = {
     syncChat: () => ipcRenderer.invoke('market:syncChat') as Promise<{ ok: boolean; added?: number; error?: string }>
   },
   hermesMcp: {
-    /** 从后端同步启用中的 MCP 到 Hermes 本地配置（登录后调用） */
+    /** 从后端同步启用中的 MCP 到 Hermes 本地配置(登录后调用) */
     syncFromBackend: (token: string) =>
       ipcRenderer.invoke('mcp:syncFromBackend', token) as Promise<{ ok: boolean; count?: number; error?: string }>,
   },
@@ -332,6 +462,21 @@ const electronAPI: ElectronAPI = {
     run: (taskId: string, opts?: { maxVetoRounds?: number }) =>
       ipcRenderer.invoke('edict:run', taskId, opts) as Promise<EdictOp<EdictPipelineResult>>,
     officials: () => ipcRenderer.invoke('edict:officials') as Promise<EdictOfficial[]>,
+    officialTables: (agentId: string) =>
+      ipcRenderer.invoke('edict:official-tables', agentId) as Promise<{ ok: boolean; tables?: EdictOfficialTable[]; error?: string }>,
+    saveOfficialTables: (agentId: string, tables: EdictOfficialTable[]) =>
+      ipcRenderer.invoke('edict:save-official-tables', agentId, tables) as Promise<{ ok: boolean; error?: string }>,
+    officialSoul: (agentId: string) =>
+      ipcRenderer.invoke('edict:official-soul', agentId) as Promise<{
+        ok: boolean;
+        agentId?: string;
+        content?: string;
+        rendered?: string;
+        replaced?: number;
+        missing?: string[];
+        tables?: EdictOfficialTable[];
+        error?: string;
+      }>,
     stats: () => ipcRenderer.invoke('edict:stats') as Promise<EdictStats>,
     models: () => ipcRenderer.invoke('edict:models'),
     cancel: (taskId: string) => ipcRenderer.invoke('edict:cancel', taskId) as Promise<EdictOp>,
@@ -356,7 +501,7 @@ const electronAPI: ElectronAPI = {
         ipcRenderer.removeListener('edict:task-updated', handler)
       }
     },
-    // ===== 补齐面板（edict-extra）：省部调度/模型/技能/朝堂议政/天下要闻/小任务/旨库 =====
+    // ===== 补齐面板(edict-extra):省部调度/模型/技能/朝堂议政/天下要闻/小任务/旨库 =====
     agentsStatus: () => ipcRenderer.invoke('edict:agents-status') as Promise<EdictAgentsStatusData>,
     agentWake: (agentId: string) => ipcRenderer.invoke('edict:agent-wake', agentId) as Promise<EdictOp>,
     agentConfig: () => ipcRenderer.invoke('edict:agent-config') as Promise<EdictAgentConfig>,
@@ -405,7 +550,7 @@ const electronAPI: ElectronAPI = {
 
 
 
-  /** Hermes 本地对话桥接（:8642 OpenAI 兼容流式；计费归 llm-proxy，消息经主进程流式转发） */
+  /** Hermes 本地对话桥接(:8642 OpenAI 兼容流式;计费归 llm-proxy,消息经主进程流式转发) */
   hermesChat: {
     setModel: (modelId: string) => {
       ipcRenderer.send('hermes-chat:set-model', modelId)

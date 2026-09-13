@@ -306,7 +306,7 @@ function App() {
       <section className="section" id="foundation">
         <div className="container">
           <p className="section-label">AI RUNTIME & ORCHESTRATION</p>
-          <h2 className="section-title">OpenClaw + Hermes · AI团队基座</h2>
+          <h2 className="section-title">Hermes · AI团队基座</h2>
           <div className="foundation-grid">
             {foundationCards.map((card) => (
               <article key={card.name} className="feature-card">
@@ -566,7 +566,7 @@ function App() {
         <div className="footer-inner">
           <div>
             <div className="footer-brand-name">深瞳AI</div>
-            <p className="footer-brand-desc">基于OpenClaw + Hermes的AI自动化公司运营平台，8大AI员工驱动业务闭环。</p>
+            <p className="footer-brand-desc">基于Hermes的AI自动化公司运营平台，8大AI员工驱动业务闭环。</p>
           </div>
           <div className="footer-links">
             <strong className="footer-links-title">快捷链接</strong>

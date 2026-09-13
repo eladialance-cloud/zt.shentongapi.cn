@@ -13,9 +13,9 @@ export interface RuntimeVersionInfo {
 }
 
 export type RuntimeCheckUpdateResult = {
-  openclaw: RuntimeVersionInfo | null;
   n8n: RuntimeVersionInfo | null;
-  mcp: RuntimeVersionInfo | null;
+  hermes: RuntimeVersionInfo | null;
+  'video-claw': RuntimeVersionInfo | null;
 };
 
 @Injectable()
@@ -59,9 +59,9 @@ export class RuntimeService {
     };
 
     return {
-      openclaw: toInfo(latestByService.get('openclaw')),
       n8n: toInfo(latestByService.get('n8n')),
-      mcp: toInfo(latestByService.get('mcp')),
+      hermes: toInfo(latestByService.get('hermes')),
+      'video-claw': toInfo(latestByService.get('video-claw')),
     };
   }
 

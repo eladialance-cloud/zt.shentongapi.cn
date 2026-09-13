@@ -162,7 +162,7 @@ export default function Favorites({ embedded = false }: { embedded?: boolean }) 
                     <Button
                       type="primary"
                       className={styles.useBtn}
-                      onClick={() => navigate(`/chat?agentId=${agent.id}`)}
+                      onClick={() => navigate(`/hermes-chat?agentId=${agent.id}`)}
                     >
                       使用
                     </Button>

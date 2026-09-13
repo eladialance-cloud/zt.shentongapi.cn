@@ -15,7 +15,10 @@ import {
   SyncOutlined,
   RollbackOutlined,
   RobotOutlined,
-  ApiOutlined
+  ApiOutlined,
+  ToolOutlined,
+  CloudOutlined,
+  TeamOutlined
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import Profile from './Profile'
@@ -27,9 +30,24 @@ import Update from './Update'
 import Theme from './Theme'
 import SettingsModels from './Models'
 import SettingsLlmIntegrations from './LlmIntegrations'
+import EnvComponents from './EnvComponents'
+import FeishuPlatform from './FeishuPlatform'
+import TeamPreset from './TeamPreset'
 import styles from './styles.module.css'
 
-type SettingsTab = 'profile' | 'theme' | 'password' | 'apikeys' | 'models' | 'llms' | 'devices' | 'notifications' | 'update'
+type SettingsTab =
+  | 'profile'
+  | 'theme'
+  | 'password'
+  | 'apikeys'
+  | 'models'
+  | 'llms'
+  | 'env'
+  | 'feishu'
+  | 'team'
+  | 'devices'
+  | 'notifications'
+  | 'update'
 
 const MENU_ITEMS: Array<{ key: SettingsTab; label: string; icon: React.ReactNode }> = [
   { key: 'profile', label: '资料编辑', icon: <UserOutlined /> },
@@ -38,6 +56,9 @@ const MENU_ITEMS: Array<{ key: SettingsTab; label: string; icon: React.ReactNode
   { key: 'apikeys', label: 'API Key', icon: <KeyOutlined /> },
   { key: 'models', label: '模型设置', icon: <RobotOutlined /> },
   { key: 'llms', label: '大模型接入', icon: <ApiOutlined /> },
+  { key: 'env', label: '环境组件', icon: <ToolOutlined /> },
+  { key: 'feishu', label: '飞书平台', icon: <CloudOutlined /> },
+  { key: 'team', label: '一键组队', icon: <TeamOutlined /> },
   { key: 'devices', label: '设备管理', icon: <DesktopOutlined /> },
   { key: 'notifications', label: '通知设置', icon: <BellOutlined /> },
   { key: 'update', label: '检查更新', icon: <SyncOutlined /> }
@@ -89,6 +110,9 @@ export default function Settings() {
           {active === 'apikeys' && <ApiKeys />}
           {active === 'models' && <SettingsModels />}
           {active === 'llms' && <SettingsLlmIntegrations />}
+          {active === 'env' && <EnvComponents />}
+          {active === 'feishu' && <FeishuPlatform />}
+          {active === 'team' && <TeamPreset />}
           {active === 'devices' && <Devices />}
           {active === 'notifications' && <Notifications />}
           {active === 'update' && <Update />}

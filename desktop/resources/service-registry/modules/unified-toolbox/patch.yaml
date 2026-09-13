@@ -1,0 +1,17 @@
+insert:
+  - id: unified-toolbox
+    displayName: 统一工具箱
+    tier: module
+    # P2b：启动接缝已落地（unified-toolbox launch preset + build:toolbox 打包 mcp-server.js）。
+    # 默认开启；如需停用可把 disabled 置回 true（或经模块管理 UI 停用）。
+    port: 9010
+    launch: unified-toolbox
+    envKey: unifiedToolbox
+    preStartKey: unifiedToolbox
+    postInstallKey: unifiedToolbox
+    capabilities:
+      httpApi:
+        port: 9010
+      mcpServer:
+        name: unified-toolbox
+        url: http://127.0.0.1:9010/mcp

@@ -1,0 +1,17 @@
+insert:
+  - id: wx-gateway
+    displayName: 微信域桥
+    tier: module
+    # P3：后端已切到开源 wxauto（MIT），不使用任何商业闭源增强内核、无需授权密钥。
+    # 服务默认关闭（群发/加好友等高风险能力仅灰度可开）；/api/health 始终通过，
+    # 未装后端 / 微信未运行时 /api/wx/* 返回 BACKEND_MISSING / WECHAT_NOT_RUNNING，
+    # 加好友 / 朋友圈三项固定返回 CAPABILITY_UNAVAILABLE。
+    disabled: true
+    port: 9020
+    launch: wx-gateway
+    envKey: wxGateway
+    preStartKey: wxGateway
+    postInstallKey: wxGateway
+    capabilities:
+      httpApi:
+        port: 9020

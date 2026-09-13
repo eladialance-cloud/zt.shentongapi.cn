@@ -6,6 +6,7 @@ import { ConfigProvider } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import { RouterProvider } from 'react-router-dom'
 import router from '@/router'
+import GlobalErrorBoundary from '@/components/GlobalErrorBoundary'
 import { useSettingsStore, resolveThemeMode, systemPrefersDark } from '@/store/settings'
 import { useAuthStore } from '@/store/auth'
 import { fetchLlmProxyKey } from '@/api/chat-api'
@@ -79,7 +80,9 @@ export default function App() {
       locale={zhCN}
       theme={effectiveMode === 'dark' ? darkTheme : lightTheme}
     >
-      <RouterProvider router={router} />
+      <GlobalErrorBoundary>
+        <RouterProvider router={router} />
+      </GlobalErrorBoundary>
     </ConfigProvider>
   )
 }

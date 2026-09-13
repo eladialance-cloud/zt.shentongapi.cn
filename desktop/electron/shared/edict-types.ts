@@ -95,6 +95,18 @@ export interface EdictOfficial {
   role: string;
 }
 
+/** 官署详情 — 飞书多维表格条目（官署详情「飞书表」tab） */
+export interface EdictOfficialTable {
+  /** .env / SOUL 占位符使用的键名 */
+  envKey: string;
+  /** 表中文名 */
+  name: string;
+  /** 飞书多维表格链接（未配置时为空） */
+  url?: string | null;
+  /** 权限：读写/只读/写入 */
+  access?: "rw" | "read" | "write";
+}
+
 /** 军机处统计（IPC edict:stats 载荷） */
 export interface EdictStats {
   total: number;

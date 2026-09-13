@@ -290,7 +290,7 @@ export function resolve(name: ServiceName): ResolvedRuntime | null {
 
   // 3. 宿主机命令回退
   const hostCmd = HOST_COMMANDS[name];
-  if (findHostCommand(hostCmd.cmd)) {
+  if (hostCmd && findHostCommand(hostCmd.cmd)) {
     return {
       cmd: hostCmd.cmd,
       args: hostCmd.args,

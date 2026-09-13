@@ -111,6 +111,11 @@ export function createMockElectronAPI(): ElectronAPI {
       list: jest.fn(),
       export: jest.fn(),
       import: jest.fn()
+    },
+    flow: {
+      // 业务流直跑（flow:*）：定时任务「执行方式=业务流」分支使用
+      run: jest.fn(),
+      list: jest.fn()
     }
   } as unknown as ElectronAPI
 }

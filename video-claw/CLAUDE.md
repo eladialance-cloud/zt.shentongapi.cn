@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Video-Claw is an AI video generation system that transforms user ideas into complete videos through 6 stages: Script → Character/Scene Design → Storyboard → Reference Images → Video Generation → Post-production.
 
-This repository (`video-claw/`) is an **OpenClaw Agent Skill** that wraps the actual code project:
+This repository (`video-claw/`) is an **Hermes Agent Skill** that wraps the actual code project:
 - **video-claw/**: The actual code project containing the backend (Python FastAPI) and frontend (Next.js)
-- **SKILL.md**: Workflow rules for the OpenClaw agent
+- **SKILL.md**: Workflow rules for the Hermes agent
 - **references/**: API documentation
 
 Both run locally: backend at `http://localhost:8000`, frontend at `http://localhost:3000`.
@@ -93,5 +93,5 @@ The `references/` folder contains detailed API documentation:
 - `send_message/` - Feishu/WeChat integration
 
 Important files:
-- [SKILL.md](SKILL.md) - Contains the complete workflow rules for OpenClaw agent execution
+- [SKILL.md](SKILL.md) - Contains the complete workflow rules for Hermes agent execution
 - [README.md](README.md) - Full project documentation including model configuration

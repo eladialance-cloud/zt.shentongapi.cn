@@ -13,7 +13,7 @@ import { parseXmlObject, serializeXml, verifyWechatSignature } from "../utils/we
  *
  * - 入站：GET 签名校验回显 echostr；POST XML 文本/事件消息
  * - 出站：客服消息 API（access_token + openid），被动回复 XML 兜底
- * - 发布：图文素材 + 群发（基础版）
+ * - 发布：官方 API 图文草稿箱 + 发布
  */
 @Injectable()
 export class WechatMpAdapter implements ChannelAdapter {
@@ -119,7 +119,7 @@ export class WechatMpAdapter implements ChannelAdapter {
     }
   }
 
-  /** 图文素材 + 群发（基础版） */
+  /** 图文草稿箱 + 发布（官方 API：draft/add + freepublish/submit） */
   async publishContent(
     credentials: string,
     content: PublishContent,
@@ -133,25 +133,66 @@ export class WechatMpAdapter implements ChannelAdapter {
       return { platform: "wechat_mp", success: false, error: "获取 access_token 失败" };
     }
     try {
-      const thumbMediaId = content.mediaUrls?.[0] ?? "";
-      const res = await fetch(
-        `https://api.weixin.qq.com/cgi-bin/message/mass/sendall?access_token=${encodeURIComponent(accessToken)}`,
-        {
+      const title = String(content.title ?? "");
+      const text = String(content.content ?? "");
+      const rawThumb = String(content.mediaUrls?.[0] ?? "").trim();
+      if (!title) {
+        return { platform: "wechat_mp", success: false, error: "缺少文章标题" };
+      }
+      if (!rawThumb) {
+        return { platform: "wechat_mp", success: false, error: "缺少封面 media_id（mediaUrls[0]）" };
+      }
+
+      // F4：封面为外链时，先上传为永久素材换取 thumb_media_id；已是 media_id 则直接使用
+      let thumbMediaId = rawThumb;
+      if (/^https?:\/\//i.test(rawThumb)) {
+        const uploaded = await this.uploadThumbMedia(accessToken, rawThumb);
+        if (!uploaded.mediaId) {
+          return { platform: "wechat_mp", success: false, error: uploaded.error ?? "封面素材上传失败" };
+        }
+        thumbMediaId = uploaded.mediaId;
+      }
+      const api = (path: string, body: unknown): Promise<Record<string, unknown> | null> =>
+        fetch(`https://api.weixin.qq.com${path}?access_token=${encodeURIComponent(accessToken)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            filter: { is_to_all: true },
-            msgtype: "text",
-            text: { content: String(content.content ?? "").slice(0, 2000) },
-          }),
+          body: JSON.stringify(body),
           signal: AbortSignal.timeout(15000),
-        },
-      );
-      const data = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-      if (data?.errcode === 0) {
-        return { platform: "wechat_mp", success: true, externalId: `wx_pub_${data?.msg_id ?? Date.now()}` };
+        }).then((r) => r.json().catch(() => null)) as Promise<Record<string, unknown> | null>;
+
+      // 1) 图文草稿（草稿箱）：draft/add
+      const draftData = await api("/cgi-bin/draft/add", {
+        articles: [
+          {
+            title,
+            author: String(cfg.author ?? ""),
+            digest: String(content.tags?.[0] ?? ""),
+            content: text,
+            content_source_url: "",
+            thumb_media_id: thumbMediaId,
+            need_open_comment: 0,
+            only_fans_can_comment: 0,
+          },
+        ],
+      });
+      if (draftData?.errcode && draftData.errcode !== 0) {
+        return { platform: "wechat_mp", success: false, error: `建草稿失败: ${JSON.stringify(draftData)}` };
       }
-      return { platform: "wechat_mp", success: false, error: JSON.stringify(data ?? res.status) };
+      const mediaId = draftData?.media_id as string | undefined;
+      if (!mediaId) {
+        return { platform: "wechat_mp", success: false, error: "草稿箱未返回 media_id" };
+      }
+
+      // 2) 发布：freepublish/submit
+      const pubData = await api("/cgi-bin/freepublish/submit", { media_id: mediaId });
+      if (pubData?.errcode && pubData.errcode !== 0) {
+        return { platform: "wechat_mp", success: false, error: `发布失败: ${JSON.stringify(pubData)}` };
+      }
+      return {
+        platform: "wechat_mp",
+        success: true,
+        externalId: `wx_pub_${String(pubData?.publish_id ?? Date.now())}`,
+      };
     } catch (err) {
       return { platform: "wechat_mp", success: false, error: (err as Error).message };
     }
@@ -176,6 +217,46 @@ export class WechatMpAdapter implements ChannelAdapter {
   }
 
   /** 获取 access_token（带缓存，提前 5 分钟过期） */
+
+  /**
+   * 上传封面为公众号**永久图片素材**（material/add_material?type=image），返回 thumb_media_id。
+   * 草稿箱的 thumb_media_id 只接受永久素材 id，因此外链封面必须先过这一跳。
+   * 失败一律返回结构化 error，不抛异常（调用方据此返回 success:false）。
+   */
+  private async uploadThumbMedia(
+    accessToken: string,
+    imageUrl: string,
+  ): Promise<{ mediaId?: string; error?: string }> {
+    let bytes: ArrayBuffer;
+    let contentType = "image/jpeg";
+    try {
+      const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) });
+      if (!imgRes.ok) return { error: `封面图下载失败: HTTP ${imgRes.status}` };
+      contentType = imgRes.headers?.get?.("content-type") || contentType;
+      bytes = await imgRes.arrayBuffer();
+    } catch (err) {
+      return { error: `封面图下载异常: ${(err as Error).message}` };
+    }
+    if (!bytes || bytes.byteLength === 0) return { error: "封面图为空" };
+
+    const form = new FormData();
+    form.append("media", new Blob([bytes], { type: contentType }), "cover.jpg");
+    try {
+      const res = await fetch(
+        `https://api.weixin.qq.com/cgi-bin/material/add_material?access_token=${encodeURIComponent(accessToken)}&type=image`,
+        { method: "POST", body: form, signal: AbortSignal.timeout(30000) },
+      );
+      const data = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+      if (data?.errcode && data.errcode !== 0) {
+        return { error: `上传封面素材失败: ${JSON.stringify(data)}` };
+      }
+      const mediaId = data?.media_id as string | undefined;
+      if (!mediaId) return { error: "上传封面素材未返回 media_id" };
+      return { mediaId };
+    } catch (err) {
+      return { error: `上传封面素材异常: ${(err as Error).message}` };
+    }
+  }
   private async getAccessToken(appId: string, appSecret: string): Promise<string | null> {
     const cached = this.tokenCache.get(appId);
     if (cached && cached.expiresAt > Date.now() + 5 * 60 * 1000) return cached.token;

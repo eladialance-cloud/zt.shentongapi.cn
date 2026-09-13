@@ -16,7 +16,6 @@ import { ApiKeyPoolService } from '../../src/modules/api-key-pool/services/api-k
 import { EncryptionService } from '../../src/common/services/encryption.service';
 import { LlmClientService } from '../../src/modules/chat/services/llm-client.service';
 import { McpService } from '../../src/modules/mcp/services/mcp.service';
-import { OpenClawService } from '../../src/modules/openclaw/services/openclaw.service';
 import { TaskService } from '../../src/modules/task/services/task.service';
 import { CodexService } from '../../src/modules/codex/codex.service';
 
@@ -79,7 +78,6 @@ describe('ChatService', () => {
     getToolsForSession: jest.fn(),
   };
 
-  const mockOpenclawService = {};
 
   const mockTaskService = {
     createTask: jest.fn(),
@@ -102,7 +100,6 @@ describe('ChatService', () => {
         { provide: EncryptionService, useValue: mockEncryptionService },
         { provide: LlmClientService, useValue: mockLlmClient },
         { provide: McpService, useValue: mockMcpService },
-        { provide: OpenClawService, useValue: mockOpenclawService },
         { provide: TaskService, useValue: mockTaskService },
         { provide: CodexService, useValue: mockCodexService },
       ],

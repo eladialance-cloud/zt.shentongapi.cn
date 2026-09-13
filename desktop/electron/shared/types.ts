@@ -12,6 +12,7 @@ import type {
   EdictModelChangeEntry,
   EdictMorningBrief,
   EdictOfficial,
+  EdictOfficialTable,
   EdictOp,
   EdictPipelineResult,
   EdictRemoteSkillItem,
@@ -35,6 +36,7 @@ export type {
   EdictMorningBrief,
   EdictNotifyConfig,
   EdictOfficial,
+  EdictOfficialTable,
   EdictOp,
   EdictPipelineResult,
   EdictRemoteSkillItem,
@@ -110,6 +112,19 @@ export interface ServiceEnvCheck {
   n8n: boolean;
   mcp: boolean;
   hermes: boolean;
+}
+
+/** 环境组件检测项（对标 RRClaw「环境组件」；含业务流/微信/抖音/浏览器自动化依赖） */
+export interface EnvComponentStatus {
+  id: 'python' | 'flowsDeps' | 'playwright' | 'vosk';
+  /** 展示名称 */
+  title: string;
+  /** 是否就绪 */
+  ready: boolean;
+  /** 详情（就绪时为路径/版本，未就绪时为缺失说明） */
+  detail?: string;
+  /** 是否可一键安装 */
+  installable: boolean;
 }
 
 /** 运行时下载安装位置信息 */
@@ -280,6 +295,58 @@ export interface LocalBrief {
   cloudSynced: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+/** 本地定时任务执行日志（对标 RRClaw cron_run_logs；每次触发一条，含业务流直跑与 AI 编排） */
+export interface LocalScheduledRun {
+  id: number
+  runId: string
+  scheduledId: number
+  userId: number
+  title?: string
+  executeKind: "llm" | "flow"
+  flowId?: string | null
+  status: "running" | "success" | "error"
+  errorMessage?: string | null
+  resultSummary?: string | null
+  durationMs?: number | null
+  teamTaskId?: number | null
+  startedAt: string
+  finishedAt?: string | null
+}
+
+/** 无人值守定时任务引擎（主进程常驻）状态 */
+export interface CronEngineState {
+  /** 后台常驻开关是否开启 */
+  enabled: boolean;
+  /** 引擎是否在轮询 */
+  running: boolean;
+  lastTickAt: string | null;
+  lastError: string | null;
+  executed: number;
+  errors: number;
+}
+
+/** 无人值守引擎广播事件（开关变更 / 执行结果） */
+export interface CronEngineEvent {
+  type: "executed" | "error" | "state";
+  taskId?: number;
+  ok?: boolean;
+  error?: string;
+  enabled?: boolean;
+}
+
+/** 定时任务守护服务（Windows 计划任务）状态：客户端完全退出后仍能执行 */
+export interface CronServiceStatus {
+  /** 平台是否支持（仅 win32） */
+  supported: boolean;
+  /** 是否已注册计划任务 */
+  installed: boolean;
+  /** 任务是否正在运行 */
+  running: boolean;
+  /** 注册时使用的主程序路径 */
+  command: string | null;
+  error?: string;
 }
 
 // 设备指纹（采集本机硬件/系统特征生成 SHA-256 哈希）
@@ -621,6 +688,20 @@ export interface PlatformInfo {
   homeUrl: string;
 }
 
+/** 扫码阶段（事件流推送） */
+export type PlatformScanPhase = "waiting" | "scanned" | "confirmed" | "expired" | "success" | "error";
+
+/** 扫码状态事件（主进程 → 渲染层） */
+export interface PlatformScanStatusEvent {
+  platform: string;
+  scanId: string;
+  phase: PlatformScanPhase;
+  /** 是否可重试（expired/error 时渲染层展示「刷新二维码」） */
+  retryable: boolean;
+  displayName?: string;
+  message?: string;
+}
+
 /** 扫码登录结果（桌面端采集 cookies 加密存本地） */
 export type PlatformSetupLoginResult =
   | { ok: true; cookiesJson: string; displayName?: string }
@@ -654,6 +735,18 @@ export interface PlatformAccountApi {
   ): Promise<{ ok: boolean; error?: string }>;
   /** 移除本地会话 */
   removeSession(platform: string): Promise<{ ok: boolean }>;
+  /** 启动扫码登录（事件流版，立即返回 scanId） */
+  startScan(platform: string): Promise<{ ok: boolean; scanId?: string; expiresAt?: number; error?: string }>;
+  /** 查询当前扫码会话（页面刷新后恢复状态） */
+  getScanStatus(platform: string): Promise<{ active: boolean; scanId?: string }>;
+  /** 取消当前扫码 */
+  cancelScan(): Promise<{ ok: boolean }>;
+  /** 主动验证本地会话是否仍有效 */
+  verifySession(platform: string): Promise<PlatformTestLoginResult>;
+  /** 渠道凭证真实校验（服务端适配器 healthCheck） */
+  testChannel(channelId: number): Promise<{ ok: boolean; online: boolean; message: string; platform: string }>;
+  /** 订阅扫码阶段推送，返回取消订阅函数 */
+  onScanStatus(callback: (event: PlatformScanStatusEvent) => void): () => void;
 }
 
 /** 桌面端本地视频解析结果（对标轻语 videoParser：读取链接→打开页面→抓视频→落盘） */
@@ -692,6 +785,10 @@ export interface ElectronAPI {
     stop(name: ServiceName): Promise<boolean>;
     restart(name: ServiceName): Promise<boolean>;
     checkEnv(): Promise<ServiceEnvCheck>;
+    /** 检测环境组件（内置 Python / 业务流依赖 / 浏览器内核 / 语音模型） */
+    checkEnvComponents(): Promise<EnvComponentStatus[]>;
+    /** 一键安装环境组件（id 见 EnvComponentStatus） */
+    installEnvComponent(id: EnvComponentStatus['id']): Promise<{ ok: boolean; error?: string }>;
     install(name: ServiceName): Promise<boolean>;
     /** 获取当前运行时下载安装位置（路径 + 磁盘空间） */
     getRuntimeDir(): Promise<RuntimeDirInfo>;
@@ -752,7 +849,98 @@ export interface ElectronAPI {
     }): Promise<{ ok: boolean; data?: unknown; error?: string; path?: string }>;
   };
 
-  /** 设置页每类默认模型同步（chat/vision/image/video/tts → Hermes/ST-Claw 配置） */
+  /** 业务流直跑（flow:*，主进程 flow-executor 注册，对标 RRClaw 确定型定时任务） */
+  flow: {
+    run(
+      flowId: string,
+      options?: { params?: Record<string, unknown>; timeoutMs?: number },
+    ): Promise<{
+      ok: boolean;
+      flow: string;
+      code?: string;
+      error?: string;
+      data?: unknown;
+      steps?: unknown;
+      durationMs: number;
+    }>;
+    list(): Promise<
+      Array<{
+        id: string;
+        title?: string;
+        role?: string;
+        risk?: string;
+        trigger?: string;
+        params?: Record<string, string>;
+        steps?: string[];
+        produces?: string;
+      }>
+    >;
+  };
+
+  /** 飞书平台设置 + 多维表格一键创建 */
+  feishu: {
+    getSettings(): Promise<{ configured: boolean; appId: string; hasSecret: boolean }>;
+    saveSettings(input: { appId?: string; appSecret?: string }): Promise<{ ok: boolean; error?: string }>;
+    testConnection(): Promise<{ ok: boolean; error?: string; code?: number; data?: { appId: string; tokenMask: string } }>;
+    initTables(): Promise<{
+      ok: boolean;
+      appToken?: string;
+      appUrl?: string;
+      tables?: Array<{ name: string; envKey: string; official: string; tableId: string; url: string }>;
+      failed?: Array<{ name: string; error: string }>;
+      error?: string;
+    }>;
+    onInitProgress(cb: (p: { step: string; message?: string }) => void): () => void;
+  }
+
+  /** 一键组队（套餐 → 飞书表 + SOUL + Agent + 定时任务） */
+  team: {
+    listPresets(): Promise<{ ok: boolean; defaultPresetId: string; presets: Array<{ id: string; name: string; description: string; officials: string[]; recommended: boolean }> }>;
+    creationStatus(): Promise<{ ok: boolean; isRunning: boolean; lastResult: unknown }>;
+    create(presetId: string): Promise<{
+      ok: boolean;
+      presetId: string;
+      officials: string[];
+      created: string[];
+      removed: string[];
+      failed: Array<{ step: string; official?: string; error: string }>;
+      error?: string;
+    }>;
+    writeSoul(official: string): Promise<{ ok: boolean; error?: string; replaced?: number; missing?: string[] }>;
+    listCrons(official: string): Promise<{ ok: boolean; crons: Array<{ name: string; expr: string; executeKind: string; flowId?: string }> }>;
+    /** 批量重写官署 SOUL 的飞书表链接（占位符 → 真实链接） */
+    syncSoul(officials?: string[]): Promise<{
+      ok: boolean;
+      synced: number;
+      totalReplaced: number;
+      items: Array<{ official: string; ok: boolean; replaced?: number; missing?: string[]; error?: string }>;
+    }>;
+    /** 各官署表链接回填状态 */
+    soulStatus(): Promise<{
+      ok: boolean;
+      statuses: Array<{ official: string; total: number; linked: number }>;
+      allLinked: boolean;
+    }>;
+    onCreationProgress(cb: (p: unknown) => void): () => void;
+  };
+
+  /** HermesChat 文件/目录/终端/最近上下文文件夹（B/C 批本地 IPC） */
+  fs: {
+    readFile(filePath: string, maxBytes?: number): Promise<{ content: string; truncated: boolean } | null>;
+    readImageFile(filePath: string): Promise<string | null>;
+    openFileInEditor(filePath: string): Promise<boolean>;
+    openTerminal(dirPath: string): Promise<boolean>;
+    readDirectory(dirPath: string): Promise<Array<{ name: string; isDirectory: boolean }> | null>;
+    selectFolder(): Promise<string | null>;
+    listRecentContextFolders(limit?: number): Promise<string[]>;
+    setSessionContextFolder(folder: string | null): Promise<boolean>;
+  };
+  /** HermesChat Web 预览标注（inspect element） */
+  webPreview: {
+    inspect(webContentsId: number): Promise<{ selector: string; rect: { left: number; top: number; width: number; height: number } } | null>;
+    cancelInspection(webContentsId: number): Promise<void>;
+  };
+    /** 设置页每类默认模型同步（chat/vision/image/video/tts → Hermes/ST-Claw 配置） */
   modelDefaultsSync(dto: { chat?: string | null; vision?: string | null; image?: string | null; video?: string | null; tts?: string | null } | null): void;
 
   /** Hermes 本地对话桥接（:8642 OpenAI 兼容流式；计费归 llm-proxy） */
@@ -888,6 +1076,39 @@ export interface ElectronAPI {
       /** 标记本地需求单已同步到云端（按 clientBriefId） */
       markSynced(clientBriefId: string): Promise<void>;
     };
+    scheduledRuns: {
+      /** 新建一条执行日志（触发时） */
+      create(input: {
+        scheduledId: number;
+        userId: number;
+        title?: string;
+        executeKind: "llm" | "flow";
+        flowId?: string | null;
+        teamTaskId?: number | null;
+      }): Promise<LocalScheduledRun | null>;
+      /** 标记执行结束（成功/失败 + 耗时 + 结果摘要） */
+      finish(
+        id: number,
+        patch: { status: "success" | "error"; errorMessage?: string | null; resultSummary?: string | null; durationMs?: number | null },
+      ): Promise<void>;
+      /** 查询执行日志（可按 scheduledId 过滤） */
+      list(scheduledId?: number, limit?: number): Promise<LocalScheduledRun[]>;
+      remove(id: number): Promise<void>;
+    };
+  };
+  /** 无人值守定时任务引擎（主进程常驻；窗口关闭/最小化到托盘后仍执行） */
+  cronEngine: {
+    getState(): Promise<CronEngineState | null>;
+    setEnabled(enabled: boolean): Promise<CronEngineState | null>;
+    runNow(taskId: number): Promise<{ executed: boolean; error?: string }>;
+    /** 订阅引擎事件（开关变更/执行结果）；返回取消订阅函数 */
+    onEvent(callback: (payload: CronEngineEvent) => void): () => void;
+  };
+  /** 定时任务守护服务（Windows 计划任务）：客户端完全退出后仍能执行定时任务 */
+  cronService: {
+    status(): Promise<CronServiceStatus>;
+    install(): Promise<{ ok: boolean; error?: string; status?: CronServiceStatus }>;
+    uninstall(): Promise<{ ok: boolean; error?: string; status?: CronServiceStatus }>;
   };
   /** 同步队列操作（离线调用队列 + 上行同步） */
   /** 本地内容市场（下载安装官方内容到本地） */
@@ -993,6 +1214,21 @@ export interface EdictAPI {
   run(taskId: string, opts?: { maxVetoRounds?: number }): Promise<EdictOp<EdictPipelineResult>>;
   /** 官署状态 */
   officials(): Promise<EdictOfficial[]>;
+  /** 官署详情 — 飞书表清单 */
+  officialTables(agentId: string): Promise<{ ok: boolean; tables?: EdictOfficialTable[]; error?: string }>;
+  /** 官署详情 — 保存飞书表清单 */
+  saveOfficialTables(agentId: string, tables: EdictOfficialTable[]): Promise<{ ok: boolean; error?: string }>;
+  /** 官署详情 — SOUL 原文 + 占位符渲染预览 */
+  officialSoul(agentId: string): Promise<{
+    ok: boolean;
+    agentId?: string;
+    content?: string;
+    rendered?: string;
+    replaced?: number;
+    missing?: string[];
+    tables?: EdictOfficialTable[];
+    error?: string;
+  }>;
   /** 军机处统计 */
   stats(): Promise<EdictStats>;
   /** 默认模型 + 官署 profiles */

@@ -9,6 +9,11 @@ import { PublishService } from "./services/publish.service";
 import { FeishuBotAdapter } from "./adapters/feishu-bot.adapter";
 import { WechatMpAdapter } from "./adapters/wechat-mp.adapter";
 import { WecomAdapter } from "./adapters/wecom.adapter";
+import { DingtalkBotAdapter } from "./adapters/dingtalk-bot.adapter";
+import { TelegramBotAdapter } from "./adapters/telegram-bot.adapter";
+import { WecomBotAdapter } from "./adapters/wecom-bot.adapter";
+import { QqBotAdapter } from "./adapters/qq-bot.adapter";
+import { ChannelAdapterRegistry } from "./channel-adapter.registry";
 import { CommonModule } from "../../common/common.module";
 
 @Module({
@@ -21,7 +26,29 @@ import { CommonModule } from "../../common/common.module";
     CommonModule,
   ],
   controllers: [ChannelController],
-  providers: [ChannelService, PublishService, FeishuBotAdapter, WechatMpAdapter, WecomAdapter],
-  exports: [ChannelService, PublishService, FeishuBotAdapter, WechatMpAdapter, WecomAdapter],
+  providers: [
+    ChannelService,
+    PublishService,
+    FeishuBotAdapter,
+    WechatMpAdapter,
+    WecomAdapter,
+    DingtalkBotAdapter,
+    TelegramBotAdapter,
+    WecomBotAdapter,
+    QqBotAdapter,
+    ChannelAdapterRegistry,
+  ],
+  exports: [
+    ChannelService,
+    PublishService,
+    FeishuBotAdapter,
+    WechatMpAdapter,
+    WecomAdapter,
+    DingtalkBotAdapter,
+    TelegramBotAdapter,
+    WecomBotAdapter,
+    QqBotAdapter,
+    ChannelAdapterRegistry,
+  ],
 })
 export class ChannelModule {}

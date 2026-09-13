@@ -146,7 +146,7 @@ export default function AgentDetail() {
       message.warning('请先下载该 Agent 到本地')
       return
     }
-    navigate(`/chat?agentId=${agentId}`)
+    navigate(`/hermes-chat?agentId=${agentId}`)
   }
 
   const handleSubmitReview = async (values: { rating: number; comment: string }) => {

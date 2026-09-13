@@ -99,6 +99,7 @@ export function listModuleMcpNames(disabledIds?: ReadonlySet<string>): {
     if (!fs.existsSync(p)) continue
     const patch = parsePatchFile(p)
     const names = (patch.insert ?? [])
+      .filter((r) => !r.disabled)
       .map((r) => {
         if (!r.capabilities?.mcpServer) return ''
         return (r.capabilities.mcpServer.name?.trim() || r.id).trim()

@@ -35,6 +35,7 @@ import { countRunning, nativeTaskId, shouldAutoStart, submitStepRunner } from ".
 import PipelineView from "./PipelineView";
 import ScheduledPanel from "./ScheduledPanel";
 import { listScheduledTasks } from "@/api/scheduled-task-api";
+import type { LocalScheduledRun } from "@shared/types";
 import EdictView from "./EdictView";
 import JunjiPanelsHub from "./JunjiPanelsHub";
 import { onEdictBoardUpdated } from "@/api/edict-api";
@@ -458,6 +459,20 @@ export default function TaskCenter() {
   const [edictTaskCount, setEdictTaskCount] = useState(0);
   /** 定时任务数（真实 API） */
   const [scheduledCount, setScheduledCount] = useState(0);
+  /** 定时任务执行日志（本地库，独立于任务本体） */
+  const [schedRuns, setSchedRuns] = useState<LocalScheduledRun[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      window.electronAPI?.db?.scheduledRuns
+        ?.list(undefined, 100)
+        .then((rows) => { if (alive) setSchedRuns(Array.isArray(rows) ? rows : []); })
+        .catch(() => { if (alive) setSchedRuns([]); });
+    };
+    void load();
+    const timer = setInterval(load, 60_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, []);
   useEffect(() => {
     let alive = true;
     const load = () => {
@@ -571,6 +586,30 @@ export default function TaskCenter() {
             />
             <span className={styles.filterCount}>共 {logEntries.length} 条执行记录</span>
           </div>
+          {schedRuns.length > 0 && (
+            <div className={styles.logList} style={{ marginBottom: 12 }}>
+              <div className={styles.logSource} style={{ padding: "4px 0" }}>
+                ⏰ 定时任务执行记录（{schedRuns.length}）
+              </div>
+              {schedRuns.slice(0, 50).map((r) => (
+                <div key={`sr-${r.id}`} className={styles.logRow}>
+                  <span
+                    className={styles[r.status === "success" ? PILL_CLS.done : r.status === "error" ? PILL_CLS.failed : PILL_CLS.running]}
+                  >
+                    {r.status === "success" ? "成功" : r.status === "error" ? "失败" : "执行中"}
+                  </span>
+                  <span className={styles.logSource}>{r.executeKind === "flow" ? "业务流" : "AI 编排"}</span>
+                  <span className={styles.logTitle}>
+                    {r.title || `#${r.scheduledId}`}
+                    {r.flowId ? ` · ${r.flowId}` : ""}
+                    {r.errorMessage ? ` · ${r.errorMessage.slice(0, 60)}` : ""}
+                  </span>
+                  <span className={styles.logTime}>开始 {formatRelative(r.startedAt)}</span>
+                  {r.durationMs != null && <span className={styles.logTime}>耗时 {Math.round(r.durationMs / 1000)}s</span>}
+                </div>
+              ))}
+            </div>
+          )}
           <div className={styles.logList}>
             {logEntries.length === 0 ? (
               <Empty description="暂无执行记录" />

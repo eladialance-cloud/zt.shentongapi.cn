@@ -1,0 +1,162 @@
+{
+  "name": "深瞳 n8n 工作流模板目录",
+  "version": 1,
+  "templates": [
+    {
+      "id": "secretary-daily-poster",
+      "slug": "st-wf-secretary-daily-poster",
+      "name": "每日海报 AI 制作",
+      "role": "秘书",
+      "category": "data_processing",
+      "description": "飞书取今日内容 → LLM 压缩 → 海报生成 → 写回分发表",
+      "risk": "readonly",
+      "inputSchema": {
+        "date": "str",
+        "domain": "str",
+        "content": "str?"
+      }
+    },
+    {
+      "id": "secretary-daily-summary",
+      "slug": "st-wf-secretary-daily-summary",
+      "name": "每日汇总报告",
+      "role": "秘书",
+      "category": "data_processing",
+      "description": "汇总今日内容 → 生成日报 → 写回汇总表",
+      "risk": "readonly",
+      "inputSchema": {
+        "date": "str",
+        "include_poster": "bool?"
+      }
+    },
+    {
+      "id": "ceo-strategy-doc",
+      "slug": "st-wf-ceo-strategy-doc",
+      "name": "战略文档生成",
+      "role": "CEO",
+      "category": "data_processing",
+      "description": "围绕主题生成战略文档草案",
+      "risk": "readonly",
+      "inputSchema": {
+        "topic": "str",
+        "strategy": "str?"
+      }
+    },
+    {
+      "id": "ceo-keyword-planning",
+      "slug": "st-wf-ceo-keyword-planning",
+      "name": "关键词规划",
+      "role": "CEO",
+      "category": "data_processing",
+      "description": "生成关键词规划与投放建议",
+      "risk": "readonly",
+      "inputSchema": {
+        "product": "str",
+        "budget": "num?"
+      }
+    },
+    {
+      "id": "sales-service-add-friend",
+      "slug": "st-wf-sales-service-add-friend",
+      "name": "添加好友",
+      "role": "销售客服",
+      "category": "automation",
+      "description": "按 wxid 添加好友并发送验证信息（风控默认关）",
+      "risk": "high",
+      "inputSchema": {
+        "wxid": "str",
+        "message": "str?"
+      }
+    },
+    {
+      "id": "sales-service-followup",
+      "slug": "st-wf-sales-service-followup",
+      "name": "客户跟进",
+      "role": "销售客服",
+      "category": "automation",
+      "description": "按客户上下文生成跟进内容",
+      "risk": "readonly",
+      "inputSchema": {
+        "contact": "str",
+        "context": "str?"
+      }
+    },
+    {
+      "id": "sales-service-push-content",
+      "slug": "st-wf-sales-service-push-content",
+      "name": "内容推送",
+      "role": "销售客服",
+      "category": "automation",
+      "description": "向目标受众推送内容（风控默认关）",
+      "risk": "high",
+      "inputSchema": {
+        "content": "str",
+        "target": "str"
+      }
+    },
+    {
+      "id": "private-domain-morning-push",
+      "slug": "st-wf-private-domain-morning-push",
+      "name": "早间私域推送",
+      "role": "私域运营",
+      "category": "automation",
+      "description": "早间向私域推送内容（风控默认关）",
+      "risk": "high",
+      "inputSchema": {
+        "content": "str?"
+      }
+    },
+    {
+      "id": "traffic-collect-hot-videos",
+      "slug": "st-wf-traffic-collect-hot-videos",
+      "name": "爆款视频采集",
+      "role": "流量操盘",
+      "category": "data_processing",
+      "description": "采集爆款视频并结构化入库",
+      "risk": "readonly",
+      "inputSchema": {
+        "keyword": "str",
+        "limit": "num?"
+      }
+    },
+    {
+      "id": "traffic-generate-copy",
+      "slug": "st-wf-traffic-generate-copy",
+      "name": "文案生成",
+      "role": "流量操盘",
+      "category": "data_processing",
+      "description": "按主题生成多种风格文案",
+      "risk": "readonly",
+      "inputSchema": {
+        "topic": "str",
+        "style": "str?"
+      }
+    },
+    {
+      "id": "new-media-wechat-article",
+      "slug": "st-wf-new-media-wechat-article",
+      "name": "公众号文章二创",
+      "role": "新媒体",
+      "category": "data_processing",
+      "description": "从素材改写公众号文章/图文",
+      "risk": "readonly",
+      "inputSchema": {
+        "source": "str",
+        "title": "str?"
+      }
+    },
+    {
+      "id": "channel-multi-round-dm",
+      "slug": "st-wf-channel-multi-round-dm",
+      "name": "多轮私信",
+      "role": "渠道",
+      "category": "automation",
+      "description": "按轮次与潜在客户多轮私信（风控默认关）",
+      "risk": "high",
+      "inputSchema": {
+        "contact": "str",
+        "round": "num"
+      }
+    }
+  ]
+}

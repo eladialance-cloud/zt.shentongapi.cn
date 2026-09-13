@@ -162,7 +162,7 @@ export class AdminAgentService {
       githubTopics: normalizeTags(dto.githubTopics),
       pricing: dto.pricing,
       sourceType: 'official',
-      runtimeType: 'openclaw',
+      runtimeType: 'hermes',
       userId: 0,
     });
     const saved = await this.agentRepo.save(agent);

@@ -1022,7 +1022,7 @@ class WorkflowEngine:
             if not state:
                 return {
                     "status": "error",
-                    "openclaw": "会话不存在，请刷新后重试。",
+                    "hermes": "会话不存在，请刷新后重试。",
                     "message": "会话不存在",
                     "current_status": "missing",
                 }
@@ -1038,7 +1038,7 @@ class WorkflowEngine:
             if state.status.get(current_stage_str) == "running":
                 return {
                     "status": "waiting",
-                    "openclaw": f"当前阶段（{current_stage_str}）还在执行中，请等待完成后再调用 /continue。",
+                    "hermes": f"当前阶段（{current_stage_str}）还在执行中，请等待完成后再调用 /continue。",
                     "message": f"当前阶段（{current_stage_str}）还在执行中，请等待完成后再调用 /continue。",
                     "current_status": "running",
                 }
@@ -1070,7 +1070,7 @@ class WorkflowEngine:
         # 其他状态（如 pending, stopped, error, completed）不允许继续
         return {
             "status": "error",
-            "openclaw": f"当前状态 {current_status} 不允许继续，请检查会话状态。",
+            "hermes": f"当前状态 {current_status} 不允许继续，请检查会话状态。",
             "message": f"当前状态不允许继续",
             "current_status": current_status,
         }

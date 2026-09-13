@@ -195,10 +195,10 @@ describe('mcp-security SSRF', () => {
 });
 
 describe('buildStdioProbePlan', () => {
-  it('custom 源不 allow 且 reason 引导本地 OpenClaw', () => {
+  it('custom 源不 allow 且 reason 引导本地运行时', () => {
     const plan = buildStdioProbePlan({ source: 'custom', env: {} });
     assert.equal(plan.allow, false);
-    assert.match(plan.reason || '', /本地 OpenClaw/);
+    assert.match(plan.reason || '', /本地运行时/);
   });
 
   it('official 但缺少 catalogId 不 allow', () => {

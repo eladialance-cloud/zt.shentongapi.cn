@@ -261,7 +261,7 @@ export class LlmClientService {
             if (tc.id) pendingToolCalls[idx].id = tc.id;
             if (tc.function?.name) pendingToolCalls[idx].name += tc.function.name;
             if (tc.function?.arguments) pendingToolCalls[idx].args += tc.function.arguments;
-            // 透传原始 tool_calls delta（调用方网关原样转发给客户端，如 OpenClaw）
+            // 透传原始 tool_calls delta（调用方网关原样转发给客户端）
             if (callbacks.onToolCallDelta) {
               callbacks.onToolCallDelta(delta.tool_calls);
             }

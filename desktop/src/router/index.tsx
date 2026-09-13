@@ -1,11 +1,10 @@
 // 路由配置
 // 默认路由：onboarding_completed=false 重定向到 /onboarding，否则到 /dashboard
 // Task 34: 用户端已认证路由使用 MainLayout 包裹（顶栏+侧边栏+内容区+底栏）
-import { createHashRouter, Navigate } from "react-router-dom";
+import { createHashRouter, Navigate, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 import Onboarding from "@/pages/Onboarding";
 import Dashboard from "@/pages/Dashboard";
-import Chat from "@/pages/Chat";
 import HermesChat from "@/pages/HermesChat";
 import Credits from "@/pages/Credits";
 import CreditsRecharge from "@/pages/Credits/Recharge";
@@ -55,6 +54,7 @@ import BriefsNew from "@/pages/Briefs/New";
 import BriefsDetail from "@/pages/Briefs/Detail";
 import TaskCenter from "@/pages/TaskCenter";
 import AssetsPage from "@/pages/Assets";
+import MaterialsPage from "@/pages/Materials";
 import Analytics from "@/pages/Analytics";
 import MainLayout from "@/components/MainLayout";
 import { useAuthStore } from "@/store";
@@ -73,6 +73,12 @@ function RequireAuth({ children }: { children: ReactNode }) {
     return <Navigate to="/login" replace />;
   }
   return <>{children}</>;
+}
+
+/** 旧「需求对话」入口（/chat）→ 深瞳机器人；保留查询串（如 ?agentId=）让深链继续生效 */
+function ChatRedirect() {
+  const location = useLocation();
+  return <Navigate to={{ pathname: "/hermes-chat", search: location.search }} replace />;
 }
 
 const router = createHashRouter([
@@ -100,7 +106,8 @@ const router = createHashRouter([
       { path: "/briefs/:id", element: <BriefsDetail /> },
       { path: "/task-center", element: <TaskCenter /> },
       { path: "/assets", element: <AssetsPage /> },
-      { path: "/chat", element: <Chat /> },
+      { path: "/materials", element: <MaterialsPage /> },
+      { path: "/chat", element: <ChatRedirect /> },
       { path: "/hermes-chat", element: <HermesChat /> },
       { path: "/credits", element: <Credits /> },
       { path: "/credits/recharge", element: <CreditsRecharge /> },

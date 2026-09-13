@@ -293,6 +293,11 @@ jobs:
           NODE_NO_WARNINGS: 1
         shell: bash
 
+      # ===== 9.5 Build Windows sandbox runner (restricted-token launcher) =====
+      - name: 🔨 Build Sandbox Runner
+        run: npm run build:sandbox-runner
+        shell: pwsh
+
       # ===== 10. Verify getElectronPath NOT in bundle =====
       - name: 🛡️ Verify Bundle Integrity
         run: |

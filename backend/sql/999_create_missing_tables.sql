@@ -153,21 +153,5 @@ CREATE TABLE IF NOT EXISTS `create_hermes_skill_ratings` (
   UNIQUE INDEX `uk_user_skill` (`user_id`, `skill_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技能包评分记录';
 
--- OpenClaw 实例表
--- 注意：与 openclaw-instance.entity.ts 完全一致，deprecated_005 已废弃
--- 安全方式：仅在不存时创建，不删除已有数据
-CREATE TABLE IF NOT EXISTS `eco_openclaw_instances` (
-  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
-  `user_id` BIGINT NOT NULL,
-  `agent_id` BIGINT NULL COMMENT '关联 eco_agents 表 id',
-  `openclaw_agent_id` VARCHAR(64) NOT NULL COMMENT 'OpenClaw 侧 agentId',
-  `endpoint` VARCHAR(256) NOT NULL DEFAULT 'http://localhost:8080' COMMENT 'OpenClaw API 地址',
-  `status` ENUM('online','offline','error') DEFAULT 'offline',
-  `last_heartbeat_at` DATETIME NULL COMMENT '最后心跳时间',
-  `config` JSON NULL COMMENT 'SOUL.md/工具策略/MCP 配置等',
-  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX `idx_openclaw_user` (`user_id`),
-  INDEX `idx_openclaw_agent` (`agent_id`),
-  UNIQUE INDEX `uniq_openclaw_agent_id` (`openclaw_agent_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- OpenClaw 实例表（已下线，不再创建）
+-- 由迁移 1788451200011-DropOpenClawInstances 清理；旧库升级后该表将被 DROP。

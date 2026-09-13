@@ -1,6 +1,7 @@
 // 首次启动引导向导
 // 4 步：环境检测（运行时 SHA-256 校验 + 下载）→ 服务初始化（四服务列表式安装）→ 登录 → 进入主界面
 
+import type { EnvComponentStatus } from '@shared/types'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -94,9 +95,39 @@ export default function Onboarding() {
     createInitialInstallStates
   )
   const [loginLoading, setLoginLoading] = useState(false)
+  /** 环境组件（内置 Python / 业务流依赖 / 浏览器内核 / 语音模型） */
+  const [envComponents, setEnvComponents] = useState<EnvComponentStatus[]>([])
+  const [envInstalling, setEnvInstalling] = useState<string | null>(null)
 
   const api = window.electronAPI
   const runtime = window.runtime
+
+  // Step 1 附加：环境组件检测（只读探测，缺失可一键安装）
+  const loadEnvComponents = useCallback(async () => {
+    try {
+      const list = await api.service.checkEnvComponents()
+      setEnvComponents(Array.isArray(list) ? list : [])
+    } catch {
+      setEnvComponents([])
+    }
+  }, [api])
+
+  const installEnv = useCallback(
+    async (id: EnvComponentStatus['id']) => {
+      setEnvInstalling(id)
+      try {
+        const res = await api.service.installEnvComponent(id)
+        if (res.ok) message.success('安装完成')
+        else message.error(`安装失败：${res.error ?? '未知错误'}`)
+      } catch (err) {
+        message.error(`安装失败：${err instanceof Error ? err.message : String(err)}`)
+      } finally {
+        setEnvInstalling(null)
+        void loadEnvComponents()
+      }
+    },
+    [api, loadEnvComponents],
+  )
 
   // Step 1: 环境检测 - 调用 IPC runtime:verify 校验运行时 SHA-256 完整性
   const runVerify = useCallback(async () => {
@@ -122,8 +153,9 @@ export default function Onboarding() {
   useEffect(() => {
     if (current === 0) {
       void runVerify()
+      void loadEnvComponents()
     }
-  }, [current, runVerify])
+  }, [current, runVerify, loadEnvComponents])
 
   // 监听下载进度推送（返回 unsubscribe 在 cleanup 中调用，避免内存泄漏）
   useEffect(() => {
@@ -398,6 +430,43 @@ export default function Onboarding() {
                 )
               })}
             </Space>
+            {envComponents.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <Typography.Text strong>环境组件</Typography.Text>
+                <div style={{ marginTop: 8 }}>
+                  {envComponents.map((c) => (
+                    <div key={c.id} className={styles.serviceRow}>
+                      <span className={styles.serviceName}>
+                        {c.ready ? '✅ ' : '⚠️ '}
+                        {c.title}
+                      </span>
+                      <span className={styles.serviceStatus}>
+                        {c.ready ? (
+                          <span className={styles.installSuccess}>已就绪</span>
+                        ) : (
+                          <>
+                            <Typography.Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>
+                              {c.detail}
+                            </Typography.Text>
+                            {c.installable && (
+                              <Button
+                                size="small"
+                                icon={<DownloadOutlined />}
+                                loading={envInstalling === c.id}
+                                disabled={!!envInstalling}
+                                onClick={() => void installEnv(c.id)}
+                              >
+                                安装
+                              </Button>
+                            )}
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {allPassed && (
               <Typography.Paragraph style={{ color: 'var(--color-success)', marginBottom: 12 }}>
                 ✅ 全部就绪，点击下一步启动服务

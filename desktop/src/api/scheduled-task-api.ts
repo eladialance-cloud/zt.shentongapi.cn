@@ -13,12 +13,21 @@ import { httpClient } from './http-client'
 export type ScheduledRepeatType = 'once' | 'daily' | 'weekly'
 export type ScheduledTaskStatus = 'active' | 'paused' | 'done' | 'failed'
 
+/**
+ * 定时任务执行方式：
+ * - llm：交给深瞳机器人（Hermes）逐步编排（默认，灵活但慢/贵）
+ * - flow：直跑业务流引擎（确定、快、可控；对标 RRClaw 的 command 型定时任务）
+ */
+export type ScheduledExecuteKind = 'llm' | 'flow'
+
 export interface ScheduledTask {
   id: number
   userId: number
   title: string
   description?: string | null
   teamId?: number | null
+  /** 归属官署/角色 id（如 ceo；缺省不限；官署详情页据此展示） */
+  agentId?: string | null
   repeatType: ScheduledRepeatType
   runTime?: string | null
   weekday?: number | null
@@ -28,6 +37,12 @@ export interface ScheduledTask {
   firingToken?: string | null
   lastRunAt?: string | null
   lastError?: string | null
+  /** 执行方式（缺省 llm，兼容历史任务） */
+  executeKind?: ScheduledExecuteKind | null
+  /** 业务流 id（executeKind=flow 时必填） */
+  flowId?: string | null
+  /** 业务流参数（JSON 对象字符串） */
+  flowParams?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -36,21 +51,29 @@ export interface CreateScheduledTaskDto {
   title: string
   description?: string
   teamId?: number
+  agentId?: string
   repeatType: ScheduledRepeatType
   runTime?: string
   weekday?: number
   dueAt?: string
+  executeKind?: ScheduledExecuteKind
+  flowId?: string
+  flowParams?: string
 }
 
 export interface UpdateScheduledTaskDto {
   title?: string
   description?: string
   teamId?: number
+  agentId?: string
   repeatType?: ScheduledRepeatType
   runTime?: string
   weekday?: number
   dueAt?: string
   status?: 'active' | 'paused'
+  executeKind?: ScheduledExecuteKind
+  flowId?: string
+  flowParams?: string
 }
 
 /** 创建定时任务 */
@@ -58,9 +81,11 @@ export function createScheduledTask(dto: CreateScheduledTaskDto): Promise<Schedu
   return httpClient.post<ScheduledTask>('/scheduled-tasks', dto)
 }
 
-/** 定时任务列表 */
-export function listScheduledTasks(): Promise<ScheduledTask[]> {
-  return httpClient.get<ScheduledTask[]>('/scheduled-tasks')
+/** 定时任务列表（可按官署过滤） */
+export async function listScheduledTasks(agentId?: string): Promise<ScheduledTask[]> {
+  const all = await httpClient.get<ScheduledTask[]>('/scheduled-tasks')
+  if (!agentId) return all
+  return (all || []).filter((t) => (t.agentId ?? null) === agentId)
 }
 
 /** 更新定时任务 */

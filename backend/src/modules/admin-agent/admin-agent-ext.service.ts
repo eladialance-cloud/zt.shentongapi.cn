@@ -1,6 +1,5 @@
 import {
   Injectable,
-  Logger,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
@@ -22,7 +21,6 @@ import { CreateTagDto, UpdateTagDto, BindTagsDto } from './dto/agent-tag.dto';
  */
 @Injectable()
 export class AdminAgentExtService {
-  private readonly logger = new Logger(AdminAgentExtService.name);
 
   constructor(
     @InjectRepository(AgentDepartmentEntity)
@@ -162,23 +160,5 @@ export class AdminAgentExtService {
     agent.version = currentVersion + 1;
     await this.agentRepo.save(agent);
     return { version: currentVersion + 1 };
-  }
-
-  // ============ 同步更新（推送到 OpenClaw） ============
-
-  async syncToOpenClaw(agentId: number): Promise<{ success: boolean; message: string }> {
-    const agent = await this.agentRepo.findOne({ where: { id: agentId } });
-    if (!agent) {
-      throw new NotFoundException(`Agent ${agentId} 不存在`);
-    }
-    if (!agent.openclawAgentId) {
-      throw new BadRequestException('该 Agent 未关联 OpenClaw 实例');
-    }
-    // TODO: 调用 OpenClawService.syncAgent 完成实际同步
-    this.logger.log(`[AdminAgentExt] 同步 Agent ${agentId} 到 OpenClaw (agentId=${agent.openclawAgentId})`);
-    // 更新同步状态
-    agent.syncStatus = 'pending';
-    await this.agentRepo.save(agent);
-    return { success: true, message: '已提交同步请求' };
   }
 }

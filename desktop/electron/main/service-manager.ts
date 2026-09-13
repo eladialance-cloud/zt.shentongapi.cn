@@ -55,10 +55,21 @@ import {
 } from './service-registry/fingerprint'
 import type { SpawnSpec, SpawnSpecResult } from './service-registry/row-executor'
 import {
+  buildDouyinSpawnSpec,
+  buildFlowsSpawnSpec,
+  buildUnifiedToolboxSpawnSpec,
+  buildWxGatewaySpawnSpec,
   CONFIG_SYNC_HANDLERS,
   ENV_BUILDERS,
   POST_INSTALL_HANDLERS,
   PRE_START_HANDLERS,
+  resolveDouyinModuleDir,
+  resolveFlowsModuleDir,
+  douyinStateRoot,
+  flowsStateRoot,
+  resolveUnifiedToolboxModuleDir,
+  resolveWxGatewayModuleDir,
+  wxGatewayStateRoot,
   type ServiceHookCtx,
 } from './service-registry/whitelist'
 
@@ -197,6 +208,23 @@ export function migrateLegacyOpenClawData(): void {
  * - 固定指向 userData/hermes-home，避免使用 %LOCALAPPDATA%\\hermes（该目录可能残留损坏的
  *   hermes-agent 链接/ACL，导致 Hermes 启动时 banner 的 git 探测抛 PermissionError 直接崩溃）
  */
+
+/** 子进程凭证注入：把飞书/MySQL 凭证从 credential-store + env 汇总，供 unified-toolbox / flows 使用 */
+function buildChildCredentialEnv(): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  const feishuId = getCredential('feishu.appId') || process.env.FEISHU_APP_ID || '';
+  const feishuSecret = getCredential('feishu.appSecret') || process.env.FEISHU_APP_SECRET || '';
+  if (feishuId) out.FEISHU_APP_ID = feishuId;
+  if (feishuSecret) out.FEISHU_APP_SECRET = feishuSecret;
+  for (const k of [
+    'ST_MYSQL_HOST', 'ST_MYSQL_PORT', 'ST_MYSQL_USER', 'ST_MYSQL_PASSWORD', 'ST_MYSQL_PWD',
+    'ST_MYSQL_DATABASE', 'ST_MYSQL_DB', 'ST_MYSQL_ALLOW_WRITE', 'FEISHU_BASE_URL',
+  ]) {
+    if (process.env[k]) out[k] = process.env[k];
+  }
+  return out;
+}
+
 function getHermesHome(): string {
   return path.join(app.getPath('userData'), 'hermes-home')
 }
@@ -305,6 +333,64 @@ const LLM_PROXY_BASE = 'https://zt.shentongapi.cn/api/llm-proxy/v1'
 /** 用户 llm-proxy 静态 Key（登录后由主进程注入；空则 Hermes / ST-Claw 不写 apiKey，对话被 401 拦截） */
 let llmProxyKey = ''
 
+/** 供 flow-executor 读取平台 llm-proxy 通道（业务流需要 LLM 时使用） */
+export function getFlowsLlmIntegration(): { baseUrl: string; apiKey: string } {
+  return { baseUrl: LLM_PROXY_BASE, apiKey: llmProxyKey }
+}
+
+/** 读取飞书建表状态（feishu-bitable.json），供 flows 落表映射使用 */
+function readFeishuBitableState(userDataDir: string): { appToken?: string; tables?: Array<{ envKey?: string; tableId?: string }> } | null {
+  try {
+    const f = path.join(userDataDir, 'edict-data', 'feishu-bitable.json')
+    if (!fs.existsSync(f)) return null
+    const parsed = JSON.parse(fs.readFileSync(f, 'utf-8'))
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+/** flows 业务流引擎配置落盘（config.json）：写入平台 llm-proxy 通道，业务流需要 LLM 时立即可用。 */
+function syncFlowsConfigFile(): void {
+  try {
+    const stateRoot = flowsStateRoot(app.getPath('userData'))
+    const cfgPath = path.join(stateRoot, 'config.json')
+    let current: Record<string, unknown> = {}
+    if (fs.existsSync(cfgPath)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'))
+        if (parsed && typeof parsed === 'object') current = parsed
+      } catch {
+        current = {}
+      }
+    }
+    const next: Record<string, unknown> = {
+      ...current,
+      llm_base_url: llmProxyKey ? LLM_PROXY_BASE : (current.llm_base_url ?? ''),
+      llm_api_key: llmProxyKey || (current.llm_api_key ?? ''),
+    }
+    // 飞书多维表格映射：有 app_token 时写入 storage_feishu（collection → table_id），
+    // 供业务流引擎在 storage_backend=feishu 时真正落表；不强制切换后端。
+    try {
+      const feishuState = readFeishuBitableState(app.getPath('userData'))
+      if (feishuState?.appToken) {
+        const tables: Record<string, string> = {}
+        for (const t of feishuState.tables ?? []) {
+          if (t.tableId && t.envKey) tables[t.envKey] = t.tableId
+        }
+        next.storage_feishu = { ...(current.storage_feishu as object ?? {}), app_token: feishuState.appToken, tables }
+      }
+    } catch {
+      // 忽略：未建表时无飞书映射
+    }
+    if (JSON.stringify(current) !== JSON.stringify(next)) {
+      fs.mkdirSync(stateRoot, { recursive: true })
+      fs.writeFileSync(cfgPath, JSON.stringify(next, null, 2), 'utf-8')
+    }
+  } catch (err) {
+    console.warn('[service-manager] flows config 写入失败（忽略）: ' + (err instanceof Error ? err.message : String(err)))
+  }
+}
 /** VideoClaw 子进程环境变量：注入 llm-proxy 网关地址/静态 Key 与云端记账上下文 */
 function buildVideoClawEnv(): NodeJS.ProcessEnv {
   const accountingDir = path.join(app.getPath('userData'), 'hermes-chat')
@@ -499,6 +585,7 @@ export class ServiceManager extends EventEmitter {
    */
   setLlmProxyKey(key: string): void {
     llmProxyKey = key || ''
+    syncFlowsConfigFile()
     // proxyKey 关联行的 config 同步：hermes/video-claw 按 onConfigKey 走白名单；
     // Hermes / ST-Claw config 由 CONFIG_SYNC_HANDLERS 按 onConfigKey 写入
     for (const row of this.rows) {
@@ -579,6 +666,133 @@ export class ServiceManager extends EventEmitter {
       }
     }
 
+    // unified-toolbox：由底座二进制以 ELECTRON_RUN_AS_NODE 运行打包的 MCP server，无 runtime manifest。
+    if (row.launch === 'unified-toolbox') {
+      try {
+        const moduleRoot = resolveUnifiedToolboxModuleDir()
+        const preStartHandler = row.preStartKey ? PRE_START_HANDLERS[row.preStartKey] : undefined
+        if (preStartHandler) {
+          await preStartHandler({ rowId: row.id, runtimeKey: row.runtimeKey, resolved: null })
+        }
+        const envBuilder = row.envKey ? ENV_BUILDERS[row.envKey] : undefined
+        const extraEnv = envBuilder ? envBuilder({ rowId: row.id, runtimeKey: row.runtimeKey, resolved: null }) : undefined
+        const credEnv = buildChildCredentialEnv()
+        const made = buildUnifiedToolboxSpawnSpec({ port: info.port, moduleRoot, extraEnv: { ...(extraEnv ?? {}), ...credEnv } })
+        return {
+          ok: true,
+          spec: {
+            command: made.command,
+            args: made.args,
+            env: made.env,
+            useShell: made.useShell,
+            permissions: row.permissions,
+            writableDirs: row.writableDirs,
+            workspaceDir: row.writableDirs[0],
+          },
+        }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+
+    // wx-gateway：启动外部 Python 微信域桥服务（授权 SDK 绑定层），无 runtime manifest。
+    if (row.launch === 'wx-gateway') {
+      try {
+        const moduleRoot = resolveWxGatewayModuleDir()
+        const preStartHandler = row.preStartKey ? PRE_START_HANDLERS[row.preStartKey] : undefined
+        if (preStartHandler) {
+          await preStartHandler({ rowId: row.id, runtimeKey: row.runtimeKey, resolved: null })
+        }
+        const envBuilder = row.envKey ? ENV_BUILDERS[row.envKey] : undefined
+        const extraEnv = envBuilder ? envBuilder({ rowId: row.id, runtimeKey: row.runtimeKey, resolved: null }) : undefined
+        const made = buildWxGatewaySpawnSpec({
+          port: info.port,
+          moduleRoot,
+          stateRoot: wxGatewayStateRoot(app.getPath('userData')),
+          extraEnv,
+        })
+        return {
+          ok: true,
+          spec: {
+            command: made.command,
+            args: made.args,
+            env: made.env,
+            useShell: made.useShell,
+            permissions: row.permissions,
+            writableDirs: row.writableDirs,
+            workspaceDir: row.writableDirs[0],
+          },
+        }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+
+    // douyin：启动外部 Python 抖音采集/转写服务（只读流水线），无 runtime manifest。
+    if (row.launch === 'douyin') {
+      try {
+        const moduleRoot = resolveDouyinModuleDir()
+        const preStartHandler = row.preStartKey ? PRE_START_HANDLERS[row.preStartKey] : undefined
+        if (preStartHandler) {
+          await preStartHandler({ rowId: row.id, runtimeKey: row.runtimeKey, resolved: null })
+        }
+        const envBuilder = row.envKey ? ENV_BUILDERS[row.envKey] : undefined
+        const extraEnv = envBuilder ? envBuilder({ rowId: row.id, runtimeKey: row.runtimeKey, resolved: null }) : undefined
+        const made = buildDouyinSpawnSpec({
+          port: info.port,
+          moduleRoot,
+          stateRoot: douyinStateRoot(app.getPath('userData')),
+          extraEnv,
+        })
+        return {
+          ok: true,
+          spec: {
+            command: made.command,
+            args: made.args,
+            env: made.env,
+            useShell: made.useShell,
+            permissions: row.permissions,
+            writableDirs: row.writableDirs,
+            workspaceDir: row.writableDirs[0],
+          },
+        }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+    // flows：启动外部 Python 业务流引擎（12 个业务流的编排承载），无 runtime manifest。
+    if (row.launch === 'flows') {
+      try {
+        const moduleRoot = resolveFlowsModuleDir()
+        const preStartHandler = row.preStartKey ? PRE_START_HANDLERS[row.preStartKey] : undefined
+        if (preStartHandler) {
+          await preStartHandler({ rowId: row.id, runtimeKey: row.runtimeKey, resolved: null })
+        }
+        const envBuilder = row.envKey ? ENV_BUILDERS[row.envKey] : undefined
+        const extraEnv = envBuilder ? envBuilder({ rowId: row.id, runtimeKey: row.runtimeKey, resolved: null }) : undefined
+        const credEnv = buildChildCredentialEnv()
+        const made = buildFlowsSpawnSpec({
+          port: info.port,
+          moduleRoot,
+          stateRoot: flowsStateRoot(app.getPath('userData')),
+          extraEnv: { ...(extraEnv ?? {}), ...credEnv },
+        })
+        return {
+          ok: true,
+          spec: {
+            command: made.command,
+            args: made.args,
+            env: made.env,
+            useShell: made.useShell,
+            permissions: row.permissions,
+            writableDirs: row.writableDirs,
+            workspaceDir: row.writableDirs[0],
+          },
+        }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    }
     // 运行时入口按 runtimeKey 解析（模块 id 可与运行时 key 解耦，如未来 stclaw → video-claw）
     const resolved = resolve(row.runtimeKey)
     if (!resolved) {
@@ -873,6 +1087,7 @@ export class ServiceManager extends EventEmitter {
           const repaired = await postInstall({
             rowId: repairRow.id,
             runtimeKey: repairRow.runtimeKey,
+            userDataDir: app.getPath('userData'),
             resolved: null,
           })
           if (repaired) {
@@ -1015,7 +1230,12 @@ async install(name: ServiceName, onProgress?: (percent: number) => void): Promis
       if (row?.postInstallKey) {
         const postInstall = POST_INSTALL_HANDLERS[row.postInstallKey]
         if (postInstall) {
-          await postInstall({ rowId: row.id, runtimeKey: row.runtimeKey, resolved: null })
+        await postInstall({
+          rowId: row.id,
+          runtimeKey: row.runtimeKey,
+          resolved: null,
+          userDataDir,
+        })
         }
       }
       // 下载+校验成功：清理旧备份（只留最新）并记录审计

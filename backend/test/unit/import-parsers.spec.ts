@@ -74,7 +74,7 @@ test('skill-parser: SKILL.md frontmatter → triggerKeywords', async () => {
   assert.equal(drafts.length, 1);
   assert.equal(drafts[0].name, 'quick-reply');
   assert.deepEqual(drafts[0].payload.triggerKeywords, ['回复', 'reply']);
-  assert.equal(drafts[0].payload.runtimeType, 'openclaw');
+  assert.equal(drafts[0].payload.runtimeType, 'markdown-only');
 });
 
 test('skill-pack-parser: manifest.json → hermes 技能包草稿', async () => {

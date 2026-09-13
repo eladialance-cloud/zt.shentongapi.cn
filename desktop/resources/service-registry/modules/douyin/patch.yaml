@@ -1,0 +1,22 @@
+# 深瞳 M5 抖音采集/转写模块（tier: module）
+# 风控硬约束：发布/评论/私信永久默认关闭；服务默认 disabled，仅采集/转写只读。
+insert:
+  - id: douyin
+    displayName: 抖音采集
+    tier: module
+    # 流水线已接入真实实现；缺接缝（浏览器 / ffmpeg / 转写引擎）时返回 DEPENDENCY_MISSING，
+    # 发布/评论/私信代码级硬关闭（DISABLED）。服务行默认 disabled：
+    # F1.7 的「打开灰度」留待真机验证后由用户拍板（与 flows / wx-gateway 一致）。
+    disabled: true
+    port: 9030
+    launch: douyin
+    permissions: read-only
+    envKey: douyin
+    preStartKey: douyin
+    postInstallKey: douyin
+    capabilities:
+      httpApi:
+        port: 9030
+      mcpServer:
+        name: douyin
+        transport: stdio
