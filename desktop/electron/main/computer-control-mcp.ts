@@ -7,12 +7,18 @@
 // 启动方式：Electron 主进程带 --shentong-mcp-server 参数进入本模式（见 index.ts）
 // 注册方式：写入 Hermes config.yaml 的 mcp_servers（见 registerComputerControlMcp）
 //
-// 安全：
+// 安全（S-07 / S-55）：
+//   - 工具策略层 policy/tool-policy.ts 统一判定「是否启用 / 参数是否合法 / 是否需要确认」；
+//   - 高危工具（system_exec / keyboard_type / mouse_click / clipboard_set / file_write）默认不暴露，
+//     需显式设置 ST_MCP_HIGH_RISK_TOOLS=... 才启用，且调用前必须弹窗确认；
+//   - 每次调用写审计日志（参数经 policy/redact 脱敏）。
+//
+// 旧说明：
 //   - system_exec 标记 high_risk，由上层（remote-control 高危白名单）二次确认后才会走到这里
 //   - browser_open 仅允许 http/https
 //   - file_read 有大小上限；file_write 仅允许绝对路径
 
-import { app, clipboard, shell } from 'electron'
+import { app, clipboard, dialog, shell } from 'electron'
 import { readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { execFile } from 'node:child_process'
@@ -20,6 +26,9 @@ import { promisify } from 'node:util'
 import * as readline from 'node:readline'
 import * as path from 'node:path'
 import { writeHermesMcpServers } from './hermes-mcp-sync'
+import { allowedRoots } from './services/allowed-roots'
+import { evaluateToolCall, getToolPolicy, listEnabledTools } from './policy/tool-policy'
+import { redactValue } from './policy/redact'
 
 const execFileAsync = promisify(execFile)
 
@@ -269,6 +278,75 @@ const TOOLS: McpTool[] = [
   },
 ]
 
+// ===== 工具策略接线（S-07 / S-55）=====
+
+/**
+ * 高危工具 opt-in 名单（S-07：高危工具默认不暴露给 LLM）。
+ * 需要自动化工作台的高危能力时显式设置：
+ *   ST_MCP_HIGH_RISK_TOOLS=system_exec,file_write
+ * 解析失败/为空 → 只有低风险工具可用（fail-closed）。
+ */
+function enabledToolNames(): string[] {
+  const raw = process.env.ST_MCP_HIGH_RISK_TOOLS ?? ''
+  return raw.split(',').map((s) => s.trim()).filter(Boolean)
+}
+
+/**
+ * 高危工具的用户确认（S-07 第 1 条：必须由主进程强制，而不是靠 prompt 约定）。
+ * 任何异常/无 GUI 环境一律返回 false（fail-closed）。
+ */
+async function requestToolConfirmation(
+  name: string,
+  args: Record<string, unknown>,
+): Promise<boolean> {
+  try {
+    if (!app.isReady()) return false
+    const policy = getToolPolicy(name)
+    const detail = [
+      `工具：${name}`,
+      `风险：${policy?.risk ?? "high"}`,
+      `参数：${JSON.stringify(redactValue(args)).slice(0, 800)}`,
+    ].join('\n')
+    const result = await dialog.showMessageBox({
+      type: 'warning',
+      title: '深瞳AI · 工具调用确认',
+      message: `AI 请求执行本机操作：${name}`,
+      detail,
+      buttons: ['拒绝', '允许一次'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    })
+    return result.response === 1
+  } catch (err) {
+    console.warn('[computer-control-mcp] 确认弹窗失败，按拒绝处理:', err)
+    return false
+  }
+}
+
+/** 工具调用审计（参数脱敏；落 stdout，由 Hermes/主进程日志统一收集） */
+function auditToolCall(
+  name: string,
+  args: Record<string, unknown>,
+  ok: boolean,
+  code: string,
+): void {
+  try {
+    console.log(
+      '[computer-control-mcp] 工具调用 ' +
+        JSON.stringify({
+          at: new Date().toISOString(),
+          tool: name,
+          ok,
+          code,
+          args: redactValue(args),
+        }),
+    )
+  } catch {
+    /* 审计失败不影响主流程 */
+  }
+}
+
 // ===== MCP JSON-RPC 2.0 服务 =====
 
 /** 运行 computer-control MCP 服务（stdio，直到 stdin 关闭） */
@@ -299,11 +377,13 @@ export async function runComputerControlMcpServer(): Promise<void> {
         return
       }
       if (method === 'tools/list') {
+        // S-07：只向 LLM 暴露已启用的工具（高危工具默认不可见）
+        const exposed = new Set(listEnabledTools({ enabled: enabledToolNames() }).map((t) => t.name))
         send({
           jsonrpc: '2.0',
           id,
           result: {
-            tools: TOOLS.map((t) => ({
+            tools: TOOLS.filter((t) => exposed.has(t.name)).map((t) => ({
               name: t.name,
               description: t.description,
               inputSchema: t.inputSchema,
@@ -320,6 +400,23 @@ export async function runComputerControlMcpServer(): Promise<void> {
           return
         }
         const args = (params?.arguments ?? {}) as Record<string, unknown>
+        // S-07 / S-55：唯一放行入口 —— 未启用 / 参数非法 / 未确认都会在这里被拒
+        const decision = await evaluateToolCall(
+          name,
+          args,
+          { allowedRoots: allowedRoots(), confirm: requestToolConfirmation },
+          { enabled: enabledToolNames() },
+        )
+        if (!decision.ok) {
+          auditToolCall(name, args, false, decision.code)
+          send({
+            jsonrpc: '2.0',
+            id,
+            error: { code: -32603, message: `${decision.code}: ${decision.reason}` },
+          })
+          return
+        }
+        auditToolCall(name, args, true, 'OK')
         const result = await tool.run(args)
         send({
           jsonrpc: '2.0',
