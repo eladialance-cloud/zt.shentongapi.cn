@@ -14,6 +14,7 @@
 //   playwright —— 浏览器自动化内核（video-claw 依赖 playwright 及其 Chromium 内核）
 //   vosk        —— 中文语音识别模型（转写用，可选）
 import { spawn } from 'child_process'
+import { buildChildEnv } from './policy/child-env'
 import { existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { listBundledPythons, pythonSearchRoots, resolveFlowsModuleDir } from './service-registry/whitelist'
@@ -172,7 +173,7 @@ function pipInstall(pythonExe: string, args: string[], timeoutMs = 600_000): Pro
     try {
       child = spawn(pythonExe, ['-m', 'pip', 'install', ...args], {
         windowsHide: true,
-        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+        env: { ...buildChildEnv(process.env), PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
       })
     } catch (err) {
       return done({ ok: false, error: err instanceof Error ? err.message : String(err) })

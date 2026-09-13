@@ -4,6 +4,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { load } from 'js-yaml'
 import { getRuntimeRoot } from '../runtime-config'
+import { buildChildEnv } from '../policy/child-env'
 
 /**
  * 行实现白名单：patch 是声明，env/preStart/postInstall/configSync/launch 的“实现”
@@ -123,7 +124,7 @@ export function buildUnifiedToolboxSpawnSpec(opts: {
     throw new Error(`unified-toolbox MCP 未编译（缺少 ${mcp}），请先运行 npm run build:toolbox`)
   }
   const env: NodeJS.ProcessEnv = {
-    ...(opts.baseEnv ?? process.env),
+    ...buildChildEnv(opts.baseEnv ?? process.env),
     ...(opts.extraEnv ?? {}),
     ...moduleEnv,
     ELECTRON_RUN_AS_NODE: '1',
@@ -262,7 +263,7 @@ export function buildWxGatewaySpawnSpec(opts: {
   // 优先内置 Python（随包携带），其次 WX_PYTHON，最后回退宿主机 python 命令
   const python = opts.python ?? process.env.WX_PYTHON ?? resolveBundledPython() ?? 'python'
   const env: NodeJS.ProcessEnv = {
-    ...(opts.baseEnv ?? process.env),
+    ...buildChildEnv(opts.baseEnv ?? process.env),
     ...(opts.extraEnv ?? {}),
     ...moduleEnv,
     WX_PORT: String(opts.port),
@@ -374,7 +375,7 @@ export function buildDouyinSpawnSpec(opts: {
   // 优先内置 Python（随包携带），其次 DOUYIN_PYTHON，最后回退宿主机 python 命令
   const python = opts.python ?? process.env.DOUYIN_PYTHON ?? resolveBundledPython() ?? 'python'
   const env: NodeJS.ProcessEnv = {
-    ...(opts.baseEnv ?? process.env),
+    ...buildChildEnv(opts.baseEnv ?? process.env),
     ...(opts.extraEnv ?? {}),
     ...moduleEnv,
     DOUYIN_PORT: String(opts.port),
@@ -617,7 +618,7 @@ export function buildFlowsSpawnSpec(opts: {
     ? [bootstrap, app, '--port', String(opts.port)]
     : [app, '--port', String(opts.port)]
   const env: NodeJS.ProcessEnv = {
-    ...(opts.baseEnv ?? process.env),
+    ...buildChildEnv(opts.baseEnv ?? process.env),
     ...(opts.extraEnv ?? {}),
     ...moduleEnv,
     FLOWS_PORT: String(opts.port),

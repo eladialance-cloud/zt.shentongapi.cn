@@ -1,5 +1,6 @@
 ﻿/** 本地 Hermes 技能管理桥：原生 /api/skills 优先 + CLI 降级（list/search/install/update/uninstall/check） */
 import { spawn } from "node:child_process";
+import { buildChildEnv } from './policy/child-env'
 import { readdirSync, existsSync, mkdirSync, cpSync } from "node:fs";
 import { join, basename } from "node:path";
 import { app } from "electron";
@@ -65,7 +66,7 @@ function runHermes(args: string[], timeoutMs = 120000): Promise<CliRun> {
       return;
     }
     const env = {
-      ...process.env,
+      ...buildChildEnv(process.env),
       HERMES_NODE: nodeBin,
       HERMES_ENTRY: entry,
       HERMES_HOME: join(app.getPath("userData"), "hermes-home"),

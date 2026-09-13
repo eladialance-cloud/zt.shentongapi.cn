@@ -17,6 +17,7 @@ import * as path from "node:path";
 import { getRuntimeRoot } from "./runtime-config";
 import { getOrCreateAuthKey, readAuthToken } from "./services/secure-json-store";
 import { EDICT_PROFILE_IDS, syncHermesProfileConfigs, applyAgentModels } from "./hermes-config";
+import { buildChildEnv, sanitizeChildArgs } from "./policy/child-env";
 import {
   appendFlowLog,
   edictAdvance,
@@ -114,8 +115,9 @@ function buildHermesCliEnv(): NodeJS.ProcessEnv {
   } catch {
     // 忽略创建失败，技能脚本运行时仍会兜底
   }
-  return {
-    ...process.env,
+  // 安全（安全审计 S-29 / S-05 残留）：不再 spread process.env —— 官署 Hermes CLI 会执行技能脚本
+  // 与外部内容，只白名单透传运行必需键；下面这些通道/凭据变量是**显式**注入的，评审时可见。
+  return buildChildEnv(process.env, {
     HERMES_NODE: path.join(root, "node", "node" + ext),
     HERMES_ENTRY: path.join(root, "node_modules", "hermes-agent", "bin", "hermes.js"),
     HERMES_HOME: path.join(app.getPath("userData"), "hermes-home"),
@@ -128,7 +130,7 @@ function buildHermesCliEnv(): NodeJS.ProcessEnv {
     ST_AUTH_KEY: getOrCreateAuthKey() ?? "",
     ST_ACCOUNTING_FILE: path.join(accountingDir, "current-accounting.json"),
     EDICT_HOME: getEdictDataRoot(),
-  };
+  });
 }
 
 /** 官署 profile 描述（profile create --description） */
@@ -296,15 +298,15 @@ export function createEdictDeps(options: EdictDepsOptions = {}): EdictDeps {
         resolve({ code: 2, stdout: "", stderr: "Hermes Python 运行时未安装（需要 edict 看板）" });
         return;
       }
-      const env: NodeJS.ProcessEnv = {
-        ...process.env,
+      // 安全（安全审计 S-29）：白名单透传 + 显式注入看板所需变量，不再继承主进程全部环境
+      const env: NodeJS.ProcessEnv = buildChildEnv(process.env, {
         EDICT_HOME: dataRoot,
         PYTHONIOENCODING: "utf-8",
         PYTHONUTF8: "1",
         AGENT_ID: envExtra?.AGENT_ID || "taizi",
-      };
+      });
       // args[0] = kanban_update.py（占位），其余为 CLI 参数
-      const scriptArgs = args.length > 1 ? args.slice(1) : args;
+      const scriptArgs = sanitizeChildArgs(args.length > 1 ? args.slice(1) : args);
       const child = spawn(python, [scriptPath, ...scriptArgs], { env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
       let stdout = "";
       let stderr = "";

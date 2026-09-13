@@ -12,6 +12,7 @@
 // - 结果回传：socket.emit('remote:result', ...)，云端 B5 回传飞书
 
 import { EventEmitter } from 'node:events'
+import { buildChildEnv } from './policy/child-env'
 import { execFile } from 'node:child_process'
 import { readFile, stat } from 'node:fs/promises'
 import { shell } from 'electron'
@@ -1223,7 +1224,7 @@ export class RemoteControlManager extends EventEmitter {
           execFile(
             exe,
             args,
-            { timeout: SYSTEM_COMMAND_TIMEOUT_MS, maxBuffer: SYSTEM_COMMAND_MAX_BUFFER, windowsHide: true, encoding: 'utf8' },
+            { timeout: SYSTEM_COMMAND_TIMEOUT_MS, maxBuffer: SYSTEM_COMMAND_MAX_BUFFER, windowsHide: true, encoding: 'utf8', env: buildChildEnv(process.env) },
             (err, out, errOut) => {
               if (err) {
                 reject(

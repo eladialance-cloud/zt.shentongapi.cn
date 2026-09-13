@@ -14,6 +14,7 @@
 // 同时兼容"全新 n8n 实例（尚无 owner 账号）"与"已有实例密码错乱"两种情况。
 
 import { app, session } from 'electron'
+import { buildChildEnv } from './policy/child-env'
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -258,7 +259,8 @@ function resetOwnerPassword(password: string): Promise<{ email: string }> {
           dbPath,
           password,
         ],
-        { windowsHide: true },
+        // 安全（安全审计 S-29）：不继承主进程全部环境变量（只白名单透传运行必需键）
+        { windowsHide: true, env: buildChildEnv(process.env) },
       )
       let stdout = ''
       let stderr = ''

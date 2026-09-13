@@ -19,6 +19,7 @@ import { createConnection } from 'node:net'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import treeKill from 'tree-kill'
+import { requiresShell } from '../policy/child-env'
 import type {
   ServiceName,
   ServiceStatus,
@@ -277,7 +278,9 @@ export class RowExecutor {
               env: spec.env,
               stdio: ['ignore', 'pipe', 'pipe'],
               windowsHide: true,
-              shell: spec.useShell,
+              // 安全（安全审计 S-28）：只有 Windows 的 .cmd/.bat 才允许经 cmd.exe；
+              // 其余命令一律直接 spawn，避免参数被 shell 展开成注入面。
+              shell: spec.useShell && requiresShell(spec.command),
             })
     } catch (err) {
       info.status = 'error'

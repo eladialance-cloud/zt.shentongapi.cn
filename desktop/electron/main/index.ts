@@ -1,6 +1,7 @@
 // Electron 主进程入口
 
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { buildChildEnv } from './policy/child-env'
 import { hardenIpc, initIpcGuard } from './ipc-guard'
 import { installIpcRegistry } from './ipc-registry'
 import log from 'electron-log'
@@ -191,7 +192,7 @@ function buildHermesOrchestrateDeps(token: string): OrchestrateDeps {
   const auth = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }
   const hermesRoot = join(getRuntimeRoot(), 'hermes')
   const hermesEnv = {
-    ...process.env,
+    ...buildChildEnv(process.env),
     HERMES_NODE: join(hermesRoot, 'node', 'node.exe'),
     HERMES_ENTRY: join(hermesRoot, 'node_modules', 'hermes-agent', 'bin', 'hermes.js'),
     HERMES_HOME: join(app.getPath('userData'), 'hermes-home'),

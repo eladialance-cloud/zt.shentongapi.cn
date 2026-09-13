@@ -13,6 +13,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import * as crypto from 'node:crypto'
 import { app } from 'electron'
+import { buildChildEnv, requiresShell } from './policy/child-env'
 import type {
   ModuleDataDisposition,
   ModuleUninstallResult,
@@ -112,7 +113,7 @@ function rowPort(id: string): number {
 /** N8N 子进程环境变量（每次启动实时构建，注入 API Key 与数据目录） */
 function buildN8nEnv(): NodeJS.ProcessEnv {
   return {
-    ...process.env,
+    ...buildChildEnv(process.env),
     N8N_HOST: '127.0.0.1',
     N8N_PORT: '5678',
     N8N_PROTOCOL: 'http',
@@ -251,7 +252,7 @@ function buildHermesEnv(): NodeJS.ProcessEnv {
     console.warn('[service-manager] mkdir hermes-chat failed:', err)
   }
   return {
-    ...process.env,
+    ...buildChildEnv(process.env),
     PORT: String(rowPort('hermes')),
     HERMES_HOME: home,
     HERMES_API_SERVER_KEY: key,
@@ -398,7 +399,7 @@ function syncFlowsConfigFile(): void {
 function buildVideoClawEnv(): NodeJS.ProcessEnv {
   const accountingDir = path.join(app.getPath('userData'), 'hermes-chat')
   return {
-    ...process.env,
+    ...buildChildEnv(process.env),
     VIDEO_CLAW_LLM_PROXY_BASE: LLM_PROXY_BASE,
     VIDEO_CLAW_PROXY_KEY: llmProxyKey || '',
     ST_API_BASE,
@@ -823,10 +824,11 @@ export class ServiceManager extends EventEmitter {
             ? ['serve']
             : resolved.args
 
-    // Windows 下 .cmd/.bat 必须经 cmd.exe 执行；路径可能含空格/中文
-    const isCmdScript = process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolved.cmd)
-    const needsQuote = isCmdScript || (process.platform === 'win32' && /\s/.test(resolved.cmd))
-    const spawnTarget = needsQuote ? '"' + resolved.cmd + '"' : resolved.cmd
+    // Windows 下 .cmd/.bat 必须经 cmd.exe 执行（Node 18+ 不再隐式兜底）；路径可能含空格/中文。
+    // 安全（安全审计 S-28）：只有 .cmd/.bat 才开 shell —— 其余命令若走 shell，命令与参数会被 cmd.exe 展开，
+    // 一旦 command/args 混入外部可控内容即成命令注入面；带空格的路径由 spawn 直接传 argv，无需加引号。
+    const useShell = requiresShell(resolved.cmd)
+    const spawnTarget = useShell ? '"' + resolved.cmd + '"' : resolved.cmd
 
     return {
       ok: true,
@@ -834,7 +836,7 @@ export class ServiceManager extends EventEmitter {
         command: spawnTarget,
         args: spawnArgs,
         env: spawnEnv,
-        useShell: process.platform === 'win32',
+        useShell,
         permissions: row.permissions,
         writableDirs: row.writableDirs,
         workspaceDir: row.writableDirs[0],
@@ -1280,6 +1282,8 @@ async install(name: ServiceName, onProgress?: (percent: number) => void): Promis
       await new Promise<void>((resolve) => {
         const child = spawn(nodeExe, [prebuildBin, '-r', 'napi'], {
           cwd: sqliteDir,
+          // 安全（安全审计 S-29）：下载器不需要平台凭据，白名单透传即可
+          env: buildChildEnv(process.env),
           stdio: ['ignore', 'pipe', 'pipe'],
           windowsHide: true
         })

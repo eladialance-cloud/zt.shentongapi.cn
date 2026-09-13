@@ -27,6 +27,7 @@ import {
 } from './service-registry/whitelist'
 import { getFlowsLlmIntegration } from './service-manager'
 import { assertKnownFlowId as isKnownFlowId, isSafeFlowId } from './policy/n8n-path-policy'
+import { buildChildEnv } from './policy/child-env'
 
 /** 业务流元数据（对应 Python 侧 list_flows 的 _META_FIELDS） */
 export interface FlowMeta {
@@ -81,18 +82,22 @@ function resolveCliPaths(): {
   return { python, toolBox, moduleRoot, bundled: !!bundledPython, bootstrap }
 }
 
-/** 构造 flows CLI 子进程环境（含 LLM 通道与状态目录，避免装到只读安装目录） */
+/**
+ * 构造 flows CLI 子进程环境（含 LLM 通道与状态目录，避免装到只读安装目录）。
+ *
+ * 安全（安全审计 S-58 / S-29）：不再 spread process.env —— 业务流 Python 会执行外部可控内容，
+ * 默认不继承主进程凭据。运行必需键走白名单透传，业务通道密钥在下面显式注入。
+ */
 function buildCliEnv(moduleRoot: string): NodeJS.ProcessEnv {
   const stateRoot = flowsStateRoot(app.getPath('userData'))
   const llm = getFlowsLlmIntegration()
   const base = buildFlowsEnv(moduleRoot, { stateRoot })
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
+  const env: NodeJS.ProcessEnv = buildChildEnv(process.env, {
     ...base,
     // Python 侧输出统一 UTF-8（Windows 下避免中文乱码）
     PYTHONIOENCODING: 'utf-8',
     PYTHONUTF8: '1',
-  }
+  })
   // 注入平台 llm-proxy 通道（业务流需要 LLM 时用；未登录时留空，引擎会返回 LLM_NOT_CONFIGURED）
   if (llm.apiKey) {
     env.FLOWS_LLM_BASE_URL = llm.baseUrl

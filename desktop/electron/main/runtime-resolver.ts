@@ -12,10 +12,11 @@
 // - 开发环境下 process.resourcesPath 指向 electron 自身目录，需用 process.cwd() 兜底
 
 import { app } from "electron";
+import { buildChildEnv } from "./policy/child-env";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import * as crypto from "node:crypto";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { getRuntimeRoot } from "./runtime-config";
 import { EMBEDDED_MANIFEST } from "./runtime-manifest-embedded";
 import type {
@@ -48,7 +49,8 @@ function getUserDataRuntimePath(): string {
 function findHostCommand(cmd: string): boolean {
   try {
     const tool = process.platform === "win32" ? "where" : "which";
-    execSync(`${tool} ${cmd}`, { stdio: "ignore" });
+    // 安全（安全审计 S-27）：execFileSync 直接传 argv，不做命令字符串拼接 —— 禁止把外部输入接进这里
+    execFileSync(tool, [cmd], { stdio: "ignore" });
     return true;
   } catch {
     return false;
@@ -271,7 +273,7 @@ export function resolve(name: ServiceName): ResolvedRuntime | null {
       return {
         cmd: builtinPath,
         args: name === "n8n" ? ["start"] : [],
-        env: { ...process.env },
+        env: buildChildEnv(process.env),
         source: "builtin",
       };
     }
@@ -282,7 +284,7 @@ export function resolve(name: ServiceName): ResolvedRuntime | null {
       return {
         cmd: userDataPath,
         args: name === "n8n" ? ["start"] : [],
-        env: { ...process.env },
+        env: buildChildEnv(process.env),
         source: "userData",
       };
     }
@@ -294,7 +296,7 @@ export function resolve(name: ServiceName): ResolvedRuntime | null {
     return {
       cmd: hostCmd.cmd,
       args: hostCmd.args,
-      env: { ...process.env },
+      env: buildChildEnv(process.env),
       source: "host",
     };
   }
