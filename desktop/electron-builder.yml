@@ -64,10 +64,10 @@ win:
   icon: build/icon.ico
   # 默认 signAndEditExecutable=true：rcedit 会把 build/icon.ico 写入 exe（桌面快捷方式/任务栏图标），无证书时只改图标不签名
   artifactName: ShenTongAI-Setup-${version}-${arch}.${ext}
-  # 代码签名：通过环境变量配置，不硬编码证书路径/密码
-  # 构建时设置 CSC_LINK（证书文件路径或 base64）与 CSC_KEY_PASSWORD 环境变量即可启用签名
-  # certificateFile: ${env.CSC_LINK}
-  # certificatePassword: ${env.CSC_KEY_PASSWORD}
+  # 代码签名（安全审计 S-02）：证书由 CI 经 CSC_LINK（.pfx 路径或 base64）+ CSC_KEY_PASSWORD 注入，
+  # electron-builder 会自动读取这两个环境变量 —— 这里刻意不写 ${env.X}：未配置的环境变量会让配置解析失败，
+  # 而「是否必须已签名」交给门禁脚本强制：npm run check:release-signing（已挂进 build:win / build:mac），
+  # 缺证书直接构建失败；仅本地调试可设 ST_ALLOW_UNSIGNED_RELEASE=1 绕过（会打 warn）。
 nsis:
   oneClick: false
   perMachine: false
@@ -91,13 +91,12 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  # 代码签名 + 公证：通过环境变量配置，不硬编码证书/凭据
-  # Developer ID 签名：设置 CSC_LINK / CSC_KEY_PASSWORD（或 CSC_NAME 使用钥匙串身份）
-  # identity: ${env.CSC_NAME}
-  # 公证（Notarization）：设置 APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
-  # notarize:
-  #   teamId: ${env.APPLE_TEAM_ID}
+  # 代码签名 + 公证（安全审计 S-02）：凭据全部走环境变量，不写进仓库。
+  # Developer ID 签名：CSC_LINK + CSC_KEY_PASSWORD（或钥匙串身份 CSC_NAME，后者无需密码）；
+  # electron-builder 26 检测到 APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID 时自动公证，
+  # 因此这里同样不写 ${env.X}（未配置会解析失败）；缺凭据由 check:release-signing 门禁拦下。
 dmg:
+  # 待证书到位后可置 true（对 dmg 本身签名）；当前依赖 Developer ID 签名 + 公证，未启用 dmg 签名
   sign: false
   contents:
     - x: 130

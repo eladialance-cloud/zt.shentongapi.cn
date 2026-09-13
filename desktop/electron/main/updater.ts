@@ -4,11 +4,23 @@
 
 import { app, BrowserWindow, dialog, session } from 'electron'
 import { autoUpdater, type UpdateInfo } from 'electron-updater'
+import { isStrictUpdateMode, verifyLatestYml } from './policy/update-manifest'
 import * as path from 'node:path'
 import * as fs from 'node:fs'
 import type { UpdateStatusPayload } from '../shared/types'
 
 const UPDATE_SERVER_URL = process.env.UPDATE_SERVER_URL || 'https://zt.shentongapi.cn/desktop/'
+
+/**
+ * electron-updater 6.x 使用独立 session（partition 名固定为 "electron-updater"，
+ * 见其 out/electronHttpExecutor.js 的 NET_SESSION_NAME）—— 更新请求本来就不走 defaultSession。
+ * 因此代理只在更新 session 上设置（S-01 问题 2：原实现在 defaultSession 上设 direct://，会全局生效，
+ * 把渲染层 fetch / 本地 Hermes 调用的代理与 TLS 检测一起绕掉）。
+ */
+const UPDATER_SESSION_PARTITION = 'electron-updater'
+/** 平台对应的发布清单名（electron-builder generic provider 约定） */
+const UPDATE_MANIFEST_NAME =
+  process.platform === 'darwin' ? 'latest-mac.yml' : process.platform === 'linux' ? 'latest-linux.yml' : 'latest.yml'
 
 /** UpdateInfo 扩展字段（服务端通过 latest.yml 下发） */
 interface UpdateInfoExtension extends UpdateInfo {
@@ -28,6 +40,8 @@ export class AppUpdater {
   private mainWindow: BrowserWindow | null = null
   private forceUpdateFlag = false
   private lastUpdateInfo: UpdateInfoExtension | null = null
+  /** 更新专用 session（代理只在这里生效，不污染 defaultSession） */
+  private readonly updaterSession = session.fromPartition(UPDATER_SESSION_PARTITION, { cache: false })
 
   constructor(window: BrowserWindow) {
     this.mainWindow = window
@@ -48,13 +62,15 @@ export class AppUpdater {
       })
       return
     }
+    void this.runCheckForUpdates()
+  }
 
-    // 绕过系统代理直连更新服务器，避免代理 SSL MITM 导致更新失败
-    try {
-      session.defaultSession.setProxy({ proxyRules: 'direct://' })
-    } catch (err) {
-      console.warn('[updater] setProxy failed:', err)
-    }
+  /**
+   * 真实检查流程：配置更新 session → 校验发布清单签名 → 交给 electron-updater。
+   * 验签不通过直接停下（S-01）：宁可不更新，也不装来源不明的包。
+   */
+  private async runCheckForUpdates(): Promise<void> {
+    await this.configureUpdaterSession()
 
     try {
       autoUpdater.setFeedURL({ provider: 'generic', url: UPDATE_SERVER_URL, channel: 'latest' })
@@ -63,6 +79,19 @@ export class AppUpdater {
     }
 
     this.sendStatus({ status: 'checking', forceUpdate: false, grayscaleHit: false, progress: 0 })
+
+    const signature = await this.verifyReleaseSignature()
+    if (!signature.ok) {
+      this.sendStatus({
+        status: 'error',
+        forceUpdate: false,
+        grayscaleHit: false,
+        progress: 0,
+        message: signature.message
+      })
+      return
+    }
+
     autoUpdater.checkForUpdates().catch((err) => {
       console.error('[updater] checkForUpdates failed:', err)
       this.sendStatus({
@@ -73,6 +102,59 @@ export class AppUpdater {
         message: err instanceof Error ? err.message : String(err)
       })
     })
+  }
+
+  /** 代理只作用于更新 session；默认直连（沿用旧行为，但不再全局生效） */
+  private async configureUpdaterSession(): Promise<void> {
+    try {
+      if (process.env.UPDATE_USE_SYSTEM_PROXY === '1') {
+        await this.updaterSession.setProxy({ mode: 'system' })
+      } else {
+        await this.updaterSession.setProxy({ proxyRules: 'direct://' })
+      }
+    } catch (err) {
+      console.warn('[updater] updater session setProxy failed:', err)
+    }
+  }
+
+  /**
+   * 校验 latest.yml 的 Ed25519 签名（S-01）。
+   * - 严格模式（默认）且配置了 ST_UPDATE_PUBKEY：验签失败 → 拒绝更新；
+   * - 显式 ST_UPDATE_ALLOW_UNSIGNED=1：跳过验签并告警（灰度过渡态）；
+   * - 未配置公钥：按「签名尚未启用」放行并打 error 级日志（否则会直接断掉全部更新）。
+   */
+  private async verifyReleaseSignature(): Promise<{ ok: boolean; message?: string }> {
+    const publicKey = (process.env.ST_UPDATE_PUBKEY || '').trim()
+    if (!isStrictUpdateMode(process.env)) {
+      console.warn('[updater] ST_UPDATE_ALLOW_UNSIGNED=1：跳过 latest.yml 验签（过渡态，请尽快配置发布签名）')
+      return { ok: true }
+    }
+    if (!publicKey) {
+      console.error('[updater] 未配置 ST_UPDATE_PUBKEY，无法校验发布清单签名；本次按「签名未启用」放行，请尽快配置发布公钥')
+      return { ok: true }
+    }
+    const base = UPDATE_SERVER_URL.endsWith('/') ? UPDATE_SERVER_URL : UPDATE_SERVER_URL + '/'
+    try {
+      // 用更新 session 自己的 fetch：代理设置只作用于这条请求链（Electron 41 起 session.fetch 可用）
+      const manifestRes = await this.updaterSession.fetch(base + UPDATE_MANIFEST_NAME)
+      if (!manifestRes.ok) {
+        return { ok: false, message: '获取 ' + UPDATE_MANIFEST_NAME + ' 失败（HTTP ' + manifestRes.status + '）' }
+      }
+      const payload = Buffer.from(await manifestRes.arrayBuffer())
+      const sigRes = await this.updaterSession.fetch(base + UPDATE_MANIFEST_NAME + '.sig')
+      if (!sigRes.ok) {
+        return { ok: false, message: '获取 ' + UPDATE_MANIFEST_NAME + '.sig 失败（HTTP ' + sigRes.status + '）；请在服务端先产出签名清单' }
+      }
+      const signature = await sigRes.text()
+      const result = verifyLatestYml(payload, signature, publicKey)
+      if (!result.ok) {
+        console.error('[updater] latest.yml 验签失败: ' + result.reason)
+        return { ok: false, message: '发布清单验签失败（' + result.reason + '），已中止更新检查' }
+      }
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, message: '验签请求异常: ' + (err instanceof Error ? err.message : String(err)) }
+    }
   }
 
   /** 触发下载更新 */

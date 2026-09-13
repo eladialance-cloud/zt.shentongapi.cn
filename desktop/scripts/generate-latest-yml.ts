@@ -37,6 +37,7 @@ import {
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { publicKeyFromPrivateKey, signLatestYml } from "../electron/main/policy/update-manifest";
 
 // ---------- 常量 ----------
 
@@ -215,6 +216,25 @@ async function main(): Promise<void> {
   // 6. 写入文件到安装包输出目录。
   const OUTPUT_PATH = path.join(INSTALLER_DIR, "latest.yml");
   writeFileSync(OUTPUT_PATH, yml, "utf-8");
+
+  // 7. 可选：用 ST_UPDATE_PRIVKEY 生成 latest.yml.sig（Ed25519 detached 签名，base64）。
+  //    客户端内置 ST_UPDATE_PUBKEY，验签不过直接拒绝更新（安全审计 S-01：避免换哈希即换包）。
+  const privateKey = (process.env.ST_UPDATE_PRIVKEY || "").trim();
+  if (privateKey) {
+    try {
+      const signature = signLatestYml(yml, privateKey);
+      writeFileSync(OUTPUT_PATH + ".sig", signature + "\n", "utf-8");
+      log(`latest.yml.sig 已生成（配套公钥 ST_UPDATE_PUBKEY = ${publicKeyFromPrivateKey(privateKey)}）`);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      err(`签名失败：${message}`);
+      err("客户端严格模式下会拒绝未签名清单，请检查 ST_UPDATE_PRIVKEY");
+      process.exit(1);
+    }
+  } else {
+    log("未设置 ST_UPDATE_PRIVKEY：跳过 latest.yml.sig（服务端未启用发布签名）");
+    log("  生成密钥对：node:crypto generateKeyPairSync('ed25519')，私钥走 ST_UPDATE_PRIVKEY，公钥内置客户端 ST_UPDATE_PUBKEY");
+  }
 
   console.log("");
   log(`latest.yml 已生成: ${OUTPUT_PATH}`);
