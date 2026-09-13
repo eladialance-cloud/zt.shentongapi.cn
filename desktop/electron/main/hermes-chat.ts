@@ -74,6 +74,11 @@ export interface HermesChatDeps {
   contextDir?: string;
   /** 官署人格 SOUL 解析（profileId -> SOUL.md 文本；缺省不注入） */
   readSoul?: (profileId: string) => string | null;
+  /**
+   * 敏感文件落盘（主进程注入 safeStorage 加密实现，见 services/secure-json-store）。
+   * 缺省时**拒绝写入**而非退化为明文（fail-closed）；仅单测会省略该注入。
+   */
+  writeSecureFile?: (file: string, value: unknown) => boolean;
 }
 
 export interface HermesChatSendResult {
@@ -287,7 +292,7 @@ export class HermesChatService extends EventEmitter {
     try {
       const dir = this.deps.contextDir;
       mkdirSync(dir, { recursive: true });
-      writeFileSync(join(dir, 'auth.json'), JSON.stringify({ token: params.token }), 'utf-8');
+      this.writeAuthFile(dir, params.token);
       writeFileSync(
         join(dir, 'current-accounting.json'),
         JSON.stringify({ modelId: params.modelId ?? null }),
@@ -312,9 +317,24 @@ export class HermesChatService extends EventEmitter {
     if (!this.deps.contextDir || !token) return;
     try {
       mkdirSync(this.deps.contextDir, { recursive: true });
-      writeFileSync(join(this.deps.contextDir, 'auth.json'), JSON.stringify({ token }), 'utf-8');
+      this.writeAuthFile(this.deps.contextDir, token);
     } catch (err) {
       console.error('[hermes-chat] sync auth failed:', err);
+    }
+  }
+
+  /**
+   * 写入工具卡凭据 auth.json（加密落盘）。
+   * 未注入 writeSecureFile 或落盘失败时不写明文，只告警（工具卡会提示未登录）。
+   */
+  private writeAuthFile(dir: string, token: string): void {
+    const write = this.deps.writeSecureFile;
+    if (!write) {
+      console.error('[hermes-chat] 未注入敏感文件加密实现，拒绝写明文 auth.json');
+      return;
+    }
+    if (!write(join(dir, 'auth.json'), { token })) {
+      console.error('[hermes-chat] auth.json 加密落盘失败（工具卡可能提示未登录）');
     }
   }
 

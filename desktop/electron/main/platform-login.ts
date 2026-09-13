@@ -1,14 +1,15 @@
 /**
  * 发布平台扫码登录（桌面端）
- * 账号绑定在桌面端完成：弹出登录窗口（persist 分区会话）→ 采集 cookies → safeStorage 加密 → 存本地。
+ * 账号绑定在桌面端完成：弹出登录窗口（persist 分区会话）→ 采集 cookies → 主进程密文落盘（见 services/secure-json-store）→ 存本地。
  * 后续发布窗口复用同一 partition 会话；管理后台只控制平台开关。
  */
 
-import { app, BrowserWindow, net, safeStorage, session, shell } from 'electron'
+import { app, BrowserWindow, net, session, shell } from 'electron'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getMainWindow } from './windows/main-window'
 import { detectScanPhaseFromText, hasSessionCookie, type ScanPhase } from './scan-heuristics'
+import { openText, sealText } from './services/secure-json-store'
 import type { PlatformInfo, PlatformSetupLoginResult, PlatformTestLoginResult } from '../shared/types'
 
 /** 平台预设（id 与后端 publish_platforms.platform 一致） */
@@ -113,31 +114,24 @@ function readSessionMap(): Record<string, SessionEntry> {
 function writeSessionMap(map: Record<string, SessionEntry>): void {
   try {
     mkdirSync(app.getPath('userData'), { recursive: true })
-    writeFileSync(sessionFilePath(), JSON.stringify(map, null, 2), 'utf8')
+    writeFileSync(sessionFilePath(), JSON.stringify(map, null, 2), { encoding: 'utf8', mode: 0o600 })
   } catch (err) {
     console.warn('[platform-login] 写入本地会话失败:', err)
   }
 }
 
-/** 加密 cookies：safeStorage 可用时 'enc:'+base64，否则 'raw:'+明文 */
-function encryptCookies(cookiesJson: string): string {
-  if (safeStorage.isEncryptionAvailable()) {
-    return 'enc:' + safeStorage.encryptString(cookiesJson).toString('base64')
-  }
-  return 'raw:' + cookiesJson
+/**
+ * 加密 cookies（安全审计 S-61）：统一走主进程密文落盘。
+ * 加密不可用时返回 null —— 绝不回退 'raw:' 明文（旧明文由 openText 兼容读取后自动升级）。
+ */
+function encryptCookies(cookiesJson: string): string | null {
+  const sealed = sealText(cookiesJson)
+  if (!sealed) console.warn('[platform-login] 加密不可用，拒绝落盘平台会话（避免明文 Cookie）')
+  return sealed
 }
 
 function decryptCookies(enc: string): string | null {
-  try {
-    if (enc.startsWith('enc:')) {
-      if (!safeStorage.isEncryptionAvailable()) return null
-      return safeStorage.decryptString(Buffer.from(enc.slice(4), 'base64'))
-    }
-    if (enc.startsWith('raw:')) return enc.slice(4)
-    return null
-  } catch {
-    return null
-  }
+  return openText(enc)
 }
 
 function parseCookies(cookiesJson: string): CookieLike[] {
@@ -158,9 +152,12 @@ function toCookieHeader(cookiesJson: string): string {
 
 /** 写入单个平台会话（setupLogin 与 saveSession 共用） */
 function writeSession(platform: string, cookiesJson: string, displayName?: string): void {
+  const sealed = encryptCookies(cookiesJson)
+  // 加密不可用：宁可不记住登录态，也不落明文 Cookie
+  if (!sealed) return
   const map = readSessionMap()
   map[platform] = {
-    enc: encryptCookies(cookiesJson),
+    enc: sealed,
     ...(typeof displayName === 'string' && displayName ? { displayName } : {}),
   }
   writeSessionMap(map)

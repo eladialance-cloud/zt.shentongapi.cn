@@ -5,9 +5,10 @@
  * 依赖环境变量（由桌面端 service-manager 注入）：
  *   N8N_BASE_URL       - 本地 N8N 地址（默认 http://127.0.0.1:5678）
  *   ST_API_BASE        - 云端 API 地址（默认 https://zt.shentongapi.cn/api）
- *   ST_AUTH_FILE       - 云端登录信息文件（含 token）
+ *   ST_AUTH_FILE       - 云端登录信息文件（含 token，主进程加密落盘）
+ *   ST_AUTH_KEY        - 解密主密钥（base64，32 字节；与桌面端 safeStorage 保护的主密钥同源）
  */
-import { readFileSync } from 'node:fs';
+import { readAuthToken } from './auth-file.mjs';
 
 function arg(name, def = '') {
   const hit = process.argv.find((a) => a.startsWith('--' + name + '='));
@@ -31,10 +32,7 @@ async function main() {
   const apiBase = process.env.ST_API_BASE || 'https://zt.shentongapi.cn/api';
 
   // 1) 云端记账（已登录即按工作流定价扣费，0 免费；accountingId 已废弃，路由只认 JWT）
-  let token = '';
-  try {
-    token = (JSON.parse(readFileSync(process.env.ST_AUTH_FILE, 'utf8')).token) || '';
-  } catch {}
+  const token = readAuthToken();
   if (token) {
     const r = await fetch(apiBase + '/chat/accounting/tool', {
       method: 'POST',

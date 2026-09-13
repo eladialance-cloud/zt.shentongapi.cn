@@ -24,6 +24,7 @@ import type {
   ResolvedRuntime
 } from '../shared/types'
 import { resolve, verifyAll, getServiceVersionGap, isServiceContentStale } from './runtime-resolver'
+import { getOrCreateAuthKey } from './services/secure-json-store'
 import {
   ensureVideoClawConfig,
   syncVideoClawConfig,
@@ -269,6 +270,8 @@ function buildHermesEnv(): NodeJS.ProcessEnv {
     N8N_BASE_URL: 'http://127.0.0.1:' + rowPort('n8n'),
     ST_API_BASE,
     ST_AUTH_FILE: path.join(accountingDir, 'auth.json'),
+    // 主密钥：auth.json 已加密落盘（安全审计 S-05），技能脚本用它与主进程解密同一份密文
+    ST_AUTH_KEY: getOrCreateAuthKey() ?? '',
     ST_ACCOUNTING_FILE: path.join(accountingDir, 'current-accounting.json'),
     EDICT_HOME: getEdictDataRoot(),
   }
@@ -401,6 +404,7 @@ function buildVideoClawEnv(): NodeJS.ProcessEnv {
     ST_API_BASE,
     ST_ACCOUNTING_FILE: path.join(accountingDir, 'current-accounting.json'),
     ST_AUTH_FILE: path.join(accountingDir, 'auth.json'),
+    ST_AUTH_KEY: getOrCreateAuthKey() ?? '',
   }
 }
 

@@ -15,6 +15,7 @@ import * as fs from "node:fs";
 import { createConnection } from "node:net";
 import * as path from "node:path";
 import { getRuntimeRoot } from "./runtime-config";
+import { getOrCreateAuthKey, readAuthToken } from "./services/secure-json-store";
 import { EDICT_PROFILE_IDS, syncHermesProfileConfigs, applyAgentModels } from "./hermes-config";
 import {
   appendFlowLog,
@@ -123,6 +124,8 @@ function buildHermesCliEnv(): NodeJS.ProcessEnv {
     N8N_BASE_URL: "http://127.0.0.1:5678",
     ST_API_BASE,
     ST_AUTH_FILE: path.join(accountingDir, "auth.json"),
+    // 主密钥：auth.json 已加密落盘（安全审计 S-05），技能脚本用它与主进程解密同一份密文
+    ST_AUTH_KEY: getOrCreateAuthKey() ?? "",
     ST_ACCOUNTING_FILE: path.join(accountingDir, "current-accounting.json"),
     EDICT_HOME: getEdictDataRoot(),
   };
@@ -368,16 +371,8 @@ export function createEdictDeps(options: EdictDepsOptions = {}): EdictDeps {
 
   // 编排结束 best-effort 计费回写：POST /api/hermes/executions/report（call_type=orchestrate）
   const reportExecution: EdictDeps["reportExecution"] = async (input) => {
-    const authFile = path.join(app.getPath("userData"), "hermes-chat", "auth.json");
-    let token = "";
-    try {
-      if (fs.existsSync(authFile)) {
-        const auth = JSON.parse(fs.readFileSync(authFile, "utf-8"));
-        token = typeof auth?.token === "string" ? auth.token : "";
-      }
-    } catch {
-      // 未登录/文件损坏：跳过回写
-    }
+    // auth.json 已加密落盘（安全审计 S-05）：统一走 readAuthToken
+    const token = readAuthToken();
     if (!token) return;
     const res = await fetch(`${ST_API_BASE}/hermes/executions/report`, {
       method: "POST",
@@ -498,16 +493,8 @@ export async function importTaskAssetsToLibrary(deps: EdictDeps, taskId: string)
     return;
   }
   // 未登录（无 token）→ 不标记，随轮询/重启重试
-  const authFile = path.join(app.getPath("userData"), "hermes-chat", "auth.json");
-  let token = "";
-  try {
-    if (fs.existsSync(authFile)) {
-      const auth = JSON.parse(fs.readFileSync(authFile, "utf-8"));
-      token = typeof auth?.token === "string" ? auth.token : "";
-    }
-  } catch {
-    // 读取失败按未登录处理
-  }
+  // auth.json 已加密落盘（安全审计 S-05）：统一走 readAuthToken
+  const token = readAuthToken();
   if (!token) {
     deps.log?.(`[edict] 素材入库跳过 ${taskId}（未登录，稍后重试）`);
     return;
@@ -935,14 +922,7 @@ export function createEdictExtraDeps(base: EdictDeps, opts: CreateEdictExtraDeps
     edictDataRoot: getEdictDataRoot(),
     runtimeRoot: getRuntimeRoot(),
     stApiBase: ST_API_BASE,
-    getAuthToken: () => {
-      try {
-        const auth = JSON.parse(fs.readFileSync(path.join(app.getPath("userData"), "hermes-chat", "auth.json"), "utf-8"));
-        return typeof auth?.token === "string" ? auth.token : "";
-      } catch {
-        return "";
-      }
-    },
+    getAuthToken: readAuthToken,
     ensureProfiles: (ids) => ensureEdictHermesProfiles(ids),
     getHermesRuntimeStatus: opts.getHermesRuntimeStatus ?? (() => probeHermesRuntime()),
   };

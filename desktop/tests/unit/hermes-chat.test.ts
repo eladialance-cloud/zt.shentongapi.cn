@@ -4,7 +4,7 @@
  */
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -163,18 +163,29 @@ describe('HermesChatService', () => {
     const { fetchImpl } = makeSse(['data: [DONE]'])
     const dir = mkdtempSync(join(tmpdir(), 'hermes-chat-ctx-'))
     try {
+      // 敏感凭据（auth.json）交给注入的加密实现落盘（安全审计 S-05）；此处记录调用以校验契约
+      const secureWrites: Array<{ file: string; value: unknown }> = []
       const svc = new HermesChatService({
         baseUrl: 'http://127.0.0.1:8642',
         sessionToken: () => 'sess-1',
         fetchImpl,
         contextDir: dir,
+        writeSecureFile: (file, value) => {
+          secureWrites.push({ file, value })
+          writeFileSync(file, 'SEALED', 'utf8')
+          return true
+        },
       })
       await svc.send(
         { text: '查资料', token: 'tok-abc', modelId: 'custom/deep-shentong', knowledgeBaseId: 3 },
         () => {},
         () => {},
       )
-      assert.deepEqual(JSON.parse(readFileSync(join(dir, 'auth.json'), 'utf8')), { token: 'tok-abc' })
+      // auth.json 必须走加密写入，且内容不含明文 token
+      assert.equal(secureWrites.length, 1)
+      assert.equal(secureWrites[0].file, join(dir, 'auth.json'))
+      assert.deepEqual(secureWrites[0].value, { token: 'tok-abc' })
+      assert.equal(readFileSync(join(dir, 'auth.json'), 'utf8'), 'SEALED')
       assert.deepEqual(JSON.parse(readFileSync(join(dir, 'current-accounting.json'), 'utf8')), { modelId: 'custom/deep-shentong' })
       assert.deepEqual(JSON.parse(readFileSync(join(dir, 'knowledge-scope.json'), 'utf8')), { mode: 'kb', kbId: 3 })
     } finally {

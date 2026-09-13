@@ -4,9 +4,11 @@
  * 检索云端知识库：全局（本人库 + 官方已发布库）或指定库
  * 依赖环境变量（由桌面端 service-manager 注入）：
  *   ST_API_BASE        - 云端 API 地址（默认 https://zt.shentongapi.cn/api）
- *   ST_AUTH_FILE       - 云端登录信息文件（含 token）
+ *   ST_AUTH_FILE       - 云端登录信息文件（含 token，主进程加密落盘）
+ *   ST_AUTH_KEY        - 解密主密钥（base64，32 字节；与桌面端 safeStorage 保护的主密钥同源）
  */
 import { readFileSync } from 'node:fs';
+import { readAuthToken } from './auth-file.mjs';
 import { dirname, join } from 'node:path';
 
 function arg(name, def = '') {
@@ -43,10 +45,7 @@ async function main() {
 
   const apiBase = process.env.ST_API_BASE || 'https://zt.shentongapi.cn/api';
 
-  let token = '';
-  try {
-    token = JSON.parse(readFileSync(process.env.ST_AUTH_FILE, 'utf8')).token || '';
-  } catch {}
+  const token = readAuthToken();
   if (!token) {
     console.error('未登录或离线，请先在桌面端登录并联网');
     process.exit(1);

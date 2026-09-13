@@ -4,10 +4,8 @@
 // 旧实现由后端返回假成功。这里由桌面端直连本地 N8N webhook 真跑，
 // 并把云端 token 注入 payload（与 n8n-run-workflow 技能行为对齐）。
 
-import { app } from 'electron';
 import { getN8nWebhookPath } from './n8n-templates';
-import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { readAuthToken } from './services/secure-json-store';
 
 const N8N_BASE = process.env.N8N_BASE_URL || 'http://127.0.0.1:5678';
 
@@ -30,15 +28,8 @@ export interface RunN8nWorkflowResult {
 
 /** 读取云端登录 token（与 n8n-run-workflow 技能一致，供工作流内调用受保护接口） */
 function readCloudToken(): string {
-  try {
-    const dir = app.getPath('userData');
-    const authFile = join(dir, 'hermes-chat', 'auth.json');
-    if (!existsSync(authFile)) return '';
-    const parsed = JSON.parse(readFileSync(authFile, 'utf8'));
-    return typeof parsed?.token === 'string' ? parsed.token : '';
-  } catch {
-    return '';
-  }
+  // auth.json 已加密落盘（安全审计 S-05）：统一走 readAuthToken，勿直接 JSON.parse
+  return readAuthToken();
 }
 
 /** 直连本地 N8N webhook 执行工作流；多个候选路径逐个尝试 */

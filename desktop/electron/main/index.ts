@@ -15,6 +15,7 @@ import { registerHermesFsIpc } from './hermes-fs-ipc'
 import type { HermesChatMessage } from './hermes-chat'
 import { HERMES_SESSION_TOKEN_CREDENTIAL } from './hermes-client'
 import { getCredential } from './services/credential-store'
+import { authContextDir, readAuthToken, writeSecureJson } from './services/secure-json-store'
 import type { LlmIntegration } from '../shared/types'
 
 // GPU 白名单开关：解决部分显卡/驱动/远程桌面环境下 WebGL 被 Chromium 黑名单拦截的问题
@@ -556,8 +557,6 @@ const serviceManager = new ServiceManager()
 // 桌面端作为"执行器"：连接云端 sync 网关接收 remote:command，执行后 remote:result 回传
 const remoteControl = getRemoteControlManager()
 const remoteApiBase = ST_API_BASE.replace(/\/api$/, '')
-const remoteAuthFile = join(app.getPath('userData'), 'hermes-chat', 'auth.json')
-
 /** Hermes 对话服务（registerIpcHandlers 内初始化；B1 统一对话入口） */
 let hermesChatService: HermesChatService | null = null
 /** Hermes 会话首选模型（setModel 写入；send 未显式指定时缺省取用） */
@@ -565,15 +564,9 @@ let hermesPreferredModel = ''
 /** Hermes 本地 API 端口（与 hermes-client.ts / service-manager 注入一致） */
 const HERMES_LOCAL_PORT = 8642
 
-/** 读取云端登录 token（auth.json 由渲染层登录时同步写入） */
+/** 读取云端登录 token（auth.json 由渲染层登录时同步写入；已加密落盘，见 secure-json-store） */
 function readRemoteToken(): string {
-  try {
-    if (!existsSync(remoteAuthFile)) return ''
-    const parsed = JSON.parse(readFileSync(remoteAuthFile, 'utf8')) as { token?: unknown }
-    return typeof parsed?.token === 'string' ? parsed.token : ''
-  } catch {
-    return ''
-  }
+  return readAuthToken()
 }
 
 /**
@@ -760,7 +753,9 @@ function registerIpcHandlers(): void {
   };
   hermesChatService = new HermesChatService({
     sessionToken: () => getCredential(HERMES_SESSION_TOKEN_CREDENTIAL) ?? '',
-    contextDir: join(app.getPath('userData'), 'hermes-chat'),
+    contextDir: authContextDir(),
+    // 敏感凭据（auth.json）走 safeStorage 保护的密文落盘，禁止明文（安全审计 S-05）
+    writeSecureFile: writeSecureJson,
     readSoul: readProfileSoul,
   })
 

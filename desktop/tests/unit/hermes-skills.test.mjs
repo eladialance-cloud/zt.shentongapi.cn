@@ -8,6 +8,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
+import { createCipheriv } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -124,5 +125,58 @@ describe('hermes skills', () => {
       N8N_API_KEY: '',
     });
     assert.equal(JSON.parse(out.trim()).webhookHits, 2);
+  });
+});
+
+// 端到端：auth.json 密文化后，工具卡脚本仍能取到 token（安全审计 S-05 回归护栏）
+// 独立实现加密侧（node:crypto），验证 auth-file.mjs 文档声明的格式契约可从外部重放。
+describe('hermes skills × 加密 auth.json（S-05）', () => {
+  const KEY = Buffer.alloc(32, 7).toString('base64');
+
+  function sealForTest(plain) {
+    const iv = Buffer.alloc(12, 3);
+    const cipher = createCipheriv('aes-256-gcm', Buffer.from(KEY, 'base64'), iv);
+    const ct = Buffer.concat([cipher.update(Buffer.from(plain, 'utf8')), cipher.final()]);
+    return ['v1', iv.toString('base64'), cipher.getAuthTag().toString('base64'), ct.toString('base64')].join('.');
+  }
+
+  it('密文 auth.json + ST_AUTH_KEY：脚本能解出 token 并走到云端记账（401 中止）', () => {
+    const accFile = join(tmp, 'current-accounting-enc.json');
+    const authFile = join(tmp, 'auth-enc.json');
+    writeFileSync(accFile, JSON.stringify({ accountingId: 77 }), 'utf-8');
+    writeFileSync(
+      authFile,
+      JSON.stringify({ v: 1, enc: true, data: sealForTest(JSON.stringify({ token: 'st-token' })) }),
+      'utf-8',
+    );
+    assert.throws(
+      () =>
+        runScript({
+          ST_ACCOUNTING_FILE: accFile,
+          ST_AUTH_FILE: authFile,
+          ST_AUTH_KEY: KEY,
+          ST_API_BASE: base,
+          N8N_BASE_URL: base,
+          N8N_API_KEY: '',
+        }),
+      /未登录或离线/,
+    );
+  });
+
+  it('密文 auth.json 但缺 ST_AUTH_KEY：不猜、不回退，按未登录处理（仍能跑通工作流）', () => {
+    const authFile = join(tmp, 'auth-enc-nokey.json');
+    writeFileSync(
+      authFile,
+      JSON.stringify({ v: 1, enc: true, data: sealForTest(JSON.stringify({ token: 'st-token' })) }),
+      'utf-8',
+    );
+    const out = runScript({
+      ST_ACCOUNTING_FILE: join(tmp, 'nonexistent-accounting.json'),
+      ST_AUTH_FILE: authFile,
+      ST_API_BASE: base,
+      N8N_BASE_URL: base,
+      N8N_API_KEY: '',
+    });
+    assert.equal(JSON.parse(out.trim()).ok, true);
   });
 });
