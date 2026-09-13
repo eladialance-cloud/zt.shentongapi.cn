@@ -7,6 +7,7 @@ import { httpClient } from "@/api/http-client";
 import { useSystemStore } from "@/store/system";
 import { useAuthStore } from "@/store";
 import { startScheduledRunner, stopScheduledRunner } from "@/scheduler/scheduled-runner";
+import { decideSchedulerMode, type SchedulerMode } from "@/scheduler/scheduler-mode";
 import { Outlet } from "react-router-dom";
 import TopBar from "./TopBar";
 import Sidebar from "@/components/Sidebar";
@@ -59,22 +60,39 @@ export default function MainLayout() {
   }, [setBackendOnline, setChecking]);
 
 
-  // 定时任务调度器：软件开着才执行（登录后启动，30s 轮询到期任务 → Hermes 编排）
+  // 定时任务执行方：先问主进程常驻引擎的状态，再决定谁跑（避免启动瞬间双跑）
+  // 初值 null = 「还没问出结果」，此时两边都不启动，彻底杜绝启动瞬间双跑
+  const [schedulerMode, setSchedulerMode] = useState<SchedulerMode | null>(null);
+
   useEffect(() => {
-    startScheduledRunner(() => useAuthStore.getState().accessToken);
-    return () => stopScheduledRunner();
+    let cancelled = false;
+    const api = window.electronAPI?.cronEngine;
+    const hasApi = !!api?.getState;
+    const apply = (state: { enabled?: boolean } | null | undefined) => {
+      if (cancelled) return;
+      setSchedulerMode(decideSchedulerMode(state, hasApi));
+    };
+    if (hasApi) api.getState().then(apply).catch(() => apply(null));
+    else apply(null);
+    const unsubscribe = api?.onEvent?.((payload) => {
+      if (payload?.type === "state") apply(payload);
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, []);
 
-  // 主进程「后台常驻」引擎状态变化：开启时停用渲染层轮询，避免双触发
+  // 只有判定为「渲染层执行」时才启动轮询；主进程引擎负责时渲染层保持停止
   useEffect(() => {
-    const api = window.electronAPI?.cronEngine;
-    if (!api?.onEvent) return;
-    return api.onEvent((payload) => {
-      if (payload?.type !== "state") return;
-      if (payload.enabled) stopScheduledRunner();
-      else startScheduledRunner(() => useAuthStore.getState().accessToken);
-    });
-  }, []);
+    if (schedulerMode === null) return; // 主进程状态还没回来：先不启动，等判定结果
+    if (schedulerMode !== "renderer") {
+      stopScheduledRunner();
+      return;
+    }
+    startScheduledRunner(() => useAuthStore.getState().accessToken);
+    return () => stopScheduledRunner();
+  }, [schedulerMode]);
   return (
     <div className={styles.layout}>
       <TopBar />
