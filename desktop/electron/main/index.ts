@@ -16,6 +16,7 @@ import type { HermesChatMessage } from './hermes-chat'
 import { HERMES_SESSION_TOKEN_CREDENTIAL } from './hermes-client'
 import { getCredential } from './services/credential-store'
 import { authContextDir, readAuthToken, writeSecureJson } from './services/secure-json-store'
+import { describeOutboundDeny, evaluateOutboundUrl, mediaAllowedHosts } from './policy/url-policy'
 import type { LlmIntegration } from '../shared/types'
 
 // GPU 白名单开关：解决部分显卡/驱动/远程桌面环境下 WebGL 被 Chromium 黑名单拦截的问题
@@ -1289,8 +1290,17 @@ ipcMain.handle(
   ipcMain.handle('llm-integrations:remove', (_e, id: string) => llmIntegrations.remove(id))
   ipcMain.handle(
     'llm-integrations:test',
-    (_e, args: { baseUrl: string; apiKey: string; model: string }) =>
-      llmIntegrations.test(args?.baseUrl ?? '', args?.apiKey ?? '', args?.model ?? ''),
+    (_e, args: { baseUrl: string; apiKey: string; model: string }) => {
+      // 安全审计 S-41：主进程代发请求天然是 SSRF 入口。
+      // 放行环回/局域网（自建 Ollama / vLLM / 网关是正常用法），但链路本地与云元数据地址永不放行，
+      // 且非 http(s) 一律拒绝。
+      const decision = evaluateOutboundUrl(args?.baseUrl ?? '', { allowPrivate: true })
+      if (!decision.ok) {
+        console.warn('[llm-integrations] 连通性测试地址被拒绝：' + decision.reason)
+        return { ok: false, message: describeOutboundDeny(decision.reason) }
+      }
+      return llmIntegrations.test(args?.baseUrl ?? '', args?.apiKey ?? '', args?.model ?? '')
+    },
   )
 
   // 从后端同步启用中的 MCP 到 Hermes 本地配置（登录后由渲染层触发）
@@ -1308,24 +1318,38 @@ ipcMain.handle(
   })
 
   // 封面设计器：主进程拉取远程媒体（绕过 CORS，canvas 免污染）
-  const fetchMediaOnce = (target: URL): Promise<{ data: string; mime: string }> =>
+  // 安全审计 S-23：主进程代渲染层发请求 = SSRF 入口。每一跳都过出站策略（拒绝内网/环回/云元数据），
+  // 并限制重定向次数，避免「公网地址 302 → 内网地址」绕过入口检查。
+  const MEDIA_MAX_REDIRECTS = 3
+  const fetchMediaOnce = (target: URL, hop = 0): Promise<{ data: string; mime: string }> =>
     new Promise((resolve, reject) => {
-      const getter = target.protocol === 'https:' ? httpsGet : httpGet
+      const decision = evaluateOutboundUrl(target.href, { allowedHosts: mediaAllowedHosts() })
+      if (!decision.ok) {
+        console.warn('[media] 出站地址被拒绝：' + target.href + '（' + decision.reason + '）')
+        reject(new Error('媒体地址被安全策略拒绝：' + describeOutboundDeny(decision.reason)))
+        return
+      }
+      const safeTarget = new URL(decision.url)
+      const getter = safeTarget.protocol === 'https:' ? httpsGet : httpGet
       const req = getter(
-        target,
+        safeTarget,
         { headers: { 'User-Agent': 'ShenTongAI-Desktop', Accept: '*/*' }, timeout: 60000 },
         (res) => {
           const status = res.statusCode ?? 0
           if (status >= 300 && status < 400 && res.headers.location) {
             res.resume()
+            if (hop >= MEDIA_MAX_REDIRECTS) {
+              reject(new Error('媒体重定向次数过多（>' + MEDIA_MAX_REDIRECTS + '）'))
+              return
+            }
             let next: URL
             try {
-              next = new URL(res.headers.location, target)
+              next = new URL(res.headers.location, safeTarget)
             } catch {
               reject(new Error('媒体重定向地址无效'))
               return
             }
-            resolve(fetchMediaOnce(next))
+            resolve(fetchMediaOnce(next, hop + 1))
             return
           }
           if (status !== 200) {
@@ -1356,19 +1380,16 @@ ipcMain.handle(
       req.on('timeout', () => req.destroy(new Error('媒体拉取超时')))
     })
   ipcMain.handle('media:fetch-buffer', async (_event, mediaUrl: string) => {
-    const raw = typeof mediaUrl === 'string' ? mediaUrl : ''
-    let target: URL
-    try {
-      target = new URL(raw)
-    } catch {
-      throw new Error('无效的媒体链接')
-    }
-    if (target.protocol !== 'http:' && target.protocol !== 'https:') {
-      throw new Error('仅支持 http/https 媒体链接')
+    const decision = evaluateOutboundUrl(typeof mediaUrl === 'string' ? mediaUrl : '', {
+      allowedHosts: mediaAllowedHosts(),
+    })
+    if (!decision.ok) {
+      console.warn('[media] 请求被拒绝：' + decision.reason)
+      throw new Error(describeOutboundDeny(decision.reason))
     }
     let result: { data: string; mime: string }
     try {
-      result = await fetchMediaOnce(target)
+      result = await fetchMediaOnce(new URL(decision.url))
     } catch (err) {
       throw new Error((err as Error).message || '媒体拉取失败')
     }
