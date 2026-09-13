@@ -18,6 +18,7 @@ import { HERMES_SESSION_TOKEN_CREDENTIAL } from './hermes-client'
 import { getCredential } from './services/credential-store'
 import { authContextDir, readAuthToken, writeSecureJson } from './services/secure-json-store'
 import { describeOutboundDeny, evaluateOutboundUrl, mediaAllowedHosts } from './policy/url-policy'
+import { resolveLaunchFlags } from '../shared/launch-flags'
 import {
   describeLlmEndpointDeny,
   evaluateLlmEndpoint,
@@ -26,16 +27,20 @@ import {
 import { redactValue } from './policy/redact'
 import type { LlmIntegration } from '../shared/types'
 
-// GPU 白名单开关：解决部分显卡/驱动/远程桌面环境下 WebGL 被 Chromium 黑名单拦截的问题
-// 必须在 app.whenReady 之前设置
-app.commandLine.appendSwitch('ignore-gpu-blocklist')
-app.commandLine.appendSwitch('disable-gpu-sandbox')
-// 允许在缺少 GPU 时使用 SwiftShader 软件渲染，保证 PixiJS 至少能创建 WebGL 上下文
-app.commandLine.appendSwitch('enable-unsafe-swiftshader')
+// 启动开关（安全审计 S-14 / S-15）：默认不降低 Chromium 隔离强度，只在显式兼容模式下回退。
+// 判定与单测见 electron/shared/launch-flags.ts；必须在 app.whenReady 之前追加，否则 Chromium 不生效。
+const launchFlags = resolveLaunchFlags({ platform: process.platform, env: process.env })
+for (const sw of launchFlags.extraSwitches) {
+  app.commandLine.appendSwitch(sw.name, sw.value)
+}
+if (launchFlags.disableFeatures.length > 0) {
+  app.commandLine.appendSwitch('disable-features', launchFlags.disableFeatures.join(','))
+}
+for (const note of launchFlags.notes) {
+  console.log('[launch-flags] ' + note)
+}
 // 对标轻语：本地视频解析需要页面自动播放（video.play 无手势触发）
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
-// 修复内嵌 n8n iframe 登录：Electron 新内核默认阻止第三方 Cookie，导致 file:// 应用内的 http://127.0.0.1:5678 iframe 无法保存登录会话 Cookie（浏览器直连正常、App 内登录转圈回登录页）
-app.commandLine.appendSwitch('disable-features', 'ThirdPartyCookies,ThirdPartyStoragePartitioning')
 // 仅开发环境（未打包）启用远程调试端口，生产环境关闭
 if (!app.isPackaged) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
