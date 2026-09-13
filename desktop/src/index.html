@@ -3,7 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; media-src 'self' https: blob: data:; connect-src 'self' http://localhost:3000 http://localhost:3001 http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https:; frame-src 'self' http://127.0.0.1:* http://localhost:*; worker-src 'self' blob:;" />
+    <!-- CSP（安全审计 S-16）：connect-src 不再使用裸 https: 通配 —— 渲染层可发起的出站目标必须显式列出。
+         本地服务：显式列出已知端口（3000/3001）+ 允许其余本地端口（自建 n8n / office / 各本地网关端口可配置）。
+         平台域名：生产 API 与 socket.io（wss）变体；自建部署把 API 放在自有域名时，
+         需在 .env 的 VITE_CSP_CONNECT_EXTRA 里补上（空格分隔的来源表达式），否则渲染层会被拦下。
+         img-src / media-src 暂时保留 https: 通配：图片来源可能是任意第三方图床（见 tests/unit/csp-policy.test.ts 说明）。 -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' http://localhost:3000 http://localhost:3001 http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https://shentongapi.cn https://*.shentongapi.cn https://zt.shentongapi.cn wss://shentongapi.cn wss://zt.shentongapi.cn wss://*.shentongapi.cn %VITE_CSP_CONNECT_EXTRA%; frame-src 'self' http://127.0.0.1:* http://localhost:*; worker-src 'self' blob:; object-src 'none'; base-uri 'self';" />
     <title>深瞳AI-智能中台</title>
   </head>
   <body>
