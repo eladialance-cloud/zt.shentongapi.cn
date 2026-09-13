@@ -9,8 +9,27 @@
  * 纯函数，便于 jest 单测（不依赖 electron）。
  */
 
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
+import { chmodSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+
+/**
+ * 统一落盘：敏感配置文件的权限收敛为 0600（安全审计 S-05 部分）。
+ *
+ * 为什么只收敛权限、不动内容：Hermes 是编译产物（cdn/hermes/0.20.5），config.yaml 是否支持
+ * 环境变量插值**无法验证**；贸然把 api_key 换成占位符会让 Agent 全面不可用（spec D1 降级决策）。
+ * 因此批次 1 只做「降低本机其它用户/工具的可读性」，Key 的注入方式留待批次 2。
+ *
+ * 注意：`mode` 只在文件**创建**时生效，已存在文件需补一次 chmod；
+ * win32 上 chmod 语义有限（仅只读位），失败一律忽略 —— 权限收敛不能反过来打断配置同步。
+ */
+function writeConfigFile(file: string, content: string): void {
+  writeFileSync(file, content, { encoding: 'utf-8', mode: 0o600 })
+  try {
+    chmodSync(file, 0o600)
+  } catch {
+    /* win32 / 权限受限：忽略 */
+  }
+}
 
 export interface HermesConfigOptions {
   /** llm-proxy OpenAI 兼容网关地址（如 https://zt.shentongapi.cn/api/llm-proxy/v1） */
@@ -195,7 +214,7 @@ export function ensureHermesConfig(hermesHome: string, opts: HermesConfigOptions
   const cfgPath = join(hermesHome, 'config.yaml')
   if (existsSync(cfgPath)) return cfgPath
   mkdirSync(hermesHome, { recursive: true })
-  writeFileSync(cfgPath, buildHermesConfigYaml(opts), 'utf-8')
+  writeConfigFile(cfgPath, buildHermesConfigYaml(opts))
   return cfgPath
 }
 
@@ -211,7 +230,7 @@ export function syncHermesConfig(hermesHome: string, opts: HermesConfigOptions):
     const patched = patchHermesConfig(existing, opts)
     if (patched !== existing) {
       mkdirSync(hermesHome, { recursive: true })
-      writeFileSync(cfgPath, patched, 'utf-8')
+      writeConfigFile(cfgPath, patched)
     }
   } catch (err) {
     console.warn('[hermes-config] sync failed（保留原配置）: ' + (err instanceof Error ? err.message : String(err)))
@@ -247,7 +266,7 @@ export function syncHermesProfileConfigs(hermesHome: string, profileIds: readonl
     try {
       if (existsSync(target) && readFileSync(target, 'utf-8') === content) continue
       mkdirSync(profileDir, { recursive: true })
-      writeFileSync(target, content, 'utf-8')
+      writeConfigFile(target, content)
       written.push(id)
     } catch (err) {
       console.warn('[hermes-config] 同步 profile config 失败（' + id + '）: ' + (err instanceof Error ? err.message : String(err)))
@@ -286,7 +305,7 @@ export function writeAgentModel(hermesHome: string, agentId: string, model: stri
   models[agentId] = model
   const f = agentModelsFile(hermesHome)
   mkdirSync(join(hermesHome, 'profiles'), { recursive: true })
-  writeFileSync(f, JSON.stringify(models, null, 2), 'utf-8')
+  writeConfigFile(f, JSON.stringify(models, null, 2))
 }
 
 /** 删除某官署的模型记录（回退跟随全局默认） */
@@ -296,7 +315,7 @@ export function removeAgentModel(hermesHome: string, agentId: string): void {
   delete models[agentId]
   const f = agentModelsFile(hermesHome)
   mkdirSync(join(hermesHome, 'profiles'), { recursive: true })
-  writeFileSync(f, JSON.stringify(models, null, 2), 'utf-8')
+  writeConfigFile(f, JSON.stringify(models, null, 2))
 }
 
 /** 把 profile config.yaml 的 model.default 替换为指定模型（保留 provider/max_tokens） */
@@ -337,7 +356,7 @@ export function applyAgentModels(hermesHome: string, profileIds: readonly string
       const cur = readFileSync(target, 'utf-8')
       const patched = patchProfileModelDefault(cur, model)
       if (patched !== cur) {
-        writeFileSync(target, patched, 'utf-8')
+        writeConfigFile(target, patched)
         written.push(id)
       }
     } catch (err) {
