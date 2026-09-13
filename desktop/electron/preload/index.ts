@@ -26,6 +26,9 @@ import type {
   CronEngineEvent,
   CronServiceStatus,
   LlmIntegration,
+  RendererStoreClearResult,
+  RendererStoreLoadResult,
+  RendererStoreSaveResult,
   HermesChatMessage,
   HermesChatMessagePayload,
   HermesChatToolCall,
@@ -443,6 +446,21 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('llm-integrations:remove', id) as Promise<{ ok: boolean; integrations: LlmIntegration[]; error?: string }>,
     test: (baseUrl: string, apiKey: string, model: string) =>
       ipcRenderer.invoke('llm-integrations:test', { baseUrl, apiKey, model }) as Promise<{ ok: boolean; message?: string }>,
+  },
+  // S-53：草稿与刷新令牌不再落 localStorage，改由主进程按策略落盘（暴露前统一被 deepFreeze）
+  chatDraft: {
+    save: (key: string, value: unknown) =>
+      ipcRenderer.invoke('chat-draft:save', key, value) as Promise<RendererStoreSaveResult>,
+    load: <T = unknown>(key: string) =>
+      ipcRenderer.invoke('chat-draft:load', key) as Promise<RendererStoreLoadResult<T>>,
+    clear: (key: string) =>
+      ipcRenderer.invoke('chat-draft:clear', key) as Promise<RendererStoreClearResult>,
+  },
+  authToken: {
+    save: (token: string) =>
+      ipcRenderer.invoke('auth:token:save', token) as Promise<RendererStoreSaveResult>,
+    load: () => ipcRenderer.invoke('auth:token:load') as Promise<RendererStoreLoadResult<string>>,
+    clear: () => ipcRenderer.invoke('auth:token:clear') as Promise<RendererStoreClearResult>,
   },
   edict: {
     issue: (input) =>

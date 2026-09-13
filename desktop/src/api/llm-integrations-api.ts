@@ -1,13 +1,12 @@
 // 自定义大模型接入（渲染层封装）
-// 优先走 electron IPC（userData/llm-integrations.json）；Web 开发模式（无 electronAPI）回退 localStorage。
+// 优先走 electron IPC（userData/llm-integrations.json）；Web 开发模式（无 electronAPI）退化为
+// **仅本次会话的内存态**——记录里含 API Key，任何形式都不再落 localStorage 明文（安全审计 S-53）。
 
 import type {
   LlmIntegration,
   LlmIntegrationStoreResult,
   LlmIntegrationTestResult,
 } from '@shared/types'
-
-const LOCAL_KEY = 'st-claw:llm-integrations:v1'
 
 interface ElectronApiLike {
   llmIntegrations?: {
@@ -20,23 +19,15 @@ interface ElectronApiLike {
 
 const api = (window as unknown as { electronAPI?: ElectronApiLike }).electronAPI
 
+/** Web 调试模式的进程内后备存储（不再落 localStorage：内容含 API Key） */
+let memoryIntegrations: LlmIntegration[] | null = null
+
 function readLocal(): LlmIntegration[] {
-  try {
-    const raw = localStorage.getItem(LOCAL_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as LlmIntegration[] | null
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
+  return memoryIntegrations ? memoryIntegrations.map((i) => ({ ...i })) : []
 }
 
 function writeLocal(list: LlmIntegration[]): void {
-  try {
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(list))
-  } catch {
-    // 忽略本地存储失败
-  }
+  memoryIntegrations = list.map((i) => ({ ...i }))
 }
 
 export async function listLlmIntegrations(): Promise<LlmIntegration[]> {

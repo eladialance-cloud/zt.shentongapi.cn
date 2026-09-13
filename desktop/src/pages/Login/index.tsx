@@ -13,6 +13,10 @@ import { Button, Checkbox, Form, Input, message } from "antd";
 import { httpClient } from "@/api/http-client";
 import { useAuthStore, type User } from "@/store/auth";
 import { BusinessError } from "@/utils/errors";
+import {
+  readRememberedAccount,
+  writeRememberedAccount,
+} from "@/utils/login-remember";
 import styles from "./styles.module.css";
 
 /** 设备类型错误码 */
@@ -21,32 +25,6 @@ const DEVICE_LIMIT_EXCEEDED_CODE = 1011;
 interface LoginFormValues {
   account: string;
   password: string;
-}
-
-/** 记住账号密码的 localStorage key */
-const REMEMBER_KEY = "shentong.login.remember";
-
-/** 读取已记住的账号密码 */
-function loadRemembered(): LoginFormValues | null {
-  try {
-    const raw = localStorage.getItem(REMEMBER_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw) as LoginFormValues;
-    if (data && data.account) return data;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/** 保存/清除记住的账号密码 */
-function saveRemembered(data: LoginFormValues | null) {
-  try {
-    if (data) localStorage.setItem(REMEMBER_KEY, JSON.stringify(data));
-    else localStorage.removeItem(REMEMBER_KEY);
-  } catch {
-    // 本地存储失败不阻塞登录
-  }
 }
 
 /** 后端 login 响应 */
@@ -89,11 +67,11 @@ export default function Login() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
-  // 挂载时填充记住的账号密码
+  // 挂载时填充记住的账号（密码不再本地留存，由用户每次输入）
   useEffect(() => {
-    const remembered = loadRemembered();
+    const remembered = readRememberedAccount();
     if (remembered) {
-      form.setFieldsValue(remembered);
+      form.setFieldsValue({ account: remembered });
     }
   }, [form]);
 
@@ -160,9 +138,9 @@ export default function Login() {
       const data = await doLogin(values.account, values.password);
       await handleLoginSuccess(data);
       if (remember) {
-        saveRemembered({ account: values.account, password: values.password });
+        writeRememberedAccount(values.account);
       } else {
-        saveRemembered(null);
+        writeRememberedAccount(null);
       }
     } catch (err) {
       // 设备超限特殊提示
@@ -216,7 +194,7 @@ export default function Login() {
               onChange={(e) => setRemember(e.target.checked)}
               className={styles.rememberCheckbox}
             >
-              记住账号密码
+              记住账号
             </Checkbox>
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>

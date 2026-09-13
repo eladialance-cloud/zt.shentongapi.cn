@@ -4,7 +4,7 @@
 // 1. 切页/切窗口后对话不丢 —— IPC 监听常驻（不随 Chat 页面卸载销毁），流式状态全局持有；
 // 2. 正在回复中的内容可恢复 —— 页面通过 useSyncExternalStore 订阅全局快照；
 // 3. 完成后自动落库 —— done/error 持久化在全局层执行，页面不存活也能保存回复；
-// 4. 崩溃兜底 —— 流式期间每 6s 写 localStorage 草稿，刷新后可恢复提示。
+// 4. 崩溃兜底 —— 流式期间每 6s 经主进程落盘草稿（S-53：不再写 localStorage），刷新后可恢复提示。
 // 5. 对话做 AI 视频 —— 工具卡出现视频相关调用时自动拉起 video-claw 服务，
 //    并订阅其 /api/tasks/{id}/events（SSE）把进度实时写进工具卡。
 
@@ -319,6 +319,48 @@ export function consumePendingCompletions(): CompletedAssistant[] {
 
 // ==================== 草稿（崩溃/刷新兜底） ====================
 
+/**
+ * 草稿存储桥（安全审计 S-53）：Electron 下经主进程落 userData（有系统安全存储则整包加密），
+ * 不再写 localStorage 明文；浏览器调试环境无 electronAPI，退化为内存（仅本次会话）。
+ */
+interface DraftStoreBridge {
+  save(key: string, value: unknown): Promise<void>
+  load<T>(key: string): Promise<T | null>
+  clear(key: string): Promise<void>
+}
+
+const memoryDrafts = new Map<string, unknown>()
+
+const draftBridge: DraftStoreBridge = {
+  async save(key, value) {
+    const api = window.electronAPI?.chatDraft
+    if (!api) {
+      memoryDrafts.set(key, value)
+      return
+    }
+    const res = await api.save(key, value)
+    if (!res.ok) throw new Error(res.error)
+  },
+  async load<T>(key: string): Promise<T | null> {
+    const api = window.electronAPI?.chatDraft
+    if (!api) return (memoryDrafts.get(key) as T | undefined) ?? null
+    const res = await api.load<T>(key)
+    if (!res.ok) return null
+    return res.value
+  },
+  async clear(key) {
+    memoryDrafts.delete(key)
+    const api = window.electronAPI?.chatDraft
+    if (!api) return
+    await api.clear(key)
+  },
+}
+
+/** 上一次提交成功的草稿内容（去重，避免每 6s 重复写盘） */
+let lastDraftJson: string | null = null
+let draftSaveInFlight = false
+let draftSaveWarned = false
+
 function saveDraft(): void {
   if (!snapshot.streaming || snapshot.streamingSessionId == null) return
   const draft: ChatStreamDraft = {
@@ -327,26 +369,53 @@ function saveDraft(): void {
     toolCalls: snapshot.toolCalls,
     updatedAt: Date.now(),
   }
+  let json: string
   try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+    json = JSON.stringify(draft)
   } catch {
-    /* 忽略 */
+    return
   }
+  if (json === lastDraftJson || draftSaveInFlight) return
+  lastDraftJson = json
+  draftSaveInFlight = true
+  draftBridge
+    .save(DRAFT_KEY, draft)
+    .catch((err: unknown) => {
+      // 落盘失败（如超出体积上限 / 主进程拒绝）只提示一次，避免每 6s 刷屏
+      lastDraftJson = null
+      if (!draftSaveWarned) {
+        draftSaveWarned = true
+        console.warn('[chat-stream] 草稿落盘失败：', err)
+      }
+    })
+    .finally(() => {
+      draftSaveInFlight = false
+    })
 }
 
-export function loadChatDraft(): ChatStreamDraft | null {
+/** 读取崩溃兜底草稿（S-53：主进程存储，异步） */
+export async function loadChatDraft(): Promise<ChatStreamDraft | null> {
   try {
-    const raw = localStorage.getItem(DRAFT_KEY)
-    if (!raw) return null
-    return JSON.parse(raw) as ChatStreamDraft
+    const draft = await draftBridge.load<ChatStreamDraft>(DRAFT_KEY)
+    if (!draft || typeof draft !== 'object') return null
+    if (
+      typeof draft.sessionId !== 'number' ||
+      typeof draft.content !== 'string'
+    ) {
+      return null
+    }
+    return draft
   } catch {
     return null
   }
 }
 
-export function clearChatDraft(): void {
+/** 清除崩溃兜底草稿（S-53：异步；调用方可 fire-and-forget） */
+export async function clearChatDraft(): Promise<void> {
+  lastDraftJson = null
+  draftSaveWarned = false
   try {
-    localStorage.removeItem(DRAFT_KEY)
+    await draftBridge.clear(DRAFT_KEY)
   } catch {
     /* 忽略 */
   }
@@ -456,7 +525,7 @@ function resetStreaming(): void {
     clearInterval(draftTimer)
     draftTimer = null
   }
-  clearChatDraft()
+  void clearChatDraft()
   snapshot = {
     streaming: false,
     streamingSessionId: null,
@@ -594,7 +663,7 @@ export async function startChatSend(params: StartChatSendParams): Promise<void> 
   }
   abortRequested = false
   replyGenerated = false
-  clearChatDraft()
+  void clearChatDraft()
 
   lastUserMessage = params.content || ''
   lastHistory = params.history || []

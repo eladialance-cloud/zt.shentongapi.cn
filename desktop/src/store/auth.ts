@@ -1,9 +1,11 @@
 // 认证 store - 登录态管理
-// accessToken/secretKey 仅内存存储；refreshToken/user 持久化到 localStorage
+// accessToken/secretKey 仅内存存储；user 持久化到 localStorage（非敏感，仅 UI 展示）
+// refreshToken（凭据，S-53）改由主进程落 userData 并走系统安全存储加密：
+// 主进程拒绝写入时降级为「仅本次会话有效」（重启需重新登录），不再写 localStorage 明文。
 //
 // 设计依据：Task 5 - JWT + RefreshToken 双令牌机制
 // - accessToken：短期令牌（不持久化，安全考虑）
-// - refreshToken：长期令牌（持久化，用于续期 accessToken）
+// - refreshToken：长期令牌（主进程加密存储，用于续期 accessToken）
 // - secretKey：HMAC 签名密钥（不持久化，登录时下发，与 accessToken 同生命周期）
 // - user：用户信息（持久化，用于 UI 展示）
 
@@ -48,6 +50,33 @@ function syncAuthToken(token: string | null | undefined): void {
     window.electronAPI?.hermesChat?.syncAuth?.(token || "");
   } catch {
     // 非 Electron 环境忽略
+  }
+}
+
+/**
+ * 刷新令牌持久化（安全审计 S-53）：交主进程按策略落盘/清除。
+ * 主进程拒绝（无系统安全存储 / 键名或体积不合法）时静默降级为「仅本次会话有效」。
+ */
+async function persistRefreshToken(token: string | null): Promise<void> {
+  try {
+    const api = window.electronAPI?.authToken;
+    if (!api) return;
+    if (token) await api.save(token);
+    else await api.clear();
+  } catch {
+    // 落盘失败不阻塞登录流程：内存态仍可用，重启后需重新登录
+  }
+}
+
+/** 从主进程读回刷新令牌（安全审计 S-53，无则 null） */
+async function loadRefreshToken(): Promise<string | null> {
+  try {
+    const api = window.electronAPI?.authToken;
+    if (!api) return null;
+    const res = await api.load();
+    return res.ok ? res.value : null;
+  } catch {
+    return null;
   }
 }
 
@@ -103,6 +132,7 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: true,
         });
         syncAuthToken(accessToken);
+        void persistRefreshToken(refreshToken);
       },
 
       refreshAccessToken: async () => {
@@ -130,6 +160,7 @@ export const useAuthStore = create<AuthState>()(
             user: state.user,
           }));
           syncAuthToken(newAccess);
+          void persistRefreshToken(newRefresh);
           return true;
         } catch {
           // 刷新失败：清除认证状态
@@ -141,6 +172,7 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: false,
             isLoading: false,
           });
+          void persistRefreshToken(null);
           return false;
         }
       },
@@ -167,6 +199,9 @@ export const useAuthStore = create<AuthState>()(
           // 忽略 DB 关闭错误
         }
 
+        // 清除本地凭据（主进程加密存储，S-53）
+        await persistRefreshToken(null);
+
         // 清除状态
         set({
           accessToken: null,
@@ -183,18 +218,28 @@ export const useAuthStore = create<AuthState>()(
       setSecretKey: (secretKey) => set({ secretKey }),
 
       initialize: async () => {
-        const { refreshToken, isLoading } = get();
-        if (!refreshToken || isLoading) return;
+        const { isLoading } = get();
+        if (isLoading) return;
 
         set({ isLoading: true });
+        // S-53：优先从主进程加密存储水合 refreshToken；内存态兼容旧版本一次性残留
+        // （partialize 不再写 refreshToken，紧随其后的状态变更会把 localStorage 明文清掉）
+        let token = await loadRefreshToken();
+        if (!token) token = get().refreshToken;
+        if (!token) {
+          set({ isLoading: false });
+          return;
+        }
+        set({ refreshToken: token });
+        await persistRefreshToken(token);
         await get().refreshAccessToken();
       },
     }),
     {
       name: "auth-storage",
-      // 仅持久化 refreshToken 和 user（安全考虑：不持久化 accessToken 和 secretKey）
+      // 仅持久化 user（非敏感，UI 展示用）：refreshToken 走主进程加密存储（S-53），
+      // accessToken/secretKey 仅内存。
       partialize: (state) => ({
-        refreshToken: state.refreshToken,
         user: state.user,
       }),
     },

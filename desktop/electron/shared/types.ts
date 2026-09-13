@@ -450,6 +450,11 @@ export interface HermesChatErrorPayload {
   message: string;
 }
 /** 自定义大模型接入（仅存本机 userData，OpenAI 兼容端点） */
+/** 渲染层持久化（S-53）：主进程落盘结果 */
+export type RendererStoreSaveResult = { ok: true; sealed: boolean } | { ok: false; error: string };
+export type RendererStoreLoadResult<T> = { ok: true; value: T | null } | { ok: false; error: string };
+export type RendererStoreClearResult = { ok: boolean; error?: string };
+
 export interface LlmIntegrationModel {
   /** 上游模型 ID（如 gpt-4o / deepseek-chat） */
   id: string;
@@ -1209,6 +1214,26 @@ export interface ElectronAPI {
       apiKey: string,
       model: string,
     ): Promise<LlmIntegrationTestResult>;
+  };
+
+  /**
+   * 渲染层草稿持久化（安全审计 S-53）：主进程落 userData/renderer-store/chat-draft/。
+   * 键名与体积受策略限制；能加密则加密，无加密能力时降级明文（草稿属非凭据，优先保证可恢复）。
+   */
+  chatDraft: {
+    save(key: string, value: unknown): Promise<RendererStoreSaveResult>;
+    load<T = unknown>(key: string): Promise<RendererStoreLoadResult<T>>;
+    clear(key: string): Promise<RendererStoreClearResult>;
+  };
+
+  /**
+   * 刷新令牌持久化（安全审计 S-53）：主进程加密落 userData/renderer-store/auth-token/。
+   * 无系统安全存储时**拒绝写入**（不落明文凭据），渲染层按「未持久化」处理。
+   */
+  authToken: {
+    save(token: string): Promise<RendererStoreSaveResult>;
+    load(): Promise<RendererStoreLoadResult<string>>;
+    clear(): Promise<RendererStoreClearResult>;
   };
 
 

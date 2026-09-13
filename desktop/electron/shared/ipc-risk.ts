@@ -18,6 +18,9 @@ export type IpcRiskCategory = (typeof IPC_RISK_CATEGORIES)[number]
 export const HIGH_RISK_CHANNELS: Readonly<Record<IpcRiskCategory, readonly string[]>> = {
   // 本机文件读写 / 打开 / 终端
   file: [
+    // 渲染层可控的本地写入 / 删除（S-53：草稿落 userData/renderer-store）
+    'chat-draft:clear',
+    'chat-draft:save',
     'fs:open-file-in-editor',
     'fs:open-terminal',
     'fs:read-file',
@@ -46,6 +49,10 @@ export const HIGH_RISK_CHANNELS: Readonly<Record<IpcRiskCategory, readonly strin
   ],
   // 凭据写入与令牌注入
   credential: [
+    // S-53：刷新令牌迁到主进程加密存储
+    'auth:token:clear',
+    'auth:token:load',
+    'auth:token:save',
     'hermes-chat:sync-auth',
     'hermes-chat:set-proxy-key',
     'platform-account:setup-login',

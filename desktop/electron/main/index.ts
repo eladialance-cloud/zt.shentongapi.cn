@@ -1,6 +1,6 @@
 // Electron 主进程入口
 
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron'
 import { buildChildEnv } from './policy/child-env'
 import { hardenIpc, initIpcGuard } from './ipc-guard'
 import { installIpcRegistry } from './ipc-registry'
@@ -19,6 +19,7 @@ import { getCredential } from './services/credential-store'
 import { authContextDir, readAuthToken, writeSecureJson } from './services/secure-json-store'
 import { describeOutboundDeny, evaluateOutboundUrl, mediaAllowedHosts } from './policy/url-policy'
 import { resolveLaunchFlags } from '../shared/launch-flags'
+import { clearEntry, loadEntry, saveEntry, type RendererStoreDeps } from './services/renderer-store'
 import {
   describeLlmEndpointDeny,
   evaluateLlmEndpoint,
@@ -1401,6 +1402,35 @@ ipcMain.handle(
       return llmIntegrations.test(args?.baseUrl ?? '', args?.apiKey ?? '', args?.model ?? '')
     },
   )
+
+  // ===== 渲染层持久化（安全审计 S-53）=====
+  // 草稿与 refreshToken 原本明文写在渲染层 localStorage（同源脚本可读，refreshToken 是长期凭据）。
+  // 现改为：渲染层只发 IPC，主进程按 policy/draft-store-policy 落 userData/renderer-store/：
+  //   - 命名空间 / 键名 / 体积三重白名单，路径限定在 root 内；
+  //   - chat-draft（非凭据）：能加密则密封，无加密能力时降级明文以保证草稿可恢复；
+  //   - auth-token（凭据）：必须加密，无系统安全存储时拒绝写入（宁可不记住登录，也不落明文令牌）。
+  const rendererStoreDeps = (): RendererStoreDeps => ({
+    root: join(app.getPath('userData'), 'renderer-store'),
+    canEncrypt: safeStorage.isEncryptionAvailable(),
+    isPackaged: app.isPackaged,
+    encrypt: (plain: string) => safeStorage.encryptString(plain).toString('base64'),
+    decrypt: (sealed: string) => safeStorage.decryptString(Buffer.from(sealed, 'base64')),
+  })
+
+  ipcMain.handle('chat-draft:save', (_e, key: string, value: unknown) =>
+    saveEntry(rendererStoreDeps(), 'chat-draft', key, value),
+  )
+  ipcMain.handle('chat-draft:load', (_e, key: string) =>
+    loadEntry(rendererStoreDeps(), 'chat-draft', key),
+  )
+  ipcMain.handle('chat-draft:clear', (_e, key: string) =>
+    clearEntry(rendererStoreDeps(), 'chat-draft', key),
+  )
+  ipcMain.handle('auth:token:save', (_e, token: string) =>
+    saveEntry(rendererStoreDeps(), 'auth-token', 'refresh', token),
+  )
+  ipcMain.handle('auth:token:load', () => loadEntry(rendererStoreDeps(), 'auth-token', 'refresh'))
+  ipcMain.handle('auth:token:clear', () => clearEntry(rendererStoreDeps(), 'auth-token', 'refresh'))
 
   // 从后端同步启用中的 MCP 到 Hermes 本地配置（登录后由渲染层触发）
   ipcMain.handle('mcp:syncFromBackend', async (_e, token: string) => {
