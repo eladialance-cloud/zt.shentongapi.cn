@@ -9,11 +9,12 @@
  *
  * 解析出的本地视频文件由渲染进程上传后端 /oral-workshop/extract-file 完成 ffmpeg 抽音频 + STT 提取文案。
  */
-import { app, BrowserWindow, ipcMain, net, session, type WebContents } from 'electron'
+import { app, BrowserWindow, ipcMain, net, session, shell, type WebContents } from 'electron'
 import { createWriteStream, openSync, closeSync, writeSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve, sep, extname, basename } from 'node:path'
 import { createHash } from 'node:crypto'
 import type { VideoParseResult } from '../shared/types'
+import { hardenRemoteWindow } from './security'
 import {
   extractUrlFromText,
   detectPlatform,
@@ -280,11 +281,15 @@ export async function parseVideo(rawUrl: string): Promise<VideoParseResult> {
         partition,
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: false,
+        sandbox: true,
         webSecurity: true,
       },
     })
     win.webContents.setUserAgent(CHROME_UA)
+    hardenRemoteWindow(win.webContents, {
+      openExternal: (url) => void shell.openExternal(url),
+      label: 'video-parser',
+    })
     const wc = win.webContents
     ses = session.fromPartition(partition)
 

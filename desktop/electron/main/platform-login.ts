@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { getMainWindow } from './windows/main-window'
 import { detectScanPhaseFromText, hasSessionCookie, type ScanPhase } from './scan-heuristics'
 import { openText, sealText } from './services/secure-json-store'
+import { hardenRemoteWindow } from './security'
 import type { PlatformInfo, PlatformSetupLoginResult, PlatformTestLoginResult } from '../shared/types'
 
 /** 平台预设（id 与后端 publish_platforms.platform 一致） */
@@ -201,8 +202,13 @@ export function setupLogin(platform: string): Promise<PlatformSetupLoginResult> 
         partition,
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: false,
+        sandbox: true,
       },
+    })
+
+    hardenRemoteWindow(win.webContents, {
+      openExternal: (url) => void shell.openExternal(url),
+      label: 'platform-login',
     })
 
     let settled = false
@@ -406,8 +412,12 @@ export async function openPublish(
       partition,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
+  })
+  hardenRemoteWindow(win.webContents, {
+    openExternal: (url) => void shell.openExternal(url),
+    label: 'platform-publish',
   })
   win.webContents.on('did-finish-load', () => {
     void prefillPublishForm(win, publishOrigin, payload).catch(() => undefined)
@@ -600,10 +610,14 @@ export function startScan(platform: string): ScanStartResult {
       partition,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   })
 
+  hardenRemoteWindow(win.webContents, {
+    openExternal: (url) => void shell.openExternal(url),
+    label: 'platform-login',
+  })
   let settled = false
   let lastPhase: ScanPhase = 'waiting'
   const deadline = Date.now() + 10 * 60 * 1000

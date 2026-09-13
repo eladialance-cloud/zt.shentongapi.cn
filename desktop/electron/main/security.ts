@@ -1,4 +1,4 @@
-import type { WebContents, WebPreferences } from "electron";
+import type { WebContents, WebPreferences, WindowOpenHandlerResponse } from "electron";
 import { pathToFileURL } from "url";
 
 const EXTERNAL_PROTOCOLS = new Set(["https:", "http:", "mailto:"]);
@@ -114,4 +114,115 @@ export function hardenAttachedWebContents(
       event.preventDefault();
     }
   });
+}
+
+// ── 远程窗口加固（安全审计 S-11 / S-12 残口）───────────────────────────────
+// 登录 / 发布 / 视频解析窗口加载的是第三方远程页面，必须与主窗口同标准：
+// 不允许 file:/自定义协议导航，不允许非 http(s) 新窗口，权限请求一律拒绝。
+// 本文件保持零 electron 运行时依赖（仅 type-only import），故判定逻辑可在 jest 直跑。
+
+/** 明文 http 仅在远程窗口里放行本机服务（n8n / dev server） */
+const LOCAL_REMOTE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"])
+
+function matchesHostAllowlist(host: string, allowedHosts: readonly string[]): boolean {
+  if (allowedHosts.length === 0) return true
+  const target = host.toLowerCase()
+  return allowedHosts.some((raw) => {
+    const allowed = String(raw).trim().toLowerCase().replace(/^\./, "")
+    if (!allowed) return false
+    return target === allowed || target.endsWith("." + allowed)
+  })
+}
+
+/**
+ * 远程窗口是否允许导航到该地址：
+ * - https：默认放行任意主机（登录链路必须能跳第三方 OAuth 域）；给了 allowedHosts 则按白名单收口；
+ * - http：仅放行本机地址；
+ * - 其它协议（file: / javascript: / ms-msdt: / data: / about: / blob: ...）一律拒绝。
+ */
+export function isAllowedRemoteNavigation(
+  rawUrl: unknown,
+  allowedHosts: readonly string[] = [],
+): boolean {
+  const url = parseUrl(rawUrl)
+  if (!url) return false
+  if (url.protocol === "https:") return matchesHostAllowlist(url.hostname, allowedHosts)
+  if (url.protocol === "http:") {
+    if (!LOCAL_REMOTE_HOSTS.has(url.hostname.toLowerCase())) return false
+    return matchesHostAllowlist(url.hostname, allowedHosts)
+  }
+  return false
+}
+
+/** 远程窗口是否允许 window.open 目标（与导航同规则，独立导出便于后续分化） */
+export function isAllowedRemoteNewWindow(
+  rawUrl: unknown,
+  allowedHosts: readonly string[] = [],
+): boolean {
+  return isAllowedRemoteNavigation(rawUrl, allowedHosts)
+}
+
+export interface RemoteWindowGuardOptions {
+  /** 允许的 https 主机白名单；为空表示「任意 https」 */
+  allowedHosts?: readonly string[]
+  /** 由调用方注入 shell.openExternal，保持本模块零 electron 运行时依赖 */
+  openExternal: (url: string) => void
+  /** 日志前缀（如 platform-login / video-parser） */
+  label?: string
+  log?: (message: string) => void
+}
+
+/**
+ * 远程窗口统一加固：新窗口、导航、重定向、权限请求。
+ * 注意：调用方需自行确保 webPreferences 为 contextIsolation:true / nodeIntegration:false / sandbox:true。
+ */
+export function hardenRemoteWindow(
+  webContents: WebContents,
+  options: RemoteWindowGuardOptions,
+): void {
+  const allowedHosts = options.allowedHosts ?? []
+  const label = options.label ?? "remote-window"
+  const log = options.log ?? ((message: string) => console.warn(message))
+
+  webContents.setWindowOpenHandler((details): WindowOpenHandlerResponse => {
+    const url = details?.url
+    if (isAllowedRemoteNewWindow(url, allowedHosts)) {
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: {
+          webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+            webSecurity: true,
+            allowRunningInsecureContent: false,
+          },
+        },
+      }
+    }
+    if (isAllowedExternalUrl(url)) {
+      try {
+        options.openExternal(url)
+      } catch (err) {
+        log(`[SECURITY] ${label}: openExternal failed -> ${err instanceof Error ? err.message : String(err)}`)
+      }
+    } else {
+      log(`[SECURITY] ${label}: blocked window.open -> ${String(url)}`)
+    }
+    return { action: "deny" }
+  })
+
+  const guardNavigation = (event: { preventDefault: () => void }, url: string): void => {
+    if (!isAllowedRemoteNavigation(url, allowedHosts)) {
+      event.preventDefault()
+      log(`[SECURITY] ${label}: blocked navigation -> ${String(url)}`)
+    }
+  }
+  webContents.on("will-navigate", guardNavigation)
+  webContents.on("will-redirect", guardNavigation)
+
+  webContents.session.setPermissionRequestHandler((_contents, permission, callback) => {
+    log(`[SECURITY] ${label}: denied permission request -> ${String(permission)}`)
+    callback(false)
+  })
 }
