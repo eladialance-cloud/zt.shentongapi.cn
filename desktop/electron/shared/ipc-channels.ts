@@ -84,6 +84,7 @@ export const IPC_CHANNELS = [
   'edict:unblock',
   'edict:update-remote-skill',
   'edict:veto',
+  'feishu:get-bitable',
   'feishu:get-settings',
   'feishu:init-tables',
   'feishu:save-settings',

@@ -882,14 +882,31 @@ export interface ElectronAPI {
     getSettings(): Promise<{ configured: boolean; appId: string; hasSecret: boolean }>;
     saveSettings(input: { appId?: string; appSecret?: string }): Promise<{ ok: boolean; error?: string }>;
     testConnection(): Promise<{ ok: boolean; error?: string; code?: number; data?: { appId: string; tokenMask: string } }>;
-    initTables(): Promise<{
+    initTables(options?: { force?: boolean }): Promise<{
       ok: boolean;
       appToken?: string;
       appUrl?: string;
       tables?: Array<{ name: string; envKey: string; official: string; tableId: string; url: string }>;
       failed?: Array<{ name: string; error: string }>;
+      /** true = 复用了已保存的工作台（本次未新建 app） */
+      reused?: boolean;
+      /** 本次新建的数据表数量 */
+      createdCount?: number;
+      /** 本次复用（已存在）的数据表数量 */
+      reusedCount?: number;
+      /** 因飞书拒绝而未能创建的字段（表本身已建出） */
+      droppedFields?: Array<{ table: string; field: string; error: string }>;
       error?: string;
     }>;
+    /** 读取已保存的多维表格状态（无记录 ⇒ null），用于刷新后仍能看到已建的工作台 */
+    getBitable(): Promise<{
+      appToken: string;
+      appUrl: string;
+      createdAt: string;
+      tables: Array<{ name: string; envKey: string; official: string; tableId: string; url: string }>;
+      failed: Array<{ name: string; error: string }>;
+      droppedFields?: Array<{ table: string; field: string; error: string }>;
+    } | null>;
     onInitProgress(cb: (p: { step: string; message?: string }) => void): () => void;
   }
 

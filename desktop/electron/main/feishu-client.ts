@@ -176,6 +176,26 @@ export class FeishuClient {
     return { ok: true, data: { table_id: tableId } };
   }
 
+  /**
+   * 在多维表格中新增单个字段。
+   * 用途：某个字段被飞书拒绝时只丢该字段，不连累整张表（字段级兜底）。
+   */
+  async createField(
+    appToken: string,
+    tableId: string,
+    field: { field_name: string; type: number; property?: unknown },
+  ): Promise<FeishuResult<{ field_id: string }>> {
+    const body: Record<string, unknown> = { field_name: field.field_name, type: field.type };
+    if (field.property !== undefined) body.property = field.property;
+    const res = await this.request<{ field?: { field_id?: string } }>(
+      "POST",
+      `/open-apis/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/fields`,
+      body,
+    );
+    if (!res.ok) return { ok: false, error: res.error, code: res.code };
+    return { ok: true, data: { field_id: res.data?.field?.field_id || "" } };
+  }
+
   /** 批量新增记录（fields 为字段名→值的对象数组） */
   async batchAddRecords(
     appToken: string,
@@ -247,6 +267,27 @@ export class FeishuClient {
     const doc = res.data?.document;
     if (!doc?.document_id) return { ok: false, error: "创建文档成功但未返回 document_id" };
     return { ok: true, data: { document_id: doc.document_id, url: doc.url } };
+  }
+
+  /**
+   * 在云文档末尾追加一段纯文本（block_type=2 文本段落）。
+   * 用于给「战略方向文档」写入初始提纲，避免只建出一个空文档。
+   */
+  async appendDocxText(documentId: string, text: string): Promise<FeishuResult<unknown>> {
+    const res = await this.request<unknown>(
+      "POST",
+      `/open-apis/docx/v1/documents/${encodeURIComponent(documentId)}/blocks/${encodeURIComponent(documentId)}/children`,
+      {
+        children: [
+          {
+            block_type: 2,
+            text: { elements: [{ text_run: { content: text } }] },
+          },
+        ],
+      },
+    );
+    if (!res.ok) return { ok: false, error: res.error, code: res.code };
+    return { ok: true, data: res.data };
   }
 
   /** 生成多维表格访问链接（前端展示用） */

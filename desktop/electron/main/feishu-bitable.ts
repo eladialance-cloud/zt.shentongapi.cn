@@ -32,6 +32,19 @@ export const FEISHU_FIELD_TYPE: Record<string, number> = {
   RATING: 21,
 };
 
+/**
+ * 飞书要求「额外 property」的字段类型：关联(18) / 查找引用(19) / 公式(20)。
+ * 我们的字段规范里没有描述「关联到哪张表」「公式表达式是什么」，直接提交会被飞书拒绝，
+ * 且**整张表的建表请求会一起失败**（「军机处·任务主表」就是这么整张丢的）。
+ * 因此这些类型统一降级为文本：字段名与含义不丢，表能正常建出来。
+ */
+export const NEEDS_PROPERTY_FIELD_TYPES = new Set<number>([18, 19, 20]);
+
+/** 规范类型 → 实际可提交给飞书的类型（缺 property 的类型降级为文本） */
+export function degradeFieldType(type: number): number {
+  return NEEDS_PROPERTY_FIELD_TYPES.has(type) ? FEISHU_FIELD_TYPE.TEXT : type;
+}
+
 /** 表名 → env 键（决定回填到哪个官署的哪张表）；键为规范化表名 */
 export const TABLE_ENV_KEY: Record<string, string> = {
   "军机处·任务主表": "FEISHU_TASK_MAIN_TABLE",
@@ -83,8 +96,12 @@ export interface ParsedField {
   name: string;
   /** 规范类型标识（TEXT/NUM/...） */
   typeLabel: string;
-  /** 飞书字段 type 编号 */
+  /** 实际提交给飞书的字段 type 编号（可能被降级） */
   type: number;
+  /** 规范原本要求的 type 编号（降级前，便于排查） */
+  requestedType: number;
+  /** 是否因缺少 property 被降级为文本 */
+  degraded: boolean;
   required: boolean;
 }
 
@@ -128,8 +145,16 @@ export function parseSpecMarkdown(mdText: string): ParsedTable[] {
     if (!fieldName) continue;
     const typeLabel = (cells[1] || "").toUpperCase();
     const required = cells[2] === "是";
-    const type = FEISHU_FIELD_TYPE[typeLabel] ?? 1;
-    current.fields.push({ name: fieldName, typeLabel, type, required });
+    const requestedType = FEISHU_FIELD_TYPE[typeLabel] ?? FEISHU_FIELD_TYPE.TEXT;
+    const type = degradeFieldType(requestedType);
+    current.fields.push({
+      name: fieldName,
+      typeLabel,
+      type,
+      requestedType,
+      degraded: type !== requestedType,
+      required,
+    });
   }
   return tables.filter((t) => t.fields.length > 0);
 }
@@ -166,6 +191,14 @@ export interface BitableInitResult {
   appUrl?: string;
   tables?: CreatedTable[];
   failed?: Array<{ name: string; error: string }>;
+  /** true = 复用了已保存的工作台（本次未新建 app） */
+  reused?: boolean;
+  /** 本次新建的数据表数量 */
+  createdCount?: number;
+  /** 本次复用（已存在）的数据表数量 */
+  reusedCount?: number;
+  /** 因飞书拒绝而未能创建的字段（表本身已建出） */
+  droppedFields?: Array<{ table: string; field: string; error: string }>;
   error?: string;
 }
 
@@ -174,6 +207,8 @@ export interface BitableInitDeps {
   dataRoot: string;
   resourcesRoot: string;
   appName?: string;
+  /** true = 忽略已保存的工作台，强制新建一份 */
+  force?: boolean;
   /** 可选的进度回调 */
   onProgress?: (p: BitableInitProgress) => void;
   /** 可注入 md 文本（单测），缺省读规范文件 */
@@ -181,6 +216,28 @@ export interface BitableInitDeps {
 }
 
 const BITABLE_STATE_FILE = "feishu-bitable.json";
+
+export interface BitableState {
+  appToken: string;
+  appUrl: string;
+  createdAt: string;
+  tables: CreatedTable[];
+  failed: Array<{ name: string; error: string }>;
+  droppedFields?: Array<{ table: string; field: string; error: string }>;
+}
+
+/** 读取已保存的多维表格状态（无记录 / 损坏 ⇒ null） */
+export function readBitableState(dataRoot: string): BitableState | null {
+  try {
+    const f = path.join(dataRoot, BITABLE_STATE_FILE);
+    if (!fs.existsSync(f)) return null;
+    const parsed = JSON.parse(fs.readFileSync(f, "utf-8")) as BitableState;
+    if (!parsed || typeof parsed.appToken !== "string" || !parsed.appToken) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
 function writeState(dataRoot: string, state: unknown): void {
   try {
@@ -193,8 +250,10 @@ function writeState(dataRoot: string, state: unknown): void {
 }
 
 /**
- * 一键创建多维表格：建 app → 逐表建表 → 回填官署表链接。
- * 单表失败不中断（记录到 failed），返回汇总。
+ * 一键创建/补齐多维表格：优先复用已保存的工作台 → 缺哪张表才建哪张 → 回填官署表链接。
+ * - 默认复用：不会因为重跑而多出一份工作台（force=true 才强制重建）
+ * - 单表失败不中断（记录到 failed）
+ * - 整表被飞书拒绝时退化为「逐字段补齐」，把失败范围缩小到单个字段
  */
 export async function initBitable(deps: BitableInitDeps): Promise<BitableInitResult> {
   const { client, dataRoot } = deps;
@@ -207,33 +266,71 @@ export async function initBitable(deps: BitableInitDeps): Promise<BitableInitRes
     return { ok: false, error: "未能从字段设计规范中解析出任何数据表（规范文件缺失或格式异常）" };
   }
 
-  deps.onProgress?.({ step: "app", message: "创建多维表格应用…" });
-  const appRes = await client.createBitableApp(deps.appName || "深瞳AI · 三省六部工作台");
-  if (!appRes.ok || !appRes.data) {
-    return { ok: false, error: appRes.error || "创建多维表格应用失败", };
+  // ===== 1) 先查：已有工作台就复用，避免每次重跑都新建一份 =====
+  let appToken = "";
+  let appUrl = "";
+  let reusedApp = false;
+  const existing = new Map<string, string>(); // 规范化表名 → table_id
+  const prior = readBitableState(dataRoot);
+  if (!deps.force && prior) {
+    deps.onProgress?.({ step: "reuse", message: "检测到已有多维表格，正在读取现有数据表…" });
+    const list = await client.listTables(prior.appToken);
+    if (list.ok && list.data) {
+      appToken = prior.appToken;
+      appUrl = prior.appUrl || FeishuClient.bitableUrl(prior.appToken);
+      reusedApp = true;
+      for (const t of list.data) {
+        if (t.table_id) existing.set(normalizeTableName(t.name), t.table_id);
+      }
+    } else {
+      deps.onProgress?.({ step: "reuse", message: "已保存的多维表格不可访问，将重新创建…" });
+    }
   }
-  const appToken = appRes.data.app_token;
-  const appUrl = appRes.data.url || FeishuClient.bitableUrl(appToken);
+
+  // ===== 2) 建工作台（仅在无可用记录 / force 时） =====
+  if (!appToken) {
+    deps.onProgress?.({ step: "app", message: "创建多维表格应用…" });
+    const appRes = await client.createBitableApp(deps.appName || "深瞳AI · 三省六部工作台");
+    if (!appRes.ok || !appRes.data) {
+      return { ok: false, error: appRes.error || "创建多维表格应用失败" };
+    }
+    appToken = appRes.data.app_token;
+    appUrl = appRes.data.url || FeishuClient.bitableUrl(appToken);
+  }
 
   const created: CreatedTable[] = [];
   const failed: Array<{ name: string; error: string }> = [];
+  const droppedFields: Array<{ table: string; field: string; error: string }> = [];
+  let createdCount = 0;
+  let reusedCount = 0;
 
+  // ===== 3) 逐表：已存在则复用，缺哪张建哪张 =====
   for (const tbl of parsed) {
-    deps.onProgress?.({ step: "table", message: `建表：${tbl.name}` });
-    const res: FeishuResult<{ table_id: string }> = await client.createTable(
-      appToken,
-      tbl.name,
-      tbl.fields.map((f) => ({ field_name: f.name, type: f.type })),
-    );
-    if (!res.ok || !res.data) {
-      failed.push({ name: tbl.name, error: res.error || "建表失败" });
-      continue;
-    }
-    const tableId = res.data.table_id;
-    const url = `${FeishuClient.bitableUrl(appToken)}?table=${tableId}`;
     const envKey = TABLE_ENV_KEY[normalizeTableName(tbl.name)] || "";
     const official = ENV_KEY_OWNER[envKey] || "shared";
-    created.push({ name: tbl.name, envKey, official, tableId, url });
+    let tableId = existing.get(normalizeTableName(tbl.name)) || "";
+
+    if (tableId) {
+      reusedCount++;
+      deps.onProgress?.({ step: "reuse", message: `复用已有表：${tbl.name}` });
+    } else {
+      deps.onProgress?.({ step: "table", message: `建表：${tbl.name}` });
+      const r = await createTableWithFallback(client, appToken, tbl, droppedFields, deps);
+      if (!r.ok || !r.tableId) {
+        failed.push({ name: tbl.name, error: r.error || "建表失败" });
+        continue;
+      }
+      tableId = r.tableId;
+      createdCount++;
+    }
+
+    created.push({
+      name: tbl.name,
+      envKey,
+      official,
+      tableId,
+      url: `${FeishuClient.bitableUrl(appToken)}?table=${tableId}`,
+    });
   }
 
   // 回填各官署表链接（shared 表写入全部官署）
@@ -261,10 +358,72 @@ export async function initBitable(deps: BitableInitDeps): Promise<BitableInitRes
     createdAt: new Date().toISOString(),
     tables: created,
     failed,
+    droppedFields,
   });
 
-  deps.onProgress?.({ step: "done", message: `完成：成功 ${created.length} 张，失败 ${failed.length} 张` });
-  return { ok: true, appToken, appUrl, tables: created, failed };
+  const summary =
+    `完成：新建 ${createdCount} 张、复用 ${reusedCount} 张` +
+    (failed.length ? `、失败 ${failed.length} 张` : "") +
+    (droppedFields.length ? `、${droppedFields.length} 个字段被飞书拒绝` : "");
+  deps.onProgress?.({ step: "done", message: reusedApp ? `复用已有工作台 · ${summary}` : summary });
+  return {
+    ok: true,
+    appToken,
+    appUrl,
+    tables: created,
+    failed,
+    reused: reusedApp,
+    createdCount,
+    reusedCount,
+    droppedFields,
+  };
+}
+
+/**
+ * 建表（含字段级兜底）：
+ * 1) 快路径：一次请求把全部字段带上；
+ * 2) 被拒时退化：先只建主字段拿到 table_id，再逐个补字段，
+ *    失败只记到 droppedFields，不再让整张表消失。
+ */
+async function createTableWithFallback(
+  client: FeishuClient,
+  appToken: string,
+  tbl: ParsedTable,
+  droppedFields: Array<{ table: string; field: string; error: string }>,
+  deps: BitableInitDeps,
+): Promise<{ ok: boolean; tableId?: string; error?: string }> {
+  const full: FeishuResult<{ table_id: string }> = await client.createTable(
+    appToken,
+    tbl.name,
+    tbl.fields.map((f) => ({ field_name: f.name, type: f.type })),
+  );
+  if (full.ok && full.data) return { ok: true, tableId: full.data.table_id };
+
+  const firstError = full.error || "建表失败";
+  const primary = tbl.fields[0];
+  if (!primary) return { ok: false, error: firstError };
+
+  deps.onProgress?.({ step: "table", message: `${tbl.name} 整表创建被拒（${firstError}），改为逐字段补齐…` });
+
+  // 主字段也可能因类型被拒（飞书要求第一个字段必须可作主字段）⇒ 退化为文本再试一次
+  let minimal = await client.createTable(appToken, tbl.name, [
+    { field_name: primary.name, type: primary.type },
+  ]);
+  if (!minimal.ok && primary.type !== FEISHU_FIELD_TYPE.TEXT) {
+    minimal = await client.createTable(appToken, tbl.name, [
+      { field_name: primary.name, type: FEISHU_FIELD_TYPE.TEXT },
+    ]);
+  }
+  if (!minimal.ok || !minimal.data) {
+    return { ok: false, error: minimal.error || firstError };
+  }
+
+  const tableId = minimal.data.table_id;
+  for (const f of tbl.fields.slice(1)) {
+    const r = await client.createField(appToken, tableId, { field_name: f.name, type: f.type });
+    if (!r.ok) droppedFields.push({ table: tbl.name, field: f.name, error: r.error || "字段创建失败" });
+  }
+  return { ok: true, tableId };
 }
 
 const ALL_OFFICIAL_IDS = [

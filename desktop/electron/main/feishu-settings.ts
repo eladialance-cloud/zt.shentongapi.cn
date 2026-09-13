@@ -88,7 +88,9 @@ export async function testFeishuConnection(
 
 export interface FeishuSettingsIpcDeps extends FeishuSettingsDeps {
   /** 初始化多维表格（由 index.ts 注入 feishu-bitable 实现，避免循环依赖） */
-  initTables: () => Promise<unknown>;
+  initTables: (options?: { force?: boolean }) => Promise<unknown>;
+  /** 读取已建多维表格状态（无记录返回 null；由 index.ts 注入 feishu-bitable.readBitableState） */
+  getBitable: () => unknown;
 }
 
 /** 注册 feishu:* IPC（唯一真源见 shared/ipc-channels.ts） */
@@ -98,10 +100,19 @@ export function registerFeishuIpc(deps: FeishuSettingsIpcDeps): () => void {
     saveFeishuSettings(deps, (input as { appId?: string; appSecret?: string }) ?? {}),
   );
   ipcMain.handle("feishu:test-connection", () => testFeishuConnection(deps));
-  ipcMain.handle("feishu:init-tables", () => deps.initTables());
+  ipcMain.handle("feishu:get-bitable", () => deps.getBitable());
+  ipcMain.handle("feishu:init-tables", (_e, options: unknown) =>
+    deps.initTables((options as { force?: boolean }) ?? {}),
+  );
 
   return () => {
-    for (const ch of ["feishu:get-settings", "feishu:save-settings", "feishu:test-connection", "feishu:init-tables"]) {
+    for (const ch of [
+      "feishu:get-settings",
+      "feishu:save-settings",
+      "feishu:test-connection",
+      "feishu:get-bitable",
+      "feishu:init-tables",
+    ]) {
       try {
         ipcMain.removeHandler(ch);
       } catch {

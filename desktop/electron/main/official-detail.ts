@@ -32,7 +32,11 @@ export interface OfficialTableConfig {
 /** 每个官署的规范默认表（来自 resources/edict/data/多维表格字段设计规范.md） */
 export const DEFAULT_OFFICIAL_TABLES: Record<string, OfficialTableEntry[]> = {
   taizi: [{ envKey: "FEISHU_MSG_TRIAGE_TABLE", name: "太子·消息分拣表", access: "rw" }],
-  zhongshu: [{ envKey: "FEISHU_PLAN_TABLE", name: "中书省·方案表", access: "rw" }],
+  zhongshu: [
+    { envKey: "FEISHU_PLAN_TABLE", name: "中书省·方案表", access: "rw" },
+    // 战略方向文档由中书省牵头维护（一键组队第 5 步创建/复用）
+    { envKey: "FEISHU_STRATEGY_DOC", name: "战略方向文档", access: "rw" },
+  ],
   menxia: [{ envKey: "FEISHU_AUDIT_TABLE", name: "门下省·审核记录表", access: "rw" }],
   shangshu: [{ envKey: "FEISHU_DISPATCH_TABLE", name: "尚书省·派发执行汇总表", access: "rw" }],
   libu: [{ envKey: "FEISHU_INTEL_TABLE", name: "礼部·数据情报表", access: "rw" }],

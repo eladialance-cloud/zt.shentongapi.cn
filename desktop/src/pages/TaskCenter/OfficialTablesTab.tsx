@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Empty, Input, message, Space, Spin, Table, Tag, Tooltip } from "antd";
+import { CopyOutlined, ExportOutlined } from "@ant-design/icons";
 import {
   edictOfficialSoul,
   edictOfficialTables,
@@ -56,6 +57,24 @@ export default function OfficialTablesTab({ agentId }: { agentId: string }) {
 
   const onChangeUrl = (envKey: string, url: string) => {
     setTables((prev) => prev.map((t) => (t.envKey === envKey ? { ...t, url } : t)));
+  };
+
+  /** 用系统浏览器打开表链接（Electron 内 window.open 常被拦/开在应用内） */
+  const openUrl = (url: string) => {
+    const app = (
+      window as unknown as { electronAPI?: { app?: { openExternal?: (u: string) => Promise<void> } } }
+    ).electronAPI?.app;
+    if (app?.openExternal) void app.openExternal(url).catch(() => window.open(url, "_blank"));
+    else window.open(url, "_blank");
+  };
+
+  const copyUrl = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      message.success("已复制链接");
+    } catch {
+      message.warning("复制失败，请手动选中复制");
+    }
   };
 
   const onSave = useCallback(async () => {
@@ -132,13 +151,33 @@ export default function OfficialTablesTab({ agentId }: { agentId: string }) {
               title: "飞书链接",
               dataIndex: "url",
               render: (url: string | null | undefined, r) => (
-                <Input
-                  size="small"
-                  placeholder="https://xxx.feishu.cn/base/..."
-                  value={url ?? ""}
-                  onChange={(e) => onChangeUrl(r.envKey, e.target.value)}
-                  allowClear
-                />
+                <Space.Compact style={{ width: "100%" }}>
+                  <Input
+                    size="small"
+                    placeholder="https://xxx.feishu.cn/base/..."
+                    value={url ?? ""}
+                    onChange={(e) => onChangeUrl(r.envKey, e.target.value)}
+                    allowClear
+                  />
+                  <Tooltip title={url ? "用系统浏览器打开" : "尚未回填链接"}>
+                    <Button
+                      size="small"
+                      icon={<ExportOutlined />}
+                      disabled={!url}
+                      onClick={() => url && openUrl(url)}
+                    >
+                      打开
+                    </Button>
+                  </Tooltip>
+                  <Tooltip title={url ? "复制链接" : "尚未回填链接"}>
+                    <Button
+                      size="small"
+                      icon={<CopyOutlined />}
+                      disabled={!url}
+                      onClick={() => url && void copyUrl(url)}
+                    />
+                  </Tooltip>
+                </Space.Compact>
               ),
             },
           ]}

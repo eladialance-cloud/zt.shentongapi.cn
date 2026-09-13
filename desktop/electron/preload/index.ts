@@ -217,7 +217,8 @@ const electronAPI: ElectronAPI = {
     saveSettings: (input: { appId?: string; appSecret?: string }) =>
       ipcRenderer.invoke('feishu:save-settings', input),
     testConnection: () => ipcRenderer.invoke('feishu:test-connection'),
-    initTables: () => ipcRenderer.invoke('feishu:init-tables'),
+    initTables: (options?: { force?: boolean }) => ipcRenderer.invoke('feishu:init-tables', options),
+    getBitable: () => ipcRenderer.invoke('feishu:get-bitable'),
     onInitProgress: (cb: (p: { step: string; message?: string }) => void) => {
       const listener = (_e: IpcRendererEvent, p: { step: string; message?: string }) => cb(p)
       ipcRenderer.on('feishu:init-progress', listener)

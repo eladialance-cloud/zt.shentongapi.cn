@@ -98,9 +98,10 @@ import { registerVideoParserIpc } from './video-parser'
 import { createEdictDeps, createEdictExtraDeps, ensureEdictHermesProfiles, registerEdictIpc, getEdictProfilesDir, getEdictDataRoot } from './edict-bridge'
 import { resolveRoster } from './edict-roster'
 import { registerEdictExtraIpc } from './edict-extra'
-import { registerOfficialDetailIpc } from './official-detail'
+import { registerOfficialDetailIpc, getOfficialTables, writeRenderedSoul } from './official-detail'
 import { registerFeishuIpc, buildFeishuClient, type FeishuSettingsDeps } from './feishu-settings'
-import { initBitable } from './feishu-bitable'
+import { initBitable, readBitableState } from './feishu-bitable'
+import { createOrReuseStrategicDoc } from './strategic-doc'
 import { registerTeamIpc } from './team-ipc'
 import { setCredential, deleteCredential } from './services/credential-store'
 import { CronEngine, createCronEngine, defaultCronEngineStatePath, type CronScheduledTask } from './cron-engine'
@@ -820,22 +821,47 @@ function registerIpcHandlers(): void {
     setCredential: (k, v) => setCredential(k, v),
     deleteCredential: (k) => deleteCredential(k),
   }
-  const initFeishuBitable = async () => {
+  const initFeishuBitable = async (options?: { force?: boolean }) => {
     const client = buildFeishuClient(feishuDeps)
     if (!client) return { ok: false, error: '飞书凭证未配置' }
     return initBitable({
       client,
       dataRoot: getEdictDataRoot(),
       resourcesRoot: app.isPackaged ? process.resourcesPath : join(process.cwd(), 'resources'),
+      force: options?.force,
       onProgress: (p) => {
         const win = getMainWindow()
         if (win && !win.isDestroyed()) win.webContents.send('feishu:init-progress', p)
       },
     })
   }
+  /**
+   * 战略方向文档：由**中书省**牵头维护（一键组队第 5 步）。
+   * 创建/复用飞书云文档 → 回填中书省表清单 → 重写中书省 SOUL 让占位符变成真实链接。
+   */
+  const runStrategicDoc = async () => {
+    const client = buildFeishuClient(feishuDeps)
+    if (!client) return { ok: false, error: '飞书凭证未配置，跳过战略方向文档' }
+    return createOrReuseStrategicDoc({
+      client,
+      dataRoot: getEdictDataRoot(),
+      refreshSoul: () => {
+        try {
+          writeRenderedSoul(
+            join(getEdictProfilesDir(), 'zhongshu.md'),
+            join(app.getPath('userData'), 'hermes-home', 'profiles', 'zhongshu', 'SOUL.md'),
+            getOfficialTables(getEdictDataRoot(), 'zhongshu'),
+          )
+        } catch {
+          // 刷新 SOUL 失败不影响战略文档本身
+        }
+      },
+    })
+  }
   const disposeFeishuIpc = registerFeishuIpc({
     ...feishuDeps,
     initTables: initFeishuBitable,
+    getBitable: () => readBitableState(getEdictDataRoot()),
   })
 
   // 一键组队（套餐 → 飞书表 + SOUL + Agent + 定时任务）
@@ -845,6 +871,7 @@ function registerIpcHandlers(): void {
     edictProfilesDir: getEdictProfilesDir(),
     edictDataRoot: getEdictDataRoot(),
     initBitable: initFeishuBitable,
+    createStrategicDoc: runStrategicDoc,
     ensureAgents: (ids) => ensureEdictHermesProfiles(ids),
     stApiBase: ST_API_BASE,
     getAuthToken: readRemoteToken,
