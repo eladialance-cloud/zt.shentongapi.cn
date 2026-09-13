@@ -6,9 +6,11 @@
 
 import { ipcMain } from 'electron'
 import { isRegisteredIpcChannel } from '../shared/ipc-channels'
+import { isHighRiskChannel, riskCategoryOf } from '../shared/ipc-risk'
 import log from 'electron-log'
 
 const registered = new Set<string>()
+const highRiskRegistered = new Set<string>()
 let installed = false
 
 function track(channel: string, kind: string): void {
@@ -16,6 +18,12 @@ function track(channel: string, kind: string): void {
   registered.add(channel)
   if (!isRegisteredIpcChannel(channel)) {
     log.error(`[ipc-registry] 未登记的 IPC 通道被注册: ${channel} (${kind}) —— 请将其加入 shared/ipc-channels.ts`)
+  }
+  // S-26：高风险通道（文件/命令/网络/凭据/安装）在注册时显式打点，
+  // 便于在运行日志里核对「这些通道的参数是否真的过了 policy 层」。
+  if (isHighRiskChannel(channel)) {
+    highRiskRegistered.add(channel)
+    log.warn(`[ipc-registry] 高风险通道已注册: ${channel} (${kind}, 类别=${riskCategoryOf(channel)})`)
   }
 }
 
@@ -44,7 +52,15 @@ export function installIpcRegistry(): void {
 }
 
 /** 审计结果（供开发/CI 用） */
-export function getIpcAudit(): { registered: number; unknown: string[] } {
+export function getIpcAudit(): {
+  registered: number
+  unknown: string[]
+  highRisk: string[]
+} {
   const unknown = [...registered].filter((c) => !isRegisteredIpcChannel(c))
-  return { registered: registered.size, unknown }
+  return {
+    registered: registered.size,
+    unknown,
+    highRisk: [...highRiskRegistered].sort(),
+  }
 }

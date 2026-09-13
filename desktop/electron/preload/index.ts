@@ -2,6 +2,7 @@
 // 启用 contextIsolation: true,nodeIntegration: false
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { deepFreeze } from '../shared/deep-freeze'
 import type {
   ServiceName,
   ServiceInfo,
@@ -638,6 +639,10 @@ const runtimeAPI: RuntimeAPI = {
     }
   }
 }
+
+// S-20：暴露前深冻结，渲染层无法给命名空间挂方法或改属性。
+deepFreeze(electronAPI)
+deepFreeze(runtimeAPI)
 
 if (process.contextIsolated) {
   try {
