@@ -76,11 +76,13 @@ curl.exe -s "https://zt.shentongapi.cn/api/version/check?platform=win&currentVer
 
 ```powershell
 $sql = @'
+-- IMPORTANT: latin1 client charset double-encodes Chinese changelog (2026-09-13 incident)
+-- keep --default-character-set=utf8mb4 in the mysql command below
 UPDATE client_versions SET is_active=0 WHERE platform='win';
 INSERT INTO client_versions (version,platform,download_url,changelog,force_update,grayscale_percent,published_at,is_active)
 VALUES ('X.X.X','win','/desktop/ShenTongAI-Setup-X.X.X-x64.exe.zip','',0,100,NOW(),1);
 '@
-$sql | ssh ubuntu@129.204.227.200 'sudo docker exec -i shentong-mysql mysql -uroot shentong'
+$sql | ssh ubuntu@129.204.227.200 'sudo docker exec -i shentong-mysql mysql --default-character-set=utf8mb4 -uroot shentong'
 ```
 
 - 注意 `platform` 值必须是 `win`（建表注释里写的是 `windows`，容易写错；写错则查询匹配不到）。
