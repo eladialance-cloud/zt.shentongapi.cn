@@ -468,6 +468,11 @@ export interface LlmIntegration {
   baseUrl: string;
   /** API Key（仅存本机） */
   apiKey: string;
+  /**
+   * 端点信任分级（安全审计 S-54）：platform=平台托管域名；custom=第三方/自建端点。
+   * 由主进程按 policy/llm-endpoint-policy 判定后写入，渲染层只读。
+   */
+  trust?: "platform" | "custom";
   models: LlmIntegrationModel[];
   createdAt: number;
   updatedAt: number;

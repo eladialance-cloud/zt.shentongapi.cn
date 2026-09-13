@@ -4,6 +4,8 @@
  * 数据文件：userData/llm-integrations.json
  * - API Key 仅存本机，不上传云端；
  * - 对话时由主进程直连用户填写的 Base URL（不经平台 llm-proxy，不扣平台积分）；
+ * - 安全审计 S-54：Base URL 一律过 policy/llm-endpoint-policy 的信任分级，非平台域名
+ *   必须由用户确认「API Key 会发送到该地址」后才会真正收到凭据；
  * - 测试连接：POST {base}/chat/completions 发一条最小消息验证 Key/URL/模型。
  * - API Key 明文存储于 userData/llm-integrations.json（本地应用可接受；如需更高安全可改用 Windows Credential Manager）。
  */
@@ -15,6 +17,7 @@ import type {
   LlmIntegrationStoreResult,
   LlmIntegrationTestResult,
 } from '../shared/types'
+import { describeLlmEndpointDeny, evaluateLlmEndpoint } from './policy/llm-endpoint-policy'
 
 /** 归一化聊天端点：支持 https://host/v1 或 https://host/v1/chat/completions */
 export function normalizeChatEndpoint(baseUrl: string): string {
@@ -55,8 +58,10 @@ export class LlmIntegrationsStore {
       if (!integration.baseUrl || !integration.baseUrl.trim()) {
         return { ok: false, integrations: this.list(), error: '请填写 Base URL' }
       }
-      if (!/^https?:\/\//i.test(integration.baseUrl.trim())) {
-        return { ok: false, integrations: this.list(), error: 'Base URL 必须以 http(s):// 开头' }
+      // 安全审计 S-54：自定义端点 = 平台 API Key 的外发目标，先过端点信任策略（拒绝元数据/内网保留地址、URL 内嵌凭据）
+      const endpoint = evaluateLlmEndpoint(integration.baseUrl)
+      if (!endpoint.ok) {
+        return { ok: false, integrations: this.list(), error: describeLlmEndpointDeny(endpoint.reason) }
       }
       if (!Array.isArray(integration.models) || integration.models.length === 0) {
         return { ok: false, integrations: this.list(), error: '请至少添加一个模型 ID' }
@@ -69,6 +74,8 @@ export class LlmIntegrationsStore {
         name: integration.name.trim(),
         baseUrl: integration.baseUrl.trim(),
         apiKey: integration.apiKey?.trim() ?? '',
+        // S-54：记录信任分级（platform=平台托管；custom=第三方/自建，用户已在弹窗确认）
+        trust: endpoint.trust,
         models: integration.models
           .filter((m) => m && typeof m.id === 'string' && m.id.trim())
           .map((m) => ({
@@ -115,6 +122,11 @@ export class LlmIntegrationsStore {
     model: string,
   ): Promise<LlmIntegrationTestResult> {
     try {
+      // 安全审计 S-54：连通性测试同样会把 Key 发出去，先过端点信任策略
+      const endpoint = evaluateLlmEndpoint(baseUrl)
+      if (!endpoint.ok) {
+        return { ok: false, message: describeLlmEndpointDeny(endpoint.reason) }
+      }
       const url = normalizeChatEndpoint(baseUrl)
       if (!apiKey?.trim()) {
         return { ok: false, message: '请填写 API Key' }

@@ -18,6 +18,11 @@ import { HERMES_SESSION_TOKEN_CREDENTIAL } from './hermes-client'
 import { getCredential } from './services/credential-store'
 import { authContextDir, readAuthToken, writeSecureJson } from './services/secure-json-store'
 import { describeOutboundDeny, evaluateOutboundUrl, mediaAllowedHosts } from './policy/url-policy'
+import {
+  describeLlmEndpointDeny,
+  evaluateLlmEndpoint,
+  type LlmEndpointDecision,
+} from './policy/llm-endpoint-policy'
 import { redactValue } from './policy/redact'
 import type { LlmIntegration } from '../shared/types'
 
@@ -1320,21 +1325,73 @@ ipcMain.handle(
   )
 
   // ===== 自定义大模型接入（本机保存） =====
+  // 安全审计 S-54：自定义端点 = 「平台 API Key 可外发的目标」。非平台域名（以及明文 http 的平台域名）
+  // 必须先让用户确认「Key 会发送到该地址」；确认回调缺失 / 弹窗异常一律 fail-closed。
+  const confirmLlmEndpoint = async (
+    decision: LlmEndpointDecision,
+    action: string,
+  ): Promise<boolean> => {
+    if (!decision.ok || !decision.requiresConfirmation) return true
+    try {
+      if (!app.isReady()) return false
+      const kind =
+        decision.trust === 'platform' ? '平台域名（但为明文 http）' : '非平台域名（第三方 / 自建）'
+      const detail = [
+        '目标地址：' + decision.url,
+        '端点性质：' + kind,
+        ...decision.warnings.map((w) => '风险提示：' + w),
+        '',
+        '继续后，你填写的 API Key 会随请求发送到上述地址；请确认该地址由你信任的一方运营。',
+      ].join('\n')
+      const result = await dialog.showMessageBox({
+        type: 'warning',
+        title: '深瞳AI · 自定义模型地址确认',
+        message: action + '：API Key 将发送到 ' + decision.host,
+        detail,
+        buttons: ['取消', '确认继续'],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      })
+      return result.response === 1
+    } catch (err) {
+      console.warn('[llm-integrations] 端点确认弹窗失败，按取消处理:', err)
+      return false
+    }
+  }
+
   ipcMain.handle('llm-integrations:list', () => llmIntegrations.list())
-  ipcMain.handle('llm-integrations:save', (_e, integration: LlmIntegration) =>
-    llmIntegrations.save(integration),
-  )
+  ipcMain.handle('llm-integrations:save', async (_e, integration: LlmIntegration) => {
+    const decision = evaluateLlmEndpoint(integration?.baseUrl ?? '')
+    if (!decision.ok) {
+      return {
+        ok: false,
+        integrations: llmIntegrations.list(),
+        error: describeLlmEndpointDeny(decision.reason),
+      }
+    }
+    if (!(await confirmLlmEndpoint(decision, '保存接入配置'))) {
+      return {
+        ok: false,
+        integrations: llmIntegrations.list(),
+        error: '已取消：未确认把 API Key 发往 ' + decision.host,
+      }
+    }
+    return llmIntegrations.save(integration)
+  })
   ipcMain.handle('llm-integrations:remove', (_e, id: string) => llmIntegrations.remove(id))
   ipcMain.handle(
     'llm-integrations:test',
-    (_e, args: { baseUrl: string; apiKey: string; model: string }) => {
-      // 安全审计 S-41：主进程代发请求天然是 SSRF 入口。
-      // 放行环回/局域网（自建 Ollama / vLLM / 网关是正常用法），但链路本地与云元数据地址永不放行，
-      // 且非 http(s) 一律拒绝。
-      const decision = evaluateOutboundUrl(args?.baseUrl ?? '', { allowPrivate: true })
+    async (_e, args: { baseUrl: string; apiKey: string; model: string }) => {
+      // 安全审计 S-41 / S-54：主进程代发请求天然是 SSRF 入口，先过端点信任策略
+      // （放行环回/局域网自建服务，但链路本地与云元数据地址永不放行、URL 不得内嵌凭据）。
+      const decision = evaluateLlmEndpoint(args?.baseUrl ?? '')
       if (!decision.ok) {
         console.warn('[llm-integrations] 连通性测试地址被拒绝：' + decision.reason)
-        return { ok: false, message: describeOutboundDeny(decision.reason) }
+        return { ok: false, message: describeLlmEndpointDeny(decision.reason) }
+      }
+      if (!(await confirmLlmEndpoint(decision, '测试连接'))) {
+        return { ok: false, message: '已取消：未确认把 API Key 发往 ' + decision.host }
       }
       return llmIntegrations.test(args?.baseUrl ?? '', args?.apiKey ?? '', args?.model ?? '')
     },
