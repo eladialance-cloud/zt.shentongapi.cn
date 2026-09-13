@@ -10,6 +10,7 @@ import {
   getOfficialTables,
   saveOfficialTables,
   renderSoulWithTables,
+  writeRenderedSoul,
   isSafeAgentId,
 } from "../../electron/main/official-detail";
 
@@ -75,5 +76,42 @@ describe("official-detail", () => {
     expect(r.replaced).toBe(0);
     expect(r.missing).toEqual(["军机处·任务主表"]);
     expect(r.content).toBe("{{FEISHU_DOC:军机处·任务主表}}");
+  });
+});
+
+describe("writeRenderedSoul", () => {
+  test("把蓝本占位符渲染后写入目标文件", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "st-soul-"));
+    const src = path.join(root, "zhongshu.md");
+    const dst = path.join(root, "profile", "SOUL.md");
+    fs.writeFileSync(src, "# 中书省\n| 表 | 链接 |\n| 方案表 | {{FEISHU_DOC:中书省·方案表}} |", "utf-8");
+    const r = writeRenderedSoul(src, dst, [
+      { envKey: "FEISHU_PLAN_TABLE", name: "中书省·方案表", url: "https://feishu.cn/base/abc" },
+    ]);
+    expect(r.ok).toBe(true);
+    expect(r.replaced).toBe(1);
+    expect(fs.readFileSync(dst, "utf-8")).toContain("https://feishu.cn/base/abc");
+    expect(fs.readFileSync(dst, "utf-8")).not.toContain("{{FEISHU_DOC:");
+  });
+
+  test("没有链接时保留占位符并计入 missing（不伪造链接）", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "st-soul-"));
+    const src = path.join(root, "bingbu.md");
+    const dst = path.join(root, "profile", "SOUL.md");
+    fs.writeFileSync(src, "{{FEISHU_DOC:兵部·业务拓展表}}", "utf-8");
+    const r = writeRenderedSoul(src, dst, []);
+    expect(r.ok).toBe(true);
+    expect(r.replaced).toBe(0);
+    expect(r.missing).toContain("兵部·业务拓展表");
+    expect(fs.readFileSync(dst, "utf-8")).toContain("{{FEISHU_DOC:兵部·业务拓展表}}");
+  });
+
+  test("蓝本缺失时返回错误且不写目标文件", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "st-soul-"));
+    const dst = path.join(root, "profile", "SOUL.md");
+    const r = writeRenderedSoul(path.join(root, "nope.md"), dst, []);
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain("蓝本 SOUL 不存在");
+    expect(fs.existsSync(dst)).toBe(false);
   });
 });

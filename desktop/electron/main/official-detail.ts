@@ -151,6 +151,30 @@ export function renderSoulWithTables(
   return { content, replaced, missing };
 }
 
+/**
+ * 用蓝本 SOUL 渲染占位符后写入 profile（唯一的 SOUL 写入入口）。
+ * 启动引导（edict-bridge）与一键组队（team-ipc）都走这里，避免两套写法互相覆盖：
+ * 曾经启动引导直接 copyFileSync 蓝本，把已渲染的飞书链接冲回占位符。
+ */
+export function writeRenderedSoul(
+  soulSrcFile: string,
+  soulDstFile: string,
+  tables: OfficialTableEntry[],
+): { ok: boolean; replaced: number; missing: string[]; error?: string } {
+  try {
+    if (!fs.existsSync(soulSrcFile)) {
+      return { ok: false, replaced: 0, missing: [], error: `蓝本 SOUL 不存在：${soulSrcFile}` };
+    }
+    const soul = fs.readFileSync(soulSrcFile, "utf-8");
+    const rendered = renderSoulWithTables(soul, tables);
+    fs.mkdirSync(path.dirname(soulDstFile), { recursive: true });
+    fs.writeFileSync(soulDstFile, rendered.content, "utf-8");
+    return { ok: true, replaced: rendered.replaced, missing: rendered.missing };
+  } catch (err) {
+    return { ok: false, replaced: 0, missing: [], error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // ===== IPC 注册（官署详情三 tab：飞书表 / 定时任务 / 执行日志；定时任务与日志由渲染层走既有 API） =====
 
 export interface OfficialDetailIpcDeps {

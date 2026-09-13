@@ -16,7 +16,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { TeamCreationResult, TeamPresetDeps, TeamProgress, PresetId } from "./team-preset";
 import { runTeamCreation, TEAM_PRESETS, getPreset } from "./team-preset";
-import { getOfficialTables, renderSoulWithTables } from "./official-detail";
+import { getOfficialTables, writeRenderedSoul } from "./official-detail";
 
 /** 官署默认定时任务（对标 RRClaw 的 44 条 command 任务；能对到 flows 的走 flow，其余走 llm） */
 export interface DefaultCron {
@@ -101,7 +101,7 @@ export function listInstalledOfficials(hermesHome: string, officialIds: string[]
   }
 }
 
-/** 写某官署 SOUL：蓝本 → 占位符替换 → profile/SOUL.md */
+/** 写某官署 SOUL：蓝本 → 占位符替换 → profile/SOUL.md（委托 official-detail 的唯一写入方） */
 export function writeOfficialSoul(
   edictProfilesDir: string,
   edictDataRoot: string,
@@ -111,17 +111,8 @@ export function writeOfficialSoul(
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(official)) return { ok: false, error: "非法官署 id" };
   const src = path.join(edictProfilesDir, `${official}.md`);
   if (!fs.existsSync(src)) return { ok: false, error: `蓝本 SOUL 不存在：${official}.md` };
-  const soul = fs.readFileSync(src, "utf-8");
-  const tables = getOfficialTables(edictDataRoot, official);
-  const rendered = renderSoulWithTables(soul, tables);
-  const dstDir = path.join(hermesHome, "profiles", official);
-  try {
-    fs.mkdirSync(dstDir, { recursive: true });
-    fs.writeFileSync(path.join(dstDir, "SOUL.md"), rendered.content, "utf-8");
-    return { ok: true, replaced: rendered.replaced, missing: rendered.missing };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
+  const r = writeRenderedSoul(src, path.join(hermesHome, "profiles", official, "SOUL.md"), getOfficialTables(edictDataRoot, official));
+  return r.ok ? { ok: true, replaced: r.replaced, missing: r.missing } : { ok: false, error: r.error };
 }
 
 export interface SoulSyncItem {

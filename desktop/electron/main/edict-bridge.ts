@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 三省六部主进程桥（edict-bridge）
  * 职责：
  *  1. edict 运行时引导：resources/edict（只读蓝本）→ userData/edict-data（可写运行时），
@@ -41,6 +41,7 @@ import type { EdictBoard, EdictNotifyConfig, EdictOp, EdictTask } from "../share
 import { OFFICIALS } from "./edict-orchestrator";
 import { ST_API_BASE } from "./service-manager";
 import type { EdictExtraDeps } from "./edict-extra";
+import { writeRenderedSoul, getOfficialTables } from "./official-detail";
 
 // ===== 路径解析 =====
 
@@ -187,11 +188,15 @@ export async function ensureEdictHermesProfiles(ids?: readonly string[]): Promis
         });
         created.push(id);
       }
-      // 注入官署 SOUL.md：每次启动从蓝本覆盖（官署人设由应用管理，保证与安装包版本一致；
-      // 用户自定义走「技能市场」，不在此处保留旧 SOUL）
+      // 注入官署 SOUL.md：每次启动从蓝本重渲染（官署人设由应用管理，保证与安装包版本一致；
+      // 用户自定义走「技能市场」，不在此处保留旧 SOUL）。
+      // 注意：必须走与一键组队相同的渲染写入，否则会把已替换的飞书表链接冲回占位符。
       const soulSrc = path.join(soulDir, id + ".md");
       const soulDst = path.join(profileDir, "SOUL.md");
-      if (fs.existsSync(soulSrc)) fs.copyFileSync(soulSrc, soulDst);
+      if (fs.existsSync(soulSrc)) {
+        const soulWrite = writeRenderedSoul(soulSrc, soulDst, getOfficialTables(getEdictDataRoot(), id));
+        if (!soulWrite.ok) console.warn("[edict-bridge] 写 SOUL 失败 " + id + ": " + soulWrite.error);
+      }
       // 预置执行层技能：六部（户/礼/吏/兵/刑/工）新装即自带 n8n-run-workflow，
       // 可直接调用本地 N8N 工作流（幂等：仅内容变化时覆盖，用户可删除后从技能库重加）
       if (N8N_SKILL_AGENTS.includes(id)) {
