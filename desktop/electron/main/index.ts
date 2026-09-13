@@ -713,6 +713,10 @@ if (!gotLock) {
     migrateLegacyOpenClawData()
     app.setAppUserModelId('com.shentong.ai')
 
+    // 本地加密库启动自检（安全审计 S-45）：本构建是否带 sqlcipher / 是否已降级，
+    // 在建窗口前定下来，渲染层一启动就能读到状态并向用户说明。
+    localDb.selfCheck()
+
     // P0-2: IPC 安全边界——注册任何通道前安装来源校验守卫（只信任主窗口顶层页面）
     initIpcGuard(() => getMainWindow(), isDev)
     hardenIpc()
@@ -1814,16 +1818,24 @@ ipcMain.handle(
     event.returnValue = localDb.isDegraded()
   })
 
+  // 本地库状态（含降级原因码，安全审计 S-45）：渲染层据此提示「本地存储已停用，数据不落本机」
+  ipcMain.handle('db:status', () => localDb.getStatus())
+
   // 登出时关闭数据库（fire-and-forget）
   ipcMain.on('db:close', () => {
     localDb.close()
   })
 
   // 降级事件转发到渲染进程，由其显示提示并回退到云端 API
-  localDb.on('db:degraded', (err: unknown) => {
-    const message = err instanceof Error ? err.message : String(err)
+  localDb.on('db:degraded', (payload: unknown) => {
+    const p = (payload ?? {}) as { code?: unknown; message?: unknown; status?: unknown }
+    const message = typeof p.message === 'string' ? p.message : 'local db degraded'
     console.warn('[ipc] db:degraded forwarded to renderer:', message)
-    getMainWindow()?.webContents.send('db:degraded', { message })
+    getMainWindow()?.webContents.send('db:degraded', {
+      message,
+      code: p.code ?? null,
+      status: p.status ?? null,
+    })
   })
 
   // ===== 同步队列操作（离线调用队列 + 上行同步） =====

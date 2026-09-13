@@ -12,6 +12,7 @@ import { useAuthStore } from '@/store/auth'
 import { fetchLlmProxyKey } from '@/api/chat-api'
 import { syncService } from '@/api/sync-service'
 import { lightTheme, darkTheme } from '@/theme/antd-theme'
+import { notifyLocalDbDegraded } from '@/utils/local-db-notice'
 
 export default function App() {
   const themeMode = useSettingsStore((s) => s.theme)
@@ -42,6 +43,12 @@ export default function App() {
   useEffect(() => {
     void initialize()
   }, [initialize])
+
+  // 启动自检：本地加密库不可用时（安全审计 S-45，如本构建缺 sqlcipher）告知用户
+  // 「本地存储已停用、数据不落本机」，避免用户误以为数据存在本地加密库里
+  useEffect(() => {
+    void notifyLocalDbDegraded()
+  }, [])
 
   // 登录态变化 → 启动/停止离线同步服务（网络恢复自动补传 local_sync_queue）
   const accessToken = useAuthStore((s) => s.accessToken)

@@ -50,6 +50,9 @@ export type {
   EdictTodo,
 };
 
+import type { LocalDbStatus } from "./local-db-status";
+export type { LocalDbStatus } from "./local-db-status";
+
 
 export type KnownServiceName = "n8n" | "hermes" | "video-claw";
 export type ServiceName = KnownServiceName | (string & {});
@@ -1089,6 +1092,8 @@ export interface ElectronAPI {
     initialize(userToken: string): Promise<boolean>;
     /** 检查本地数据库是否处于降级模式（同步） */
     isDegraded(): boolean;
+    /** 本地库状态：降级原因码 / 脱敏详情 / 首次降级时间（安全审计 S-45） */
+    status(): Promise<LocalDbStatus>;
     /** 关闭本地数据库（登出时调用） */
     close(): void;
     briefs: {

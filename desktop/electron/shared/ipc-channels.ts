@@ -39,6 +39,7 @@ export const IPC_CHANNELS = [
   'db:scheduledRuns:finish',
   'db:scheduledRuns:list',
   'db:scheduledRuns:remove',
+  'db:status',
   'device:getFingerprint',
   'edict:add-remote-skill',
   'edict:add-skill',

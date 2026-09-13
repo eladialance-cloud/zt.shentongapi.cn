@@ -18,6 +18,7 @@ import {
 import { httpClient } from '@/api/http-client'
 import { useAuthStore, type User } from '@/store/auth'
 import { BusinessError } from '@/utils/errors'
+import { notifyLocalDbDegraded } from '@/utils/local-db-notice'
 import styles from './styles.module.css'
 
 interface RegisterFormValues {
@@ -49,7 +50,9 @@ export default function Register() {
 
     // 初始化本地数据库
     try {
-      await window.electronAPI.db.initialize(data.accessToken)
+      const ready = await window.electronAPI.db.initialize(data.accessToken)
+      // 返回 false = 已降级：提示一次，别让用户以为数据存到了本机（S-45）
+      if (!ready) await notifyLocalDbDegraded()
     } catch {
       message.warning('本地数据库初始化失败，已进入降级模式')
     }

@@ -22,6 +22,7 @@ import type {
   MarketItemDetail,
   LocalBrief,
   LocalScheduledRun,
+  LocalDbStatus,
   CronEngineState,
   CronEngineEvent,
   CronServiceStatus,
@@ -351,6 +352,8 @@ const electronAPI: ElectronAPI = {
     initialize: (userToken: string) => ipcRenderer.invoke('db:initialize', userToken) as Promise<boolean>,
     // 同步查询降级状态(sendSync 阻塞,仅读布尔值,开销极小)
     isDegraded: () => ipcRenderer.sendSync('db:isDegraded') as boolean,
+    // 本地库状态(含降级原因码,安全审计 S-45)
+    status: () => ipcRenderer.invoke('db:status') as Promise<LocalDbStatus>,
     // 登出时关闭数据库(fire-and-forget)
     close: () => {
       ipcRenderer.send('db:close')

@@ -17,6 +17,7 @@ import {
   readRememberedAccount,
   writeRememberedAccount,
 } from "@/utils/login-remember";
+import { notifyLocalDbDegraded } from "@/utils/local-db-notice";
 import styles from "./styles.module.css";
 
 /** 设备类型错误码 */
@@ -118,7 +119,9 @@ export default function Login() {
 
     // 初始化本地数据库（使用 accessToken 作为派生密钥的种子）
     try {
-      await window.electronAPI.db.initialize(data.accessToken);
+      const ready = await window.electronAPI.db.initialize(data.accessToken);
+      // 返回 false = 已降级（如本构建不含 sqlcipher）：提示一次，别让用户以为数据存到了本机（S-45）
+      if (!ready) await notifyLocalDbDegraded();
     } catch {
       // DB 初始化失败不阻塞登录（进入降级模式）
       message.warning("本地数据库初始化失败，已进入降级模式");

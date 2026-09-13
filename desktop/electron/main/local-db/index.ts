@@ -10,6 +10,12 @@ import { join } from 'node:path'
 import { EventEmitter } from 'node:events'
 import { SCHEMA_SQL } from './schema'
 import { validateKey } from './crypto'
+import {
+  buildLocalDbStatus,
+  sanitizeDegradedReason,
+  type LocalDbDegradedCode,
+  type LocalDbStatus,
+} from '../../shared/local-db-status'
 
 // H-08b fix: @journeyapps/sqlcipher@6.0.0 没有 Windows prebuilt binary，且 Electron 41 ABI=145
 // 与 5.3.1 的 binary 不兼容。因此把 sqlcipher 作为 optional dependency 动态加载。
@@ -42,6 +48,10 @@ class LocalDbService extends EventEmitter {
   private db: import('@journeyapps/sqlcipher').Database | null = null
   private degraded = false
   private initialized = false
+  // 安全审计 S-45：降级不能只有一个布尔值，必须带原因（渲染层要能告诉用户为什么）
+  private degradedCode: LocalDbDegradedCode | null = null
+  private degradedReason: string | null = null
+  private degradedAt: string | null = null
 
   private constructor() {
     super()
@@ -65,6 +75,32 @@ class LocalDbService extends EventEmitter {
     return this.initialized
   }
 
+  /** 本地库状态（安全审计 S-45）：含降级原因码 / 脱敏详情 / 首次降级时间 */
+  getStatus(): LocalDbStatus {
+    return buildLocalDbStatus({
+      degraded: this.degraded,
+      initialized: this.initialized,
+      moduleAvailable: Boolean(sqlite3),
+      code: this.degradedCode,
+      reason: this.degradedReason,
+      degradedAt: this.degradedAt,
+    })
+  }
+
+  /**
+   * 启动自检（安全审计 S-45）：不必等登录，先把「本构建有没有本地加密库」定下来。
+   * 缺原生模块时立即登记降级（渲染层启动即可读到，而不是登录后才发现），并打一行明确日志。
+   */
+  selfCheck(): LocalDbStatus {
+    if (!sqlite3) {
+      this.handleDegradation(
+        new Error('@journeyapps/sqlcipher module not available in this build'),
+        'MODULE_UNAVAILABLE',
+      )
+    }
+    return this.getStatus()
+  }
+
   /**
    * 初始化数据库（登录后调用）
    * 使用 SQLCipher 加密；失败时进入降级模式并触发 db:degraded 事件
@@ -78,20 +114,29 @@ class LocalDbService extends EventEmitter {
 
     // 如果 sqlcipher 模块不可用，直接进入降级模式
     if (!sqlite3) {
-      this.handleDegradation(new Error('@journeyapps/sqlcipher module not available in this build'))
+      this.handleDegradation(
+        new Error('@journeyapps/sqlcipher module not available in this build'),
+        'MODULE_UNAVAILABLE',
+      )
       return
     }
 
+    // 失败阶段标记（安全审计 S-45）：每个可能失败的步骤都先写 stage，catch 时据此给出原因码
+    let stage: LocalDbDegradedCode = 'OPEN_FAILED'
+
     try {
       if (!validateKey(encryptionKey)) {
+        stage = 'INVALID_KEY'
         throw new Error('Invalid encryption key format (expected 64-char hex)')
       }
 
       const dbPath = join(app.getPath('userData'), 'local.db')
+      stage = 'OPEN_FAILED'
       this.db = new sqlite3.Database(dbPath)
 
       // SQLCipher：使用 PBKDF2 已派生的原始密钥（避免二次派生）
       // 以 x'<hex>' 形式传入，SQLCipher 直接将其作为 32 字节原始密钥
+      stage = 'KEY_MISMATCH'
       await this.runInternal(`PRAGMA key = "x'${encryptionKey}'"`)
       await this.runInternal('PRAGMA cipher_compatibility = 4')
 
@@ -99,12 +144,16 @@ class LocalDbService extends EventEmitter {
       await this.verifyKey()
 
       // 建表
+      stage = 'SCHEMA_FAILED'
       await this.execInternal(SCHEMA_SQL)
 
       this.initialized = true
       this.degraded = false
+      this.degradedCode = null
+      this.degradedReason = null
+      this.degradedAt = null
     } catch (err) {
-      this.handleDegradation(err)
+      this.handleDegradation(err, stage)
     }
   }
 
@@ -267,13 +316,20 @@ class LocalDbService extends EventEmitter {
   }
 
   /**
-   * 降级处理：记录错误、关闭句柄、标记降级、触发事件
+   * 降级处理：记录原因、关闭句柄、标记降级、触发事件
    * 渲染进程监听 db:degraded 后所有操作走云端 API
+   *
+   * 安全审计 S-45：原因码 / 脱敏详情 / 首次降级时间一并留存，供渲染层显示；
+   * 日志与广播**只在该次降级的第一次**产生（重复 initialize 不再刷屏）。
    */
-  private handleDegradation(err: unknown): void {
-    console.error('[local-db] Degraded mode activated:', err)
+  private handleDegradation(err: unknown, code: LocalDbDegradedCode = 'UNKNOWN'): void {
+    const first = !this.degraded
+    const reason = sanitizeDegradedReason(err)
     this.degraded = true
     this.initialized = false
+    this.degradedCode = code
+    this.degradedReason = reason
+    if (!this.degradedAt) this.degradedAt = new Date().toISOString()
     if (this.db) {
       try {
         this.db.close()
@@ -282,8 +338,19 @@ class LocalDbService extends EventEmitter {
       }
       this.db = null
     }
-    // 通知主进程转发给渲染进程
-    this.emit('db:degraded', err)
+    if (first) {
+      console.warn(
+        '[local-db] 已进入降级模式（' + code + '）：' + (reason ?? 'unknown') +
+          '；本地加密库不可用，数据不落本机，读写改走云端 API',
+      )
+      console.error('[local-db] 降级根因（仅主进程日志）:', err)
+      // 通知主进程转发给渲染进程
+      this.emit('db:degraded', {
+        code,
+        message: reason ?? 'local db degraded',
+        status: this.getStatus(),
+      })
+    }
   }
 }
 
