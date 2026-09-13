@@ -11,12 +11,18 @@
  * 设计：与 edict-bridge 同风格——依赖注入（EdictExtraDeps），纯函数可单测；
  * 数据落盘 userData/edict-data/（morning-brief.json / morning-config.json / model_change_log.json / court-sessions/）。
  */
-import { BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { EdictDeps } from "./edict-orchestrator";
 import { OFFICIALS, edictIssue } from "./edict-orchestrator";
 import { EDICT_PROFILE_IDS, syncHermesProfileConfigs, writeAgentModel, removeAgentModel } from "./hermes-config";
+import {
+  MAX_SKILL_BYTES,
+  describeRemoteArtifactDeny,
+  evaluateRemoteSkillUrl,
+  evaluateSkillContent,
+} from "./policy/remote-artifact-policy";
 
 // P0-3: 官署 ID / 技能名白名单校验（防止路径穿越写出 hermes-home/profiles 目录）
 const SAFE_AGENT_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -56,6 +62,15 @@ import type {
 
 // ===== 依赖 =====
 
+/** S-42：远端技能安装确认信息（来源已过白名单校验，再交给用户确认） */
+export interface EdictRemoteSkillConfirmInfo {
+  agentId: string;
+  skillName: string;
+  url: string;
+  host: string;
+  description?: string;
+}
+
 export interface EdictExtraDeps extends EdictDeps {
   /** $HERMES_HOME（userData/hermes-home） */
   hermesHome: string;
@@ -73,6 +88,8 @@ export interface EdictExtraDeps extends EdictDeps {
   getHermesRuntimeStatus?: () => Promise<EdictHermesRuntimeStatus>;
   /** 网络抓取（默认全局 fetch；测试可注入） */
   fetch?: typeof fetch;
+  /** 远端技能安装的用户确认（S-42）；缺省用主进程弹窗，非 GUI / 异常一律拒绝 */
+  confirmRemoteSkillInstall?: (info: EdictRemoteSkillConfirmInfo) => Promise<boolean>;
 }
 
 // ===== 常量 =====
@@ -656,22 +673,70 @@ export function listRemoteSkills(deps: EdictExtraDeps): EdictRemoteSkillsResult 
   return { ok: true, remoteSkills: items, count: items.length, listedAt: nowIso() };
 }
 
-/** 添加/更新远程技能：下载 SKILL.md 到 profile skills 目录 + 登记 registry */
+/** S-42：默认确认弹窗（fail-closed）——非 GUI / 弹窗异常 / 用户关窗一律按「拒绝」处理 */
+async function defaultRemoteSkillConfirm(info: EdictRemoteSkillConfirmInfo): Promise<boolean> {
+  try {
+    if (!app.isReady()) return false;
+    const result = await dialog.showMessageBox({
+      type: "warning",
+      title: "深瞳AI · 远端技能安装确认",
+      message: "将从 " + info.host + " 下载技能「" + info.skillName + "」",
+      detail: [
+        "官署：" + info.agentId,
+        "地址：" + info.url,
+        info.description ? "说明：" + info.description : "",
+        "",
+        "技能内容会写入官署技能目录并由 AI 读取，请确认来源可信后再安装。",
+      ].filter(Boolean).join("\n"),
+      buttons: ["取消", "确认安装"],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    return result.response === 1;
+  } catch (err) {
+    console.warn("[edict-extra] 远端技能安装确认弹窗失败，按取消处理:", err);
+    return false;
+  }
+}
+
+/**
+ * 添加/更新远程技能：来源白名单 → 用户确认 → 下载 → 形态校验 → 落盘并登记 registry（S-42）。
+ * updateRemoteSkill 复用本函数，因此更新时会再次确认——远端内容可能已被替换，重确认是有意为之。
+ */
 export async function addRemoteSkill(deps: EdictExtraDeps, agentId: string, skillName: string, sourceUrl: string, description = ""): Promise<EdictOp> {
   if (!assertSafeAgentId(agentId) || !assertSafeSkillName(skillName)) return { ok: false, error: "官署 ID 或技能名非法" };
-  if (!/^https?:\/\//.test(sourceUrl)) {
-    return { ok: false, error: "技能名或 URL 非法" };
-  }
+
+  // 闸 1：来源（协议 / 凭据 / 域名白名单 / 扩展名）——不合格不发请求
+  const source = evaluateRemoteSkillUrl(sourceUrl);
+  if (!source.ok) return { ok: false, error: "来源被拒绝: " + describeRemoteArtifactDeny(source.reason) };
+
+  // 闸 2：用户显式确认（fail-closed：回调缺失或异常一律拒绝）
+  const confirm = deps.confirmRemoteSkillInstall ?? defaultRemoteSkillConfirm;
+  const approved = await confirm({ agentId, skillName, url: source.url, host: source.host, description });
+  if (!approved) return { ok: false, error: "已取消: 未确认从远端安装技能" };
+
   const fetcher = deps.fetch ?? globalThis.fetch;
   let content: string;
   try {
-    const res = await fetcher(sourceUrl, { signal: AbortSignal.timeout(30000) });
+    const res = await fetcher(source.url, { signal: AbortSignal.timeout(30000) });
     if (!res.ok) return { ok: false, error: "下载失败: HTTP " + res.status };
+    // 闸 3：体积预检——Content-Length 超限直接拒绝，不把整包读进内存
+    const headerValue = typeof res.headers?.get === "function" ? res.headers.get("content-length") : null;
+    const declared = headerValue ? Number(headerValue) : NaN;
+    if (Number.isFinite(declared) && declared > MAX_SKILL_BYTES) {
+      return { ok: false, error: "下载失败: " + describeRemoteArtifactDeny("TOO_LARGE") };
+    }
     content = await res.text();
   } catch (err) {
     return { ok: false, error: "下载失败: " + (err as Error).message };
   }
   if (content.trim().length < 10) return { ok: false, error: "下载内容为空" };
+
+  // 闸 4：正文形态（非空 / 无 NUL / 不超上限）
+  const shape = evaluateSkillContent(content);
+  if (!shape.ok) return { ok: false, error: "下载失败: " + describeRemoteArtifactDeny(shape.reason) };
+
   const file = skillLocalPath(deps, agentId, skillName);
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -684,7 +749,7 @@ export async function addRemoteSkill(deps: EdictExtraDeps, agentId: string, skil
   const item: EdictRemoteSkillItem = {
     skillName,
     agentId,
-    sourceUrl,
+    sourceUrl: source.url,
     description,
     localPath: file,
     addedAt: existing >= 0 ? registry[existing].addedAt : nowIso(),
@@ -694,7 +759,7 @@ export async function addRemoteSkill(deps: EdictExtraDeps, agentId: string, skil
   if (existing >= 0) registry[existing] = item;
   else registry.push(item);
   writeRegistry(deps, registry);
-  return { ok: true, data: { skillName, agentId, source: sourceUrl, localPath: file } };
+  return { ok: true, data: { skillName, agentId, source: source.url, localPath: file } };
 }
 
 /** 更新远程技能（重新下载） */

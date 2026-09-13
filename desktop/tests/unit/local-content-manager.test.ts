@@ -22,6 +22,7 @@ import {
   getHermesMarketHome,
   getHermesHome,
   buildGithubArchiveUrls,
+  assertInstallDirSafe,
 } from '../../electron/main/local-market/local-content-manager'
 
 const skillPkg = {
@@ -128,6 +129,40 @@ describe('local-content-manager', () => {
   it('buildGithubArchiveUrls：跳过非法候选', () => {
     expect(buildGithubArchiveUrls([null as any, { owner: '', repo: 'x' }])).toEqual([]);
   })
+
+describe('assertInstallDirSafe（S-42 安装目录内容守卫）', () => {
+  const stage = () => fs.mkdtempSync(path.join(TEST_ROOT, 'stage-'))
+
+  it('放行文档与脚本语言源文件', () => {
+    const dir = stage()
+    fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'SKILL.md'), '# 技能', 'utf-8')
+    fs.writeFileSync(path.join(dir, 'scripts', 'main.py'), 'print(1)', 'utf-8')
+    fs.writeFileSync(path.join(dir, 'scripts', 'index.js'), '1', 'utf-8')
+    expect(() => assertInstallDirSafe(dir)).not.toThrow()
+  })
+
+  it('拒绝可执行与脚本宿主文件（含子目录、大小写不敏感）', () => {
+    for (const bad of ['evil.exe', 'run.BAT', 'payload.Ps1', 'lib.dll', 'x.jar', 'a.CMD']) {
+      const dir = stage()
+      fs.mkdirSync(path.join(dir, 'nested'), { recursive: true })
+      fs.writeFileSync(path.join(dir, 'SKILL.md'), '# 技能', 'utf-8')
+      fs.writeFileSync(path.join(dir, 'nested', bad), 'MZ', 'utf-8')
+      expect(() => assertInstallDirSafe(dir)).toThrow(/不安全/)
+    }
+  })
+
+  it('拒绝符号链接（可能指向安装目录之外）', () => {
+    const dir = stage()
+    fs.writeFileSync(path.join(dir, 'SKILL.md'), '# 技能', 'utf-8')
+    try {
+      fs.symlinkSync(process.execPath, path.join(dir, 'link'))
+    } catch {
+      return // Windows 未开启开发者模式 / 无权限：跳过该断言
+    }
+    expect(() => assertInstallDirSafe(dir)).toThrow(/不安全/)
+  })
+})
 
   it('损坏的 installed.json 回退空清单', async () => {
     fs.mkdirSync(path.join(TEST_ROOT, 'market'), { recursive: true })

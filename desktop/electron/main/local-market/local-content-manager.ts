@@ -18,6 +18,7 @@ import type {
   MarketItemDetail,
 } from '../../shared/types';
 import { extractTarGz } from '../runtime-downloader';
+import { describeRemoteArtifactDeny, isForbiddenArtifactEntryName, isSafeArchiveEntryPath } from '../policy/remote-artifact-policy';
 import { ensureN8nAuth, getN8nAuthCookie } from '../n8n-auth';
 import { parseModuleSource, resolveDownloadUrl, verifyModuleAsset } from '../service-registry/module-source';
 import { findContentDir, findModuleRoot, parseModuleYaml } from '../service-registry/module-package';
@@ -93,6 +94,24 @@ function safeRemove(target: string): void {
     throw new Error('拒绝删除 userData 之外的路径');
   }
   fs.rmSync(resolved, { recursive: true, force: true });
+}
+
+/**
+ * 安装目录内容守卫（安全审计 S-42）：归档条目路径本身已由 extractTarGz 拦截绝对路径/穿越，
+ * 这里补第二层——拒绝可执行与脚本宿主文件（.exe/.dll/.bat/.cmd/.ps1/.jar 等）与符号链接，
+ * 避免「远端仓库 → 官署技能目录」变成投递本机可执行内容的通道。命中即抛错，由调用方清理 staging。
+ */
+export function assertInstallDirSafe(root: string): void {
+  const walk = (dir: string, rel: string): void => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const childRel = rel ? rel + '/' + entry.name : entry.name;
+      if (entry.isSymbolicLink() || !isSafeArchiveEntryPath(childRel) || isForbiddenArtifactEntryName(childRel)) {
+        throw new Error(describeRemoteArtifactDeny('ARCHIVE_ENTRY_UNSAFE') + ': ' + childRel);
+      }
+      if (entry.isDirectory()) walk(path.join(dir, entry.name), childRel);
+    }
+  };
+  walk(root, '');
 }
 
 /** 幂等安装：staging → rename → 清单 */
@@ -793,7 +812,12 @@ export async function installGithubSkill(
         await extractTarGz(archive, extractRoot);
         const skillDir = findSkillDir(extractRoot);
         if (!skillDir) throw new Error('压缩包内未找到 SKILL.md');
+        // 每次尝试都重建 staging：避免上一次失败尝试的残留内容混入本次安装
+        safeRemove(staging);
+        fs.mkdirSync(staging, { recursive: true });
         copyDirContents(skillDir, staging);
+        // S-42：安装目录内容守卫（可执行/脚本宿主文件、符号链接一律拒绝）
+        assertInstallDirSafe(staging);
         installed = true;
       } catch (e) {
         lastErr = e instanceof Error ? e.message : String(e);
@@ -917,6 +941,8 @@ export async function installModuleFromSource(opts: InstallModuleFromSourceOptio
     safeRemove(staging)
     fs.mkdirSync(staging, { recursive: true })
     copyDirContents(contentDir, staging)
+    // S-42：安装目录内容守卫（可执行/脚本宿主文件、符号链接一律拒绝）
+    assertInstallDirSafe(staging)
     safeRemove(target)
     fs.renameSync(staging, target)
 
