@@ -7,11 +7,24 @@ import {
   CheckCircleFilled,
   CloseCircleFilled,
   DownloadOutlined,
+  InfoCircleOutlined,
   ReloadOutlined,
   ToolOutlined
 } from '@ant-design/icons'
 import type { EnvComponentStatus } from '@shared/types'
 import styles from './styles.module.css'
+
+/**
+ * 不可一键安装的组件的人工处理说明。
+ * 未就绪且不可安装时也必须渲染按钮 —— 否则整页"点了没反应"（2026-09-13 用户反馈）。
+ */
+const MANUAL_HINTS: Record<EnvComponentStatus['id'], string> = {
+  python:
+    '内置 Python 随安装包分发。若这里显示未安装，通常是安装包不完整或运行时尚未下载：请到「本地服务管理」下载任一本地服务运行时后，点上方「重新检测」。',
+  flowsDeps: '需要先检测到内置 Python，才能一键安装 flask 等依赖。',
+  playwright: '需要先检测到内置 Python，才能一键安装 playwright 及其 Chromium 内核。',
+  vosk: '中文语音识别模型需手动放入 vosk-model-small-cn 目录（可选组件，不影响其他功能）。'
+}
 
 /** 单项组件行 */
 function ComponentRow({
@@ -89,6 +102,15 @@ function ComponentRow({
           onClick={() => void handleInstall()}
         >
           安装
+        </Button>
+      )}
+      {!item.ready && !item.installable && (
+        <Button
+          size="small"
+          icon={<InfoCircleOutlined />}
+          onClick={() => message.info(`${item.title}：${MANUAL_HINTS[item.id]}`)}
+        >
+          如何处理
         </Button>
       )}
     </div>

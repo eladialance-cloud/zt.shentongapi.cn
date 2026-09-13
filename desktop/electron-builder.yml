@@ -35,6 +35,11 @@ extraResources:
     to: icon.png
   - from: runtime/manifest.json
     to: runtime/manifest.json
+  # 内置嵌入式 Python（CI「🐍 Download Hermes Python Runtime」在打包前生成）。
+  # 缺失后果：设置里的「环境组件」全部显示未安装且无法安装，业务流引擎/微信域桥/抖音服务
+  # 会回退宿主机 python 命令（用户机通常没有）而启动失败。2026-09-13 修复的历史遗漏。
+  - from: runtime/hermes/python
+    to: runtime/hermes/python
   # 服务行清单（base + modules/*）；dev 从 desktop/resources/service-registry 读取
   - from: resources/service-registry/base.patch.yaml
     to: service-registry/base.patch.yaml

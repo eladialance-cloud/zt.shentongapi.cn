@@ -1,6 +1,8 @@
 // 环境组件检测与安装（对标 RRClaw「环境组件」）
 //
-// 深瞳随包携带嵌入式 Python（runtime/hermes/python、runtime/video-claw/python），
+// 深瞳的 Python 解释器来自两处（见 whitelist.listBundledPythons）：
+//   1) 随包资源 <resources>/runtime/<svc>（含 Hermes 0.20.5 的 venv/cpython 嵌套布局）
+//   2) 运行时下载目录（默认 userData/runtime，用户可自定义），如 video-claw 运行自带完整 Python
 // 但业务流引擎（flows）/微信域桥（wx-gateway）/抖音服务所需的部分三方依赖并未内置，
 // 首次使用需要在用户机器上补齐。本模块负责：
 //   1) 检测各组件是否就绪（只读，纯 fs 探测，可单测）；
@@ -14,27 +16,8 @@
 import { spawn } from 'child_process'
 import { existsSync, readdirSync } from 'fs'
 import { join } from 'path'
-import { resolveBundledPython, resolveFlowsModuleDir } from './service-registry/whitelist'
+import { listBundledPythons, pythonSearchRoots, resolveFlowsModuleDir } from './service-registry/whitelist'
 import type { EnvComponentStatus } from '../shared/types'
-
-/** 枚举随包携带的全部嵌入式 Python 解释器（hermes / video-claw 各一个） */
-function bundledPythons(): string[] {
-  const out: string[] = []
-  const roots: string[] = []
-  if (typeof process.resourcesPath === 'string' && process.resourcesPath) {
-    roots.push(join(process.resourcesPath, 'runtime'))
-  }
-  roots.push(join(process.cwd(), 'runtime'))
-  for (const root of roots) {
-    for (const svc of ['hermes', 'video-claw']) {
-      const p = join(root, svc, 'python', 'python.exe')
-      if (existsSync(p) && !out.includes(p)) out.push(p)
-    }
-  }
-  const first = resolveBundledPython()
-  if (first && !out.includes(first)) out.push(first)
-  return out
-}
 
 /** 内置 Python 的 site-packages 目录（嵌入版路径固定） */
 function sitePackagesOf(pythonExe: string): string | null {
@@ -75,9 +58,16 @@ function findPlaywrightBrowsers(): string | null {
 
 /** 查找 Vosk 中文模型目录（vosk-model-small-cn-*） */
 function findVoskModel(): string | null {
-  const robots = resolveBundledPython()
   const roots: string[] = []
-  if (robots) roots.push(join(robots, '..', '..', '..'), join(robots, '..', '..'))
+  // 随包资源目录与已下载运行时目录下的 Hermes 运行/home 目录
+  for (const root of pythonSearchRoots()) {
+    roots.push(
+      root,
+      join(root, 'hermes'),
+      join(root, 'hermes', 'node_modules', 'hermes-agent'),
+      join(root, 'hermes-home')
+    )
+  }
   const home = process.env.USERPROFILE || process.env.HOME || ''
   if (home) roots.push(join(home, '.hermes'), join(home, '.openclaw'))
   for (const root of roots) {
@@ -97,7 +87,7 @@ function findVoskModel(): string | null {
  * 检测全部环境组件。纯只读，可安全在启动时调用。
  */
 export function checkEnvComponents(): EnvComponentStatus[] {
-  const pythons = bundledPythons()
+  const pythons = listBundledPythons()
   const pythonReady = pythons.length > 0
 
   const flowsDepsReady = pythons.some((p) => hasPythonPackage(p, 'flask'))
@@ -111,7 +101,9 @@ export function checkEnvComponents(): EnvComponentStatus[] {
       id: 'python',
       title: '内置 Python 运行时',
       ready: pythonReady,
-      detail: pythonReady ? pythons[0] : '未找到内置 Python（安装包可能不完整）',
+      detail: pythonReady
+        ? pythons[0]
+        : '未找到内置 Python（安装包不完整，或运行时尚未下载）',
       installable: false,
     },
     {
@@ -140,6 +132,24 @@ export function checkEnvComponents(): EnvComponentStatus[] {
       installable: false,
     },
   ]
+}
+
+/** 某解释器是否真的装了 pip（site-packages 下存在 pip 包目录） */
+function hasPip(pythonExe: string): boolean {
+  const sp = sitePackagesOf(pythonExe)
+  return sp !== null && existsSync(join(sp, 'pip'))
+}
+
+/**
+ * 选一个"能跑 pip"的解释器，三级兜底：
+ *   1) 真的装了 pip 的（随包嵌入式 Python、Hermes 内嵌 cpython、video-claw 自带 Python）
+ *   2) 至少有 Lib/site-packages 的
+ *   3) 优先级最高的那个（让安装流程给出真实的 pip 报错，而不是静默失败）
+ * 注意：Hermes 0.20.5 的 venv python.exe 是 uv 跳板，`pip` 会直接报错，故被第 1 级排除。
+ */
+function pipCapablePython(): string | null {
+  const all = listBundledPythons()
+  return all.find(hasPip) ?? all.find((p) => sitePackagesOf(p) !== null) ?? all[0] ?? null
 }
 
 export interface EnvInstallResult {
@@ -196,7 +206,7 @@ export async function installEnvComponent(
   id: EnvComponentStatus['id'],
   opts: { flowsRequirements?: string } = {},
 ): Promise<EnvInstallResult> {
-  const python = resolveBundledPython()
+  const python = pipCapablePython()
   if (!python) return { ok: false, error: '未找到内置 Python，无法安装依赖' }
 
   switch (id) {

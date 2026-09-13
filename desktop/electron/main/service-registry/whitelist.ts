@@ -3,6 +3,7 @@ import type { ResolvedModelDefaults } from '../model-defaults'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { load } from 'js-yaml'
+import { getRuntimeRoot } from '../runtime-config'
 
 /**
  * 行实现白名单：patch 是声明，env/preStart/postInstall/configSync/launch 的“实现”
@@ -403,16 +404,111 @@ const FLOWS_MODULE = 'flows'
 const FLOWS_HOOK = 'flows'
 const FLOWS_PORT_DEFAULT = 9040
 
-/** 解析 flows 模块目录绝对路径（打包后 resourcesPath，开发环境 cwd/resources；传 base 供单测注入）。 */
+
 /**
- * 解析随包内置的 Python 可执行文件。
+ * 内置 Python 的搜索根目录（按优先级）。
+ *
+ * 1) 随包资源目录：打包后 <resources>/runtime，开发态 <cwd>/runtime
+ * 2) 运行时下载目录：默认 userData/runtime，用户可在「本地服务管理」自定义（runtime-location.json）
+ *
+ * 第 2) 项是历史遗漏：CDN 下载的 video-claw 运行自带完整 Python，
+ * 但旧实现只扫 1)，导致「环境组件」永远显示未安装、业务流引擎回退宿主机 python 而启动失败。
+ *
+ * 传 extraRoots 供单测注入（追加到搜索根末尾）。
+ */
+export function pythonSearchRoots(extraRoots: string[] = []): string[] {
+  const roots: string[] = []
+  const resourcesPath =
+    typeof process.resourcesPath === 'string' && process.resourcesPath.length > 0
+      ? process.resourcesPath
+      : ''
+  if (resourcesPath) roots.push(path.join(resourcesPath, 'runtime'))
+  roots.push(path.join(process.cwd(), 'runtime'))
+  try {
+    const downloaded = getRuntimeRoot()
+    if (downloaded && !roots.some((root) => samePath(root, downloaded))) roots.push(downloaded)
+  } catch {
+    // runtime-config 不可用（极端环境）：只用随包目录，不阻断
+  }
+  return [...roots, ...extraRoots]
+}
+
+/** 大小写不敏感的路径比较（Windows 目录名大小写不敏感） */
+function samePath(a: string, b: string): boolean {
+  try {
+    const ra = path.resolve(a)
+    const rb = path.resolve(b)
+    return process.platform === 'win32' ? ra.toLowerCase() === rb.toLowerCase() : ra === rb
+  } catch {
+    return a === b
+  }
+}
+
+/**
+ * 单个运行时目录（<root>/<svc>）下的 Python 候选绝对路径，按优先级：
+ * 1) <svc>/python/python.exe      —— 0.19 旧布局 / 随包嵌入式 Python（CI 生成，带 pip）
+ * 2) <svc>/node_modules/hermes-agent/runtime/python/cpython-<ver>/python.exe —— 0.20.5 内嵌解释器
+ * 3) <svc>/node_modules/hermes-agent/runtime/hermes-agent/venv/Scripts/python.exe
+ *    —— 0.20.5 Hermes venv。venv 里的 python.exe 是 uv 跳板（内嵌构建机绝对路径），
+ *       需 hermes-runtime-relocate 修复后才可用，因此必须排在真实 cpython 之后。
+ *       （顺序与 edict-bridge.resolveHermesPython 保持一致，避免选到跑不起来的解释器）
+ * 4) <svc>/python.exe             —— 直接放在服务目录下的兜底布局
+ */
+function pythonCandidatesUnder(svcDir: string): string[] {
+  const win = process.platform === 'win32'
+  const exe = win ? 'python.exe' : 'python'
+  const out: string[] = []
+  // 1) 旧布局 / 随包嵌入式 Python
+  out.push(win ? path.join(svcDir, 'python', 'python.exe') : path.join(svcDir, 'python', 'bin', 'python3'))
+  if (!win) out.push(path.join(svcDir, 'python', 'python3'))
+  // 2) 0.20.5 内嵌解释器：<svc>/node_modules/hermes-agent/runtime/python/cpython-<ver>/python.exe
+  const pyRoot = path.join(svcDir, 'node_modules', 'hermes-agent', 'runtime', 'python')
+  try {
+    if (fs.existsSync(pyRoot)) {
+      for (const entry of fs.readdirSync(pyRoot).sort()) {
+        if (entry.startsWith('cpython-')) out.push(path.join(pyRoot, entry, exe))
+      }
+    }
+  } catch {
+    // 目录不可读：跳过该布局
+  }
+  // 3) 0.20.5 Hermes venv（uv 跳板，排在 cpython 之后）
+  out.push(
+    win
+      ? path.join(svcDir, 'node_modules', 'hermes-agent', 'runtime', 'hermes-agent', 'venv', 'Scripts', 'python.exe')
+      : path.join(svcDir, 'node_modules', 'hermes-agent', 'runtime', 'hermes-agent', 'venv', 'bin', 'python')
+  )
+  // 4) 兜底布局
+  out.push(path.join(svcDir, exe))
+  return out
+}
+
+/**
+ * 枚举全部可用的 Python 解释器（随包 + 已下载运行时，按优先级去重）。
+ * 「环境组件」检测与依赖安装复用本函数，保证与 spawn 侧看到的是同一批解释器。
+ */
+export function listBundledPythons(extraRoots: string[] = []): string[] {
+  const out: string[] = []
+  for (const root of pythonSearchRoots(extraRoots)) {
+    for (const svc of ['hermes', 'video-claw'] as const) {
+      for (const candidate of pythonCandidatesUnder(path.join(root, svc))) {
+        if (!out.some((p) => samePath(p, candidate)) && fs.existsSync(candidate)) out.push(candidate)
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * 解析随包/已下载的 Python 可执行文件（取优先级最高者）。
  *
  * Hermes / VideoClaw 运行时各自带一份嵌入式 Python（Windows 为 python.exe），
- * 打包后位于 <resources>/runtime/<svc>/python/...，开发环境位于 <cwd>/runtime/<svc>/python/...。
- * 业务流引擎（flows）/微信域桥（wx-gateway）/抖音服务（douyin）统一优先使用内置 Python，
- * 避免依赖用户宿主机是否安装 python（RRClaw 即内置 Python，本工程运行时也已随包携带）。
+ * 打包后位于 <resources>/runtime/<svc>/...，开发态位于 <cwd>/runtime/<svc>/...，
+ * 用户在「本地服务管理」自定义的下载目录也一并纳入搜索。
+ * 业务流引擎（flows）/微信域桥（wx-gateway）/抖音服务（douyin）统一优先使用该 Python，
+ * 避免依赖用户宿主机是否安装 python。
  *
- * 返回 null 表示未找到内置 Python，调用方应回退到宿主机 "python" 命令。
+ * 返回 null 表示未找到，调用方应回退到宿主机 "python" 命令。
  * 传 base 供单测注入（直接视为 python 可执行文件绝对路径）。
  */
 export function resolveBundledPython(base?: string): string | null {
@@ -420,28 +516,12 @@ export function resolveBundledPython(base?: string): string | null {
     const p = path.resolve(base)
     return fs.existsSync(p) ? p : null
   }
-  const roots: string[] = []
-  const resourcesPath =
-    typeof process.resourcesPath === "string" && process.resourcesPath.length > 0
-      ? process.resourcesPath
-      : ""
-  if (resourcesPath) roots.push(path.join(resourcesPath, "runtime"))
-  roots.push(path.join(process.cwd(), "runtime"))
-  const relCandidates =
-    process.platform === "win32"
-      ? [path.join("python", "python.exe"), "python.exe"]
-      : [path.join("python", "bin", "python3"), path.join("python", "python3"), "python3"]
-  for (const root of roots) {
-    for (const svc of ["hermes", "video-claw"]) {
-      for (const rel of relCandidates) {
-        const candidate = path.join(root, svc, rel)
-        if (fs.existsSync(candidate)) return candidate
-      }
-    }
-  }
-  return null
+  return listBundledPythons()[0] ?? null
 }
 
+/**
+ * 解析 flows 模块目录绝对路径（打包后 resourcesPath，开发环境 cwd/resources；传 base 供单测注入）。
+ */
 export function resolveFlowsModuleDir(base?: string): string {
   if (base) return path.resolve(base)
   const cwd = process.cwd()

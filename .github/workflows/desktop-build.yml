@@ -267,7 +267,22 @@ jobs:
 
           Write-Host "✅ Hermes Python runtime ready at $pythonDir"
         shell: pwsh
-        continue-on-error: true
+
+      # ===== 6.6 Verify bundled Python (env-components 硬依赖) =====
+      # 防回归：runtime/hermes/python 缺失 → 安装包不带内置 Python →
+      # 「环境组件」全部显示未安装且无法安装、业务流引擎/微信域桥/抖音服务回退宿主机 python 而启动失败
+      # （2026-09-13 修复的历史遗漏：CI 早就生成该目录，但 electron-builder 没打包进去）
+      - name: 🐍 Verify bundled Python before packaging
+        shell: pwsh
+        run: |
+          $python = "runtime\hermes\python\python.exe"
+          if (-not (Test-Path $python)) {
+            Write-Host "::error::缺少 $python —— 安装包将不带内置 Python，环境组件与业务流引擎都会坏"
+            exit 1
+          }
+          & $python --version
+          & $python -m pip --version
+          Write-Host "✅ bundled python ready: $python ($((Get-Item $python).Length) bytes)"
 
       # ===== 7. Inject API Base URL =====
       - name: ⚙️ Inject API Config
@@ -354,6 +369,13 @@ jobs:
             exit 1
           }
           Write-Host "✅ packaged manifest: $manifest ($((Get-Item $manifest).Length) bytes)"
+
+          $packagedPython = "dist\installer\win-unpacked\resources\runtime\hermes\python\python.exe"
+          if (-not (Test-Path $packagedPython)) {
+            Write-Host "::error::安装包缺少 resources/runtime/hermes/python/python.exe - 「环境组件」会全部显示未安装"
+            exit 1
+          }
+          Write-Host "✅ packaged python: $packagedPython ($((Get-Item $packagedPython).Length) bytes)"
 
       # ===== 12b. Rename zip artifacts =====
       - name: 🏷️ Rename zip artifacts
