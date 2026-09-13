@@ -9,6 +9,7 @@ import {
   buildNews,
   buildOfficialCards,
   orgToId,
+  orderOfficialTables,
 } from "@/pages/TaskCenter/edict-data";
 
 const baseTask = (over: Partial<EdictTask> = {}): EdictTask => ({
@@ -125,5 +126,24 @@ describe("buildOfficialCards 官署卡片", () => {
     expect(hubu?.todoCount).toBe(1);
     expect(hubu?.todayCompleted).toBe(1);
     expect(orgToId("户部")).toBe("hubu");
+  });
+});
+describe("orderOfficialTables（官署飞书表清单排序）", () => {
+  it("专属表在前、共享表在后，且不改动原数组", () => {
+    const input = [
+      { envKey: "FEISHU_TASK_MAIN_TABLE", shared: true },
+      { envKey: "FEISHU_CONTENT_TABLE" },
+      { envKey: "FEISHU_HR_TABLE", shared: true },
+      { envKey: "FEISHU_DAILY_POSTER_TABLE" },
+    ];
+    const out = orderOfficialTables(input);
+    expect(out.map((t) => t.envKey)).toEqual([
+      "FEISHU_CONTENT_TABLE",
+      "FEISHU_DAILY_POSTER_TABLE",
+      "FEISHU_TASK_MAIN_TABLE",
+      "FEISHU_HR_TABLE",
+    ]);
+    // 纯函数：不改动入参数组
+    expect(input[0].envKey).toBe("FEISHU_TASK_MAIN_TABLE");
   });
 });

@@ -30,44 +30,75 @@ export interface DefaultCron {
 }
 
 export const DEFAULT_CRONS: Record<string, DefaultCron[]> = {
-  taizi: [],
+  taizi: [
+    { name: "太子·每日任务分拣", expr: "30 6 * * *", executeKind: "llm", description: "分拣夜间积压的旨意，按宪章归口到对应官署" },
+    { name: "太子·晚间旨意收口", expr: "30 19 * * *", executeKind: "llm", description: "回收当日未闭环的旨意，登记次日待办" },
+  ],
   zhongshu: [
+    { name: "中书省·战略要点同步", expr: "15 6 * * *", executeKind: "llm", description: "读《战略方向文档》，把当日战略要点同步给尚书省派发节点" },
     { name: "中书省·每日方案规划", expr: "0 7 * * *", executeKind: "llm", description: "汇总太子分拣的任务，产出当日执行方案" },
+    { name: "中书省·当日方案交账", expr: "0 19 * * *", executeKind: "llm", description: "复盘当日方案与实际产出偏差，更新方案表状态" },
+    { name: "中书省·战略复盘迭代", expr: "0 20 * * 0", executeKind: "llm", description: "每周日复盘本周战报，判断是否迭代战略方向文档并追加版本留痕" },
   ],
   menxia: [
-    { name: "门下省·每日审议纪要", expr: "30 7 * * *", executeKind: "llm", description: "审议中书省方案并留痕" },
+    { name: "门下省·每日审议纪要", expr: "30 7 * * *", executeKind: "llm", description: "审议中书省方案，封驳意见留痕到审核记录表" },
+    { name: "门下省·驳回件复检", expr: "0 16 * * *", executeKind: "llm", description: "复检当日被驳回方案，确认修订后重新封驳" },
   ],
   shangshu: [
-    { name: "尚书省·每日作战地图", expr: "0 8 * * *", executeKind: "llm", description: "生成当日作战地图并派发六部" },
-    { name: "尚书省·每日战报汇总", expr: "0 20 * * *", executeKind: "llm", description: "汇总六部产出，生成每日战报" },
+    { name: "尚书省·每日作战地图", expr: "0 8 * * *", executeKind: "llm", description: "生成当日作战地图并派发六部，写入派发执行汇总表" },
+    { name: "尚书省·午间进度巡检", expr: "30 13 * * *", executeKind: "llm", description: "巡检六部上午派发任务完成率，超时任务升级" },
+    { name: "尚书省·当日产出归档", expr: "30 19 * * *", executeKind: "llm", description: "汇总当日各官署产出与飞书写入结果，回写归档索引表" },
+    { name: "尚书省·每日战报汇总", expr: "0 20 * * *", executeKind: "llm", description: "汇总六部产出生成每日战报，写入派发执行汇总表" },
   ],
   libu: [
-    { name: "礼部·数据采集", expr: "30 8 * * *", executeKind: "llm", description: "采集数据情报并写入情报域" },
+    { name: "礼部·数据采集", expr: "30 8 * * *", executeKind: "llm", description: "采集行业数据情报并写入数据情报表" },
+    { name: "礼部·关键词规划", expr: "45 8 * * *", executeKind: "llm", description: "读战略方向文档与作战地图，筛选当日采集关键词写入关键词表" },
+    { name: "礼部·爆款采集", expr: "0 9 * * *", executeKind: "flow", flowId: "traffic-collect-hot-videos", description: "按关键词采集 Top50 爆款内容，拆解结构写入爆款采集表" },
+    { name: "礼部·监控账号采集", expr: "15 9 * * *", executeKind: "llm", description: "采集监控账号最新视频并转写文案，更新数据情报表" },
   ],
   hubu: [
-    { name: "户部·每日收支核对", expr: "0 21 * * *", executeKind: "llm", description: "核对当日收支与算力消耗" },
+    { name: "户部·每日收支核对", expr: "0 21 * * *", executeKind: "llm", description: "核对当日收支与算力消耗，写入财务收支表" },
+    { name: "户部·算力消耗对账", expr: "45 21 * * *", executeKind: "llm", description: "核对当日模型调用与算力消耗明细，写入财务收支表" },
   ],
   libu_hr: [
-    { name: "吏部·每日巡检", expr: "0 9 * * 1", executeKind: "llm", description: "巡检各官署配置与运行状态" },
+    { name: "吏部·每日巡检", expr: "0 9 * * 1", executeKind: "llm", description: "巡检各官署配置与运行状态，写入人事绩效表" },
+    { name: "吏部·官署产出考核", expr: "30 22 * * *", executeKind: "llm", description: "按当日产出与按时率给各官署打绩效分，写入人事绩效表" },
   ],
   bingbu: [
-    { name: "兵部·客户跟进", expr: "30 9 * * *", executeKind: "flow", flowId: "sales-service-followup", description: "执行客户跟进业务流" },
+    { name: "兵部·晨间客户清单", expr: "45 6 * * *", executeKind: "llm", description: "读客户档案表，生成当日沟通清单" },
+    { name: "兵部·早间私域推送", expr: "0 8 * * *", executeKind: "flow", flowId: "private-domain-morning-push", description: "按当日清单向私域社群推送早间内容" },
+    { name: "兵部·社群服务推送", expr: "15 9 * * *", executeKind: "llm", description: "生成服务群推送稿并登记待推送清单，写入社群运营表（外发由业务流风控闸门执行）" },
+    { name: "兵部·客户跟进", expr: "30 9 * * *", executeKind: "flow", flowId: "sales-service-followup", description: "执行客户跟进业务流，回写客户跟进表" },
+    { name: "兵部·渠道采集与线索分级", expr: "0 10 * * *", executeKind: "llm", description: "采集渠道线索并按意向分级，写入渠道触达表" },
+    { name: "兵部·客户健康度巡检", expr: "15 10 * * 1", executeKind: "llm", description: "每周一分析客户活跃度与风险，触达高风险/高价值客户" },
+    { name: "兵部·社群与私域答疑", expr: "30 14 * * *", executeKind: "llm", description: "按 FAQ 与战略口径生成答疑话术并留痕社群运营表（外发由风控闸门执行）" },
+    { name: "兵部·答疑日报", expr: "0 17 * * *", executeKind: "llm", description: "汇总当日答疑数据生成答疑日报，写入社群运营表" },
+    { name: "兵部·晚间客户复盘", expr: "15 18 * * *", executeKind: "llm", description: "汇总当日沟通记录，回写客户档案表与客户跟进表" },
+    { name: "兵部·每日销售日报", expr: "30 18 * * *", executeKind: "llm", description: "统计当日转化数据，生成销售日报" },
   ],
   xingbu: [
-    { name: "刑部·合规抽检", expr: "0 15 * * *", executeKind: "llm", description: "抽检话术与内容合规性" },
+    { name: "刑部·低效话术淘汰", expr: "0 3 * * *", executeKind: "llm", description: "轮巡话术效果，淘汰回复率<10%或加微率<5%的低效话术" },
+    { name: "刑部·合规抽检", expr: "0 15 * * *", executeKind: "llm", description: "抽检话术与内容合规性，写入合规审查表" },
   ],
   gongbu: [
-    { name: "工部·公众号文章", expr: "0 11 * * *", executeKind: "flow", flowId: "new-media-wechat-article", description: "生产公众号文章" },
-    { name: "工部·每日海报", expr: "30 8 * * *", executeKind: "flow", flowId: "secretary-daily-poster", description: "生成每日海报" },
+    { name: "工部·早间朋友圈", expr: "40 7 * * *", executeKind: "llm", description: "制作行业洞察型朋友圈内容写入朋友圈内容库，按风控闸门择时发布" },
+    { name: "工部·每日海报", expr: "30 8 * * *", executeKind: "flow", flowId: "secretary-daily-poster", description: "按当日选题生成每日海报，写入每日海报表" },
+    { name: "工部·文案二创", expr: "0 10 * * *", executeKind: "flow", flowId: "traffic-generate-copy", description: "按爆款结构生成文案，写入文案库" },
+    { name: "工部·公众号文章", expr: "0 11 * * *", executeKind: "flow", flowId: "new-media-wechat-article", description: "生产公众号文章，写入内容生产表" },
+    { name: "工部·午间朋友圈", expr: "30 11 * * *", executeKind: "llm", description: "制作案例/干货型午间朋友圈内容写入朋友圈内容库，按风控闸门择时发布" },
+    { name: "工部·晚间朋友圈", expr: "0 18 * * *", executeKind: "llm", description: "制作人设/感悟型晚间朋友圈内容写入朋友圈内容库，按风控闸门择时发布" },
+    { name: "工部·公众号定时发布", expr: "0 19 * * *", executeKind: "llm", description: "整理当日公众号文章并登记发布任务，同步社群/朋友圈（外发由风控闸门执行）" },
   ],
   zaochao: [
-    { name: "早朝·每日简报", expr: "0 6 * * *", executeKind: "llm", description: "生成每日简报素材" },
+    { name: "早朝·每日简报", expr: "0 6 * * *", executeKind: "llm", description: "生成每日简报素材，写入每日简报素材表" },
   ],
   qintianjian: [
-    { name: "钦天监·每日复盘", expr: "0 22 * * *", executeKind: "llm", description: "度量与趋势复盘" },
+    { name: "钦天监·数据沉淀", expr: "0 0 * * *", executeKind: "llm", description: "沉淀前一日全量度量数据，写入度量报表" },
+    { name: "钦天监·KPI 基线测算", expr: "0 6 * * *", executeKind: "llm", description: "按战略方向文档测算当日 KPI 基线，供早朝与派发使用" },
+    { name: "钦天监·趋势预测", expr: "0 21 * * *", executeKind: "llm", description: "按当日数据预测次日趋势，输出度量报表结论" },
+    { name: "钦天监·每日复盘", expr: "0 22 * * *", executeKind: "llm", description: "度量与趋势复盘，写入度量报表" },
   ],
 };
-
 export interface TeamIpcDeps {
   hermesHome: string;
   edictProfilesDir: string;

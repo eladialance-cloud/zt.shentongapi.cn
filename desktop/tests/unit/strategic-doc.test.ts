@@ -5,7 +5,9 @@
  */
 import { FeishuClient } from "../../electron/main/feishu-client";
 import {
+  clearStrategyCache,
   createOrReuseStrategicDoc,
+  readStrategicDoc,
   readStrategicDocState,
   STRATEGIC_DOC_ENV_KEY,
   STRATEGIC_DOC_OWNER,
@@ -134,5 +136,147 @@ describe("createOrReuseStrategicDoc", () => {
     const res = await createOrReuseStrategicDoc({ client, dataRoot: root });
     expect(res.ok).toBe(false);
     expect(readStrategicDocState(root)).toBeNull();
+  });
+});
+
+describe("readStrategicDoc（编排器战略上下文读取）", () => {
+  beforeEach(() => clearStrategyCache());
+
+  function handlerWith(text: string, opts: { rawFail?: boolean } = {}) {
+    return (call: Call): { json: unknown } => {
+      if (call.url.includes("tenant_access_token")) return TOKEN;
+      if (call.url.includes("root_folder/meta")) return { json: { code: 0, data: { token: "fld-1" } } };
+      if (call.url.includes("/raw_content")) {
+        if (opts.rawFail) return { json: { code: 99991672, msg: "no permission" } };
+        return { json: { code: 0, data: { content: text } } };
+      }
+      if (/\/docx\/v1\/documents$/.test(call.url) && call.method === "POST") {
+        return { json: { code: 0, data: { document: { document_id: "docx-1", url: "https://x.feishu.cn/docx/docx-1" } } } };
+      }
+      return { json: { code: 0, data: {} } };
+    };
+  }
+
+  const rawCalls = (calls: Call[]) => calls.filter((c) => c.url.includes("/raw_content"));
+
+  test("未创建战略文档 ⇒ source:none，且不打飞书接口", async () => {
+    const root = tmpRoot();
+    const { impl, calls } = fakeFetch(handlerWith("x"));
+    const client = new FeishuClient({ appId: "a", appSecret: "b", fetchImpl: impl });
+    const res = await readStrategicDoc(root, client);
+    expect(res.ok).toBe(false);
+    expect(res.source).toBe("none");
+    expect(res.text).toBe("");
+    expect(calls.length).toBe(0);
+  });
+
+  test("已创建 ⇒ 拉全文；TTL 内再读走缓存不重复请求", async () => {
+    const root = tmpRoot();
+    const { impl, calls } = fakeFetch(handlerWith("一、战略目标：跑通三省六部链路"));
+    const client = new FeishuClient({ appId: "a", appSecret: "b", fetchImpl: impl });
+    await createOrReuseStrategicDoc({ client, dataRoot: root });
+
+    const first = await readStrategicDoc(root, client);
+    expect(first.ok).toBe(true);
+    expect(first.source).toBe("feishu");
+    expect(first.text).toContain("跑通三省六部链路");
+    expect(first.fetchedAt).toBeTruthy();
+
+    const second = await readStrategicDoc(root, client);
+    expect(second.source).toBe("cache");
+    expect(second.text).toBe(first.text);
+    expect(rawCalls(calls).length).toBe(1);
+  });
+
+  test("force 忽略缓存重新拉取", async () => {
+    const root = tmpRoot();
+    const { impl, calls } = fakeFetch(handlerWith("战略正文"));
+    const client = new FeishuClient({ appId: "a", appSecret: "b", fetchImpl: impl });
+    await createOrReuseStrategicDoc({ client, dataRoot: root });
+    await readStrategicDoc(root, client);
+    await readStrategicDoc(root, client, { force: true });
+    expect(rawCalls(calls).length).toBe(2);
+  });
+
+  test("maxChars 截断超长正文", async () => {
+    const root = tmpRoot();
+    const { impl } = fakeFetch(handlerWith("字".repeat(200)));
+    const client = new FeishuClient({ appId: "a", appSecret: "b", fetchImpl: impl });
+    await createOrReuseStrategicDoc({ client, dataRoot: root });
+    const res = await readStrategicDoc(root, client, { maxChars: 20 });
+    expect(res.text.startsWith("字".repeat(20))).toBe(true);
+    expect(res.text).toContain("已截断");
+  });
+
+  test("拉取失败且无缓存 ⇒ ok:false / source:error", async () => {
+    const root = tmpRoot();
+    const { impl } = fakeFetch(handlerWith("", { rawFail: true }));
+    const client = new FeishuClient({ appId: "a", appSecret: "b", fetchImpl: impl });
+    await createOrReuseStrategicDoc({ client, dataRoot: root });
+    const res = await readStrategicDoc(root, client);
+    expect(res.ok).toBe(false);
+    expect(res.source).toBe("error");
+    expect(res.error).toBeTruthy();
+  });
+
+  test("拉取失败但有旧缓存 ⇒ 回旧缓存并带 error（编排不阻塞）", async () => {
+    const root = tmpRoot();
+    const { impl } = fakeFetch(handlerWith("战略：主攻私域增长"));
+    const good = new FeishuClient({ appId: "a", appSecret: "b", fetchImpl: impl });
+    await createOrReuseStrategicDoc({ client: good, dataRoot: root });
+    await readStrategicDoc(root, good);
+    const { impl: badImpl } = fakeFetch(handlerWith("", { rawFail: true }));
+    const bad = new FeishuClient({ appId: "a", appSecret: "b", fetchImpl: badImpl });
+    const res = await readStrategicDoc(root, bad, { force: true });
+    expect(res.ok).toBe(true);
+    expect(res.source).toBe("cache");
+    expect(res.error).toBeTruthy();
+    expect(res.text).toContain("主攻私域增长");
+  });
+});
+
+describe("战略表版本留痕（recordInitialVersion）", () => {
+  test("建档后回写 V1.0 记录", async () => {
+    const root = tmpRoot();
+    const { impl } = fakeFetch(okHandler());
+    const client = new FeishuClient({ appId: "a", appSecret: "b", fetchImpl: impl });
+    const seen: string[] = [];
+    const res = await createOrReuseStrategicDoc({
+      client,
+      dataRoot: root,
+      recordInitialVersion: async (state) => {
+        seen.push(state.documentId);
+      },
+    });
+    expect(res.ok).toBe(true);
+    expect(seen).toEqual(["docx-1"]);
+  });
+
+  test("版本留痕失败不影响建档（best-effort）", async () => {
+    const root = tmpRoot();
+    const { impl } = fakeFetch(okHandler());
+    const client = new FeishuClient({ appId: "a", appSecret: "b", fetchImpl: impl });
+    const res = await createOrReuseStrategicDoc({
+      client,
+      dataRoot: root,
+      recordInitialVersion: async () => {
+        throw new Error("飞书接口挂了");
+      },
+    });
+    expect(res.ok).toBe(true);
+    expect(readStrategicDocState(root)?.documentId).toBe("docx-1");
+  });
+
+  test("复用已有文档时不重复写版本记录", async () => {
+    const root = tmpRoot();
+    const { impl } = fakeFetch(okHandler());
+    const client = new FeishuClient({ appId: "a", appSecret: "b", fetchImpl: impl });
+    let calls = 0;
+    const recordInitialVersion = async () => {
+      calls += 1;
+    };
+    await createOrReuseStrategicDoc({ client, dataRoot: root, recordInitialVersion });
+    await createOrReuseStrategicDoc({ client, dataRoot: root, recordInitialVersion });
+    expect(calls).toBe(1);
   });
 });

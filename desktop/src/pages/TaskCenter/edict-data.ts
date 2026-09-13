@@ -98,6 +98,13 @@ export const OFFICIAL_IDS: string[] = OFFICIAL_META.map((m) => m.id);
  * 编制内官署数量（任务中心角标）。
  * 未提供编制 ⇒ 全集：兼容主进程尚未落盘 / 旧版本。
  */
+/**
+ * 官署飞书表清单排序：专属表在前、全员共享表在后。
+ * 共享表由主写官署回填一次，其余官署只读借用同一条链接，因此列表上分开放更清楚。
+ */
+export function orderOfficialTables<T extends { shared?: boolean }>(tables: readonly T[]): T[] {
+  return [...tables].sort((a, b) => Number(a.shared === true) - Number(b.shared === true));
+}
 export function officialCount(roster?: readonly string[] | null): number {
   if (!roster || roster.length === 0) return OFFICIAL_META.length;
   return OFFICIAL_META.filter((m) => roster.includes(m.id)).length;

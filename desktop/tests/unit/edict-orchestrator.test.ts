@@ -230,6 +230,32 @@ describe("edictRunPipeline（编排：中书→门下→尚书→六部→完成
     expect(store[0].output).toContain("交付摘要");
   });
 
+  it("编排节点读战略文档：中书/尚书各注入一次，其余节点不读", async () => {
+    const prompts: Record<string, string> = {};
+    let readCount = 0;
+    const { deps } = makeDeps({
+      readStrategy: async () => {
+        readCount += 1;
+        return { text: "战略：主攻 AI 工具赛道" + "。".repeat(100), source: "飞书实时" };
+      },
+      runHermes: async (profile, prompt) => {
+        prompts[profile] = prompt;
+        if (profile === "zhongshu") return "方案：礼部做调研。";
+        if (profile === "menxia") return "准奏。";
+        if (profile === "shangshu") return "部门：礼部。任务令：调研。";
+        if (profile === "libu") return "交付摘要：已完成。";
+        return "";
+      },
+    });
+    await edictIssue(deps, { title: "调研竞品" });
+    const r = await edictRunPipeline(deps, "JJC-20260827-001");
+    expect(r.ok).toBe(true);
+    expect(prompts.zhongshu).toContain("战略：主攻 AI 工具赛道");
+    expect(prompts.shangshu).toContain("战略：主攻 AI 工具赛道");
+    expect(prompts.menxia).not.toContain("战略：主攻 AI 工具赛道");
+    expect(readCount).toBe(2);
+  });
+
   it("封驳一轮 → 打回 Zhongshu → 二轮准奏 → Done", async () => {
     let menxiaCalls = 0;
     const { deps, store } = makeDeps({
@@ -363,6 +389,10 @@ describe("六部接进流水线（尚书省派发 → 对应部门 profile 执�
   });
 });
 describe("buildNodePrompt", () => {
+  const demo = (): EdictTask => ({
+    id: "JJC-20260827-001", title: "调研竞品", description: "输出 5 家分析", state: "Zhongshu",
+    flow_log: [], progress_log: [], todos: [],
+  });
   it("中书节点含任务上下文与职责", () => {
     const p = buildNodePrompt("Zhongshu", {
       id: "JJC-20260827-001", title: "调研竞品", description: "输出 5 家分析", state: "Zhongshu",
@@ -372,6 +402,37 @@ describe("buildNodePrompt", () => {
     expect(p).toContain("调研竞品");
     expect(p).toContain("中书省");
     expect(p).toContain("禁止输出看板命令");
+  });
+
+  it("中书节点注入战略方向全文（含来源）", () => {
+    const p = buildNodePrompt("Zhongshu", demo(), undefined, undefined, undefined, {
+      text: "一、战略目标：把私域复购率做到 30%",
+      source: "飞书实时",
+    });
+    expect(p).toContain("战略方向");
+    expect(p).toContain("把私域复购率做到 30%");
+    expect(p).toContain("飞书实时");
+  });
+
+  it("战略读取失败 ⇒ 注明未接入，不阻塞", () => {
+    const p = buildNodePrompt("Zhongshu", demo(), undefined, undefined, undefined, null);
+    expect(p).toContain("战略方向：未接入");
+  });
+
+  it("尚书省派发节点只注入摘要（截 800 字）", () => {
+    const p = buildNodePrompt("Assigned", demo(), undefined, undefined, undefined, {
+      text: "A".repeat(1500),
+      source: "缓存",
+    });
+    expect(p).toContain("战略方向");
+    expect(p).toContain("A".repeat(800));
+    expect(p).not.toContain("A".repeat(801));
+  });
+
+  it("审议/执行节点不注入战略上下文（省 token）", () => {
+    const s = { text: "战略机密内容", source: "飞书实时" };
+    expect(buildNodePrompt("Menxia", demo(), undefined, undefined, undefined, s)).not.toContain("战略机密内容");
+    expect(buildNodePrompt("Doing", demo(), undefined, undefined, undefined, s)).not.toContain("战略机密内容");
   });
 });
 

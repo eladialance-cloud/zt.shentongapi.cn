@@ -81,6 +81,11 @@ export interface StrategicDocDeps {
   dataRoot: string;
   /** 可选：创建后重写中书省 SOUL，让占位符立刻被替换成真实链接 */
   refreshSoul?: () => void;
+  /**
+   * 可选：建档后往「中书省·战略表」补一条 V1.0 记录（对标 RRClaw 的战略版本留痕）。
+   * best-effort：失败不抛异常、不影响文档本身。
+   */
+  recordInitialVersion?: (state: StrategicDocState) => Promise<void>;
 }
 
 export interface StrategicDocResult {
@@ -117,13 +122,104 @@ export async function createOrReuseStrategicDoc(deps: StrategicDocDeps): Promise
     if (!r.ok) break;
   }
 
-  writeStrategicDocState(deps.dataRoot, {
+  const state: StrategicDocState = {
     documentId,
     url,
     title: DOC_TITLE,
     createdAt: new Date().toISOString(),
-  });
+  };
+  writeStrategicDocState(deps.dataRoot, state);
   bindStrategicDocToOwner(deps.dataRoot, url);
   deps.refreshSoul?.();
+  // 战略表补 V1.0 记录（best-effort：失败不影响文档本身）
+  if (deps.recordInitialVersion) {
+    try {
+      await deps.recordInitialVersion(state);
+    } catch {
+      // 忽略：版本留痕失败不阻塞建档
+    }
+  }
   return { ok: true, url, reused: false };
+}
+
+// ===== 运行时读取（编排器注入战略上下文） =====
+
+/** 读取来源：feishu=实时拉取；cache=命中 TTL 缓存；none=尚未创建；error=拉取失败且无缓存 */
+export type StrategicDocSource = "feishu" | "cache" | "none" | "error";
+
+export interface StrategicDocReadResult {
+  ok: boolean;
+  /** 已按 maxChars 截断的正文；不可用时为空串 */
+  text: string;
+  source: StrategicDocSource;
+  error?: string;
+  fetchedAt?: string;
+}
+
+export interface ReadStrategicDocOptions {
+  /** 缓存有效期（毫秒），默认 5 分钟（对标 RRClaw _strategy_cache） */
+  ttlMs?: number;
+  /** 返回文本上限，默认 4000；全文给中书省、摘要给尚书省由调用方传值 */
+  maxChars?: number;
+  /** 忽略缓存强制拉取 */
+  force?: boolean;
+}
+
+const STRATEGY_CACHE_TTL_MS = 5 * 60 * 1000;
+const STRATEGY_MAX_CHARS = 4000;
+
+/** documentId → 正文缓存（仅进程内存，不落盘：战略文档含经营信息） */
+const strategyCache = new Map<string, { text: string; fetchedAt: string; expiresAt: number }>();
+
+/** 清空战略文档缓存（测试 / 用户手动刷新） */
+export function clearStrategyCache(): void {
+  strategyCache.clear();
+}
+
+/** 老状态文件可能没存 documentId：从链接兜底解析 */
+function documentIdFromUrl(url: string): string {
+  const m = /\/docx\/([A-Za-z0-9]+)/.exec(url || "");
+  return m ? m[1] : "";
+}
+
+function clipText(text: string, maxChars: number): string {
+  if (maxChars <= 0 || text.length <= maxChars) return text;
+  return text.slice(0, maxChars) + "\n…（战略文档较长，已截断）";
+}
+
+/**
+ * 读取战略方向文档正文（best-effort，不抛异常）：
+ * - 未创建 ⇒ { source: "none" }
+ * - TTL 内 ⇒ 直接回缓存，不重复打飞书接口
+ * - 拉取失败但有旧缓存 ⇒ 回旧缓存并带 error（上层可据此提示，编排不阻塞）
+ */
+export async function readStrategicDoc(
+  dataRoot: string,
+  client: FeishuClient,
+  options: ReadStrategicDocOptions = {},
+): Promise<StrategicDocReadResult> {
+  const ttlMs = options.ttlMs ?? STRATEGY_CACHE_TTL_MS;
+  const maxChars = options.maxChars ?? STRATEGY_MAX_CHARS;
+  const state = readStrategicDocState(dataRoot);
+  if (!state) return { ok: false, text: "", source: "none", error: "尚未创建战略方向文档" };
+  const documentId = state.documentId || documentIdFromUrl(state.url);
+  if (!documentId) return { ok: false, text: "", source: "error", error: "战略文档状态缺少 documentId" };
+
+  const now = Date.now();
+  const cached = strategyCache.get(documentId);
+  if (!options.force && cached && cached.expiresAt > now) {
+    return { ok: true, text: clipText(cached.text, maxChars), source: "cache", fetchedAt: cached.fetchedAt };
+  }
+
+  const res = await client.getDocxRawContent(documentId);
+  if (!res.ok || !res.data) {
+    if (cached) {
+      return { ok: true, text: clipText(cached.text, maxChars), source: "cache", fetchedAt: cached.fetchedAt, error: res.error };
+    }
+    return { ok: false, text: "", source: "error", error: res.error || "读取战略方向文档失败" };
+  }
+  const text = (res.data.content || "").trim();
+  const fetchedAt = new Date(now).toISOString();
+  strategyCache.set(documentId, { text, fetchedAt, expiresAt: now + ttlMs });
+  return { ok: true, text: clipText(text, maxChars), source: "feishu", fetchedAt };
 }

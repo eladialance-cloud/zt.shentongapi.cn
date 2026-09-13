@@ -3,6 +3,8 @@
  */
 import { FeishuClient } from "../../electron/main/feishu-client";
 import { parseSpecMarkdown, FEISHU_FIELD_TYPE, TABLE_ENV_KEY, normalizeTableName, initBitable } from "../../electron/main/feishu-bitable";
+import { DEFAULT_OFFICIAL_TABLES } from "../../electron/main/official-detail";
+import { STRATEGIC_DOC_ENV_KEY } from "../../electron/main/strategic-doc";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -110,13 +112,23 @@ describe("feishu-bitable 解析", () => {
     expect(tables[0].fields[2].required).toBe(false);
   });
 
-  test("真实规范文件可解析出 ≥13 张表", () => {
+  test("真实规范文件可解析出 23 张表，且与官署默认表清单一一对应", () => {
     const p = path.join(process.cwd(), "resources", "edict", "data", "多维表格字段设计规范.md");
     if (!fs.existsSync(p)) return; // 环境无关兜底
     const tables = parseSpecMarkdown(fs.readFileSync(p, "utf8"));
-    expect(tables.length).toBeGreaterThanOrEqual(13);
-    // 每张表都要有 env 键映射
+    expect(tables.length).toBe(23);
+    // 每张表都要有 env 键映射（否则建完表也不知道回填给谁）
     for (const t of tables) expect(TABLE_ENV_KEY[normalizeTableName(t.name)]).toBeTruthy();
+    // 反向：官署默认表清单里的每张表都要在规范里有定义（战略方向文档是云文档，不在多维表格里）
+    const known = new Set(tables.map((t) => normalizeTableName(t.name)));
+    const missing: string[] = [];
+    for (const list of Object.values(DEFAULT_OFFICIAL_TABLES)) {
+      for (const entry of list) {
+        if (entry.envKey === STRATEGIC_DOC_ENV_KEY) continue;
+        if (!known.has(normalizeTableName(entry.name))) missing.push(entry.name);
+      }
+    }
+    expect(missing).toEqual([]);
   });
 });
 

@@ -202,8 +202,19 @@ describe('team-ipc helpers', () => {
     for (const id of Object.keys(DEFAULT_CRONS)) {
       expect(Array.isArray(DEFAULT_CRONS[id])).toBe(true)
     }
-    // 兵部/工部用 flow 直跑脚本（确定型）
-    expect(DEFAULT_CRONS.bingbu[0].executeKind).toBe('flow')
-    expect(DEFAULT_CRONS.gongbu[0].executeKind).toBe('flow')
+    // 对外动作一律走业务流（由流内风控闸门把关），不靠 llm 直接群发
+    const flowsOf = (id: string) => DEFAULT_CRONS[id].filter((c) => c.executeKind === 'flow').map((c) => c.flowId)
+    expect(flowsOf('bingbu')).toEqual(
+      expect.arrayContaining(['sales-service-followup', 'private-domain-morning-push']),
+    )
+    expect(flowsOf('gongbu')).toEqual(
+      expect.arrayContaining(['new-media-wechat-article', 'secretary-daily-poster', 'traffic-generate-copy']),
+    )
+    // llm 任务不得带 flowId，且描述里明确外发由风控闸门执行
+    for (const list of Object.values(DEFAULT_CRONS)) {
+      for (const c of list) {
+        if (c.executeKind === 'llm') expect(c.flowId ?? null).toBeNull()
+      }
+    }
   })
 })

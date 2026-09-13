@@ -196,6 +196,19 @@ export class FeishuClient {
     return { ok: true, data: { field_id: res.data?.field?.field_id || "" } };
   }
 
+  /** 列出数据表字段（复用已有表时据此补齐规范新增字段） */
+  async listFields(
+    appToken: string,
+    tableId: string,
+  ): Promise<FeishuResult<Array<{ field_id?: string; field_name?: string; type?: number }>>> {
+    const res = await this.request<{ items?: Array<{ field_id?: string; field_name?: string; type?: number }> }>(
+      "GET",
+      `/open-apis/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/fields?page_size=100`,
+    );
+    if (!res.ok) return { ok: false, error: res.error, code: res.code };
+    return { ok: true, data: res.data?.items ?? [] };
+  }
+
   /** 批量新增记录（fields 为字段名→值的对象数组） */
   async batchAddRecords(
     appToken: string,
@@ -288,6 +301,19 @@ export class FeishuClient {
     );
     if (!res.ok) return { ok: false, error: res.error, code: res.code };
     return { ok: true, data: res.data };
+  }
+
+  /**
+   * 读取云文档纯文本全文（docx raw_content）。
+   * 用于「战略方向文档」运行时读取：编排器在中书省/尚书省节点前注入战略上下文。
+   */
+  async getDocxRawContent(documentId: string): Promise<FeishuResult<{ content: string }>> {
+    const res = await this.request<{ content?: string }>(
+      "GET",
+      `/open-apis/docx/v1/documents/${encodeURIComponent(documentId)}/raw_content`,
+    );
+    if (!res.ok) return { ok: false, error: res.error, code: res.code };
+    return { ok: true, data: { content: typeof res.data?.content === "string" ? res.data.content : "" } };
   }
 
   /** 生成多维表格访问链接（前端展示用） */

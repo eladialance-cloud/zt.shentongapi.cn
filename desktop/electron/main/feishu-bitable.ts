@@ -13,7 +13,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { FeishuClient } from "./feishu-client";
 import type { FeishuResult } from "./feishu-client";
-import { getOfficialTables, saveOfficialTables } from "./official-detail";
+import { defaultTableAccess, getOfficialTables, saveOfficialTables } from "./official-detail";
 
 /** 规范字段类型 → 飞书多维表格字段 type 编号 */
 export const FEISHU_FIELD_TYPE: Record<string, number> = {
@@ -60,6 +60,15 @@ export const TABLE_ENV_KEY: Record<string, string> = {
   "刑部·合规审查表": "FEISHU_COMPLIANCE_TABLE",
   "钦天监·度量报表": "FEISHU_METRICS_TABLE",
   "早朝简报·每日简报素材表": "FEISHU_BRIEF_MATERIAL_TABLE",
+  "中书省·战略表": "FEISHU_STRATEGY_TABLE",
+  "礼部·关键词表": "FEISHU_KEYWORD_TABLE",
+  "礼部·爆款采集表": "FEISHU_HOT_CONTENT_TABLE",
+  "兵部·客户档案表": "FEISHU_CUSTOMER_TABLE",
+  "兵部·客户跟进表": "FEISHU_FOLLOWUP_TABLE",
+  "兵部·社群运营表": "FEISHU_COMMUNITY_TABLE",
+  "兵部·渠道触达表": "FEISHU_CHANNEL_TABLE",
+  "工部·每日海报表": "FEISHU_DAILY_POSTER_TABLE",
+  "工部·文案库": "FEISHU_COPYWRITING_TABLE",
   归档索引表: "FEISHU_ARCHIVE_INDEX_TABLE",
 };
 
@@ -86,6 +95,15 @@ export const ENV_KEY_OWNER: Record<string, string> = {
   FEISHU_COMPLIANCE_TABLE: "xingbu",
   FEISHU_METRICS_TABLE: "qintianjian",
   FEISHU_BRIEF_MATERIAL_TABLE: "zaochao",
+  FEISHU_STRATEGY_TABLE: "zhongshu",
+  FEISHU_KEYWORD_TABLE: "libu",
+  FEISHU_HOT_CONTENT_TABLE: "libu",
+  FEISHU_CUSTOMER_TABLE: "bingbu",
+  FEISHU_FOLLOWUP_TABLE: "bingbu",
+  FEISHU_COMMUNITY_TABLE: "bingbu",
+  FEISHU_CHANNEL_TABLE: "bingbu",
+  FEISHU_DAILY_POSTER_TABLE: "gongbu",
+  FEISHU_COPYWRITING_TABLE: "gongbu",
   FEISHU_ARCHIVE_INDEX_TABLE: "shared",
 };
 
@@ -312,7 +330,9 @@ export async function initBitable(deps: BitableInitDeps): Promise<BitableInitRes
 
     if (tableId) {
       reusedCount++;
-      deps.onProgress?.({ step: "reuse", message: `复用已有表：${tbl.name}` });
+      // 复用已有表时补齐规范新增字段（否则规范里加列，老装机永远拿不到这一列）
+      const addedFields = await ensureFields(client, appToken, tableId, tbl, droppedFields);
+      deps.onProgress?.({ step: "reuse", message: `复用已有表：${tbl.name}${addedFields ? `（补 ${addedFields} 个字段）` : ""}` });
     } else {
       deps.onProgress?.({ step: "table", message: `建表：${tbl.name}` });
       const r = await createTableWithFallback(client, appToken, tbl, droppedFields, deps);
@@ -349,6 +369,11 @@ export async function initBitable(deps: BitableInitDeps): Promise<BitableInitRes
       const hit = list.find((c) => c.envKey === entry.envKey);
       return hit ? { ...entry, url: hit.url } : entry;
     });
+    // 规范里新增、用户配置里还没有的表补进来（否则新增表永远不会回填链接）
+    for (const c of list) {
+      if (merged.some((e) => e.envKey === c.envKey)) continue;
+      merged.push({ envKey: c.envKey, name: c.name, url: c.url, access: defaultTableAccess(official, c.envKey) });
+    }
     saveOfficialTables(dataRoot, official, merged);
   }
 
@@ -377,6 +402,30 @@ export async function initBitable(deps: BitableInitDeps): Promise<BitableInitRes
     reusedCount,
     droppedFields,
   };
+}
+
+/**
+ * 复用已有表时补齐规范新增字段：先列出已有字段，缺哪个建哪个。
+ * 查不到字段列表时直接跳过（宁可少补，也不冒险重复建列）。
+ */
+async function ensureFields(
+  client: FeishuClient,
+  appToken: string,
+  tableId: string,
+  tbl: ParsedTable,
+  droppedFields: Array<{ table: string; field: string; error: string }>,
+): Promise<number> {
+  const listed = await client.listFields(appToken, tableId);
+  if (!listed.ok || !listed.data) return 0;
+  const has = new Set(listed.data.map((f) => f.field_name || ""));
+  let added = 0;
+  for (const f of tbl.fields) {
+    if (has.has(f.name)) continue;
+    const r = await client.createField(appToken, tableId, { field_name: f.name, type: f.type });
+    if (r.ok) added++;
+    else droppedFields.push({ table: tbl.name, field: f.name, error: r.error || "字段创建失败" });
+  }
+  return added;
 }
 
 /**

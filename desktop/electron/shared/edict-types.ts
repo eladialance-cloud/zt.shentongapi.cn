@@ -107,6 +107,10 @@ export interface EdictOfficialTable {
   url?: string | null;
   /** 权限：读写/只读/写入 */
   access?: "rw" | "read" | "write";
+  /** 主写官署 id（共享表用）：非空表示「该官署读写、其余官署只读」 */
+  owner?: string;
+  /** 是否全员共享表（详情页标注「共享」） */
+  shared?: boolean;
 }
 
 /** 军机处统计（IPC edict:stats 载荷） */

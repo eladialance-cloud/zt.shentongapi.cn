@@ -54,6 +54,7 @@ import {
   recordReinstallAudit,
 } from './service-registry/fingerprint'
 import type { SpawnSpec, SpawnSpecResult } from './service-registry/row-executor'
+import { buildFlowsFeishuEnv, buildFlowsFeishuTables } from './flows-feishu-map'
 import {
   buildDouyinSpawnSpec,
   buildFlowsSpawnSpec,
@@ -374,10 +375,9 @@ function syncFlowsConfigFile(): void {
     try {
       const feishuState = readFeishuBitableState(app.getPath('userData'))
       if (feishuState?.appToken) {
-        const tables: Record<string, string> = {}
-        for (const t of feishuState.tables ?? []) {
-          if (t.tableId && t.envKey) tables[t.envKey] = t.tableId
-        }
+        // 必须按 collection 建键：flows 的 FeishuStore 用 tables[collection] 查表，
+        // 直接拿 envKey 当键会「有映射却找不到表」（storage 后端报不可用）。
+        const tables = buildFlowsFeishuTables(feishuState)
         next.storage_feishu = { ...(current.storage_feishu as object ?? {}), app_token: feishuState.appToken, tables }
       }
     } catch {

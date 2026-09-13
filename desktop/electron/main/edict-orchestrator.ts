@@ -56,6 +56,16 @@ export interface EdictDeps {
   notify?: (input: EdictNotifyInput) => Promise<void>;
   /** 当前官署编制（一键组队选的套餐；未提供 ⇒ 视为全集）。派发与忙闲展示只在此范围内 */
   getRoster?: () => string[];
+  /**
+   * 战略方向文档读取（best-effort）：中书省节点取全文、尚书省派发节点取摘要。
+   * 返回 null 表示读取通道不可用或读取失败 —— 不阻塞编排，prompt 里注明「战略未接入」。
+   */
+  readStrategy?: (maxChars: number) => Promise<{ text: string; source: string } | null>;
+  /**
+   * 产出落飞书（best-effort）：任务创建与收口时回写「军机处·任务主表 / 归档索引表」。
+   * 未建表 / 未配凭证 / 接口失败都只记日志，不影响看板流程。
+   */
+  syncTaskToFeishu?: (task: EdictTask) => Promise<void>;
 }
 
 const KANBAN_SCRIPT = "kanban_update.py";
@@ -156,11 +166,23 @@ export async function edictIssue(deps: EdictDeps, input: { title: string; body?:
   const remark = input.body?.trim() ? input.body.trim().slice(0, 100) : "太子整理旨意";
   const op = await kanban(deps, "taizi", ["create", taskId, title.slice(0, 80), "Zhongshu", org, official, remark]);
   if (!op.ok) return op;
+  await syncTaskToFeishuSafe(deps, taskId);
   // 下旨指定部门 → 持久化 assigneeOrg（kanban create 仅写 org，后续流转会覆盖 org）
   if (dept) {
     deps.writeBoard(deps.readBoard().map((t) => (t.id === taskId ? { ...t, assigneeOrg: dept } : t)));
   }
   return { ok: true, data: { taskId } };
+}
+
+/** 产出落飞书（best-effort）：失败只记日志，绝不影响看板流程 */
+async function syncTaskToFeishuSafe(deps: EdictDeps, taskId: string): Promise<void> {
+  if (!deps.syncTaskToFeishu) return;
+  try {
+    const task = deps.readBoard().find((t) => t.id === taskId);
+    if (task) await deps.syncTaskToFeishu(task);
+  } catch (err) {
+    deps.log?.(`产出落飞书失败: ${(err as Error).message}`);
+  }
 }
 
 /** 状态流转：校验状态机 + 写看板（身份 = 目标官署或调用方指定） */
@@ -312,6 +334,34 @@ const NODE_PROFILE: Partial<Record<EdictState, string>> = {
   Doing: "hubu",
 };
 
+/** 战略上下文注入上限（字符）：全文给起草人（中书省）、摘要给派发人（尚书省）—— 对标 RRClaw「全文给 CEO、摘要给其余」 */
+export const STRATEGY_PROMPT_CHARS: Record<string, number> = { Zhongshu: 4000, Assigned: 800 };
+
+/** 一次编排内各节点战略上下文缓存（避免重复读盘/读飞书接口） */
+type StrategyMemo = Map<string, { text: string; source: string } | null>;
+
+/** 读取战略上下文：undefined=该节点不需要注入，null=读取通道不可用或读取失败 */
+async function loadStrategy(
+  deps: EdictDeps,
+  state: EdictState,
+  memo: StrategyMemo,
+): Promise<{ text: string; source: string } | null | undefined> {
+  const limit = STRATEGY_PROMPT_CHARS[state] || 0;
+  if (limit <= 0) return undefined;
+  if (memo.has(state)) return memo.get(state);
+  let value: { text: string; source: string } | null = null;
+  if (deps.readStrategy) {
+    try {
+      value = await deps.readStrategy(limit);
+    } catch (err) {
+      deps.log?.(`战略文档读取失败: ${(err as Error).message}`);
+      value = null;
+    }
+  }
+  memo.set(state, value);
+  return value;
+}
+
 /** 节点提示词模板（profile 人设由 Hermes profile SOUL.md 承载，此处给任务上下文） */
 export function buildNodePrompt(
   state: EdictState,
@@ -319,6 +369,7 @@ export function buildNodePrompt(
   previousOutput?: string,
   execDept?: string,
   roster?: readonly string[] | null,
+  strategy?: { text: string; source: string } | null,
 ): string {
   const parts: string[] = [];
   parts.push(`任务ID: ${task.id}`);
@@ -333,6 +384,15 @@ ${previousOutput.slice(0, 2000)}`);
     Assigned: `你是尚书省。请按领域确定执行部门（${rosterDepts(roster).map((d) => `${d}-${DEPT_PROMPT_DESC[d]}`).join("/")}）并输出任务令。只输出：部门 + 任务令。`,
     Doing: execDept ? `你是${execDept}。请按任务令完成交付。只输出：交付摘要 + 关键结果。` : "你是执行部门。请按任务令完成交付。只输出：交付摘要 + 关键结果。",
   };
+  const strategyLimit = STRATEGY_PROMPT_CHARS[state] || 0;
+  if (strategyLimit > 0) {
+    const text = strategy?.text?.trim();
+    if (text) {
+      parts.push(`战略方向（来源：${strategy?.source || "未知"}；全队对齐基准，方案与战略冲突时以战略为准）：` + "\n" + text.slice(0, strategyLimit));
+    } else {
+      parts.push("战略方向：未接入（系统未配置战略文档读取通道，或读取失败），本次请按旨意自身范围起草。");
+    }
+  }
   parts.push(stage[state] || "请按看板流程推进。");
   parts.push("禁止输出看板命令本身（编排器负责写看板）。");
   return parts.join("\n\n");
@@ -355,6 +415,8 @@ export async function edictRunPipeline(deps: EdictDeps, taskId: string, opts: Ed
   const steps: EdictPipelineResult["steps"] = [];
   const startedAt = deps.now();
   let vetoRound = 0;
+  /** 战略上下文缓存：一次编排内同节点只读一次（战略文档未接入时为 null） */
+  const strategyMemo: StrategyMemo = new Map();
   let previousOutput: string | undefined;
 
   // 编排主体：所有 return 统一先落 steps，再走 reportPipelineExecution 收口
@@ -407,14 +469,16 @@ export async function edictRunPipeline(deps: EdictDeps, taskId: string, opts: Ed
             } catch (err) {
               deps.log?.(`产出落盘失败: ${(err as Error).message}`);
             }
+            await syncTaskToFeishuSafe(deps, taskId);
           }
           continue;
         }
         await edictTransition(deps, taskId, next, {});
         continue;
       }
-      // 1) 跑当前节点官署
-      const prompt = buildNodePrompt(state, task, previousOutput, execDept, deps.getRoster?.());
+      // 1) 跑当前节点官署（战略上下文 best-effort：读不到也不阻塞，prompt 里会注明未接入）
+      const strategy = await loadStrategy(deps, state, strategyMemo);
+      const prompt = buildNodePrompt(state, task, previousOutput, execDept, deps.getRoster?.(), strategy);
       let output: string;
       try {
         output = (await deps.runHermes(profile, prompt)).trim();

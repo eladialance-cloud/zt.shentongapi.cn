@@ -16,8 +16,10 @@ import {
   isEdictAvailable,
 } from "@/api/edict-api";
 import type { EdictOfficialTable } from "@shared/edict-types";
+import { OFFICIAL_META, orderOfficialTables } from "./edict-data";
 
 const ACCESS_LABEL: Record<string, string> = { rw: "读写", read: "只读", write: "写入" };
+const OFFICIAL_NAME: Record<string, string> = Object.fromEntries(OFFICIAL_META.map((m) => [m.id, m.name]));
 
 export default function OfficialTablesTab({ agentId }: { agentId: string }) {
   const [loading, setLoading] = useState(true);
@@ -99,6 +101,9 @@ export default function OfficialTablesTab({ agentId }: { agentId: string }) {
   }
 
   const configured = tables.filter((t) => t.url).length;
+  // 专属表在前、共享表在后（共享表由主写官署回填，其余官署自动借用同一条链接）
+  const ordered = orderOfficialTables(tables);
+  const sharedCount = tables.filter((t) => t.shared).length;
 
   return (
     <Spin spinning={loading}>
@@ -107,7 +112,7 @@ export default function OfficialTablesTab({ agentId }: { agentId: string }) {
           type={configured === tables.length && tables.length > 0 ? "success" : "info"}
           showIcon
           message={`飞书多维表格（${configured}/${tables.length} 已回填链接）`}
-          description="该官署的 SOUL.md 用 {{FEISHU_DOC:表名}} 占位；回填链接后，编排运行时会把占位符替换为真实表链接（对标 RRClaw 的占位符替换机制）。"
+          description={`该官署的 SOUL.md 用 {{FEISHU_DOC:表名}} 占位；回填链接后，编排运行时会把占位符替换为真实表链接（对标 RRClaw 的占位符替换机制）。${sharedCount > 0 ? `其中 ${sharedCount} 张为全员共享表：由主写官署回填一次，其余官署自动借用同一条链接。` : ""}`}
         />
 
         {rendered.replaced > 0 || rendered.missing.length > 0 ? (
@@ -128,7 +133,7 @@ export default function OfficialTablesTab({ agentId }: { agentId: string }) {
           size="small"
           rowKey="envKey"
           pagination={false}
-          dataSource={tables}
+          dataSource={ordered}
           columns={[
             {
               title: "表名",
@@ -140,6 +145,20 @@ export default function OfficialTablesTab({ agentId }: { agentId: string }) {
                   <div style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>{r.envKey}</div>
                 </div>
               ),
+            },
+            {
+              title: "归属",
+              dataIndex: "shared",
+              width: 170,
+              render: (_s: boolean | undefined, r) =>
+                r.shared ? (
+                  <Space size={4} wrap>
+                    <Tag color="blue">共享</Tag>
+                    <span style={{ fontSize: 12 }}>{r.owner ? `主写：${OFFICIAL_NAME[r.owner] ?? r.owner}` : "全员读写"}</span>
+                  </Space>
+                ) : (
+                  <Tag>专属</Tag>
+                ),
             },
             {
               title: "权限",

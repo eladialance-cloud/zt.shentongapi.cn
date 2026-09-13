@@ -130,6 +130,7 @@ function buildHermesCliEnv(): NodeJS.ProcessEnv {
 
 /** 官署 profile 描述（profile create --description） */
 const EDICT_PROFILE_DESC: Record<string, string> = {
+  taizi: "太子·消息分拣：接收皇上消息、判断类型、自答或整理旨意转交中书省",
   zhongshu: "中书省·规划决策：起草执行方案、提交门下审议、转尚书执行",
   menxia: "门下省·审议把关：四维审议、封驳/准奏、最多3轮",
   shangshu: "尚书省·执行调度：按领域派发六部、汇总结果",
@@ -271,7 +272,15 @@ export function ensureEdictRuntime(): { dataRoot: string; script: string } {
 
 // ===== 真实依赖（注入到 edict-orchestrator） =====
 
-export function createEdictDeps(): EdictDeps {
+/** createEdictDeps 可选项：缺省时官署节点 prompt 注明「战略未接入」，编排不阻塞 */
+export interface EdictDepsOptions {
+  /** 战略方向文档读取（strategic-doc.readStrategicDoc 的绑定）：中书省取全文、尚书省取摘要 */
+  readStrategy?: EdictDeps["readStrategy"];
+  /** 产出落飞书（feishu-board-writer 的绑定）：任务创建/收口时回写任务主表与归档索引表 */
+  syncTaskToFeishu?: EdictDeps["syncTaskToFeishu"];
+}
+
+export function createEdictDeps(options: EdictDepsOptions = {}): EdictDeps {
   ensureEdictRuntime();
   const dataRoot = getEdictDataRoot();
   const tasksFile = path.join(dataRoot, "data", "tasks_source.json");
@@ -396,6 +405,10 @@ export function createEdictDeps(): EdictDeps {
     reportExecution,
     // 派发/忙闲只在当前「编制」内（一键组队选的套餐；无记录=全集）
     getRoster: () => resolveRoster(app.getPath("userData")),
+    // 战略方向文档运行时读取（best-effort；主进程启动时由 index.ts 注入）
+    readStrategy: options.readStrategy,
+    // 产出落飞书（best-effort；主进程启动时由 index.ts 注入）
+    syncTaskToFeishu: options.syncTaskToFeishu,
     notify: (input) => sendEdictNotify({
       title: input.finalState === "Done" ? "✅ 三省六部任务完成" : input.finalState === "Cancelled" ? "🗑 三省六部任务已取消" : input.finalState === "Blocked" ? "⛔ 三省六部任务已阻塞" : "❌ 三省六部执行失败",
       content: `任务 ${input.taskId}《${input.title}》\n结果：${input.finalState}${input.summary ? "\n" + input.summary : ""}`,

@@ -101,7 +101,9 @@ import { registerEdictExtraIpc } from './edict-extra'
 import { registerOfficialDetailIpc, getOfficialTables, writeRenderedSoul } from './official-detail'
 import { registerFeishuIpc, buildFeishuClient, type FeishuSettingsDeps } from './feishu-settings'
 import { initBitable, readBitableState } from './feishu-bitable'
-import { createOrReuseStrategicDoc } from './strategic-doc'
+import { createOrReuseStrategicDoc, readStrategicDoc } from './strategic-doc'
+import { appendArchiveToBoard, appendStrategyVersionToBoard, appendTaskToBoard, seedStarterData } from './feishu-board-writer'
+import type { EdictTask } from './edict-orchestrator'
 import { registerTeamIpc } from './team-ipc'
 import { setCredential, deleteCredential } from './services/credential-store'
 import { CronEngine, createCronEngine, defaultCronEngineStatePath, type CronScheduledTask } from './cron-engine'
@@ -782,7 +784,47 @@ function registerIpcHandlers(): void {
     }
   })
 
-  const edictDeps = createEdictDeps()
+  // 飞书平台设置（凭证解密读取）；战略文档读取与多维表格初始化共用
+  const feishuDeps: FeishuSettingsDeps = {
+    getCredential: (k) => getCredential(k),
+    setCredential: (k, v) => setCredential(k, v),
+    deleteCredential: (k) => deleteCredential(k),
+  }
+  /**
+   * 战略方向文档运行时读取（best-effort）：中书省节点取全文、尚书省派发节点取摘要。
+   * 凭证可能刚保存，每次调用现建客户端；读不到返回 null，编排在 prompt 里注明「战略未接入」。
+   */
+  const readStrategy = async (maxChars: number) => {
+    const client = buildFeishuClient(feishuDeps)
+    if (!client) return null
+    const res = await readStrategicDoc(getEdictDataRoot(), client, { maxChars })
+    if (!res.text) return null
+    const source = res.source === 'feishu' ? (res.fetchedAt ? '飞书实时（' + res.fetchedAt + '）' : '飞书实时') : res.source === 'cache' ? '缓存' : '未知'
+    return { text: res.text, source }
+  }
+  /** 规范/蓝本只读根（开发 resources/，打包 process.resourcesPath）：建表与产出落飞书共用 */
+  const edictResourcesRoot = app.isPackaged ? process.resourcesPath : join(process.cwd(), 'resources')
+  /**
+   * 产出落飞书（best-effort）：任务创建/收口时把任务记录写「军机处·任务主表」、产出写「归档索引表」。
+   * 未建表 / 未配凭证 / 接口失败都只记日志，不影响看板流程。
+   */
+  const syncTaskToFeishu = async (task: EdictTask) => {
+    const client = buildFeishuClient(feishuDeps)
+    if (!client) return
+    const writer = { dataRoot: getEdictDataRoot(), resourcesRoot: edictResourcesRoot, client }
+    const taskRes = await appendTaskToBoard(writer, task)
+    if (!taskRes.ok && !taskRes.skipped) console.warn('[feishu-board] 任务主表写入失败: ' + taskRes.error)
+    if (task.output) {
+      const archiveRes = await appendArchiveToBoard(writer, {
+        taskId: task.id,
+        title: task.title,
+        agentLabel: task.official || '官署',
+        output: task.output,
+      })
+      if (!archiveRes.ok && !archiveRes.skipped) console.warn('[feishu-board] 归档索引写入失败: ' + archiveRes.error)
+    }
+  }
+  const edictDeps = createEdictDeps({ readStrategy, syncTaskToFeishu })
   const disposeEdictIpc = registerEdictIpc(edictDeps, { pollIntervalMs: 3000 })
   const disposeEdictExtraIpc = registerEdictExtraIpc(
     createEdictExtraDeps(edictDeps, {
@@ -816,18 +858,13 @@ function registerIpcHandlers(): void {
     },
   })
   // 飞书平台设置 + 多维表格一键创建
-  const feishuDeps: FeishuSettingsDeps = {
-    getCredential: (k) => getCredential(k),
-    setCredential: (k, v) => setCredential(k, v),
-    deleteCredential: (k) => deleteCredential(k),
-  }
   const initFeishuBitable = async (options?: { force?: boolean }) => {
     const client = buildFeishuClient(feishuDeps)
     if (!client) return { ok: false, error: '飞书凭证未配置' }
     return initBitable({
       client,
       dataRoot: getEdictDataRoot(),
-      resourcesRoot: app.isPackaged ? process.resourcesPath : join(process.cwd(), 'resources'),
+      resourcesRoot: edictResourcesRoot,
       force: options?.force,
       onProgress: (p) => {
         const win = getMainWindow()
@@ -845,6 +882,22 @@ function registerIpcHandlers(): void {
     return createOrReuseStrategicDoc({
       client,
       dataRoot: getEdictDataRoot(),
+      // 建档后往「中书省·战略表」补 V1.0（best-effort：失败不影响建档）
+      recordInitialVersion: async (state) => {
+        const client = buildFeishuClient(feishuDeps)
+        if (!client) return
+        const res = await appendStrategyVersionToBoard(
+          { dataRoot: getEdictDataRoot(), resourcesRoot: edictResourcesRoot, client },
+          {
+            version: 'V1.0',
+            reason: '一键组队首次建档',
+            summary: '按《战略方向文档》初始提纲建立战略基准（目标/客户/打法/资源/度量/风险）',
+            kpi: '方案一次通过率 ≥60%',
+            execTable: '军机处·任务主表（共享）',
+          },
+        )
+        if (!res.ok && !res.skipped) console.warn('[feishu-board] 战略表写入失败: ' + res.error)
+      },
       refreshSoul: () => {
         try {
           writeRenderedSoul(
@@ -857,6 +910,14 @@ function registerIpcHandlers(): void {
         }
       },
     })
+  }
+  /** 预填种子数据（对标 RRClaw「爆款提示词.csv」预填）：把《关键词种子.json》灌进「礼部·关键词表」 */
+  const seedTemplates = async () => {
+    const client = buildFeishuClient(feishuDeps)
+    if (!client) return { ok: false, error: '飞书凭证未配置，跳过种子数据' }
+    const res = await seedStarterData({ dataRoot: getEdictDataRoot(), resourcesRoot: edictResourcesRoot, client })
+    if (!res.ok && !res.skipped) return { ok: false, error: res.error }
+    return { ok: true }
   }
   const disposeFeishuIpc = registerFeishuIpc({
     ...feishuDeps,
@@ -872,6 +933,7 @@ function registerIpcHandlers(): void {
     edictDataRoot: getEdictDataRoot(),
     initBitable: initFeishuBitable,
     createStrategicDoc: runStrategicDoc,
+    seedTemplates,
     ensureAgents: (ids) => ensureEdictHermesProfiles(ids),
     stApiBase: ST_API_BASE,
     getAuthToken: readRemoteToken,
