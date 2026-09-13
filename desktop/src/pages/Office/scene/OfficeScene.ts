@@ -229,10 +229,12 @@ export class OfficeScene {
   setRoster(
     entries: Array<{ id: string; name: string; color: number; task?: string; memberId?: number }>,
   ): void {
+    // 人数可变：工位只有 12 席，超出部分不再显示（避免叠坐）
+    this.resizeRoster(Math.min(entries.length, DESKS.length));
     this.agents = this.agents.map((agent, i) => {
       const entry = entries[i];
       if (!entry) {
-        return { ...agent, name: '待命', state: 'idle', currentTask: undefined };
+        return { ...agent, state: 'idle' as const, currentTask: undefined };
       }
       const next: Agent = {
         ...agent,
@@ -255,6 +257,59 @@ export class OfficeScene {
     });
     this.pushDataToEntities();
     setOfficeAgents(this.agents);
+  }
+
+  /** 名册增减：按需补/删坐席与实体（工位按 DESKS 顺序分配） */
+  private resizeRoster(count: number): void {
+    while (this.agents.length > count) {
+      const removed = this.agents.pop();
+      if (!removed) break;
+      const entity = this.agentEntities.get(removed.id);
+      if (entity) {
+        this.agentEntities.delete(removed.id);
+        this.officeLayer?.removeChild(entity);
+        entity.destroy();
+      }
+    }
+    while (this.agents.length < count) {
+      const agent = this.createSeatAgent(this.agents.length);
+      this.agents.push(agent);
+      this.mountAgentEntity(agent);
+    }
+  }
+
+  /** 按坐席模板构建一个「空员工」（真实身份由 setRoster 注入） */
+  private createSeatAgent(index: number): Agent {
+    const template = AGENT_ROSTER[index % AGENT_ROSTER.length]!;
+    const desk = DESKS[index % DESKS.length]!;
+    return {
+      id: template.id,
+      name: template.name,
+      color: template.color,
+      x: desk.seatX,
+      y: desk.seatY,
+      state: 'idle',
+      assignedDeskId: desk.id,
+      facing: index % 2 === 0 ? 1 : -1,
+      viewFacing: 'front',
+    };
+  }
+
+  /** 实体入场景 + 绑定点击（点击把该坐席实时数据抛给页面抽屉） */
+  private mountAgentEntity(agent: Agent): void {
+    const entity = new AgentEntity(agent);
+    this.agentEntities.set(agent.id, entity);
+    entity.zIndex = agent.y;
+    entity.on('pointertap', (event: FederatedPointerEvent) => {
+      event.stopPropagation();
+      this.options.onAgentClick?.({
+        agent: { ...entity.data },
+        rosterNo: this.agents.findIndex((a) => a.id === entity.data.id) + 1,
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+    });
+    this.officeLayer?.addChild(entity);
   }
   /** 应用用户自定义的员工名字（localStorage: office_agent_names） */
   private applyCustomNames(): void {
@@ -354,7 +409,7 @@ export class OfficeScene {
       return
     }
 
-    const visitorName = AGENT_ROSTER[step.visitor - 1]?.name ?? `#${step.visitor}`
+    const visitorName = this.agents[step.visitor - 1]?.name ?? `#${step.visitor}`
     const message = `${visitorName}：${step.message}`
     this.agents = this.simulator.startDeskVisit(
       this.agents,
@@ -469,21 +524,7 @@ export class OfficeScene {
       )
     }
 
-    for (const agent of this.agents) {
-      const entity = new AgentEntity(agent)
-      this.agentEntities.set(agent.id, entity)
-      entity.zIndex = agent.y
-      entity.on('pointertap', (event: FederatedPointerEvent) => {
-        event.stopPropagation()
-        this.options.onAgentClick?.({
-          agent: { ...entity.data },
-          rosterNo: this.agents.findIndex((a) => a.id === entity.data.id) + 1,
-          clientX: event.clientX,
-          clientY: event.clientY,
-        })
-      })
-      layer.addChild(entity)
-    }
+    for (const agent of this.agents) this.mountAgentEntity(agent)
 
     this.sortOfficeDepth()
     parent.addChild(layer)

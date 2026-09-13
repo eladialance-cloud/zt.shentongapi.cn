@@ -13,8 +13,8 @@ export const COLORS = {
   agentBody: 0x1a1a1a,
 } as const
 
-/** 2×3 工位区 */
-const DESK_COLS = 2
+/** 4×3 工位区（12 席，覆盖旗舰版 12 官署） */
+const DESK_COLS = 4
 const DESK_ROWS = 3
 const DESK_COL_GAP = 150
 const DESK_ROW_GAP = 140
@@ -51,57 +51,31 @@ export type AgentRosterEntry = {
   id: string
   name: string
   color: number
-  task: string
+  task?: string
 }
 
-/** 6 位市场部员工（名册序号 1–6） */
-export const AGENT_ROSTER: AgentRosterEntry[] = [
-  {
-    id: 'marvis',
-    name: '王明',
-    color: 0xe85d4a,
-    task: '主管：等待交付物',
-  },
-  {
-    id: 'code-agent',
-    name: '李研',
-    color: 0x4a90d9,
-    task: '检索：扫描信息源',
-  },
-  {
-    id: 'file-agent',
-    name: '周理',
-    color: 0x9b6dd7,
-    task: '整理：归类情报',
-  },
-  {
-    id: 'app-agent',
-    name: '陈书',
-    color: 0xf5c542,
-    task: '撰写：起草标书',
-  },
-  {
-    id: 'review-agent',
-    name: '刘市',
-    color: 0xf97316,
-    task: '市场：打包情报简报',
-  },
-  {
-    id: 'data-agent',
-    name: '赵审',
-    color: 0x4ecdc4,
-    task: '审核：合规待审队列',
-  },
+/**
+ * 工位坐席模板（名册序号 1–12）。
+ *
+ * 这里**不放**任何假员工/假任务：真实名册由团队数据经 setRoster 注入
+ * （OfficeIntegrated → officeStore.membersToRoster）；
+ * 没有团队成员时名册为空，页面走空态引导，不再显示「王明、李研」这类演示数据。
+ */
+const SEAT_COLORS = [
+  0xe85d4a, 0x4a90d9, 0x9b6dd7, 0xf5c542, 0xf97316, 0x4ecdc4,
+  0x2dd4bf, 0x60a5fa, 0xa78bfa, 0xfbbf24, 0x34d399, 0xf87171,
 ]
 
-const BOOT_STATES: AgentState[] = [
-  'working',
-  'working',
-  'working',
-  'working',
-  'working',
-  'working',
-]
+export const AGENT_ROSTER: AgentRosterEntry[] = Array.from(
+  { length: DESK_COLS * DESK_ROWS },
+  (_, i) => ({
+    id: `seat-${i + 1}`,
+    name: `员工 ${i + 1}`,
+    color: SEAT_COLORS[i % SEAT_COLORS.length]!,
+  }),
+)
+
+const BOOT_STATES: AgentState[] = AGENT_ROSTER.map(() => 'idle')
 
 function buildInitialAgents(): Agent[] {
   return AGENT_ROSTER.map((entry, i) => {

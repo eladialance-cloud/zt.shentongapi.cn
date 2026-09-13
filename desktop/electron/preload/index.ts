@@ -226,6 +226,7 @@ const electronAPI: ElectronAPI = {
   },
   team: {
     listPresets: () => ipcRenderer.invoke('team:list-presets'),
+    currentRoster: () => ipcRenderer.invoke('team:current-roster'),
     creationStatus: () => ipcRenderer.invoke('team:creation-status'),
     create: (presetId: string) => ipcRenderer.invoke('team:create', presetId),
     writeSoul: (official: string) => ipcRenderer.invoke('team:write-soul', official),

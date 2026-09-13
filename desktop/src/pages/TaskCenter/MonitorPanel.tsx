@@ -21,7 +21,8 @@ import {
   isEdictAvailable,
 } from "@/api/edict-api";
 import type { EdictAgentsStatusData, EdictNotifyConfig, EdictTask } from "@shared/edict-types";
-import { DEPTS, STATE_LABEL, toast, timeAgo } from "./panels-data";
+import { deptsForRoster, STATE_LABEL, toast, timeAgo } from "./panels-data";
+import { useEdictRoster } from "./roster";
 
 /** 心跳新鲜度阈值：5 分钟内视为活跃心跳 */
 const HEARTBEAT_FRESH_MS = 5 * 60_000;
@@ -34,6 +35,9 @@ function isHeartbeatFresh(lastActive?: string): boolean {
 }
 
 export default function MonitorPanel({ onNavigateBoard }: { onNavigateBoard?: (orgName?: string) => void }) {
+  // 值班网格只列当前编制内的官署
+  const roster = useEdictRoster();
+  const depts = deptsForRoster(roster.officials);
   const [status, setStatus] = useState<EdictAgentsStatusData | null>(null);
   const [tasks, setTasks] = useState<EdictTask[]>([]);
   const [waking, setWaking] = useState<Record<string, boolean>>({});
@@ -220,7 +224,7 @@ export default function MonitorPanel({ onNavigateBoard }: { onNavigateBoard?: (o
 
       {/* 值班网格 */}
       <div className="duty-grid">
-        {DEPTS.map((d) => {
+        {depts.map((d) => {
           const myTasks = activeTasks.filter((t) => t.org === d.label || t.assigneeOrg === d.label);
           const isActive = myTasks.some((t) => t.state === "Doing" || t.state === "Review");
           const isBlocked = myTasks.some((t) => t.state === "Blocked");

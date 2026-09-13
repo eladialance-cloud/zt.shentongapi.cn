@@ -6,7 +6,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isEdictAvailable, edictBoard, edictCourtAdvance, edictCourtConclude, edictCourtDestroy, edictCourtFate, edictCourtStart, onEdictBoardUpdated } from "@/api/edict-api";
 import type { EdictCourtDiscussResult, EdictCourtMessage, EdictCourtOfficial, EdictTask } from "@shared/edict-types";
-import { DEPTS, toast } from "./panels-data";
+import { deptsForRoster, toast } from "./panels-data";
+import { useEdictRoster } from "./roster";
 
 // ── 常量（照搬 edict 原版 CourtDiscussion） ──
 
@@ -38,6 +39,9 @@ interface CourtSessionView {
 }
 
 export default function CourtDiscussion() {
+  // 参会官员只在当前编制内（一键组队选的套餐）
+  const roster = useEdictRoster();
+  const depts = deptsForRoster(roster.officials);
   const [phase, setPhase] = useState<"setup" | "session">("setup");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [topic, setTopic] = useState("");
@@ -275,7 +279,7 @@ export default function CourtDiscussion() {
             <span className="text-xs" style={{ color: "var(--muted)" }}>（{selectedIds.size}/8，至少2位）</span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-            {DEPTS.map((d) => {
+            {depts.map((d) => {
               const active = selectedIds.has(d.id);
               const color = OFFICIAL_COLORS[d.id] || "#6a9eff";
               return (

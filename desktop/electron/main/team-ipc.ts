@@ -17,6 +17,7 @@ import * as path from "node:path";
 import type { TeamCreationResult, TeamPresetDeps, TeamProgress, PresetId } from "./team-preset";
 import { runTeamCreation, TEAM_PRESETS, getPreset } from "./team-preset";
 import { getOfficialTables, writeRenderedSoul } from "./official-detail";
+import { ALL_EDICT_OFFICIALS, readRoster, writeRoster } from "./edict-roster";
 
 /** 官署默认定时任务（对标 RRClaw 的 44 条 command 任务；能对到 flows 的走 flow，其余走 llm） */
 export interface DefaultCron {
@@ -71,6 +72,8 @@ export interface TeamIpcDeps {
   hermesHome: string;
   edictProfilesDir: string;
   edictDataRoot: string;
+  /** 编制落盘目录（app.getPath('userData')）；选择套餐后写入 edict-roster.json */
+  userDataDir: string;
   /** 初始化飞书多维表格（返回 appToken 便于战略文档/预填） */
   initBitable: () => Promise<{ ok: boolean; error?: string }>;
   /** 幂等创建官署 profile（ensureEdictHermesProfiles） */
@@ -155,10 +158,8 @@ export function syncOfficialSouls(
   return { ok: items.every((i) => i.ok), synced, totalReplaced, items };
 }
 
-const ALL_OFFICIAL_IDS_LIST = [
-  "taizi", "zhongshu", "menxia", "shangshu", "libu", "hubu",
-  "libu_hr", "bingbu", "xingbu", "gongbu", "zaochao", "qintianjian",
-];
+/** 官署全集（与 team-preset / edict-roster 同源，避免多处漂移） */
+const ALL_OFFICIAL_IDS_LIST: string[] = [...ALL_EDICT_OFFICIALS];
 
 function authHeaders(token: string): Record<string, string> {
   const h: Record<string, string> = { "content-type": "application/json; charset=utf-8" };
@@ -317,6 +318,14 @@ export async function triggerTeamCreation(presetId: PresetId, deps: TeamIpcDeps)
   try {
     const result = await runTeamCreation(presetId, buildTeamDeps(deps));
     lastResult = result;
+    // 记录「编制」：套餐成功时落盘，供启动引导与任务中心判断该有哪几个官署
+    if (result.ok && deps.userDataDir) {
+      try {
+        writeRoster(deps.userDataDir, presetId, result.officials);
+      } catch (err) {
+        console.warn("[team-ipc] 写入官署编制失败: " + (err instanceof Error ? err.message : String(err)));
+      }
+    }
     return result;
   } finally {
     running = false;
@@ -328,6 +337,9 @@ export function registerTeamIpc(deps: TeamIpcDeps): () => void {
   ipcMain.handle("team:list-presets", () => ({
     ok: true,
     defaultPresetId: "standard",
+    // 当前编制（最近一次一键组队的套餐）与已装官署，供设置页展示「选了什么 / 装了什么」
+    currentPresetId: readRoster(deps.userDataDir)?.presetId ?? null,
+    installedOfficials: listInstalledOfficials(deps.hermesHome, ALL_OFFICIAL_IDS_LIST),
     presets: Object.values(TEAM_PRESETS).map((p) => ({
       id: p.id,
       name: p.name,
@@ -336,6 +348,17 @@ export function registerTeamIpc(deps: TeamIpcDeps): () => void {
       recommended: !!p.recommended,
     })),
   }));
+  // 当前官署编制：任务中心/办公室按它过滤展示（无落盘记录 ⇒ 全集，兼容老用户）
+  ipcMain.handle("team:current-roster", () => {
+    const stored = readRoster(deps.userDataDir);
+    return {
+      ok: true,
+      presetId: stored?.presetId ?? null,
+      officials: stored ? stored.officials : [...ALL_EDICT_OFFICIALS],
+      installed: listInstalledOfficials(deps.hermesHome, ALL_OFFICIAL_IDS_LIST),
+      isDefault: !stored,
+    };
+  });
   ipcMain.handle("team:creation-status", () => ({ ok: true, ...getTeamCreationStatus() }));
   ipcMain.handle("team:create", async (_e, presetId: unknown) => {
     const id = typeof presetId === "string" ? presetId : "";
@@ -368,7 +391,7 @@ export function registerTeamIpc(deps: TeamIpcDeps): () => void {
   });
 
   return () => {
-    for (const ch of ["team:list-presets", "team:creation-status", "team:create", "team:write-soul", "team:list-crons", "team:sync-soul", "team:soul-status"]) {
+    for (const ch of ["team:list-presets", "team:current-roster", "team:creation-status", "team:create", "team:write-soul", "team:list-crons", "team:sync-soul", "team:soul-status"]) {
       try {
         ipcMain.removeHandler(ch);
       } catch {

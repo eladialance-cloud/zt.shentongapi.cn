@@ -895,7 +895,17 @@ export interface ElectronAPI {
 
   /** 一键组队（套餐 → 飞书表 + SOUL + Agent + 定时任务） */
   team: {
-    listPresets(): Promise<{ ok: boolean; defaultPresetId: string; presets: Array<{ id: string; name: string; description: string; officials: string[]; recommended: boolean }> }>;
+    listPresets(): Promise<{
+      ok: boolean;
+      defaultPresetId: string;
+      /** 当前编制对应套餐（最近一次一键组队；null=未落盘，按全集处理） */
+      currentPresetId?: string | null;
+      /** 磁盘上已装的官署（profiles 目录） */
+      installedOfficials?: string[];
+      presets: Array<{ id: string; name: string; description: string; officials: string[]; recommended: boolean }>;
+    }>;
+    /** 当前官署编制（任务中心/办公室按它过滤展示） */
+    currentRoster(): Promise<{ ok: boolean; presetId: string | null; officials: string[]; installed: string[]; isDefault: boolean }>;
     creationStatus(): Promise<{ ok: boolean; isRunning: boolean; lastResult: unknown }>;
     create(presetId: string): Promise<{
       ok: boolean;

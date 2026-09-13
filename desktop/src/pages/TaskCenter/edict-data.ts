@@ -91,12 +91,24 @@ export const OFFICIAL_META: OfficialMeta[] = [
   { id: "qintianjian", name: "钦天监", role: "分析 · 预测",          emoji: "🔭", color: "#0ea5e9" },
 ];
 
-export const OFFICIALS_COUNT = OFFICIAL_META.length;
+/** 官署全集 id（回退/兜底用） */
+export const OFFICIAL_IDS: string[] = OFFICIAL_META.map((m) => m.id);
+
+/**
+ * 编制内官署数量（任务中心角标）。
+ * 未提供编制 ⇒ 全集：兼容主进程尚未落盘 / 旧版本。
+ */
+export function officialCount(roster?: readonly string[] | null): number {
+  if (!roster || roster.length === 0) return OFFICIAL_META.length;
+  return OFFICIAL_META.filter((m) => roster.includes(m.id)).length;
+}
 
 /** 军机处官员卡片（元数据 + 实时状态/计数） */
 export interface OfficialCard extends OfficialMeta {
   status: OfficialStatus;
   statusText: string;
+  /** 是否在当前官署编制内（编制外的官署不再显示成「空闲在职」） */
+  inRoster: boolean;
   todayCompleted: number;
   todoCount: number;
 }
@@ -142,6 +154,8 @@ export function buildOfficialCards(officials: EdictOfficial[], tasks: BoardTask[
       ...m,
       status,
       statusText: status === "work" ? "忙碌" : "空闲",
+      // inRoster 由主进程按当前编制给出；缺省（旧数据/加载中）视为在编
+      inRoster: real?.inRoster !== false,
       todayCompleted: doneById.get(m.id) || 0,
       todoCount: todoById.get(m.id) || 0,
     };

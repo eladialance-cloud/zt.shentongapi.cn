@@ -42,6 +42,7 @@ import { OFFICIALS } from "./edict-orchestrator";
 import { ST_API_BASE } from "./service-manager";
 import type { EdictExtraDeps } from "./edict-extra";
 import { writeRenderedSoul, getOfficialTables } from "./official-detail";
+import { resolveRoster } from "./edict-roster";
 
 // ===== 路径解析 =====
 
@@ -158,13 +159,19 @@ export function getEdictProfilesDir(): string {
 }
 
 /**
- * 引导 11 个官署 Hermes profiles（幂等）：
+ * 引导官署 Hermes profiles（幂等）：
  * 1. 缺失的 profile 用 hermes profile create --no-skills 创建；
  * 2. 注入官署 SOUL.md（resources/edict/profiles/<id>.md）；
  * 3. 同步全局 config.yaml 到每个 profile（profile 是独立 HERMES_HOME）。
+ * 目标官署：显式传 ids 时按 ids（一键组队逐官署建，含太子）；否则按当前「编制」
+ * （edict-roster 落盘的套餐；缺省回退全集），只认官署 profile id —— 编制外的官署不再被创建，
+ * 否则一键组队选轻量版后，下次启动会把删掉的官署又建回来，套餐选择形同虚设。
  * 返回创建/更新明细；失败不抛错（日志记录），运行时 runHermes 仍会按需兜底同步 config。
  */
-export async function ensureEdictHermesProfiles(ids?: readonly string[]): Promise<{ ok: boolean; created: string[]; reason?: string }> {
+export async function ensureEdictHermesProfiles(
+  ids?: readonly string[],
+  roster?: readonly string[],
+): Promise<{ ok: boolean; created: string[]; reason?: string }> {
   const env = buildHermesCliEnv();
   const nodeBin = env.HERMES_NODE as string;
   const entry = env.HERMES_ENTRY as string;
@@ -174,7 +181,13 @@ export async function ensureEdictHermesProfiles(ids?: readonly string[]): Promis
     return { ok: false, created, reason: "Hermes 运行时未安装（官署执行需要 Hermes）" };
   }
   const soulDir = getEdictProfilesDir();
-  const targets: readonly string[] = ids && ids.length ? ids : EDICT_PROFILE_IDS;
+  // 显式传 ids ⇒ 按传入执行（一键组队逐官署建 profile，含太子）；
+  // 未传 ⇒ 按当前「编制」补齐，并过滤掉非官署 profile（太子=Hermes 对话入口，不在此列）
+  const targets: readonly string[] = ids && ids.length
+    ? ids
+    : roster && roster.length
+      ? roster.filter((id) => (EDICT_PROFILE_IDS as readonly string[]).includes(id))
+      : EDICT_PROFILE_IDS;
   for (const id of targets) {
     const profileDir = path.join(hermesHome, "profiles", id);
     try {
@@ -209,9 +222,10 @@ export async function ensureEdictHermesProfiles(ids?: readonly string[]): Promis
       console.warn("[edict-bridge] 引导 profile " + id + " 失败: " + (err instanceof Error ? err.message : String(err)));
     }
   }
-  syncHermesProfileConfigs(hermesHome, EDICT_PROFILE_IDS);
+  // 只同步本次目标的 config（syncHermesProfileConfigs 会 mkdir 出目录，传全集会把编制外的官署目录也建回来）
+  syncHermesProfileConfigs(hermesHome, targets);
   // 回灌军机处持久化的官署模型（全局同步会覆盖 profile model，需按用户选择恢复）
-  applyAgentModels(hermesHome, EDICT_PROFILE_IDS);
+  applyAgentModels(hermesHome, targets);
   return { ok: true, created };
 }
 
@@ -380,6 +394,8 @@ export function createEdictDeps(): EdictDeps {
     now: () => Date.now(),
     log: (msg) => console.log("[edict] " + msg),
     reportExecution,
+    // 派发/忙闲只在当前「编制」内（一键组队选的套餐；无记录=全集）
+    getRoster: () => resolveRoster(app.getPath("userData")),
     notify: (input) => sendEdictNotify({
       title: input.finalState === "Done" ? "✅ 三省六部任务完成" : input.finalState === "Cancelled" ? "🗑 三省六部任务已取消" : input.finalState === "Blocked" ? "⛔ 三省六部任务已阻塞" : "❌ 三省六部执行失败",
       content: `任务 ${input.taskId}《${input.title}》\n结果：${input.finalState}${input.summary ? "\n" + input.summary : ""}`,

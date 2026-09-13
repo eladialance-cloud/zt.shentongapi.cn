@@ -39,7 +39,8 @@ import type { LocalScheduledRun } from "@shared/types";
 import EdictView from "./EdictView";
 import JunjiPanelsHub from "./JunjiPanelsHub";
 import { onEdictBoardUpdated } from "@/api/edict-api";
-import { OFFICIALS_COUNT } from "./edict-data";
+import { officialCount } from "./edict-data";
+import { useEdictRoster } from "./roster";
 import edictStyles from "./edict.module.css";
 import styles from "./styles.module.css";
 
@@ -264,6 +265,8 @@ async function loadUnifiedSource(
 }
 
 export default function TaskCenter() {
+  // 官署编制（一键组队选的套餐）：军机处角标只算编制内的官署
+  const roster = useEdictRoster();
   const token = useAuthStore((s) => s.accessToken);
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<UnifiedTask[]>([]);
@@ -500,7 +503,7 @@ export default function TaskCenter() {
         >
           🏛 军机处
           <span className={edictStyles.tabNew}>新</span>
-          <span className={edictStyles.tabBadge}>{OFFICIALS_COUNT}</span>
+          <span className={edictStyles.tabBadge}>{officialCount(roster.officials)}</span>
         </button>
         <button
           className={[

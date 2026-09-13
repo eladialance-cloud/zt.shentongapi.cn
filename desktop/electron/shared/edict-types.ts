@@ -93,6 +93,8 @@ export interface EdictOfficial {
   label: string;
   status: "idle" | "busy" | "offline";
   role: string;
+  /** 是否在当前官署「编制」内（一键组队套餐；缺省=全部在编，兼容旧数据） */
+  inRoster?: boolean;
 }
 
 /** 官署详情 — 飞书多维表格条目（官署详情「飞书表」tab） */

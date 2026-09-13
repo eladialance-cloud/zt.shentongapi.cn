@@ -20,8 +20,10 @@ import {
   EDICT_COLUMNS,
   EDICT_STATE_LABEL,
   OFFICIAL_META,
+  officialCount,
   type OfficialCard,
 } from "./edict-data";
+import { isInRoster, useEdictRoster } from "./roster";
 import styles from "./edict.module.css";
 import CourtCeremony from "./CourtCeremony";
 import OfficialTablesTab from "./OfficialTablesTab";
@@ -41,6 +43,8 @@ export default function JunjiView({ onNavigateModels, onNavigateBoard }: { onNav
   const [drawerOfficial, setDrawerOfficial] = useState<OfficialCard | null>(null);
   const [drawerTab, setDrawerTab] = useState<"overview" | "tables" | "scheduled" | "logs">("overview");
   const [officials, setOfficials] = useState<OfficialCard[]>([]);
+  /** 未启用官署（不在当前编制内）默认收起 */
+  const [showInactive, setShowInactive] = useState(false);
   const [stats, setStats] = useState<ReturnType<typeof buildJunjiStats>>({
     issuedToday: 0, executing: 0, doneToday: 0, rejected: 0, byState: {}, avgMinutes: 0,
   });
@@ -128,6 +132,11 @@ export default function JunjiView({ onNavigateModels, onNavigateBoard }: { onNav
   const pendingReview = stats.byState.Menxia || 0;
   const pendingConfirm = stats.byState.PendingConfirm || 0;
 
+  // 编制内/编制外拆分：编制外官署不参与派发，也不再混在「官员总览」里显示成空闲在职
+  const roster = useEdictRoster();
+  const activeOfficials = officials.filter((o) => o.inRoster);
+  const inactiveOfficials = officials.filter((o) => !o.inRoster);
+
   return (
     <div className={styles.junjiRoot}>
       {/* 上朝横幅 */}
@@ -137,7 +146,7 @@ export default function JunjiView({ onNavigateModels, onNavigateBoard }: { onNav
           <div>
             <div className={styles.bannerTitle}>奉天承运 · 上朝议事</div>
             <div className={styles.bannerDesc}>
-              三省六部共 {officials.length || OFFICIAL_META.length} 位官员在朝 · 今日已处理 {stats.issuedToday} 道旨意 ·{" "}
+              三省六部共 {activeOfficials.length || officialCount(roster.officials)} 位官员在朝 · 今日已处理 {stats.issuedToday} 道旨意 ·{" "}
               {pendingReview} 道待审 · {stats.rejected} 道封驳待重拟
             </div>
           </div>
@@ -203,11 +212,11 @@ export default function JunjiView({ onNavigateModels, onNavigateBoard }: { onNav
             <div className={styles.panel}>
               <div className={styles.panelHead}>
                 👥 官员总览
-                <span className={styles.panelSub}>{officials.length || OFFICIAL_META.length} 官署 · 实时状态</span>
+                <span className={styles.panelSub}>{activeOfficials.length} 官署 · 实时状态</span>
               </div>
               <div className={styles.panelBody}>
                 <div className={styles.officialsGrid}>
-                  {officials.map((o) => (
+                  {activeOfficials.map((o) => (
                     <div
                       key={o.id}
                       className={styles.official}
@@ -230,6 +239,35 @@ export default function JunjiView({ onNavigateModels, onNavigateBoard }: { onNav
                     </div>
                   ))}
                 </div>
+                {inactiveOfficials.length > 0 && (
+                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px dashed var(--line, #e5e7eb)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, color: "var(--muted, #6b7280)" }}>
+                      <button
+                        className={styles.bannerBtn}
+                        style={{ padding: "3px 10px", fontSize: 12 }}
+                        onClick={() => setShowInactive((v) => !v)}
+                      >
+                        {showInactive ? "收起" : "展开"}未启用官署（{inactiveOfficials.length}）
+                      </button>
+                      <span>不在当前编制内 · 不参与派发 · 可在「个人设置 → 一键组队」调整</span>
+                    </div>
+                    {showInactive && (
+                      <div className={styles.officialsGrid} style={{ marginTop: 8, opacity: 0.65 }}>
+                        {inactiveOfficials.map((o) => (
+                          <div key={o.id} className={styles.official} onClick={() => setDrawerOfficial(o)}>
+                            <div className={styles.offAvatar} style={{ background: `${o.color}1f` }}>
+                              {o.emoji}
+                            </div>
+                            <div>
+                              <div className={styles.offName}>{o.name}</div>
+                              <div className={styles.offRole}>未启用（不在当前编制）</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -244,7 +282,7 @@ export default function JunjiView({ onNavigateModels, onNavigateBoard }: { onNav
               </div>
               <div className={styles.panelBody}>
                 <div className={styles.modelList}>
-                  {OFFICIAL_META.map((o) => (
+                  {OFFICIAL_META.filter((m) => isInRoster(m.id, roster.officials)).map((o) => (
                     <div key={o.id} className={styles.modelRow}>
                       <span className={styles.modelName}>{o.emoji} {o.name}</span>
                       <span className={styles.modelValue}>{agentModels[o.id] || "未配置"}</span>

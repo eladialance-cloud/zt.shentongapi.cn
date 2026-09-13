@@ -4,6 +4,7 @@
 // 全部暂停/继续 = 暂停/恢复画布场景（ticker）
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Button, Drawer, Empty, Form, Input, Modal, Select, Tag, message } from 'antd'
 import OfficeCanvas from './OfficeCanvas'
 import styles from './office.module.css'
@@ -18,7 +19,6 @@ import {
 } from '@/api/task-api'
 import { listSelectableAgents } from '@/api/team-api'
 import type { SelectableAgent, TeamMember, TeamTask, TeamTaskStatus, TeamTaskPriority } from '@/types/team'
-import { AGENT_ROSTER } from '../scene/layout/officeLayout'
 import {
   refreshOfficeData,
   membersToRoster,
@@ -100,9 +100,6 @@ const AGENT_STATE_LABEL: Record<string, string> = {
   talking: '对话中',
 }
 
-const DEFAULT_ROSTER: Array<{ id: string; name: string; color: number; task?: string }> =
-  AGENT_ROSTER.map((r) => ({ id: r.id, name: r.name, color: r.color, task: r.task }))
-
 // ─── 样式 ───
 
 function formatTime(iso?: string | null): string {
@@ -148,6 +145,9 @@ export default function OfficeIntegrated() {
   const [taskDrawer, setTaskDrawer] = useState<{ member: TeamMember; tasks: TeamTask[] } | null>(null);
   /** 正在流转状态的团队任务 id（抽屉按钮 loading） */
   const [taskActionLoading, setTaskActionLoading] = useState<number | null>(null);
+  /** 当前办公室里的 AI 员工人数（无员工时走空态引导，不显示演示名册） */
+  const [employeeCount, setEmployeeCount] = useState(0);
+  const navigate = useNavigate();
 
   /** 加载 Hermes 任务（云端实例功能已下线，保留空列表占位） */
   const loadHermesFeed = useCallback(async (): Promise<OfficeFeedItem[]> => {
@@ -192,23 +192,11 @@ export default function OfficeIntegrated() {
   const applyRoster = useCallback(
     (roster: Array<{ id: string; name: string; color: number; task?: string; memberId?: number }> | null) => {
       pendingRosterRef.current = roster;
-      if (roster) {
+      if (roster && roster.length > 0) {
         sceneRef.current?.setRoster(roster);
       } else {
-        // 无团队任务：恢复默认名单，并保留用户在本地改过的名字
-        let fallback = DEFAULT_ROSTER;
-        try {
-          const raw = localStorage.getItem('office_agent_names');
-          if (raw) {
-            const map = JSON.parse(raw) as Record<string, string>;
-            fallback = DEFAULT_ROSTER.map((r) =>
-              map[r.id] ? { ...r, name: map[r.id] } : r,
-            );
-          }
-        } catch {
-          // 忽略损坏的本地缓存
-        }
-        sceneRef.current?.setRoster(fallback);
+        // 没有团队成员/官署：清空名册走空态引导，不再显示演示用的假员工
+        sceneRef.current?.setRoster([]);
       }
     },
     [],
@@ -224,7 +212,9 @@ export default function OfficeIntegrated() {
         loadN8nFeed(),
         refreshOfficeData(),
       ]);
-      applyRoster(officeLoaded ? membersToRoster() : null);
+      const roster = officeLoaded ? membersToRoster() : null;
+      applyRoster(roster);
+      setEmployeeCount(roster?.length ?? 0);
       setTaskTotal(all.total);
       setCompletedTotal(done.total);
       setAgents(agentList);
@@ -344,7 +334,7 @@ export default function OfficeIntegrated() {
     lines.push('任务总数：' + (taskTotal + hermesTotal + n8nTotal));
     lines.push('已完成：' + completedTotal);
     lines.push('待处理（排队/执行中）：' + pendingTotal);
-    lines.push('AI 员工：' + (sceneRef.current?.getAgents().length ?? 0) + ' 名');
+    lines.push('AI 员工：' + employeeCount + ' 名');
     lines.push('');
     lines.push('—— 最近任务（AI办公室 / Hermes / N8N）——');
     if (feed.length === 0) {
@@ -473,7 +463,7 @@ export default function OfficeIntegrated() {
     { label: '今日任务', value: loading ? '…' : String(taskTotal + hermesTotal + n8nTotal), hint: '三源合计', online: false, onClick: () => openTaskModal('today') },
     { label: '已完成', value: loading ? '…' : String(completedTotal), hint: '累计完成', online: false, onClick: () => openTaskModal('completed') },
     { label: '待处理', value: loading ? '…' : String(pendingTotal), hint: '排队/执行中', online: false, onClick: () => openTaskModal('pending') },
-    { label: 'AI 员工', value: loading ? '…' : (sceneRef.current?.getAgents().length ?? 0) + ' 名', hint: '点击查看/改名', online: true, onClick: openAgentModal },
+    { label: 'AI 员工', value: loading ? '…' : employeeCount + ' 名', hint: '点击查看/改名', online: true, onClick: openAgentModal },
   ];
 
   const toolbarItems = [
@@ -512,6 +502,31 @@ export default function OfficeIntegrated() {
           <div className={styles.canvasWrap}>
             <OfficeCanvas onAgentOpenTasks={(agentId, memberId) => openTasksForAgent(agentId, memberId)}
             onSceneReady={(scene) => { sceneRef.current = scene; if (pendingRosterRef.current) scene.setRoster(pendingRosterRef.current); }} />
+            {!loading && employeeCount === 0 && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'color-mix(in srgb, var(--color-bg-container) 88%, transparent)',
+                  backdropFilter: 'blur(2px)',
+                }}
+              >
+                <div style={{ textAlign: 'center', maxWidth: 420, padding: 24 }}>
+                  <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>还没有 AI 员工</div>
+                  <div style={{ fontSize: 13, lineHeight: 1.9, opacity: 0.8, marginBottom: 16 }}>
+                    这里展示团队成员（官署）的实时状态与工位。
+                    <br />
+                    先到「个人设置 → 一键组队」创建官署团队，员工就会出现在办公室里。
+                  </div>
+                  <Button type="primary" onClick={() => navigate('/settings?tab=team')}>
+                    去一键组队
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 底部工具栏 */}

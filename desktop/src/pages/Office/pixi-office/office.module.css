@@ -62,6 +62,8 @@
   background: var(--color-bg-container);
   border: 1px solid var(--color-border);
   box-shadow: var(--shadow-sm);
+  /* 空态引导浮层的定位基准 */
+  position: relative;
 }
 
 /* ===== 底部工具栏 ===== */

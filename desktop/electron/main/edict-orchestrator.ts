@@ -4,6 +4,7 @@
  * 依赖注入模式仿 hermes-orchestrator.ts；Hermes spawn 由调用方注入（复用 service-manager hermesEnv）。
  */
 import { assertTransition, EDICT_STATES, EDICT_STATE_LABEL, type EdictState } from "./edict-state-machine";
+import { isInRoster } from "./edict-roster";
 import type {
   EdictBoard,
   EdictFlowLogEntry,
@@ -53,6 +54,8 @@ export interface EdictDeps {
   }) => Promise<void>;
   /** 结果回传通知（P5，best-effort）：任务完成/失败/阻塞时推送飞书/企微 webhook */
   notify?: (input: EdictNotifyInput) => Promise<void>;
+  /** 当前官署编制（一键组队选的套餐；未提供 ⇒ 视为全集）。派发与忙闲展示只在此范围内 */
+  getRoster?: () => string[];
 }
 
 const KANBAN_SCRIPT = "kanban_update.py";
@@ -71,6 +74,21 @@ export const ORG_AGENT_MAP: Record<string, string> = {
   工部: "gongbu",
   吏部: "libu_hr",
 };
+
+/** 兜底部门优先级：编制内取第一个命中（户部优先 = 保持旧行为；轻量版无户部则顺延到工部） */
+const DEPT_FALLBACK_ORDER = ["户部", "工部", "礼部", "兵部", "刑部", "吏部"];
+
+/** 尚书省提示词里的部门顺序与说明（与旧文案逐字一致，全集编制下提示词不变） */
+const DEPT_PROMPT_ORDER = ["工部", "兵部", "户部", "礼部", "刑部", "吏部"];
+const DEPT_PROMPT_DESC: Record<string, string> = {
+  工部: "工程", 兵部: "基建安全", 户部: "数据分析", 礼部: "文档UI", 刑部: "审查测试", 吏部: "人事",
+};
+
+/** 编制内可派发的执行部门（中文名，按提示词顺序）；编制为空/未提供 ⇒ 全部六部 */
+export function rosterDepts(roster?: readonly string[] | null): string[] {
+  if (!roster || roster.length === 0) return [...DEPT_PROMPT_ORDER];
+  return DEPT_PROMPT_ORDER.filter((d) => roster.includes(ORG_AGENT_MAP[d]!));
+}
 
 /** profile id → 中文官署名（产出写回 progress_log 展示用） */
 const PROFILE_LABEL: Record<string, string> = {
@@ -231,6 +249,7 @@ export function edictStats(deps: EdictDeps): EdictStats {
 
 export function edictOfficials(deps: EdictDeps): EdictOfficial[] {
   const tasks = deps.readBoard();
+  const roster = deps.getRoster?.();
   const busy = new Set<string>();
   for (const t of tasks) {
     if (["Done", "Cancelled"].includes(t.state)) continue;
@@ -243,19 +262,29 @@ export function edictOfficials(deps: EdictDeps): EdictOfficial[] {
     const id = orgMap[t.org || ""] || (t.state === "Doing" || t.state === "Next" ? orgMap[t.assigneeOrg || ""] : undefined);
     if (id) busy.add(id);
   }
-  return OFFICIALS.map((o) => ({ ...o, status: busy.has(o.id) ? "busy" : "idle" }));
+  return OFFICIALS.map((o) => ({
+    ...o,
+    status: busy.has(o.id) ? "busy" : "idle",
+    inRoster: isInRoster(o.id, roster),
+  }));
 }
 
 /** 解析执行部门：下旨指定 > 尚书省输出解析 > 兜底户部（对齐原版 assignee_org 派发语义） */
-export function resolveExecuteDept(output: string, task: EdictTask): { dept: string; source: "issue" | "shangshu" | "fallback" } {
+export function resolveExecuteDept(
+  output: string,
+  task: EdictTask,
+  roster?: readonly string[] | null,
+): { dept: string; source: "issue" | "shangshu" | "fallback" } {
+  // 只允许派给编制内的部门（编制外官署没有 profile，派过去必然执行失败）
+  const allowed = rosterDepts(roster);
   const assigned = task.assigneeOrg;
-  if (assigned && ORG_AGENT_MAP[assigned]) return { dept: assigned, source: "issue" };
+  if (assigned && ORG_AGENT_MAP[assigned] && allowed.includes(assigned)) return { dept: assigned, source: "issue" };
   if (output) {
-    for (const d of Object.keys(ORG_AGENT_MAP)) {
+    for (const d of Object.keys(ORG_AGENT_MAP).filter((x) => allowed.includes(x))) {
       if (output.includes(d)) return { dept: d, source: "shangshu" };
     }
   }
-  return { dept: "户部", source: "fallback" };
+  return { dept: DEPT_FALLBACK_ORDER.find((d) => allowed.includes(d)) ?? allowed[0] ?? "户部", source: "fallback" };
 }
 
 /** 持久化执行部门到 assigneeOrg + 看板流转记录（尚书省 → XX部） */
@@ -284,7 +313,13 @@ const NODE_PROFILE: Partial<Record<EdictState, string>> = {
 };
 
 /** 节点提示词模板（profile 人设由 Hermes profile SOUL.md 承载，此处给任务上下文） */
-export function buildNodePrompt(state: EdictState, task: EdictTask, previousOutput?: string, execDept?: string): string {
+export function buildNodePrompt(
+  state: EdictState,
+  task: EdictTask,
+  previousOutput?: string,
+  execDept?: string,
+  roster?: readonly string[] | null,
+): string {
   const parts: string[] = [];
   parts.push(`任务ID: ${task.id}`);
   parts.push(`旨意标题: ${task.title}`);
@@ -294,7 +329,8 @@ ${previousOutput.slice(0, 2000)}`);
   const stage: Record<string, string> = {
     Zhongshu: "你是中书省。请为上述旨意起草简明执行方案（不超过500字）：谁来做、做什么、怎么做、预期产出。只输出方案正文。",
     Menxia: "你是门下省。请按可行性/完整性/风险/资源四个维度审议上述方案。只输出结论行：准奏 或 封驳，若封驳附具体修改建议（每条不超过2句）。",
-    Assigned: "你是尚书省。请按领域确定执行部门（工部-工程/兵部-基建安全/户部-数据分析/礼部-文档UI/刑部-审查测试/吏部-人事）并输出任务令。只输出：部门 + 任务令。",
+    // 候选部门按当前编制生成：编制外部门不给尚书省，避免派到没有 profile 的官署
+    Assigned: `你是尚书省。请按领域确定执行部门（${rosterDepts(roster).map((d) => `${d}-${DEPT_PROMPT_DESC[d]}`).join("/")}）并输出任务令。只输出：部门 + 任务令。`,
     Doing: execDept ? `你是${execDept}。请按任务令完成交付。只输出：交付摘要 + 关键结果。` : "你是执行部门。请按任务令完成交付。只输出：交付摘要 + 关键结果。",
   };
   parts.push(stage[state] || "请按看板流程推进。");
@@ -345,7 +381,7 @@ export async function edictRunPipeline(deps: EdictDeps, taskId: string, opts: Ed
       let profile = NODE_PROFILE[state];
       let execDept: string | undefined;
       if (state === "Doing") {
-        execDept = resolveExecuteDept("", task).dept;
+        execDept = resolveExecuteDept("", task, deps.getRoster?.()).dept;
         profile = ORG_AGENT_MAP[execDept] || NODE_PROFILE.Doing;
       }
       if (!profile) {
@@ -378,7 +414,7 @@ export async function edictRunPipeline(deps: EdictDeps, taskId: string, opts: Ed
         continue;
       }
       // 1) 跑当前节点官署
-      const prompt = buildNodePrompt(state, task, previousOutput, execDept);
+      const prompt = buildNodePrompt(state, task, previousOutput, execDept, deps.getRoster?.());
       let output: string;
       try {
         output = (await deps.runHermes(profile, prompt)).trim();
@@ -427,7 +463,7 @@ export async function edictRunPipeline(deps: EdictDeps, taskId: string, opts: Ed
 
       // 尚书省派发：解析执行部门 → 持久化 assigneeOrg + 看板流转记录（尚书省 → XX部）
       if (state === "Assigned") {
-        const resolved = resolveExecuteDept(output, task);
+        const resolved = resolveExecuteDept(output, task, deps.getRoster?.());
         if (resolved.source === "issue") {
           const flow = await kanban(deps, "shangshu", ["flow", taskId, "尚书省", resolved.dept, `派发：尚书省 → ${resolved.dept}（下旨指定）`]);
           if (!flow.ok) return flow;

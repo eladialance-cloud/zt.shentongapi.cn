@@ -96,6 +96,7 @@ import {
 } from './platform-login'
 import { registerVideoParserIpc } from './video-parser'
 import { createEdictDeps, createEdictExtraDeps, ensureEdictHermesProfiles, registerEdictIpc, getEdictProfilesDir, getEdictDataRoot } from './edict-bridge'
+import { resolveRoster } from './edict-roster'
 import { registerEdictExtraIpc } from './edict-extra'
 import { registerOfficialDetailIpc } from './official-detail'
 import { registerFeishuIpc, buildFeishuClient, type FeishuSettingsDeps } from './feishu-settings'
@@ -840,6 +841,7 @@ function registerIpcHandlers(): void {
   // 一键组队（套餐 → 飞书表 + SOUL + Agent + 定时任务）
   const disposeTeamIpc = registerTeamIpc({
     hermesHome: join(app.getPath('userData'), 'hermes-home'),
+    userDataDir: app.getPath('userData'),
     edictProfilesDir: getEdictProfilesDir(),
     edictDataRoot: getEdictDataRoot(),
     initBitable: initFeishuBitable,
@@ -856,8 +858,9 @@ function registerIpcHandlers(): void {
     disposeTeamIpc()
   })
 
-  // 引导 11 个官署 Hermes profiles（幂等：缺失创建 + SOUL.md 注入 + config.yaml 同步），失败不影响启动
-  ensureEdictHermesProfiles().then((r) => {
+  // 引导官署 Hermes profiles（幂等：缺失创建 + SOUL.md 注入 + config.yaml 同步），失败不影响启动
+  // 只补当前「编制」（一键组队选的套餐）内的官署：编制外的不再被无脑建回来
+  ensureEdictHermesProfiles(undefined, resolveRoster(app.getPath('userData'))).then((r) => {
     if (r.created.length) console.log('[edict-bridge] 已引导官署 profiles: ' + r.created.join(','))
     else if (!r.ok) console.warn('[edict-bridge] 官署 profiles 引导跳过: ' + (r.reason || '未知'))
   })

@@ -134,9 +134,9 @@ async function loadPipelineSteps(): Promise<void> {
   pipelineStepByAgentId = freshById
 }
 
-/** 团队成员 → 场景 Agent（沿用 INITIAL_AGENTS 的工位/朝向，仅替换身份与主题色） */
+/** 团队成员 → 场景 Agent（沿用坐席模板的工位/朝向，仅替换身份与主题色；不再截断到 6 人） */
 function buildAgentsFromMembers(list: TeamMember[]): Agent[] {
-  return list.slice(0, INITIAL_AGENTS.length).map((member, i) => {
+  return list.map((member, i) => {
     const base = INITIAL_AGENTS[i] ?? INITIAL_AGENTS[0]!
     return {
       ...base,

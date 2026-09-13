@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { edictBoard, onEdictBoardUpdated } from "@/api/edict-api";
 import type { EdictTask } from "@shared/edict-types";
 import { OFFICIAL_META, orgToId } from "./edict-data";
+import { isInRoster, useEdictRoster } from "./roster";
 import styles from "./court-ceremony.module.css";
 
 /** 自动退朝时长（照搬原版 3.5s） */
@@ -69,6 +70,9 @@ export interface CourtCeremonyProps {
 }
 
 export default function CourtCeremony({ open, onClose }: CourtCeremonyProps) {
+  // 百官牌位只列当前编制内的官署
+  const roster = useEdictRoster();
+  const placards = OFFICIAL_META.filter((m) => isInRoster(m.id, roster.officials));
   const [out, setOut] = useState(false);
   const [tasks, setTasks] = useState<EdictTask[]>([]);
 
@@ -114,7 +118,7 @@ export default function CourtCeremony({ open, onClose }: CourtCeremonyProps) {
       <div className={styles.court + " " + styles.in}>
         <div className={styles.courtTitle}>— 百官就位 —</div>
         <div className={styles.grid}>
-          {OFFICIAL_META.map((m, i) => {
+          {placards.map((m, i) => {
             const st = placardStateFor(m.id, tasks);
             return (
               <div

@@ -90,6 +90,7 @@ export const IPC_CHANNELS = [
   'feishu:test-connection',
   'team:create',
   'team:creation-status',
+  'team:current-roster',
   'team:list-crons',
   'team:list-presets',
   'team:soul-status',

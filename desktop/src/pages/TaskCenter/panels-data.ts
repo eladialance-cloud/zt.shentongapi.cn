@@ -25,9 +25,18 @@ export const DEPTS: Dept[] = [
   { id: 'xingbu',   label: '刑部',   emoji: '⚖️', role: '刑部尚书', rank: '正二品' },
   { id: 'gongbu',   label: '工部',   emoji: '🔧', role: '工部尚书', rank: '正二品' },
   { id: 'libu_hr',  label: '吏部',   emoji: '👔', role: '吏部尚书', rank: '正二品' },
-  { id: 'zaochao',  label: '钦天监', emoji: '📰', role: '朝报官',   rank: '正三品' },
+  // 注：zaochao = 司礼监（早朝/要闻），与 qintianjian（钦天监）不是同一个官署
+  { id: 'zaochao',  label: '司礼监', emoji: '📰', role: '朝报官',   rank: '正三品' },
 ];
 
+/**
+ * 按当前官署编制过滤（一键组队选的套餐）。
+ * 未提供编制 ⇒ 全集：兼容主进程尚未落盘 / 旧版本。
+ */
+export function deptsForRoster(roster?: readonly string[] | null): Dept[] {
+  if (!roster || roster.length === 0) return DEPTS;
+  return DEPTS.filter((d) => roster.includes(d.id));
+}
 /** 状态中文标签（edict 原版 STATE_LABEL） */
 export const STATE_LABEL: Record<string, string> = {
   Inbox: '收件', Pending: '待处理', Taizi: '太子分拣', Zhongshu: '中书起草',

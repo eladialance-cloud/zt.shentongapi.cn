@@ -1,7 +1,7 @@
 // 个人设置 · 一键组队（对标 RRClaw「一键创建 AI 自动化团队」）
 // 选择套餐 → 一条流水线建好「飞书多维表格 + 各官署 SOUL + Agent + 定时任务」
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Button, Card, List, Progress, Space, Steps, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, List, Popconfirm, Progress, Space, Steps, Tag, Typography, message } from 'antd'
 import { CrownOutlined, RocketOutlined, ThunderboltOutlined } from '@ant-design/icons'
 
 const { Paragraph, Text } = Typography
@@ -70,7 +70,21 @@ const ICONS: Record<string, React.ReactNode> = {
 export default function TeamPreset() {
   const api = window.electronAPI as unknown as {
     team?: {
-      listPresets(): Promise<{ ok: boolean; defaultPresetId: string; presets: Preset[] }>
+      listPresets(): Promise<{
+        ok: boolean
+        defaultPresetId: string
+        currentPresetId?: string | null
+        installedOfficials?: string[]
+        presets: Preset[]
+      }>
+      /** 当前官署编制（一键组队选的套餐；无落盘记录=全集） */
+      currentRoster(): Promise<{
+        ok: boolean
+        presetId: string | null
+        officials: string[]
+        installed: string[]
+        isDefault: boolean
+      }>
       creationStatus(): Promise<{ ok: boolean; isRunning: boolean; lastResult: CreationResult | null }>
       create(presetId: string): Promise<CreationResult>
       syncSoul(officials?: string[]): Promise<{ ok: boolean; synced: number; totalReplaced: number; items: Array<{ official: string; ok: boolean; replaced?: number; missing?: string[]; error?: string }> }>
@@ -86,6 +100,29 @@ export default function TeamPreset() {
   const [result, setResult] = useState<CreationResult | null>(null)
   const [soulStatus, setSoulStatus] = useState<Array<{ official: string; total: number; linked: number }>>([])
   const [syncing, setSyncing] = useState(false)
+  /** 当前编制（选了什么套餐 / 磁盘装了什么） */
+  const [roster, setRoster] = useState<{
+    presetId: string | null
+    officials: string[]
+    installed: string[]
+    isDefault: boolean
+  } | null>(null)
+
+  /** 读取当前编制：任务中心/办公室也按它过滤展示 */
+  const loadRoster = useCallback(async () => {
+    if (!api?.team?.currentRoster) return
+    try {
+      const r = await api.team.currentRoster()
+      setRoster({
+        presetId: r.presetId ?? null,
+        officials: Array.isArray(r.officials) ? r.officials : [],
+        installed: Array.isArray(r.installed) ? r.installed : [],
+        isDefault: !!r.isDefault,
+      })
+    } catch {
+      // 读取失败不阻塞页面（按未选择套餐处理）
+    }
+  }, [api])
 
   const loadSoulStatus = useCallback(async () => {
     if (!api?.team?.soulStatus) return
@@ -106,10 +143,12 @@ export default function TeamPreset() {
     void (async () => {
       const r = await api.team!.listPresets()
       setPresets(r.presets)
-      setSelected(r.defaultPresetId || 'standard')
+      // 有落盘编制时优先选中它（否则每次进来都默认 standard，看起来像选过的被改了）
+      setSelected(r.currentPresetId || r.defaultPresetId || 'standard')
       const s = await api.team!.creationStatus()
       if (s.isRunning) setCreating(true)
       if (s.lastResult) setResult(s.lastResult)
+      await loadRoster()
     })()
     const off = api.team.onCreationProgress((p) => {
       setProgress(p)
@@ -119,7 +158,7 @@ export default function TeamPreset() {
       }
     })
     return () => off?.()
-  }, [api, loadSoulStatus])
+  }, [api, loadSoulStatus, loadRoster])
 
   /** 回填飞书表链接到各官署 SOUL（占位符 → 真实链接） */
   const onSyncSoul = useCallback(async () => {
@@ -149,14 +188,17 @@ export default function TeamPreset() {
     try {
       const r = await api.team.create(selected)
       setResult(r)
-      if (r.ok) message.success('一键组队完成')
+      if (r.ok) {
+        message.success('一键组队完成')
+        void loadRoster()
+      }
       else message.warning(r.error || '组队未全部完成，请查看下方明细')
     } catch (err) {
       message.error(err instanceof Error ? err.message : '创建失败')
     } finally {
       setCreating(false)
     }
-  }, [api, selected])
+  }, [api, selected, loadRoster])
 
   if (!api?.team) {
     return <Alert type="warning" showIcon message="当前环境不支持一键组队（仅桌面端可用）" />
@@ -164,8 +206,56 @@ export default function TeamPreset() {
 
   const currentStepIndex = progress ? Math.max(0, STEP_ORDER.indexOf(progress.step)) : 0
 
+  // 当前编制摘要（让「选了什么 / 装了什么」一眼可见）
+  const rosterLabels = (roster?.officials ?? []).map((o) => OFFICIAL_LABEL[o] ?? o)
+  const extraInstalled = (roster?.installed ?? []).filter((o) => !(roster?.officials ?? []).includes(o))
+  const currentPresetName = roster?.presetId
+    ? presets.find((p) => p.id === roster.presetId)?.name ?? roster.presetId
+    : null
+
   return (
     <Card title="一键组队" extra={<Tag color="blue">三省六部编制</Tag>}>
+      {roster && (
+        <Alert
+          type={extraInstalled.length > 0 ? 'warning' : roster.isDefault ? 'info' : 'success'}
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={
+            roster.isDefault
+              ? '当前编制：尚未选择套餐（暂按全集 12 个官署处理）'
+              : `当前编制：${currentPresetName ?? roster.presetId} · ${roster.officials.length} 个官署`
+          }
+          description={
+            <div style={{ fontSize: 12, lineHeight: 1.9 }}>
+              <div>编制内：{rosterLabels.join('、') || '（空）'}</div>
+              <div>
+                磁盘已装：{roster.installed.length} 个
+                {extraInstalled.length > 0
+                  ? `（多出 ${extraInstalled.length} 个不在编制内：${extraInstalled.map((o) => OFFICIAL_LABEL[o] ?? o).join('、')}）`
+                  : '（与编制一致）'}
+              </div>
+              <div style={{ color: 'var(--color-text-tertiary)' }}>
+                任务中心与 AI 办公室只展示编制内的官署；编制外的官署不参与派发。
+              </div>
+            </div>
+          }
+          action={
+            extraInstalled.length > 0 ? (
+              <Popconfirm
+                title="移除编制外的官署？"
+                description="会删除这些官署的 Agent profile 与它们的默认定时任务（飞书表数据保留）。"
+                okText="确认移除"
+                cancelText="取消"
+                onConfirm={onCreate}
+              >
+                <Button size="small" danger loading={creating}>
+                  按编制清理
+                </Button>
+              </Popconfirm>
+            ) : undefined
+          }
+        />
+      )}
       <Alert
         type="info"
         showIcon
