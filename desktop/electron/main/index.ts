@@ -17,6 +17,7 @@ import { HERMES_SESSION_TOKEN_CREDENTIAL } from './hermes-client'
 import { getCredential } from './services/credential-store'
 import { authContextDir, readAuthToken, writeSecureJson } from './services/secure-json-store'
 import { describeOutboundDeny, evaluateOutboundUrl, mediaAllowedHosts } from './policy/url-policy'
+import { redactValue } from './policy/redact'
 import type { LlmIntegration } from '../shared/types'
 
 // GPU 白名单开关：解决部分显卡/驱动/远程桌面环境下 WebGL 被 Chromium 黑名单拦截的问题
@@ -543,15 +544,50 @@ async function startCronDaemon(): Promise<void> {
 // 且在 stdout/stderr 管道断开（EPIPE）时会无限触发 uncaughtException（7-26 日志已出现）
 log.initialize()
 log.transports.file.level = 'info'
+// 安全审计 S-75：日志文件在 userData 下，会被导出/备份/同步 —— 限制单文件体积，避免写满磁盘
+log.transports.file.maxSize = 5 * 1024 * 1024
 log.transports.console.level = false
 const __consoleLog = console.log.bind(console)
 const __consoleWarn = console.warn.bind(console)
 const __consoleError = console.error.bind(console)
 // 打包版仅写文件（无终端），dev 下保留终端输出
 const mirrorToConsole = !app.isPackaged
-console.log = (...args: unknown[]) => { log.info(...args); if (mirrorToConsole) __consoleLog(...args) }
-console.warn = (...args: unknown[]) => { log.warn(...args); if (mirrorToConsole) __consoleWarn(...args) }
-console.error = (...args: unknown[]) => { log.error(...args); if (mirrorToConsole) __consoleError(...args) }
+// 落盘前脱敏（安全审计 S-75/S-30）：凭据不得进入日志文件。
+// dev 终端输出保持原样，避免本地调试时看不清真实内容。
+const redactArgs = (args: unknown[]): unknown[] => args.map((a) => redactValue(a))
+console.log = (...args: unknown[]) => { log.info(...redactArgs(args)); if (mirrorToConsole) __consoleLog(...args) }
+console.warn = (...args: unknown[]) => { log.warn(...redactArgs(args)); if (mirrorToConsole) __consoleWarn(...args) }
+console.error = (...args: unknown[]) => { log.error(...redactArgs(args)); if (mirrorToConsole) __consoleError(...args) }
+
+// ===== 全局异常兜底（安全审计 S-30 / S-79） =====
+// 目的：主进程异常不再「静默失联」——先写盘留证据，再尽量保住运行；
+// 渲染进程崩溃则尝试自动重载一次（只一次，避免崩溃循环把 CPU 打满）。
+process.on('uncaughtException', (err) => {
+  console.error('[main] uncaughtException:', err)
+})
+process.on('unhandledRejection', (reason) => {
+  console.error('[main] unhandledRejection:', reason)
+})
+
+let rendererReloadAttempts = 0
+app.on('render-process-gone', (_event, _webContents, details) => {
+  console.error('[main] render-process-gone:', details)
+  if (details?.reason === 'clean-exit') return
+  if (rendererReloadAttempts < 1) {
+    rendererReloadAttempts += 1
+    console.warn('[main] 渲染进程异常退出，自动重载一次')
+    try {
+      getMainWindow()?.reload()
+    } catch (err) {
+      console.error('[main] 渲染进程重载失败:', err)
+    }
+    return
+  }
+  console.warn('[main] 渲染进程再次异常退出，已停止自动重载，请手动重启应用')
+})
+app.on('child-process-gone', (_event, details) => {
+  console.error('[main] child-process-gone:', details)
+})
 
 const serviceManager = new ServiceManager()
 // ===== 自动化工作台：远程控制（IM→设备→执行→回传） =====
