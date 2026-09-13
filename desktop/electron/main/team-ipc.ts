@@ -225,7 +225,7 @@ export function exprToWeekday(expr: string): number | undefined {
   return n === 0 ? 7 : n;
 }
 
-/** 删除官署：删 profile 目录 + 该官署的定时任务 */
+/** 删除官署：删 profile 目录 + 该官署的定时任务（按 agentId+标题+时间+星期 精确匹配，避免同名误删） */
 export async function removeOfficial(
   deps: TeamIpcDeps,
   official: string,
@@ -238,28 +238,44 @@ export async function removeOfficial(
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
-  // 删定时任务
+  // 删该官署的默认定时任务：列表只取一次，逐条按四要素精确匹配
+  const list = DEFAULT_CRONS[official] ?? [];
+  if (list.length === 0) return { ok: true };
   const token = deps.getAuthToken();
   const f = deps.fetchImpl || (globalThis.fetch ? globalThis.fetch.bind(globalThis) : undefined);
-  if (token && f) {
-    for (const c of DEFAULT_CRONS[official] ?? []) {
-      try {
-        // 后端暂未提供按 title 删除，这里尝试按 agentId 列表后删除
-        const res = await f(`${deps.stApiBase}/scheduled-tasks?agentId=${encodeURIComponent(official)}`, {
-          method: "GET",
-          headers: authHeaders(token),
-        });
-        const json = (await res.json()) as { data?: Array<{ id?: string; title?: string }> };
-        const items = Array.isArray(json.data) ? json.data : [];
-        for (const it of items) {
-          if (it.id && it.title === c.name) {
-            await f(`${deps.stApiBase}/scheduled-tasks/${it.id}`, { method: "DELETE", headers: authHeaders(token) });
-          }
-        }
-      } catch {
-        // 忽略
+  if (!token || !f) return { ok: true };
+  try {
+    const res = await f(`${deps.stApiBase}/scheduled-tasks?agentId=${encodeURIComponent(official)}`, {
+      method: "GET",
+      headers: authHeaders(token),
+    });
+    const json = (await res.json()) as {
+      data?: Array<{
+        id?: number | string;
+        title?: string;
+        agentId?: string | null;
+        runTime?: string | null;
+        weekday?: number | null;
+      }>;
+    };
+    const items = Array.isArray(json.data) ? json.data : [];
+    for (const c of list) {
+      const wantRunTime = exprToRunTime(c.expr);
+      const wantWeekday = exprToWeekday(c.expr) ?? null;
+      const hit = items.filter(
+        (it) =>
+          it.id !== undefined &&
+          it.title === c.name &&
+          (it.agentId ?? "") === official &&
+          (it.runTime ?? "") === wantRunTime &&
+          (it.weekday ?? null) === wantWeekday,
+      );
+      for (const it of hit) {
+        await f(`${deps.stApiBase}/scheduled-tasks/${it.id}`, { method: "DELETE", headers: authHeaders(token) });
       }
     }
+  } catch {
+    // 清理定时任务失败不应阻塞删官署
   }
   return { ok: true };
 }
