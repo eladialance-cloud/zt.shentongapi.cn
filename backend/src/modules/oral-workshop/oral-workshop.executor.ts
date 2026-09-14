@@ -26,7 +26,7 @@ import { HeyGenAdapter } from './adapters/heygen.adapter';
 import { sapiTts } from './local-tts';
 import { SystemConfigEntity } from '../admin-system/entities/system-config.entity';
 import { MediaAssetEntity } from '../media-assets/entities/media-asset.entity';
-import { DigitalHumanAssetEntity } from './entities/digital-human-asset.entity';
+import { MediaAssetAvatarEntity } from '../media-assets/entities/media-asset-avatar.entity';
 import { OralWorkshopService } from './oral-workshop.service';
 import { OralWorkshopLlmService } from './llm';
 import type { OralWorkshopJobEntity } from './entities/oral-workshop-job.entity';
@@ -170,9 +170,30 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
     private readonly configRepo?: Repository<SystemConfigEntity>,
     @Optional() @InjectRepository(MediaAssetEntity)
     private readonly mediaAssetRepo?: Repository<MediaAssetEntity>,
-    @Optional() @InjectRepository(DigitalHumanAssetEntity)
-    private readonly dhAssetRepo?: Repository<DigitalHumanAssetEntity>,
+    @Optional() @InjectRepository(MediaAssetAvatarEntity)
+    private readonly avatarRepo?: Repository<MediaAssetAvatarEntity>,
   ) {}
+
+  /**
+   * 读取形象资产并校验归属（两库合并后：media_assets(library=input, kind=avatar) + media_asset_avatar）。
+   * 返回 null 表示"形象不存在或不属于当前用户"（调用方沿用原有抛错口径）。
+   */
+  private async loadAvatar(
+    userId: number,
+    assetId: number,
+  ): Promise<{ kind: string; cloudId: string; videoUrl: string | null; imageUrl: string | null } | null> {
+    if (!this.avatarRepo || !this.mediaAssetRepo || !assetId) return null;
+    const asset = await this.mediaAssetRepo.findOne({ where: { id: assetId, userId, kind: 'avatar' } });
+    if (!asset) return null;
+    const ext = await this.avatarRepo.findOne({ where: { assetId } });
+    if (!ext) return null;
+    return {
+      kind: ext.dhKind ?? 'cloud',
+      cloudId: ext.cloudId,
+      videoUrl: ext.videoUrl ?? null,
+      imageUrl: ext.imageUrl ?? null,
+    };
+  }
 
   onModuleInit(): void {
     if (process.env.ORAL_WORKSHOP_EXECUTOR_DISABLED === 'true') {
@@ -471,8 +492,8 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
         // 形象：我的形象资产优先（kind=image → talking photo 图片；kind=avatar/cloud → 预置形象 ID）
         let imageUrl: string | undefined;
         let avatarId: string | undefined;
-        if (job.digitalHumanId && this.dhAssetRepo) {
-          const asset = await this.dhAssetRepo.findOne({ where: { id: job.digitalHumanId, userId: job.userId } });
+        if (job.digitalHumanId && this.avatarRepo && this.mediaAssetRepo) {
+          const asset = await this.loadAvatar(job.userId, job.digitalHumanId);
           if (asset) {
             if (asset.kind === 'image' && asset.imageUrl) imageUrl = asset.imageUrl;
             else avatarId = asset.cloudId || undefined;
@@ -526,8 +547,8 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
       } else {
       // 我的形象资产（digitalHumanId）优先；其次环境变量形象 ID
       let digitalHumanId = String(config.volcano.dhDefaultImageId || process.env.ORAL_WORKSHOP_DIGITAL_HUMAN_ID || '');
-      if (job.digitalHumanId && this.dhAssetRepo) {
-        const asset = await this.dhAssetRepo.findOne({ where: { id: job.digitalHumanId, userId: job.userId } });
+      if (job.digitalHumanId && this.avatarRepo && this.mediaAssetRepo) {
+        const asset = await this.loadAvatar(job.userId, job.digitalHumanId);
         if (asset) {
           digitalHumanId = asset.cloudId;
         } else {
@@ -623,8 +644,9 @@ export class OralWorkshopExecutor implements OnModuleInit, OnModuleDestroy {
         '-acodec', 'libmp3lame', '-q:a', '4', segAudio,
       ], outputDir);
       cursor += seconds;
-      const asset = this.dhAssetRepo
-        ? await this.dhAssetRepo.findOne({ where: { id: shots[i].digitalHumanId, userId: job.userId } })
+      // 两库规则 R3：形象引用统一按 media_assets.id（assetId）解析，不再直连独立形象表
+      const asset = shots[i].digitalHumanId
+        ? await this.loadAvatar(job.userId, shots[i].digitalHumanId)
         : null;
       if (!asset) {
         throw new Error('数字人形象不存在或不属于当前用户（digitalHumanId=' + shots[i].digitalHumanId + '）');

@@ -198,19 +198,99 @@ function authHeaders(token: string): Record<string, string> {
   return h;
 }
 
-/** 建某官署的默认定时任务（POST /scheduled-tasks；已存在的同名跳过） */
+/** 定时任务匹配键（标题+官署+触发时间+星期）—— 建与删共用同一口径，避免同名误判 */
+export function cronMatchKey(input: {
+  title?: string | null;
+  agentId?: string | null;
+  runTime?: string | null;
+  weekday?: number | null;
+}): string {
+  const weekday = input.weekday === null || input.weekday === undefined ? "" : String(input.weekday);
+  return [input.title ?? "", input.agentId ?? "", input.runTime ?? "", weekday].join("|");
+}
+
+/** 已存在的定时任务行（只取匹配需要的字段） */
+export interface ExistingTask {
+  id?: number | string;
+  title?: string;
+  agentId?: string | null;
+  runTime?: string | null;
+  weekday?: number | null;
+  repeatType?: string | null;
+}
+
+/**
+ * 拉取当前用户已存在的定时任务。
+ *
+ * 注意：后端 GET /scheduled-tasks 只按 userId 过滤（controller 未接 agentId 查询参数），
+ * 返回的是全量列表 —— 所以这里只取一次，由调用方按四要素（标题+官署+时间+星期）匹配，
+ * 也兼容裸数组 / { code, data } 两种返回形态。
+ * 失败返回空数组：调用方按「无已存在」继续，不阻塞组队。
+ */
+async function listAllTasks(
+  deps: TeamIpcDeps,
+  f: typeof fetch,
+  token: string,
+): Promise<ExistingTask[]> {
+  try {
+    const res = await f(`${deps.stApiBase}/scheduled-tasks`, {
+      method: "GET",
+      headers: authHeaders(token),
+    });
+    const json = (await res.json()) as ExistingTask[] | { data?: ExistingTask[] };
+    const data = Array.isArray(json) ? json : json?.data;
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 建某官署的默认定时任务（POST /scheduled-tasks）。
+ *
+ * 幂等 + 自愈（2026-09-14 修）：后端 POST /scheduled-tasks 不做去重，此前重复跑「一键组队」会把同一批
+ * 任务翻倍写入（例如为了让战略文档重建而重跑一次，44 条就变 88 条）。现在：
+ *  - 创建前先拉现有任务，按四要素（标题+官署+runTime+weekday）已存在则跳过，只补缺的；
+ *  - 同四要素出现多条（历史重跑留下的重复行）时，只保留 id 最小的一条，其余删掉（自愈历史数据）；
+ *  - created/skipped/deduped/fixed 如实回报；任一条失败则 ok:false 并带出后端原因
+ *    （此前单条失败被静默吞掉，界面显示「成功」，实际一条都没建成）。
+ */
 export async function createOfficialCrons(
   deps: TeamIpcDeps,
   official: string,
-): Promise<{ ok: boolean; error?: string; created: number }> {
+): Promise<{ ok: boolean; error?: string; created: number; skipped: number; deduped: number; fixed: number }> {
   const list = DEFAULT_CRONS[official] ?? [];
-  if (list.length === 0) return { ok: true, created: 0 };
+  if (list.length === 0) return { ok: true, created: 0, skipped: 0, deduped: 0, fixed: 0 };
   const token = deps.getAuthToken();
-  if (!token) return { ok: false, error: "未登录，无法创建定时任务", created: 0 };
+  if (!token) return { ok: false, error: "未登录，无法创建定时任务", created: 0, skipped: 0, deduped: 0, fixed: 0 };
   const f = deps.fetchImpl || (globalThis.fetch ? globalThis.fetch.bind(globalThis) : undefined);
-  if (!f) return { ok: false, error: "当前环境不支持 fetch", created: 0 };
+  if (!f) return { ok: false, error: "当前环境不支持 fetch", created: 0, skipped: 0, deduped: 0, fixed: 0 };
+
+  const existing = await listAllTasks(deps, f, token);
+  const seen = new Set(existing.map((it) => cronMatchKey(it)));
   let created = 0;
+  let skipped = 0;
+  let deduped = 0;
+  let fixed = 0;
+  let failed = 0;
+  const reasons: string[] = [];
+  const noteFail = (name: string, why: string) => {
+    failed++;
+    if (reasons.length < 3) reasons.push(`${name}: ${why}`);
+  };
   for (const c of list) {
+    const runTime = exprToRunTime(c.expr);
+    const weekday = exprToWeekday(c.expr) ?? null;
+    // 周任务（cron 第 5 段非 *）必须建为 weekly，否则会被当成每日任务天天跑
+    const repeatType = weekday === null ? "daily" : "weekly";
+    const key = cronMatchKey({ title: c.name, agentId: official, runTime, weekday });
+    if (seen.has(key)) {
+      skipped++;
+      const healed = await healExistingTasks(deps, existing, key, { repeatType, weekday }, f, token);
+      fixed += healed.fixed;
+      deduped += healed.deduped;
+      continue;
+    }
     try {
       const res = await f(`${deps.stApiBase}/scheduled-tasks`, {
         method: "POST",
@@ -218,23 +298,87 @@ export async function createOfficialCrons(
         body: JSON.stringify({
           title: c.name,
           description: c.description ?? "",
-          repeatType: "daily",
-          runTime: exprToRunTime(c.expr),
-          weekday: exprToWeekday(c.expr),
+          repeatType,
+          runTime,
+          weekday: weekday ?? undefined,
           agentId: official,
           executeKind: c.executeKind,
           flowId: c.flowId,
           flowParams: c.flowParams ? JSON.stringify(c.flowParams) : undefined,
         }),
       });
-      const json = (await res.json()) as { code?: number; message?: string };
-      // 后端约定：code 0/200 成功；冲突视为已存在（幂等）
-      if (json.code === 0 || json.code === 200 || res.ok) created++;
-    } catch {
-      // 单条失败继续
+      const json = (await res.json().catch(() => ({}))) as { code?: number; message?: unknown; msg?: string };
+      if (json.code === 0 || json.code === 200 || res.ok) {
+        created++;
+        seen.add(key);
+      } else {
+        // 不再静默吞掉：把后端返回的原因带出来（例如旧版后端不认 agentId/executeKind → 400）
+        const msg = Array.isArray(json.message)
+          ? json.message.filter((m): m is string => typeof m === "string").join("；")
+          : typeof json.message === "string"
+            ? json.message
+            : json.msg || "";
+        noteFail(c.name, `HTTP ${res.status}${msg ? ` ${msg}` : ""}`);
+      }
+    } catch (err) {
+      noteFail(c.name, err instanceof Error ? err.message : String(err));
     }
   }
-  return { ok: true, created };
+  if (failed > 0) {
+    const more = failed > reasons.length ? `（另有 ${failed - reasons.length} 条同类失败）` : "";
+    return {
+      ok: false,
+      error: `${failed} 条定时任务创建失败（新建 ${created} / 跳过 ${skipped}）：${reasons.join("；")}${more}`,
+      created,
+      skipped,
+      deduped,
+      fixed,
+    };
+  }
+  return { ok: true, created, skipped, deduped, fixed };
+}
+
+/**
+ * 自愈已有任务（只处理 key 命中默认定时任务的行，绝不动用户自建任务）：
+ *  - 排期漂移：同一槽位（标题+官署+时间+星期）但 repeatType 不对（历史版本把周任务建成了 daily）→ PATCH 修正；
+ *  - 重复行：同一槽位多条 → 保留 id 最小的一条，删除其余；
+ * 失败都不阻塞组队，返回修正/清理条数。
+ */
+async function healExistingTasks(
+  deps: TeamIpcDeps,
+  existing: ExistingTask[],
+  key: string,
+  want: { repeatType: "daily" | "weekly"; weekday: number | null },
+  f: typeof fetch,
+  token: string,
+): Promise<{ fixed: number; deduped: number }> {
+  const matched = existing
+    .filter((x) => x.id !== undefined && cronMatchKey(x) === key)
+    .sort((a, b) => Number(a.id) - Number(b.id));
+  let fixed = 0;
+  let deduped = 0;
+  const keep = matched[0];
+  if (keep && (keep.repeatType ?? "") !== want.repeatType) {
+    try {
+      const res = await f(`${deps.stApiBase}/scheduled-tasks/${keep.id}`, {
+        method: "PATCH",
+        headers: authHeaders(token),
+        body: JSON.stringify({ repeatType: want.repeatType, weekday: want.weekday ?? undefined }),
+      });
+      if (res.ok) fixed++;
+    } catch {
+      // 修正失败不影响组队
+    }
+  }
+  for (const extra of matched.slice(1)) {
+    try {
+      await f(`${deps.stApiBase}/scheduled-tasks/${extra.id}`, { method: "DELETE", headers: authHeaders(token) });
+      deduped++;
+    } catch {
+      // 清理重复失败不影响组队
+    }
+  }
+  return { fixed, deduped };
 }
 
 /** 从 cron 表达式提取 HH:mm（后端 repeatType 用 daily+runTime） */
@@ -276,33 +420,16 @@ export async function removeOfficial(
   const token = deps.getAuthToken();
   const f = deps.fetchImpl || (globalThis.fetch ? globalThis.fetch.bind(globalThis) : undefined);
   if (!token || !f) return { ok: true };
+  const items = await listAllTasks(deps, f, token);
   try {
-    const res = await f(`${deps.stApiBase}/scheduled-tasks?agentId=${encodeURIComponent(official)}`, {
-      method: "GET",
-      headers: authHeaders(token),
-    });
-    const json = (await res.json()) as {
-      data?: Array<{
-        id?: number | string;
-        title?: string;
-        agentId?: string | null;
-        runTime?: string | null;
-        weekday?: number | null;
-      }>;
-    };
-    const items = Array.isArray(json.data) ? json.data : [];
     for (const c of list) {
-      const wantRunTime = exprToRunTime(c.expr);
-      const wantWeekday = exprToWeekday(c.expr) ?? null;
-      const hit = items.filter(
-        (it) =>
-          it.id !== undefined &&
-          it.title === c.name &&
-          (it.agentId ?? "") === official &&
-          (it.runTime ?? "") === wantRunTime &&
-          (it.weekday ?? null) === wantWeekday,
-      );
-      for (const it of hit) {
+      const wantKey = cronMatchKey({
+        title: c.name,
+        agentId: official,
+        runTime: exprToRunTime(c.expr),
+        weekday: exprToWeekday(c.expr) ?? null,
+      });
+      for (const it of items.filter((x) => x.id !== undefined && cronMatchKey(x) === wantKey)) {
         await f(`${deps.stApiBase}/scheduled-tasks/${it.id}`, { method: "DELETE", headers: authHeaders(token) });
       }
     }

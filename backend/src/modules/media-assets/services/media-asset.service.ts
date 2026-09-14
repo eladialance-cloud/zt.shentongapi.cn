@@ -1,7 +1,13 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, FindOptionsWhere } from 'typeorm';
-import { MediaAssetEntity, MediaAssetType } from '../entities/media-asset.entity';
+import { Repository, In, Not, FindOptionsWhere } from 'typeorm';
+import {
+  MediaAssetEntity,
+  MediaAssetType,
+  MediaAssetSourceType,
+  MediaAssetBizType,
+} from '../entities/media-asset.entity';
+import { BUSINESS_INPUT_KINDS, kindFromAssetType, resolveAssetOrigin } from '../library-kind';
 import { TaskOutputItemEntity } from '../../task/entities/task-output-item.entity';
 import { AgentTaskEntity } from '../../task/entities/agent-task.entity';
 import { PublishPlanEntity } from '../../channel/entities/publish-plan.entity';
@@ -69,14 +75,39 @@ export class MediaAssetService {
   ) {}
 
   /**
-   * 手动登记素材（sourceType=manual）
+   * 登记素材（两库口径统一：用户上传 → 输入库；服务端产出 → 生成库）
+   *
+   * origin 仅服务端内部注入（控制器不暴露该参数，前端无法伪造来源）：
+   *  - sourceType：'agent'（官署任务）/ 'media_job'（媒体生成任务）/ 'flow'（业务流）；
+   *  - sourceId：来源对象 id，用于同来源幂等；
+   *  - bizType：业务型输入资产（我的声音 / IP 档案）。
+   *
+   * 未注入时按「用户上传」处理，但若 url/tags 带生成标记（edict:// 占位、三省六部/口播工坊标签）
+   * 则判定为生成库并回填精确来源——修正历史「官署产物被记成手动登记」的脏数据。
    */
-  async create(userId: number, dto: CreateMediaAssetDto): Promise<MediaAssetEntity> {
+  async create(
+    userId: number,
+    dto: CreateMediaAssetDto,
+    origin?: { sourceType?: MediaAssetSourceType; sourceId?: number; bizType?: MediaAssetBizType },
+  ): Promise<MediaAssetEntity> {
+    const assetType = dto.assetType ?? 'file';
+    const resolved = resolveAssetOrigin({
+      bizType: origin?.bizType ?? null,
+      sourceType: origin?.sourceType ?? 'manual',
+      assetType,
+      mimeType: dto.mimeType ?? null,
+      url: dto.url,
+      tags: dto.tags ?? null,
+    });
     const asset = this.assetRepo.create({
       userId,
-      sourceType: 'manual',
+      sourceType: resolved.sourceType,
+      sourceId: origin?.sourceId ?? null,
+      library: resolved.library,
+      kind: resolved.kind,
+      bizType: origin?.bizType ?? 'media',
       title: dto.title,
-      assetType: dto.assetType ?? 'file',
+      assetType,
       url: dto.url,
       mimeType: dto.mimeType ?? null,
       fileSize: dto.fileSize ?? null,
@@ -99,8 +130,21 @@ export class MediaAssetService {
     const page = Math.max(1, Number(query.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 10));
 
-    // P3 合并后：media_assets 含我的声音/IP 档案等业务型资产，素材库列表只展示常规素材
-    const where: FindOptionsWhere<MediaAssetEntity> = { userId, bizType: 'media' };
+    // 两库口径：
+    //  - 显式传 library → 按库过滤（input=用户输入库，含声音/形象/IP 档案；output=生成素材库）
+    //  - 未传 → 保持旧行为、排除声音/形象/IP 档案等业务型资产（历史等价于 bizType='media'）
+    const where: FindOptionsWhere<MediaAssetEntity> = { userId };
+    if (query.library) {
+      where.library = query.library;
+    } else {
+      where.kind = Not(In([...BUSINESS_INPUT_KINDS]));
+    }
+    if (query.kind) {
+      where.kind = query.kind;
+    }
+    if (query.sourceType) {
+      where.sourceType = query.sourceType as MediaAssetSourceType;
+    }
     if (query.type) {
       where.assetType = query.type;
     }
@@ -235,19 +279,25 @@ export class MediaAssetService {
         skipped += 1;
         continue;
       }
+      const assetType: MediaAssetType = MEDIA_TYPES.has(item.outputType)
+        ? (item.outputType as MediaAssetType)
+        : 'file';
+      // 任务产出 → 生成素材库（kind 由物理类型推导：文本类落 copy）
+      const origin = resolveAssetOrigin({ sourceType: 'task', assetType });
       assets.push(
         this.assetRepo.create({
           userId,
-          sourceType: 'task',
+          sourceType: origin.sourceType,
           sourceId: item.id,
+          library: origin.library,
+          kind: origin.kind,
           title: summarizeTitle(item.content, `task 输出 #${taskId}`),
-          assetType: MEDIA_TYPES.has(item.outputType)
-            ? (item.outputType as MediaAssetType)
-            : 'file',
+          assetType,
           url: item.fileUrl as string,
           mimeType: item.mimeType ?? null,
           fileSize: item.fileSize ?? null,
           tags: null,
+          vectorStatus: 'none',
           archived: false,
         } as unknown as MediaAssetEntity),
       );
@@ -283,17 +333,25 @@ export class MediaAssetService {
       return { imported: 0, skipped: urls.length, list: [] };
     }
 
+    const jobAssetType: MediaAssetType = MEDIA_TYPES.has(job.type)
+      ? (job.type as MediaAssetType)
+      : 'file';
+    // 媒体生成任务产出 → 生成素材库
+    const jobOrigin = resolveAssetOrigin({ sourceType: 'media_job', assetType: jobAssetType });
     const assets: MediaAssetEntity[] = urls.map((url) =>
       this.assetRepo.create({
         userId,
-        sourceType: 'media_job',
+        sourceType: jobOrigin.sourceType,
         sourceId: mediaJobId,
+        library: jobOrigin.library,
+        kind: jobOrigin.kind,
         title: summarizeTitle(job.prompt, `media job #${mediaJobId}`),
-        assetType: MEDIA_TYPES.has(job.type) ? (job.type as MediaAssetType) : 'file',
+        assetType: jobAssetType,
         url,
         mimeType: null,
         fileSize: null,
         tags: null,
+        vectorStatus: 'none',
         archived: false,
       } as unknown as MediaAssetEntity),
     );

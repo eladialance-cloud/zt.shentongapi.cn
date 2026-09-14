@@ -13,7 +13,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import * as channelApi from "@/api/channel-api";
 import { listMediaAssets } from "@/api/media-asset-api";
-import type { MediaAsset } from "@/api/media-asset-api";
+import type { MediaAsset, MediaAssetLibrary } from "@/api/media-asset-api";
 import type { PublishPlan, PublishStatus } from "@/types/channel";
 import styles from "../Team/styles.module.css";
 
@@ -72,6 +72,8 @@ export default function PublishList() {
   /** null=创建；对象=直接修改该计划 */
   const [editing, setEditing] = useState<PublishPlan | null>(null);
   const [assetOptions, setAssetOptions] = useState<MediaAsset[]>([]);
+  /** 关联素材来源库：默认生成素材库（发布成品），可切换到用户输入库（封面/画中画等原料） */
+  const [assetLibrary, setAssetLibrary] = useState<MediaAssetLibrary>("output");
   const [form] = Form.useForm<PlanFormValues>();
   const [saving, setSaving] = useState(false);
   /** 渠道授权状态：加载成功才展示提示条；listChannels 失败静默不展示 */
@@ -122,9 +124,10 @@ export default function PublishList() {
   }, []);
 
   // 素材选项（供创建/编辑计划关联，最多取 200 条）
-  const loadAssets = useCallback(async () => {
+  // 两库规则 R4：读取必须声明来源库——默认「生成素材库」（成片/文案），可切到「用户输入库」选封面/画中画等原料
+  const loadAssets = useCallback(async (lib: MediaAssetLibrary) => {
     try {
-      const res = await listMediaAssets({ archived: false, page: 1, pageSize: 200 });
+      const res = await listMediaAssets({ library: lib, archived: false, page: 1, pageSize: 200 });
       setAssetOptions(res.list || []);
     } catch {
       setAssetOptions([]);
@@ -132,7 +135,7 @@ export default function PublishList() {
   }, []);
 
   useEffect(() => { void loadData(); }, [loadData]);
-  useEffect(() => { void loadAssets(); }, [loadAssets]);
+  useEffect(() => { void loadAssets(assetLibrary); }, [loadAssets, assetLibrary]);
 
   const openCreate = () => {
     setEditing(null);
@@ -388,12 +391,22 @@ export default function PublishList() {
           <Form.Item label="目标平台" name="targetPlatforms" rules={[{ required: true, message: "请选择至少一个平台" }]}>
             <Select mode="multiple" options={PLATFORM_OPTIONS} placeholder="选择发布平台" />
           </Form.Item>
+          <Form.Item label="素材来源" tooltip="生成素材库=软件产出（成片/文案）；用户输入库=你上传的原料（封面/画中画等）">
+            <Select
+              value={assetLibrary}
+              onChange={(v) => setAssetLibrary(v as MediaAssetLibrary)}
+              options={[
+                { value: "output", label: "生成素材库（成片/文案/图片）" },
+                { value: "input", label: "用户输入库（封面/画中画/素材）" },
+              ]}
+            />
+          </Form.Item>
           <Form.Item label="关联素材" name="assetIds">
             <Select
               mode="multiple"
               allowClear
               placeholder="从素材库选择（图片/视频/音频/文件）"
-              options={assetOptions.map((a) => ({ value: a.id, label: `${a.title}（${a.assetType}）` }))}
+              options={assetOptions.map((a) => ({ value: a.id, label: `${a.title}（${a.kind ?? a.assetType}）` }))}
               optionFilterProp="label"
             />
           </Form.Item>

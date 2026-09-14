@@ -30,6 +30,10 @@ interface CreationResult {
   created: string[]
   removed: string[]
   failed: Array<{ step: string; official?: string; error: string }>
+  cronCreated?: number
+  cronSkipped?: number
+  cronDeduped?: number
+  cronFixed?: number
   error?: string
 }
 
@@ -377,6 +381,12 @@ export default function TeamPreset() {
               {result.removed.length > 0 && (
                 <div>移除官署：{result.removed.map((o) => OFFICIAL_LABEL[o] ?? o).join('、')}</div>
               )}
+              <div>
+                定时任务：新建 {result.cronCreated ?? 0} 条
+                {result.cronSkipped ? `（已存在跳过 ${result.cronSkipped} 条）` : ''}
+                {result.cronFixed ? `（修正排期 ${result.cronFixed} 条）` : ''}
+                {result.cronDeduped ? `（清理历史重复 ${result.cronDeduped} 条）` : ''}
+              </div>
               {result.failed.length > 0 && (
                 <div style={{ color: '#cf1322' }}>
                   失败：{result.failed.map((f) => `${STEP_LABEL[f.step] ?? f.step}${f.official ? `(${f.official})` : ''}: ${f.error}`).join('；')}

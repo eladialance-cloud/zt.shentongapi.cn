@@ -105,6 +105,14 @@ export interface TeamCreationResult {
   created: string[];
   removed: string[];
   failed: Array<{ step: TeamStep; official?: string; error: string }>;
+  /** 定时任务：本次新建条数（重跑时的「已完成」不计入） */
+  cronCreated?: number;
+  /** 定时任务：因已存在而跳过的条数 */
+  cronSkipped?: number;
+  /** 定时任务：清理掉的历史重复行条数 */
+  cronDeduped?: number;
+  /** 定时任务：修正排期的条数（历史版本把周任务建成了每日） */
+  cronFixed?: number;
   error?: string;
 }
 
@@ -117,8 +125,17 @@ export interface TeamPresetDeps {
   writeSoul: (official: string) => Promise<{ ok: boolean; error?: string }>;
   /** 确保官署 Agent profile 存在（幂等） */
   ensureAgent: (official: string) => Promise<{ ok: boolean; error?: string }>;
-  /** 为该官署创建默认定时任务 */
-  createCron: (official: string) => Promise<{ ok: boolean; error?: string; created?: number }>;
+  /** 为该官署创建默认定时任务（幂等：created=新建，skipped=已存在跳过，deduped=清理的重复行，fixed=修正排期） */
+  createCron: (
+    official: string,
+  ) => Promise<{
+    ok: boolean;
+    error?: string;
+    created?: number;
+    skipped?: number;
+    deduped?: number;
+    fixed?: number;
+  }>;
   /** 删除套餐外官署的 Agent profile 与定时任务 */
   removeOfficial: (official: string) => Promise<{ ok: boolean; error?: string }>;
   /** 清理首次安装的旧多维表格配置（首次运行才调用） */
@@ -212,15 +229,27 @@ export async function runTeamCreation(
     steps.push(await runStep("seed", () => deps.seed!(), deps, failed));
   }
 
-  // 7) 定时任务
+  // 7) 定时任务（幂等：已存在则跳过；历史重复行顺手清理）
   let cronCreated = 0;
+  let cronSkipped = 0;
+  let cronDeduped = 0;
+  let cronFixed = 0;
   for (const o of preset.officials) {
     deps.onProgress?.({ step: "cron", current: o, message: `创建 ${o} 的定时任务` });
-    const r: { ok: boolean; error?: string; created?: number } = await deps
-      .createCron(o)
-      .catch((e) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
-    if (r.ok) cronCreated += r.created ?? 0;
-    else failed.push({ step: "cron", official: o, error: r.error || "失败" });
+    const r: {
+      ok: boolean;
+      error?: string;
+      created?: number;
+      skipped?: number;
+      deduped?: number;
+      fixed?: number;
+    } = await deps.createCron(o).catch((e) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+    // 计数与成败分开记：失败时也要把已建/已跳过的条数统计进来
+    cronCreated += r.created ?? 0;
+    cronSkipped += r.skipped ?? 0;
+    cronDeduped += r.deduped ?? 0;
+    cronFixed += r.fixed ?? 0;
+    if (!r.ok) failed.push({ step: "cron", official: o, error: r.error || "失败" });
   }
 
   // 8) 删除套餐外官署（换套餐时）
@@ -234,7 +263,7 @@ export async function runTeamCreation(
     else failed.push({ step: "cleanup", official: o, error: r.error || "失败" });
   }
 
-  deps.onProgress?.({ step: "done", message: `完成：新增 ${plan.toCreate.length} 官署 / 定时任务 ${cronCreated} 条 / 移除 ${removed.length}` });
+  deps.onProgress?.({ step: "done", message: `完成：新增 ${plan.toCreate.length} 官署 / 定时任务新建 ${cronCreated} 条·已存在跳过 ${cronSkipped} 条 / 移除 ${removed.length}` });
 
   const hardFail = failed.filter((f) => f.step === "cleanup" || f.step === "agent");
   return {
@@ -245,5 +274,9 @@ export async function runTeamCreation(
     created: plan.toCreate,
     removed,
     failed,
+    cronCreated,
+    cronSkipped,
+    cronDeduped,
+    cronFixed,
   };
 }

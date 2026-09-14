@@ -1,3 +1,9 @@
+/**
+ * @deprecated 已下线（2026-09-14 形象合并）——形象现由
+ * media_assets(library='input', kind='avatar', biz_type='avatar') + media_asset_avatar 扩展表承载，
+ * 见 media-assets/entities/media-asset-avatar.entity.ts。本文件仅作历史存档，勿新增引用；
+ * 对应旧表已由启动迁移重命名为 digital_human_assets_archived。
+ */
 import { Entity, Column, Index, CreateDateColumn, PrimaryGeneratedColumn } from 'typeorm';
 import { bigintTransformer } from '../../../common/entities/base.entity';
 

@@ -170,7 +170,7 @@ export class CreateOralWorkshopJobDto {
   @ArrayMinSize(1)
   @ArrayMaxSize(6)
   shots?: Array<{
-    /** 数字人形象资产 ID（digital_human_assets.id） */
+    /** 数字人形象资产 ID（media_assets.id，library='input' + kind='avatar'） */
     digitalHumanId: number;
     /** 镜头时长（秒，2-120） */
     seconds: number;

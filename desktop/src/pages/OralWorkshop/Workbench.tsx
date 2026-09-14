@@ -84,7 +84,15 @@ import {
   listPublishPlatforms,
 } from '@/api/oral-workshop-api'
 import { uploadFile } from '@/api/file-api'
-import { resolveMediaUrl } from '@/utils/media'
+import { inferAssetTypeFromMime, resolveMediaUrl } from '@/utils/media'
+import { createMediaAsset } from '@/api/media-asset-api'
+import {
+  clearPipSuggestions,
+  readPipSuggestions,
+  removePipSuggestion,
+  removePipSuggestions,
+  type PipSuggestion,
+} from './pip-suggestions'
 import { useOralWorkshopStore } from '@/store/oral-workshop'
 import { useCreditsStore } from '@/store/credits'
 import {
@@ -260,6 +268,14 @@ const PIP_POSITION_LABELS: Record<string, string> = {
   br: '右下',
   center: '居中',
 }
+/** 成片最多叠加的画中画个数（后端同样按 4 个截断） */
+const PIP_MAX = 4
+
+/** 待用画中画建议的一行展示文本（优先字幕，其次素材名，最后 URL） */
+const pipSuggestionLabel = (s: { subtitle?: string; name?: string; url: string }): string => {
+  const text = (s.subtitle || s.name || s.url).trim()
+  return text.length > 32 ? text.slice(0, 32) + '…' : text
+}
 
 export default function OralWorkshopWorkbench() {
   const navigate = useNavigate()
@@ -355,6 +371,8 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
   const [pipItems, setPipItems] = useState<PipAssetInput[]>([])
   const [pipOpen, setPipOpen] = useState(false)
   const [pipForm] = Form.useForm()
+  // 待用画中画建议：在「素材与混剪」页点「加入画中画」写入，这里读取消费（读写口径见 pip-suggestions.ts）
+  const [pipSuggestions, setPipSuggestions] = useState<PipSuggestion[]>([])
   // D6：数字人生成方式（自动 / 云端火山 / 本地卡片）
   const [dhGenerationMode, setDhGenerationMode] = useState<'auto' | 'cloud' | 'local'>('auto')
   // D3：多镜头（[{digitalHumanId, seconds}]，长度>1 时后端多镜头拼接）
@@ -444,6 +462,11 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
         setRecentJob(meta.recentJob ?? null)
       })
       .catch(() => undefined)
+  }, [])
+
+  // 待用画中画建议（跨页面中转；挂载时读一次，打开画中画弹窗时再刷新一次）
+  useEffect(() => {
+    setPipSuggestions(readPipSuggestions())
   }, [])
 
   // 草稿回填（localStorage 持久化，仅在挂载时执行一次，避免与自动保存形成回环）
@@ -972,8 +995,8 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
 
   /** D4/E6：添加画中画素材（最多 4 个，随任务提交后叠加到成片） */
   const addPipAsset = async () => {
-    if (pipItems.length >= 4) {
-      message.warning('画中画素材最多添加 4 个')
+    if (pipItems.length >= PIP_MAX) {
+      message.warning('画中画素材最多添加 ' + PIP_MAX + ' 个')
       return
     }
     const values = (await pipForm.validateFields()) as {
@@ -1002,6 +1025,66 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
     pipForm.resetFields()
     setPipOpen(false)
     message.success('画中画素材已添加（提交后随任务生成时叠加）')
+  }
+
+  /** 打开画中画弹窗：顺便刷新「素材与混剪」页写入的待用建议 */
+  const openPipModal = () => {
+    setPipSuggestions(readPipSuggestions())
+    setPipOpen(true)
+  }
+
+  /** 待用建议 → 画中画条目（只保留成片需要的字段） */
+  const toPipItem = (s: PipSuggestion): PipAssetInput => ({
+    url: s.url,
+    position: s.position,
+    scale: s.scale,
+    startSec: s.startSec,
+    endSec: s.endSec,
+  })
+
+  /** 使用某条待用建议（遵守最多 4 个；用掉后从队列移除） */
+  const applyPipSuggestion = (index: number) => {
+    if (pipItems.length >= PIP_MAX) {
+      message.warning('画中画素材最多添加 ' + PIP_MAX + ' 个')
+      return
+    }
+    const suggestion = pipSuggestions[index]
+    if (!suggestion) return
+    setPipItems((items) => [...items, toPipItem(suggestion)])
+    setPipSuggestions(removePipSuggestion(index))
+    message.success('已加入画中画（提交后随任务生成时叠加）')
+  }
+
+  /** 一键把待用建议全部加入（受 4 个上限约束，未加入的保留在队列里） */
+  const applyAllPipSuggestions = () => {
+    const room = PIP_MAX - pipItems.length
+    if (room <= 0) {
+      message.warning('画中画素材最多添加 ' + PIP_MAX + ' 个')
+      return
+    }
+    if (!pipSuggestions.length) {
+      message.info('暂无待用建议')
+      return
+    }
+    const take = pipSuggestions.slice(0, room)
+    setPipItems((items) => [...items, ...take.map(toPipItem)])
+    setPipSuggestions(removePipSuggestions(take.map((_, i) => i)))
+    if (take.length < pipSuggestions.length) {
+      message.info('成片最多 ' + PIP_MAX + ' 个画中画，已加入 ' + take.length + ' 条，其余建议保留在队列中')
+    } else {
+      message.success('已加入 ' + take.length + ' 个画中画素材')
+    }
+  }
+
+  /** 丢弃一条待用建议 */
+  const dropPipSuggestion = (index: number) => {
+    setPipSuggestions(removePipSuggestion(index))
+  }
+
+  /** 清空待用建议 */
+  const clearAllPipSuggestions = () => {
+    setPipSuggestions(clearPipSuggestions())
+    message.success('待用画中画建议已清空')
   }
 
   const batchTopicCount = batchTopics.split('\n').map((s) => s.trim()).filter(Boolean).length
@@ -2247,8 +2330,8 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
             <div className={styles.uploadGroup} style={{ marginTop: 14 }}>
               <div className={styles.uploadRow} style={{ alignItems: 'center' }}>
                 <span className={styles.uploadLabel}>混剪/画中画素材（可选，最多 4 个）</span>
-                <Button size="small" type="dashed" icon={<Plus size={12} />} onClick={() => setPipOpen(true)}>
-                  添加画中画
+                <Button size="small" type="dashed" icon={<Plus size={12} />} onClick={openPipModal}>
+                  添加画中画{pipSuggestions.length > 0 ? '（待用 ' + pipSuggestions.length + '）' : ''}
                 </Button>
               </div>
               {pipItems.length === 0 ? (
@@ -2370,8 +2453,13 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                   <Button size="small" icon={<ExternalLink size={12} />} onClick={() => navigate('/oral-workshop/accounts')}>
                     管理账号
                   </Button>
-                  <Button size="small" icon={<Layers size={12} />} onClick={() => navigate('/oral-workshop/materials')}>
-                    素材库
+                  <Button
+                    size="small"
+                    icon={<Layers size={12} />}
+                    onClick={() => navigate('/oral-workshop/materials')}
+                    title="AI 混剪建议 / 任务产物入库（画中画取材）"
+                  >
+                    素材与混剪
                   </Button>
                   {(() => {
                     const acc = publishAccounts.find((a) => a.id === selectedAccountId)
@@ -2641,6 +2729,51 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
         width={520}
       >
         <Form form={pipForm} layout="vertical">
+          {pipSuggestions.length > 0 && (
+            <div className={styles.uploadGroup} style={{ marginBottom: 12 }}>
+              <div className={styles.uploadRow} style={{ alignItems: 'center' }}>
+                <span className={styles.uploadLabel}>来自「素材与混剪」的待用建议（{pipSuggestions.length}）</span>
+                <Button size="small" onClick={applyAllPipSuggestions}>
+                  全部加入
+                </Button>
+                <Button size="small" type="text" icon={<Trash2 size={12} />} onClick={clearAllPipSuggestions}>
+                  清空
+                </Button>
+              </div>
+              {pipSuggestions.map((s, i) => (
+                <div key={i} className={styles.uploadRow}>
+                  <span className={styles.uploadLabel}>{i + 1}</span>
+                  <a
+                    href={s.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={styles.uploadValue}
+                    title={s.subtitle || s.name || s.url}
+                  >
+                    {pipSuggestionLabel(s)}
+                  </a>
+                  <span className={styles.uploadHint}>
+                    {PIP_POSITION_LABELS[s.position || 'br']} · {Math.round((s.scale || 0.25) * 100)}%
+                    {s.keyword ? ' · #' + s.keyword : ''}
+                  </span>
+                  <Button size="small" type="link" onClick={() => applyPipSuggestion(i)}>
+                    使用
+                  </Button>
+                  <Button
+                    type="text"
+                    size="small"
+                    danger
+                    icon={<Trash2 size={12} />}
+                    aria-label="删除建议"
+                    onClick={() => dropPipSuggestion(i)}
+                  />
+                </div>
+              ))}
+              <div className={styles.uploadHint}>
+                画中画最多 {PIP_MAX} 个；点「使用」后该条从待用队列移除，上传/粘贴链接的素材照旧登记进输入库
+              </div>
+            </div>
+          )}
           <div className={styles.uploadGroup} style={{ marginBottom: 8 }}>
             <Upload
               accept="image/*,video/*"
@@ -2652,6 +2785,13 @@ const [rewriteResult, setRewriteResult] = useState<string | null>(null)
                     const res = await uploadFile(file)
                     pipForm.setFieldValue('url', res.url)
                     message.success('素材上传成功')
+                    // 两库规则 R1：画中画上传的原料必须登记进「用户输入库」（best-effort，失败不影响本次使用）
+                    void createMediaAsset({
+                      title: file.name || '画中画素材',
+                      url: res.url,
+                      assetType: inferAssetTypeFromMime(res.mimeType || file.type || ''),
+                      tags: ['画中画'],
+                    }).catch(() => undefined)
                   } catch (err) {
                     message.error('素材上传失败: ' + (err as Error).message)
                     options.onError?.(err as Error)

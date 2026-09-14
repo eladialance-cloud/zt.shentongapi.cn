@@ -9,6 +9,24 @@ import {
 import type { SystemLlmService } from '../../src/modules/oral-workshop/system-llm.service';
 import type { QdrantService } from '../../src/common/services/qdrant.service';
 
+/** where 值匹配：支持 TypeORM FindOperator（In / Not(In) / Like），其余按全等 */
+function matchValue(actual: any, want: any): boolean {
+  if (want && typeof want === 'object' && typeof want._type === 'string') {
+    if (want._type === 'in') return (want._value as any[]).includes(actual);
+    if (want._type === 'not') return !matchValue(actual, want._value);
+    if (want._type === 'like') {
+      const needle = String(want._value).replace(/%/g, '');
+      return needle ? String(actual ?? '').includes(needle) : true;
+    }
+  }
+  return actual === want;
+}
+
+/** where 全键匹配 */
+function matchWhere(row: any, where: any): boolean {
+  return Object.entries(where ?? {}).every(([k, v]) => matchValue(row?.[k], v));
+}
+
 // ===== fakes =====
 function fakeAssetRepo(seed: any[] = []) {
   const rows: any[] = [...seed];
@@ -22,18 +40,7 @@ function fakeAssetRepo(seed: any[] = []) {
     find: async (opts: any) => {
       const w = opts?.where ?? {};
       const conds = Array.isArray(w) ? w : [w];
-      const matched = rows.filter((r: any) =>
-        conds.some((cond: any) =>
-          Object.keys(cond).every((k: string) => {
-            const want = cond[k];
-            if (want && typeof want === 'object' && '_value' in want) {
-              const needle = String((want as any)._value).replace(/%/g, '');
-              return needle ? String(r[k] ?? '').includes(needle) : false;
-            }
-            return r[k] === want;
-          }),
-        ),
-      );
+      const matched = rows.filter((r: any) => conds.some((cond: any) => matchWhere(r, cond)));
       return matched.slice(0, opts?.take ?? 100);
     },
     create: (d: any) => ({ id: nextId++, ...d }),
@@ -157,5 +164,34 @@ describe('MaterialSearchService 语义检索', () => {
   it('search：空关键词抛 BadRequest', async () => {
     const { svc } = newService([]);
     await assert.rejects(() => svc.search(7, { q: '   ' }), BadRequestException);
+  });
+
+  it('search：payload 写入 library/kind，可按库过滤（输入库/生成库）', async () => {
+    const { svc, qdrant } = newService([
+      { id: 1, userId: 7, title: '科技风素材', assetType: 'image', library: 'input', kind: 'image' },
+      { id: 2, userId: 7, title: '科技风成片', assetType: 'video', library: 'output', kind: 'video' },
+    ]);
+    await svc.vectorizeAsset(7, 1);
+    await svc.vectorizeAsset(7, 2);
+    assert.equal(qdrant.points[0].payload.library, 'input');
+    assert.equal(qdrant.points[1].payload.kind, 'video');
+    const inputHits = await svc.search(7, { q: '科技', library: 'input' });
+    assert.deepEqual(inputHits.map((h) => h.asset.id), [1]);
+    const outputHits = await svc.search(7, { q: '科技', library: 'output' });
+    assert.deepEqual(outputHits.map((h) => h.asset.id), [2]);
+  });
+
+  it('search：降级 LIKE 同样遵守两库口径（默认排除声音/IP 档案，显式 library 按其过滤）', async () => {
+    const { svc } = newService(
+      [
+        { id: 1, userId: 7, title: '科技风宣传片', assetType: 'video', library: 'output', kind: 'video' },
+        { id: 2, userId: 7, title: '科技风声音样本', assetType: 'audio', library: 'input', kind: 'voice' },
+      ],
+      'down',
+    );
+    const legacy = await svc.search(7, { q: '科技' });
+    assert.deepEqual(legacy.map((h) => h.asset.id), [1]);
+    const input = await svc.search(7, { q: '科技', library: 'input' });
+    assert.deepEqual(input.map((h) => h.asset.id), [2]);
   });
 });

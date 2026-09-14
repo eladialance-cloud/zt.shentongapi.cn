@@ -13,6 +13,7 @@ function asset(overrides: Partial<MediaAsset> = {}): MediaAsset {
     assetType: 'file',
     url: 'https://example.com/a.txt',
     mimeType: null,
+    vectorStatus: 'none',
     archived: false,
     createdAt: '2026-08-01T00:00:00Z',
     updatedAt: '2026-08-01T00:00:00Z',

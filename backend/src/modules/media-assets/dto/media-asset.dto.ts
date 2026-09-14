@@ -14,6 +14,10 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { MediaAssetType } from '../entities/media-asset.entity';
+import { LIBRARY_KINDS, type MediaAssetKind, type MediaAssetLibrary } from '../library-kind';
+
+/** 两库允许的 kind 全量（校验用） */
+const ALL_KINDS: string[] = [...LIBRARY_KINDS.input, ...LIBRARY_KINDS.output];
 
 /** 手动登记素材 DTO */
 export class CreateMediaAssetDto {
@@ -114,6 +118,21 @@ export class MediaAssetQueryDto {
   @IsIn(['image', 'video', 'audio', 'file'])
   type?: MediaAssetType;
 
+  @ApiPropertyOptional({ description: '素材库：input=用户输入库 / output=生成素材库（不传=兼容旧行为，不返回声音/形象/IP档案）', enum: ['input', 'output'] })
+  @IsOptional()
+  @IsIn(['input', 'output'])
+  library?: MediaAssetLibrary;
+
+  @ApiPropertyOptional({ description: '业务类别', enum: ALL_KINDS, example: 'copy' })
+  @IsOptional()
+  @IsIn(ALL_KINDS)
+  kind?: MediaAssetKind;
+
+  @ApiPropertyOptional({ description: '来源过滤', enum: ['manual', 'task', 'media_job', 'agent', 'flow'] })
+  @IsOptional()
+  @IsIn(['manual', 'task', 'media_job', 'agent', 'flow'])
+  sourceType?: string;
+
   @ApiPropertyOptional({ description: '是否只查已归档（true/false/1/0）', example: 'false' })
   @IsOptional()
   @IsBooleanString()
@@ -129,6 +148,7 @@ export class MediaAssetQueryDto {
   @IsInt()
   pageSize?: number;
 }
+
 /** 素材语义检索 DTO */
 export class MaterialSearchQueryDto {
   @ApiProperty({ description: '搜索内容（自然语言/关键词）', example: '科技风宣传片' })
@@ -142,6 +162,19 @@ export class MaterialSearchQueryDto {
   @IsIn(['image', 'video', 'audio', 'file'])
   type?: MediaAssetType;
 
+  @ApiPropertyOptional({
+    description: '限定素材库：input=只从用户输入库取材（生成节点用）/ output=只在生成素材库检索',
+    enum: ['input', 'output'],
+  })
+  @IsOptional()
+  @IsIn(['input', 'output'])
+  library?: MediaAssetLibrary;
+
+  @ApiPropertyOptional({ description: '业务类别过滤', enum: ALL_KINDS })
+  @IsOptional()
+  @IsIn(ALL_KINDS)
+  kind?: MediaAssetKind;
+
   @ApiPropertyOptional({ description: '返回条数（上限 50）', example: 10 })
   @IsOptional()
   @IsInt()
@@ -149,5 +182,3 @@ export class MaterialSearchQueryDto {
   @Max(50)
   topK?: number;
 }
-
-/** 素材语义检索 DTO */

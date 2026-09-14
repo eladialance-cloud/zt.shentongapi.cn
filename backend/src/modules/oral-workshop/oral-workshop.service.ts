@@ -6,7 +6,7 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { OralWorkshopJobEntity, OralWorkshopJobStatus } from './entities/oral-workshop-job.entity';
 import { OralWorkshopStepEntity } from './entities/oral-workshop-step.entity';
-import { DigitalHumanAssetEntity } from './entities/digital-human-asset.entity';
+import { MediaAssetAvatarEntity } from '../media-assets/entities/media-asset-avatar.entity';
 import { PublishAccountEntity } from './entities/publish-account.entity';
 import { PublishPlatformEntity } from './entities/publish-platform.entity';
 import { EncryptionService } from '../../common/services/encryption.service';
@@ -18,7 +18,7 @@ import { SystemLlmService } from './system-llm.service';
 import { VoiceCloneAdapter } from './adapters/voice.adapter';
 import { HeyGenAdapter, type HeyGenAvatarItem } from './adapters/heygen.adapter';
 import { SystemConfigEntity } from '../admin-system/entities/system-config.entity';
-import { MediaAssetEntity } from '../media-assets/entities/media-asset.entity';
+import { MediaAssetEntity, MediaAssetType } from '../media-assets/entities/media-asset.entity';
 import { MediaAssetService } from '../media-assets/services/media-asset.service';
 import { MaterialSearchService } from '../media-assets/services/material-search.service';
 import { defaultFfmpegRunner, downloadTo, assertPublicMediaUrl, looksLikeHtml, resolveDirectMediaUrl } from './ffmpeg';
@@ -39,6 +39,14 @@ import {
 
 /** 单条任务预估 Credits（M1 固定值；后续里程碑改为管理后台价格配置表） */
 export const DEFAULT_ESTIMATED_CREDITS = 21;
+
+/**
+ * 形象占位 URL：cloud/avatar 类形象没有可直链的媒体文件（只有云侧形象 ID），
+ * 素材库要求 url 非空，用 avatar:// 方案标记"不可直接播放、需按形象解析"。
+ */
+export function avatarPlaceholderUrl(kind: string, cloudId: string): string {
+  return `avatar://${kind}/${cloudId}`;
+}
 
 /** IP 大脑档案返回项（对标 aigc-human ip-brain） */
 export interface IpArchiveItem {
@@ -139,8 +147,8 @@ export class OralWorkshopService implements OnModuleInit {
     private readonly jobRepo: Repository<OralWorkshopJobEntity>,
     @InjectRepository(OralWorkshopStepEntity)
     private readonly stepRepo: Repository<OralWorkshopStepEntity>,
-    @InjectRepository(DigitalHumanAssetEntity)
-    private readonly dhAssetRepo: Repository<DigitalHumanAssetEntity>,
+    @InjectRepository(MediaAssetAvatarEntity)
+    private readonly avatarRepo: Repository<MediaAssetAvatarEntity>,
     @InjectRepository(PublishAccountEntity)
     private readonly accountRepo: Repository<PublishAccountEntity>,
     
@@ -889,6 +897,9 @@ export class OralWorkshopService implements OnModuleInit {
       userId,
       bizType: 'voice_asset',
       sourceType: 'manual',
+      // 两库口径：我的声音 = 用户输入库·声音（voice）
+      library: 'input',
+      kind: 'voice',
       title: dto.name.trim().slice(0, 128),
       assetType: 'audio',
       url: dto.refAudioUrl.trim().slice(0, 512),
@@ -975,20 +986,46 @@ export class OralWorkshopService implements OnModuleInit {
       createdAt: Date;
     }>
   > {
-    const rows = await this.dhAssetRepo.find({ where: { userId }, order: { createdAt: 'DESC' } });
-    return rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      kind: r.kind ?? 'cloud',
-      cloudId: r.cloudId,
-      videoUrl: r.videoUrl ?? null,
-      imageUrl: r.imageUrl ?? null,
-      previewUrl: r.previewUrl ?? null,
-      description: r.description ?? null,
-      authorized: r.authorized,
-      status: r.status,
-      createdAt: r.createdAt,
-    }));
+    const assetRepo = this.requireMediaAssetRepo();
+    // 两库规则 R4：形象属于用户输入库（library=input, kind=avatar），主体落在 media_assets
+    const assets = await assetRepo.find({
+      where: { userId, library: 'input', kind: 'avatar' },
+      order: { createdAt: 'DESC' },
+    });
+    if (assets.length === 0) return [];
+    const exts = await this.avatarRepo.find({ where: { assetId: In(assets.map((a) => a.id)) } });
+    const extByAssetId = new Map(exts.map((e) => [Number(e.assetId), e]));
+    const out: Array<{
+      id: number;
+      name: string;
+      kind: 'cloud' | 'video' | 'image' | 'avatar';
+      cloudId: string;
+      videoUrl: string | null;
+      imageUrl: string | null;
+      previewUrl: string | null;
+      description: string | null;
+      authorized: boolean;
+      status: string;
+      createdAt: Date;
+    }> = [];
+    for (const asset of assets) {
+      const ext = extByAssetId.get(Number(asset.id));
+      if (!ext) continue;
+      out.push({
+        id: asset.id,
+        name: asset.title,
+        kind: (ext.dhKind ?? 'cloud') as 'cloud' | 'video' | 'image' | 'avatar',
+        cloudId: ext.cloudId,
+        videoUrl: ext.videoUrl ?? null,
+        imageUrl: ext.imageUrl ?? null,
+        previewUrl: ext.previewUrl ?? null,
+        description: asset.description ?? null,
+        authorized: ext.authorized,
+        status: ext.status,
+        createdAt: asset.createdAt,
+      });
+    }
+    return out;
   }
 
   /** 新增形象（cloudId=火山数字人形象 ID） */
@@ -1006,36 +1043,106 @@ export class OralWorkshopService implements OnModuleInit {
     } else if (!dto.cloudId?.trim()) {
       throw new BadRequestException('形象名称与形象 ID 不能为空');
     }
-    const entity = this.dhAssetRepo.create({
-      userId,
+    const cloudId =
+      kind === 'video'
+        ? 'local-video-' + Date.now()
+        : kind === 'image'
+          ? 'heygen-image-' + Date.now()
+          : dto.cloudId!.trim().slice(0, 128);
+    const videoUrl = kind === 'video' ? dto.videoUrl!.trim().slice(0, 512) : null;
+    const imageUrl = kind === 'image' ? dto.imageUrl!.trim().slice(0, 512) : null;
+    const saved = await this.createAvatarAsset(userId, {
       name: dto.name.trim().slice(0, 128),
       kind,
-      cloudId: kind === 'video' ? 'local-video-' + Date.now() : kind === 'image' ? 'heygen-image-' + Date.now() : dto.cloudId!.trim().slice(0, 128),
-      videoUrl: kind === 'video' ? dto.videoUrl!.trim().slice(0, 512) : null,
-      imageUrl: kind === 'image' ? dto.imageUrl!.trim().slice(0, 512) : null,
+      cloudId,
+      videoUrl,
+      imageUrl,
       previewUrl: dto.previewUrl?.trim().slice(0, 512) ?? null,
       description: dto.description?.trim().slice(0, 512) ?? null,
-      authorized: true,
-      status: 'ready',
     });
-    const saved = await this.dhAssetRepo.save(entity);
     return {
       id: saved.id,
-      name: saved.name,
-      kind: saved.kind as 'cloud' | 'video' | 'image',
-      cloudId: saved.cloudId,
-      videoUrl: saved.videoUrl ?? null,
-      imageUrl: saved.imageUrl ?? null,
+      name: saved.title,
+      kind,
+      cloudId,
+      videoUrl,
+      imageUrl,
       description: saved.description ?? null,
-      authorized: saved.authorized,
+      authorized: true,
     };
+  }
+
+  /**
+   * 形象落库：主体写 media_assets（library=input, kind=avatar, biz_type=avatar）+ 扩展行 media_asset_avatar。
+   * 两库规则 R1：形象是用户提供的原料，必须落「用户输入库」。
+   */
+  private async createAvatarAsset(
+    userId: number,
+    input: {
+      name: string;
+      kind: 'cloud' | 'video' | 'image' | 'avatar';
+      cloudId: string;
+      videoUrl?: string | null;
+      imageUrl?: string | null;
+      previewUrl?: string | null;
+      description?: string | null;
+    },
+  ): Promise<MediaAssetEntity> {
+    const assetRepo = this.requireMediaAssetRepo();
+    const assetType: MediaAssetType = input.videoUrl ? 'video' : input.imageUrl ? 'image' : 'file';
+    const url =
+      input.videoUrl ||
+      input.imageUrl ||
+      input.previewUrl ||
+      avatarPlaceholderUrl(input.kind, input.cloudId);
+    const asset = assetRepo.create({
+      userId,
+      sourceType: 'manual',
+      sourceId: null,
+      library: 'input',
+      kind: 'avatar',
+      bizType: 'avatar',
+      title: input.name,
+      assetType,
+      url: url.slice(0, 1024),
+      mimeType: null,
+      fileSize: null,
+      tags: ['形象'],
+      description: input.description ?? null,
+      meta: { avatarKind: input.kind, cloudId: input.cloudId, previewUrl: input.previewUrl ?? null },
+      vectorStatus: 'none',
+      archived: false,
+    } as unknown as MediaAssetEntity);
+    const saved = await assetRepo.save(asset);
+    await this.avatarRepo.save(
+      this.avatarRepo.create({
+        assetId: saved.id,
+        dhKind: input.kind,
+        cloudId: input.cloudId,
+        videoUrl: input.videoUrl ?? null,
+        imageUrl: input.imageUrl ?? null,
+        previewUrl: input.previewUrl ?? null,
+        authorized: true,
+        status: 'ready',
+      }),
+    );
+    return saved;
+  }
+
+  /** 素材库仓储必须可用（形象主体已合并至 media_assets） */
+  private requireMediaAssetRepo(): Repository<MediaAssetEntity> {
+    if (!this.mediaAssetRepo) throw new BadRequestException('素材库服务未配置');
+    return this.mediaAssetRepo;
   }
 
   /** 删除形象 */
   async deleteDigitalHuman(userId: number, id: number): Promise<void> {
-    const row = await this.dhAssetRepo.findOne({ where: { id, userId } });
-    if (!row) throw new NotFoundException('形象不存在');
-    await this.dhAssetRepo.remove(row);
+    const assetRepo = this.requireMediaAssetRepo();
+    const asset = await assetRepo.findOne({ where: { id, userId, kind: 'avatar' } });
+    if (!asset) throw new NotFoundException('形象不存在');
+    const ext = await this.avatarRepo.findOne({ where: { assetId: id } });
+    if (ext) await this.avatarRepo.remove(ext);
+    await assetRepo.remove(asset);
   }
 
   /** HeyGen 官方预置形象列表（读管理后台 heygen 配置；未配置返回 configured=false，前端引导配置） */
@@ -1103,27 +1210,24 @@ export class OralWorkshopService implements OnModuleInit {
     const rel = (p: string) => path.relative(uploadsRoot, p).replace(/\\/g, '/');
     const videoUrl = '/uploads/' + rel(videoPath);
     const previewUrl = '/uploads/' + rel(previewPath);
-    const entity = this.dhAssetRepo.create({
-      userId,
+    const cloudId = 'local-video-' + Date.now();
+    const saved = await this.createAvatarAsset(userId, {
       name: (path.parse(file.originalname || '本地视频形象').name || '本地视频形象').slice(0, 128),
       kind: 'video',
-      cloudId: 'local-video-' + Date.now(),
+      cloudId,
       videoUrl,
       previewUrl,
       description: '本地上传视频形象（转码 MP4，可用于多镜头/直接出片）',
-      authorized: true,
-      status: 'ready',
     });
-    const saved = await this.dhAssetRepo.save(entity);
     return {
       id: saved.id,
-      name: saved.name,
+      name: saved.title,
       kind: 'video',
-      cloudId: saved.cloudId,
-      videoUrl: saved.videoUrl!,
-      previewUrl: saved.previewUrl!,
+      cloudId,
+      videoUrl,
+      previewUrl,
       description: saved.description ?? null,
-      authorized: saved.authorized,
+      authorized: true,
     };
   }
 
@@ -1215,7 +1319,12 @@ export class OralWorkshopService implements OnModuleInit {
       let matched: Array<{ materialId: number; name: string; url: string; type: string; score: number }> = [];
       if (this.materialSearch && keyword.trim()) {
         try {
-          const hits = await this.materialSearch.search(userId, { q: keyword, topK: 3 });
+          // 两库规则 R4：画中画建议只能从「用户输入库」取材（不得取生成物，防自我循环）
+          const hits = await this.materialSearch.search(userId, {
+            q: keyword,
+            library: 'input',
+            topK: 3,
+          });
           matched = hits.map((h) => ({
             materialId: Number(h.asset.id),
             name: h.asset.title,
@@ -1322,6 +1431,9 @@ export class OralWorkshopService implements OnModuleInit {
       userId,
       bizType: 'ip_archive',
       sourceType: 'manual',
+      // 两库口径：IP 档案 = 用户输入库·IP 档案（ip_archive）
+      library: 'input',
+      kind: 'ip_archive',
       title: (titles[0] || target).slice(0, 255),
       assetType: 'file',
       url: target.slice(0, 512),

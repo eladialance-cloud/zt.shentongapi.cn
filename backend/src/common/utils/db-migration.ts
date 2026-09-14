@@ -2,6 +2,8 @@ import { Logger } from '@nestjs/common';
 import { DataSource, QueryRunner } from 'typeorm';
 import * as fs from 'fs';
 import * as path from 'path';
+import { resolveAssetOrigin } from '../../modules/media-assets/library-kind';
+import type { MediaAssetType } from '../../modules/media-assets/entities/media-asset.entity';
 
 /**
  * 启动时自动迁移检查
@@ -1403,38 +1405,22 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
     // 口播工坊：voice_assets 已于 P3 合并至 media_assets（biz_type='voice_asset'），不再建表
 
 
-    // 口播工坊：digital_human_assets 表（我的数字人形象，对标参考软件形象库/授权状态）
+    // 口播工坊：形象（digital_human_assets）已于 P4 合并进 media_assets
+    // （library='input', kind='avatar', biz_type='avatar'）+ 1:1 扩展表 media_asset_avatar，不再新建独立形象表。
+    // 这里只做一件事：旧表仍存在时补齐 HeyGen 图片列，供随后的合并迁移读取（合并后旧表归档为 *_archived，本块自然跳过）。
     const [dhAssetsTable] = await queryRunner.query(
       `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'digital_human_assets'`
     );
-    if (!dhAssetsTable) {
-      await queryRunner.query(`CREATE TABLE IF NOT EXISTS digital_human_assets (
-        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-        user_id BIGINT NOT NULL,
-        name VARCHAR(128) NOT NULL,
-        cloud_id VARCHAR(128) NOT NULL,
-        kind VARCHAR(8) NOT NULL DEFAULT 'cloud',
-        video_url VARCHAR(512),
-        image_url VARCHAR(512),
-        preview_url VARCHAR(512),
-        authorized TINYINT(1) NOT NULL DEFAULT 1,
-        status VARCHAR(16) NOT NULL DEFAULT 'ready',
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        KEY idx_dha_user_id (user_id)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='口播工坊-我的数字人形象'`);
-      logger.log('Created table: digital_human_assets');
-    }
-
-    // 既有表加列（幂等）：digital_human_assets 支持 HeyGen（image_url 列）
-    const [dhAssetsImageUrlCol] = await queryRunner.query(
-      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'digital_human_assets' AND COLUMN_NAME = 'image_url'`
-    );
-    if (!dhAssetsImageUrlCol) {
-      await queryRunner.query(`ALTER TABLE digital_human_assets ADD COLUMN image_url VARCHAR(512) DEFAULT NULL COMMENT 'HeyGen talking photo 图片 URL(kind=image)' AFTER preview_url`);
-      logger.log('Added column: digital_human_assets.image_url');
+    if (dhAssetsTable) {
+      const [dhAssetsImageUrlCol] = await queryRunner.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'digital_human_assets' AND COLUMN_NAME = 'image_url'`
+      );
+      if (!dhAssetsImageUrlCol) {
+        await queryRunner.query(`ALTER TABLE digital_human_assets ADD COLUMN image_url VARCHAR(512) DEFAULT NULL COMMENT 'HeyGen talking photo 图片 URL(kind=image)' AFTER preview_url`);
+        logger.log('Added column: digital_human_assets.image_url');
+      }
     }
 
     // 既有表加列（幂等）：task_team_tasks 关联 create_briefs 需求单
@@ -1694,6 +1680,50 @@ export async function runStartupMigrations(dataSource: DataSource): Promise<void
       logger.log('Added column: media_assets.meta');
     }
 
+    // ===== 素材两库（用户输入库 / 生成素材库）：library + kind 两轴 =====
+    // (a) source_type 原为 ENUM('task','media_job','manual')，放宽为 VARCHAR(32) 以容纳 agent(官署)/flow(业务流)
+    const [maSourceCol] = await queryRunner.query(
+      `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'media_assets' AND COLUMN_NAME = 'source_type'`
+    );
+    if (maSourceCol && /^enum/i.test(String(maSourceCol.COLUMN_TYPE))) {
+      await queryRunner.query(
+        `ALTER TABLE media_assets MODIFY COLUMN source_type VARCHAR(32) NOT NULL DEFAULT 'manual'
+         COMMENT '素材来源: task(任务输出)/media_job(媒体生成)/manual(手动上传)/agent(官署产出)/flow(业务流)'`
+      );
+      logger.log('Widened column: media_assets.source_type → VARCHAR(32)');
+    }
+    // (b) 两轴字段 + 索引（幂等）
+    await ensureColumn(
+      'media_assets',
+      'library',
+      "VARCHAR(8) NOT NULL DEFAULT 'input' COMMENT '素材库: input=用户输入库(原料) / output=生成素材库(成品)'"
+    );
+    await ensureColumn(
+      'media_assets',
+      'kind',
+      "VARCHAR(16) NOT NULL DEFAULT 'file' COMMENT '业务类别: voice/avatar/ip_archive/image/video/audio/file(输入库) | copy/image/video/audio(生成库)'"
+    );
+    await ensureIndex('media_assets', 'idx_media_assets_library', 'library');
+    await ensureIndex('media_assets', 'idx_media_assets_kind', 'kind');
+    // (c) 历史回填：与运行时登记共用 resolveAssetOrigin（判定口径唯一，幂等可重跑）
+    await backfillMediaAssetLibraries(queryRunner, logger);
+
+    // ===== 形象合并（P4）：digital_human_assets → media_assets(输入库·avatar) + media_asset_avatar 扩展表 =====
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS media_asset_avatar (
+      asset_id BIGINT NOT NULL,
+      dh_kind VARCHAR(8) NOT NULL DEFAULT 'cloud' COMMENT 'cloud=火山数字人 / video=本地视频 / image=HeyGen图片 / avatar=HeyGen预置',
+      cloud_id VARCHAR(128) NOT NULL,
+      video_url VARCHAR(512) DEFAULT NULL,
+      image_url VARCHAR(512) DEFAULT NULL,
+      preview_url VARCHAR(512) DEFAULT NULL,
+      authorized TINYINT(1) NOT NULL DEFAULT 1,
+      status VARCHAR(16) NOT NULL DEFAULT 'ready',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (asset_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='形象扩展表（1:1 扩展 media_assets.kind=avatar）'`);
+    await mergeDigitalHumanAssetsToMediaAssets(queryRunner, logger);
+
 
     // 套餐管理：membership_plans 补齐实体字段列（description/credits/duration_days/features）
     // 历史表由 init.sql 建表（name/price/level/period/benefits/is_active），实体字段需补齐；幂等补列
@@ -1776,6 +1806,256 @@ export async function runSqlMigrations(queryRunner: QueryRunner, logger: Logger)
       break;
     }
   }
+}
+
+/** 回填用的最小 QueryRunner 接口（便于单测注入 fake） */
+export interface MigrationQueryRunner {
+  query: (sql: string, params?: unknown[]) => Promise<unknown>;
+}
+
+/** 回填用的最小 Logger 接口 */
+export interface MigrationLogger {
+  log: (message: string) => void;
+  warn: (message: string) => void;
+}
+
+/** 归一化 tags（mysql2 对 JSON 列可能返回数组、JSON 字符串或 null） */
+function normalizeMigrationTags(tags: unknown): string[] | null {
+  if (Array.isArray(tags)) return tags.filter((t): t is string => typeof t === 'string');
+  if (typeof tags === 'string' && tags.trim()) {
+    try {
+      const parsed = JSON.parse(tags) as unknown;
+      if (Array.isArray(parsed)) return parsed.filter((t): t is string => typeof t === 'string');
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * 素材两库历史回填（幂等）：
+ *  - 用运行时同一判定函数 resolveAssetOrigin 推导 library / kind / source_type，保证口径唯一；
+ *  - 仅对不一致的行写回（例如历史「官署产出被记成 manual」的行会修正为 output + agent）；
+ *  - 可重复执行：同一行第二次推导结果相同，不再产生写入。
+ * @returns 实际写回的行数
+ */
+export async function backfillMediaAssetLibraries(
+  queryRunner: MigrationQueryRunner,
+  logger: MigrationLogger,
+): Promise<number> {
+  const rows = (await queryRunner.query(
+    `SELECT id, biz_type AS bizType, source_type AS sourceType, asset_type AS assetType, url, tags, library, kind
+       FROM media_assets`,
+  )) as Array<{
+    id: number;
+    bizType: string | null;
+    sourceType: string | null;
+    assetType: string | null;
+    url: string | null;
+    tags: unknown;
+    library: string | null;
+    kind: string | null;
+  }>;
+  if (!Array.isArray(rows) || rows.length === 0) return 0;
+
+  let updated = 0;
+  for (const row of rows) {
+    const resolved = resolveAssetOrigin({
+      bizType: row.bizType,
+      sourceType: row.sourceType,
+      assetType: (row.assetType ?? 'file') as MediaAssetType,
+      url: row.url,
+      tags: normalizeMigrationTags(row.tags),
+    });
+    if (
+      row.library === resolved.library &&
+      row.kind === resolved.kind &&
+      row.sourceType === resolved.sourceType
+    ) {
+      continue;
+    }
+    await queryRunner.query(
+      `UPDATE media_assets SET library = ?, kind = ?, source_type = ? WHERE id = ?`,
+      [resolved.library, resolved.kind, resolved.sourceType, row.id],
+    );
+    updated += 1;
+  }
+  if (updated > 0) {
+    logger.log(`Backfilled media_assets 两库归属: ${updated}/${rows.length} 行`);
+  }
+  return updated;
+}
+
+/** 形象合并结果 */
+export interface AvatarMergeResult {
+  /** 新并入 media_assets 的形象数 */
+  migrated: number;
+  /** 之前已并入、本次跳过的形象数 */
+  skipped: number;
+  /** 重映射到新 assetId 的任务数 */
+  remappedJobs: number;
+}
+
+/** 合法的形象类型值 */
+const AVATAR_KINDS: readonly string[] = ['cloud', 'video', 'image', 'avatar'];
+
+/**
+ * 形象合并（幂等）：digital_human_assets → media_assets(library='input', kind='avatar', biz_type='avatar')
+ * + media_asset_avatar 扩展行，并把 oral_workshop_jobs.digital_human_id 从旧 id 重映射到新 assetId。
+ * 全部完成后旧表 RENAME 为 digital_human_assets_archived（保留可回溯，代码不再引用）。
+ * 幂等键：media_assets.meta.avatarOldId = 旧 id。
+ */
+export async function mergeDigitalHumanAssetsToMediaAssets(
+  queryRunner: MigrationQueryRunner,
+  logger: MigrationLogger,
+): Promise<AvatarMergeResult> {
+  const empty: AvatarMergeResult = { migrated: 0, skipped: 0, remappedJobs: 0 };
+  const tables = (await queryRunner.query(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'digital_human_assets'`,
+  )) as Array<{ TABLE_NAME: string }>;
+  if (!Array.isArray(tables) || tables.length === 0) return empty;
+
+  // 旧表跨多个版本演进，按实际存在的列取数（缺列用兜底值），避免在部分安装上整段失败
+  const cols = (await queryRunner.query(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'digital_human_assets'`,
+  )) as Array<{ COLUMN_NAME: string }>;
+  const has = (name: string) => Array.isArray(cols) && cols.some((c) => c.COLUMN_NAME === name);
+  const pick = (name: string, fallback: string) => (has(name) ? name : fallback);
+
+  const rows = (await queryRunner.query(
+    `SELECT id, user_id AS userId, name, ${pick('kind', "'cloud'")} AS kind,
+            cloud_id AS cloudId, ${pick('video_url', 'NULL')} AS videoUrl,
+            ${pick('image_url', 'NULL')} AS imageUrl, ${pick('preview_url', 'NULL')} AS previewUrl,
+            authorized, status, ${pick('description', 'NULL')} AS description,
+            created_at AS createdAt
+       FROM digital_human_assets`,
+  )) as Array<{
+    id: number;
+    userId: number;
+    name: string | null;
+    kind: string | null;
+    cloudId: string | null;
+    videoUrl: string | null;
+    imageUrl: string | null;
+    previewUrl: string | null;
+    authorized: number | boolean | null;
+    status: string | null;
+    description: string | null;
+    createdAt: Date | null;
+  }>;
+
+  const idMap = new Map<number, number>();
+  let migrated = 0;
+  let skipped = 0;
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const existing = (await queryRunner.query(
+      `SELECT id FROM media_assets
+        WHERE biz_type = 'avatar'
+          AND JSON_UNQUOTE(JSON_EXTRACT(meta, '$.avatarOldId')) = ?
+        LIMIT 1`,
+      [String(row.id)],
+    )) as Array<{ id: number }>;
+    if (Array.isArray(existing) && existing.length > 0) {
+      idMap.set(Number(row.id), Number(existing[0].id));
+      skipped += 1;
+      continue;
+    }
+
+    const kind = AVATAR_KINDS.includes(String(row.kind ?? '')) ? String(row.kind) : 'cloud';
+    const videoUrl = row.videoUrl ? String(row.videoUrl).slice(0, 512) : null;
+    const imageUrl = row.imageUrl ? String(row.imageUrl).slice(0, 512) : null;
+    const previewUrl = row.previewUrl ? String(row.previewUrl).slice(0, 512) : null;
+    const cloudId = String(row.cloudId ?? '').slice(0, 128) || `avatar-${row.id}`;
+    const assetType = videoUrl ? 'video' : imageUrl ? 'image' : 'file';
+    const url = (videoUrl || imageUrl || previewUrl || `avatar://${kind}/${cloudId}`).slice(0, 1024);
+    const createdAt = row.createdAt ?? new Date();
+
+    const insert = (await queryRunner.query(
+      `INSERT INTO media_assets
+         (user_id, source_type, source_id, title, asset_type, url, mime_type, file_size, tags,
+          description, vector_status, meta, biz_type, library, kind, archived, created_at, updated_at)
+       VALUES (?, 'manual', NULL, ?, ?, ?, NULL, NULL, ?, ?, 'none', ?, 'avatar', 'input', 'avatar', 0, ?, ?)`,
+      [
+        row.userId,
+        String(row.name ?? '未命名形象').slice(0, 255),
+        assetType,
+        url,
+        JSON.stringify(['形象']),
+        row.description ?? null,
+        JSON.stringify({ avatarOldId: row.id, avatarKind: kind, cloudId, previewUrl }),
+        createdAt,
+        createdAt,
+      ],
+    )) as { insertId?: number } | Array<{ insertId?: number }>;
+    const newId = Number(Array.isArray(insert) ? insert[0]?.insertId : insert?.insertId);
+    if (!newId || Number.isNaN(newId)) {
+      logger.warn(`形象合并跳过：digital_human_assets.id=${row.id} 未取得新 assetId`);
+      continue;
+    }
+    await queryRunner.query(
+      `INSERT INTO media_asset_avatar
+         (asset_id, dh_kind, cloud_id, video_url, image_url, preview_url, authorized, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        newId,
+        kind,
+        cloudId,
+        videoUrl,
+        imageUrl,
+        previewUrl,
+        row.authorized === false || row.authorized === 0 ? 0 : 1,
+        String(row.status ?? 'ready').slice(0, 16),
+        createdAt,
+      ],
+    );
+    idMap.set(Number(row.id), newId);
+    migrated += 1;
+  }
+
+  // 任务引用重映射（单条 CASE 语句，避免边改边匹配；新旧 id 冲突时跳过并告警）
+  let remappedJobs = 0;
+  const oldIds = [...idMap.keys()];
+  const collisions = oldIds.filter((oldId) => idMap.has(idMap.get(oldId) as number));
+  if (oldIds.length > 0 && collisions.length === 0) {
+    const caseParams: unknown[] = [];
+    const cases = oldIds
+      .map((oldId) => {
+        caseParams.push(oldId, idMap.get(oldId));
+        return 'WHEN ? THEN ?';
+      })
+      .join(' ');
+    const inList = oldIds.map(() => '?').join(',');
+    const res = (await queryRunner.query(
+      `UPDATE oral_workshop_jobs SET digital_human_id = CASE digital_human_id ${cases} ELSE digital_human_id END
+        WHERE digital_human_id IN (${inList})`,
+      [...caseParams, ...oldIds],
+    )) as { affectedRows?: number } | undefined;
+    remappedJobs = Number(res?.affectedRows ?? 0);
+    if (Number.isNaN(remappedJobs)) remappedJobs = 0;
+  } else if (collisions.length > 0) {
+    logger.warn(
+      `形象引用重映射已跳过（新旧 id 冲突: ${collisions.join(',')}），请人工核对 oral_workshop_jobs.digital_human_id`,
+    );
+  }
+
+  if (migrated > 0 || skipped > 0) {
+    logger.log(
+      `Merged digital_human_assets → media_assets(kind=avatar): 新增 ${migrated}，已存在 ${skipped}，重映射任务 ${remappedJobs}`,
+    );
+  }
+
+  const archived = (await queryRunner.query(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'digital_human_assets_archived'`,
+  )) as Array<{ TABLE_NAME: string }>;
+  if (!Array.isArray(archived) || archived.length === 0) {
+    await queryRunner.query(`RENAME TABLE digital_human_assets TO digital_human_assets_archived`);
+    logger.log('Archived table: digital_human_assets → digital_human_assets_archived');
+  }
+  return { migrated, skipped, remappedJobs };
 }
 
 /** 简易 SQL 语句拆分：去掉整行注释，按行尾分号切分 */

@@ -9,8 +9,15 @@ import {
 } from "@ant-design/icons";
 import { createMediaAsset, listMediaAssets, searchMediaAssets, updateMediaAsset, vectorizeMediaAsset } from "@/api/media-asset-api";
 import type { MediaAsset, MediaAssetType } from "@/api/media-asset-api";
-import { paginateFiltered } from "./asset-group";
-import type { AssetTab } from "./asset-group";
+import {
+  ASSET_LIBRARIES,
+  KIND_LABELS,
+  LIBRARY_LABELS,
+  LIBRARY_TABS,
+  libraryTabQuery,
+  normalizeLibraryTab,
+} from "./library-tabs";
+import type { AssetLibrary, AssetLibraryTab } from "./library-tabs";
 import styles from "./styles.module.css";
 
 const TYPE_OPTIONS = [
@@ -18,15 +25,6 @@ const TYPE_OPTIONS = [
   { value: "video", label: "视频" },
   { value: "audio", label: "音频" },
   { value: "file", label: "文件" },
-];
-
-/** 类型 Tab（对齐原型：全部/图片/文案/视频/文档；音频仅出现在「全部」） */
-const ASSET_TABS: { key: AssetTab; label: string }[] = [
-  { key: "all", label: "全部" },
-  { key: "image", label: "图片" },
-  { key: "text", label: "文案" },
-  { key: "video", label: "视频" },
-  { key: "document", label: "文档" },
 ];
 
 /** usage 状态标签映射：使用中（蓝）/ 已选（橙）/ 未用（默认灰） */
@@ -44,9 +42,6 @@ const TYPE_LABELS: Record<MediaAssetType, string> = {
 };
 
 const PAGE_SIZE = 12;
-/** 文案/文档 Tab 翻页聚合参数：每页 100 条，最多 20 页（2000 条）；超出部分截断 */
-const AGGREGATE_PAGE_SIZE = 100;
-const MAX_AGGREGATE_PAGES = 20;
 
 function formatSize(bytes?: number | null): string {
   if (bytes == null) return "-";
@@ -84,7 +79,9 @@ export default function AssetLibraryTab() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const [tab, setTab] = useState<AssetTab>("all");
+  /** 一级 Tab：素材库（输入库 / 生成库） */
+  const [library, setLibrary] = useState<AssetLibrary>("input");
+  const [tab, setTab] = useState<AssetLibraryTab>("all");
   const [showArchived, setShowArchived] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [detail, setDetail] = useState<MediaAsset | null>(null);
@@ -98,34 +95,20 @@ export default function AssetLibraryTab() {
   /** 请求序号守卫：快速切换 Tab 时丢弃过期请求的结果 */
   const seqRef = useRef(0);
 
-  const load = useCallback(async (targetPage = 1, currentTab: AssetTab = "all", archived = false) => {
-    const seq = ++seqRef.current;
-    setLoading(true);
-    try {
-      if (currentTab === "text" || currentTab === "document") {
-        // 文案/文档按 mimeType 前端分组：翻页聚合拉取全部 type=file 素材后本地过滤分页
-        // （防御上限 MAX_AGGREGATE_PAGES 页 = 2000 条，超出截断，total 以实际取到的条数为准；
-        //   全部/图片/视频 Tab 仍走后端 type 过滤分页，不走此分支）
-        let all: MediaAsset[] = [];
-        for (let p = 1; p <= MAX_AGGREGATE_PAGES; p++) {
-          const res = await listMediaAssets({
-            type: "file",
-            archived,
-            page: p,
-            pageSize: AGGREGATE_PAGE_SIZE,
-          });
-          all = all.concat(res.list ?? []);
-          if (all.length >= (res.total ?? 0)) break;
-        }
-        if (seq !== seqRef.current) return; // 过期请求：丢弃结果
-        const paged = paginateFiltered(all, currentTab, targetPage, PAGE_SIZE);
-        setAssets(paged.list);
-        setTotal(paged.total);
-      } else {
-        const serverType: MediaAssetType | undefined =
-          currentTab === "all" ? undefined : currentTab === "image" || currentTab === "video" ? currentTab : undefined;
+  const load = useCallback(
+    async (
+      targetPage = 1,
+      currentLibrary: AssetLibrary = "input",
+      currentTab: AssetLibraryTab = "all",
+      archived = false,
+    ) => {
+      const seq = ++seqRef.current;
+      setLoading(true);
+      try {
+        // 两库口径统一由 libraryTabQuery 映射（kind 优先）：文案=kind:copy、文档=type:file+kind:file，
+        // 不再需要前端翻页聚合 2000 条再本地过滤
         const res = await listMediaAssets({
-          type: serverType,
+          ...libraryTabQuery(currentLibrary, currentTab),
           archived,
           page: targetPage,
           pageSize: PAGE_SIZE,
@@ -133,19 +116,30 @@ export default function AssetLibraryTab() {
         if (seq !== seqRef.current) return; // 过期请求：丢弃结果
         setAssets(res.list);
         setTotal(res.total);
+        setPage(targetPage);
+      } catch (err) {
+        if (seq !== seqRef.current) return; // 过期请求：不弹错误
+        message.error("素材加载失败: " + (err as Error).message);
+        setAssets([]);
+        setTotal(0);
+      } finally {
+        if (seq === seqRef.current) setLoading(false);
       }
-      setPage(targetPage);
-    } catch (err) {
-      if (seq !== seqRef.current) return; // 过期请求：不弹错误
-      message.error("素材加载失败: " + (err as Error).message);
-      setAssets([]);
-      setTotal(0);
-    } finally {
-      if (seq === seqRef.current) setLoading(false);
-    }
-  }, []);
+    },
+    [],
+  );
 
-  useEffect(() => { void load(1, tab, showArchived); }, [load, tab, showArchived]);
+  useEffect(() => { void load(1, library, tab, showArchived); }, [load, library, tab, showArchived]);
+
+  /** 切库：把 Tab 归一到新库合法值，并清空按库的检索/筛选状态 */
+  const handleLibraryChange = (key: string) => {
+    const next = key as AssetLibrary;
+    setLibrary(next);
+    setTab((prev) => normalizeLibraryTab(next, prev));
+    setKeyword("");
+    setSearchMode(false);
+    setSearchResults([]);
+  };
 
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
@@ -159,7 +153,7 @@ export default function AssetLibraryTab() {
       await updateMediaAsset(asset.id, { archived: !asset.archived });
       message.success(asset.archived ? "已恢复" : "已归档");
       if (detail?.id === asset.id) setDetail(null);
-      void load(page, tab, showArchived);
+      void load(page, library, tab, showArchived);
     } catch (err) {
       message.error("操作失败: " + (err as Error).message);
     } finally {
@@ -182,7 +176,7 @@ export default function AssetLibraryTab() {
       message.success("素材已登记");
       setCreateOpen(false);
       form.resetFields();
-      void load(1, tab, showArchived);
+      void load(1, library, tab, showArchived);
     } catch (err) {
       message.error("登记失败: " + (err as Error).message);
     } finally {
@@ -201,7 +195,8 @@ export default function AssetLibraryTab() {
     const seq = ++searchSeqRef.current;
     setSearching(true);
     try {
-      const res = await searchMediaAssets({ q: kw, topK: 30 });
+      // 检索范围跟随当前库（两库规则 R4：读取必须声明 library）
+      const res = await searchMediaAssets({ q: kw, library, topK: 30 });
       if (seq !== searchSeqRef.current) return; // 旧响应不覆盖新结果
       setSearchResults(res);
       setSearchMode(true);
@@ -270,14 +265,26 @@ export default function AssetLibraryTab() {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12 }}>
-        <Button icon={<ReloadOutlined />} onClick={() => void load(page, tab, showArchived)}>刷新</Button>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setCreateOpen(true); }}>登记素材</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => void load(page, library, tab, showArchived)}>刷新</Button>
+        {library === "input" && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setCreateOpen(true); }}>上传素材</Button>
+        )}
       </div>
       <Card className={styles.filterCard} bordered={false}>
         <Tabs
+          activeKey={library}
+          onChange={handleLibraryChange}
+          items={ASSET_LIBRARIES.map((l) => ({ key: l.key, label: l.label }))}
+          style={{ marginBottom: 0 }}
+        />
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 8, fontSize: 12 }}>
+          {ASSET_LIBRARIES.find((l) => l.key === library)?.hint}
+        </Typography.Paragraph>
+        <Tabs
           activeKey={tab}
-          onChange={(k) => setTab(k as AssetTab)}
-          items={ASSET_TABS.map((t) => ({ key: t.key, label: t.label }))}
+          onChange={(k) => setTab(k as AssetLibraryTab)}
+          items={LIBRARY_TABS[library].map((t) => ({ key: t.key, label: t.label }))}
+          size="small"
           style={{ marginBottom: 4 }}
         />
         <Space wrap size={12}>
@@ -323,6 +330,9 @@ export default function AssetLibraryTab() {
                     <Tag color={asset.assetType === "image" ? "blue" : asset.assetType === "video" ? "purple" : "default"}>
                       {TYPE_LABELS[asset.assetType] || asset.assetType}
                     </Tag>
+                    {asset.kind && KIND_LABELS[asset.kind] && asset.kind !== asset.assetType && (
+                      <Tag color="geekblue">{KIND_LABELS[asset.kind]}</Tag>
+                    )}
                     {score > 0 && <Tag color="green">相关度 {(score * 100).toFixed(0)}%</Tag>}
                     {asset.vectorStatus === "ready" && <Tag color="cyan">已索引</Tag>}
                     {asset.archived && <Tag color="orange">已归档</Tag>}
@@ -352,6 +362,9 @@ export default function AssetLibraryTab() {
                     <Tag color={asset.assetType === "image" ? "blue" : asset.assetType === "video" ? "purple" : "default"}>
                       {TYPE_LABELS[asset.assetType] || asset.assetType}
                     </Tag>
+                    {asset.kind && KIND_LABELS[asset.kind] && asset.kind !== asset.assetType && (
+                      <Tag color="geekblue">{KIND_LABELS[asset.kind]}</Tag>
+                    )}
                     <Tag color={USAGE_META[asset.usage ?? "unused"]?.color}>
                       {USAGE_META[asset.usage ?? "unused"]?.label ?? "未用"}
                     </Tag>
@@ -366,7 +379,7 @@ export default function AssetLibraryTab() {
 
       {!searchMode && total > PAGE_SIZE && (
         <div className={styles.pager}>
-          <Pagination current={page} total={total} pageSize={PAGE_SIZE} showSizeChanger={false} onChange={(p) => void load(p, tab, showArchived)} />
+          <Pagination current={page} total={total} pageSize={PAGE_SIZE} showSizeChanger={false} onChange={(p) => void load(p, library, tab, showArchived)} />
         </div>
       )}
 
@@ -399,6 +412,12 @@ export default function AssetLibraryTab() {
             <Descriptions column={1} size="small" bordered style={{ marginTop: 12 }}>
               <Descriptions.Item label="标题">{detail.title}</Descriptions.Item>
               <Descriptions.Item label="类型">{TYPE_LABELS[detail.assetType] || detail.assetType}</Descriptions.Item>
+              <Descriptions.Item label="素材库">
+                {LIBRARY_LABELS[(detail.library ?? "input") as AssetLibrary]}
+              </Descriptions.Item>
+              <Descriptions.Item label="类别">
+                {KIND_LABELS[detail.kind ?? ""] ?? TYPE_LABELS[detail.assetType] ?? detail.assetType}
+              </Descriptions.Item>
               <Descriptions.Item label="使用状态">
                 <Tag color={USAGE_META[detail.usage ?? "unused"]?.color}>
                   {USAGE_META[detail.usage ?? "unused"]?.label ?? "未用"}
@@ -422,7 +441,7 @@ export default function AssetLibraryTab() {
       </Modal>
 
       <Modal
-        title="登记素材"
+        title="上传素材（存入用户输入库）"
         open={createOpen}
         onOk={handleCreate}
         onCancel={() => { setCreateOpen(false); form.resetFields(); }}

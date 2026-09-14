@@ -6,8 +6,13 @@
  */
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, Like, FindOptionsWhere } from 'typeorm';
+import { Repository, In, Not, Like, FindOptionsWhere } from 'typeorm';
 import { MediaAssetEntity, MediaAssetType } from '../entities/media-asset.entity';
+import {
+  BUSINESS_INPUT_KINDS,
+  type MediaAssetKind,
+  type MediaAssetLibrary,
+} from '../library-kind';
 import { QdrantService } from '../../../common/services/qdrant.service';
 import { SystemLlmService } from '../../oral-workshop/system-llm.service';
 
@@ -64,6 +69,9 @@ export class MaterialSearchService {
             userId: Number(asset.userId),
             assetId: asset.id,
             assetType: asset.assetType,
+            // 两库检索过滤依据（存量点缺这两字段时按 LIKE 降级兜底）
+            library: asset.library,
+            kind: asset.kind,
             title: asset.title,
           },
         },
@@ -79,12 +87,20 @@ export class MaterialSearchService {
   /** 语义检索：Qdrant 优先，失败降级 MySQL LIKE（与知识库引擎降级策略一致） */
   async search(
     userId: number,
-    dto: { q: string; type?: MediaAssetType; topK?: number },
+    dto: {
+      q: string;
+      type?: MediaAssetType;
+      library?: MediaAssetLibrary;
+      kind?: MediaAssetKind;
+      topK?: number;
+    },
   ): Promise<MaterialSearchResult[]> {
     const q = dto.q?.trim();
     if (!q) throw new BadRequestException('搜索内容不能为空');
     const topK = Math.min(dto.topK ?? 10, 50);
     const typeFilter = dto.type;
+    const libraryFilter = dto.library;
+    const kindFilter = dto.kind;
 
     try {
       const vectors = await this.llm.embed([q]);
@@ -92,6 +108,8 @@ export class MaterialSearchService {
         { key: 'userId', match: { value: Number(userId) } },
       ];
       if (typeFilter) must.push({ key: 'assetType', match: { value: typeFilter } });
+      if (libraryFilter) must.push({ key: 'library', match: { value: libraryFilter } });
+      if (kindFilter) must.push({ key: 'kind', match: { value: kindFilter } });
       const hits = await this.qdrant.search(MATERIAL_COLLECTION, vectors[0], topK, { must });
       if (hits.length > 0) {
         const ids = hits.map((h) => Number(h.id));
@@ -110,12 +128,16 @@ export class MaterialSearchService {
     const escapedQ = q.replace(/[\\%_]/g, (m) => '\\' + m);
     const like = Like('%' + escapedQ + '%');
     const conditions: FindOptionsWhere<MediaAssetEntity>[] = [
-      { userId, bizType: 'media', title: like },
-      { userId, bizType: 'media', description: like },
+      { userId, title: like },
+      { userId, description: like },
     ];
-    if (typeFilter) {
-      conditions.forEach((c) => (c.assetType = typeFilter));
-    }
+    // 两库口径与 list() 一致：显式传 library 按其过滤，未传则排除声音/形象/IP 档案
+    conditions.forEach((c) => {
+      if (libraryFilter) c.library = libraryFilter;
+      else c.kind = Not(In([...BUSINESS_INPUT_KINDS]));
+      if (kindFilter) c.kind = kindFilter;
+      if (typeFilter) c.assetType = typeFilter;
+    });
     const rows = await this.assetRepo.find({
       where: conditions,
       take: topK,

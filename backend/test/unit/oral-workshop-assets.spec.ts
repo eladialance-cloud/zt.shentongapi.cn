@@ -7,19 +7,25 @@ import { OralWorkshopExecutor } from '../../src/modules/oral-workshop/oral-works
 import type { OralWorkshopLlmService } from '../../src/modules/oral-workshop/llm';
 
 // ===== fakes =====
+/** where 值匹配：支持 TypeORM FindOperator（In），其余按全等 */
+function matchVal(actual: any, want: any): boolean {
+  if (want && typeof want === 'object' && (want as any)._type === 'in') {
+    return ((want as any)._value as any[]).includes(actual);
+  }
+  return actual === want;
+}
+
+function matchRow(row: any, where: any): boolean {
+  return Object.keys(where ?? {}).every((k) => matchVal(row?.[k], where[k]));
+}
+
 function makeRepo<T extends { id?: number }>(seed: T[] = []) {
   const rows: T[] = [...seed];
   let nextId = seed.length + 1;
   return {
     rows,
-    find: async (opts: any) => {
-      const w = opts?.where ?? {};
-      return rows.filter((r: any) => Object.keys(w).every((k) => (r as any)[k] === w[k]));
-    },
-    findOne: async (opts: any) => {
-      const w = opts?.where ?? {};
-      return rows.find((r: any) => Object.keys(w).every((k) => (r as any)[k] === w[k])) ?? null;
-    },
+    find: async (opts: any) => rows.filter((r: any) => matchRow(r, opts?.where ?? {})),
+    findOne: async (opts: any) => rows.find((r: any) => matchRow(r, opts?.where ?? {})) ?? null,
     create: (d: any) => ({ id: nextId++, ...d }),
     save: async (e: any) => {
       const idx = rows.findIndex((r: any) => r.id === e.id);
@@ -136,14 +142,61 @@ describe('OralWorkshopService 声音资产', () => {
   });
 });
 
-describe('OralWorkshopService 数字人形象', () => {
-  it('createDigitalHuman：保存形象（cloudId/authorized=true）', async () => {
-    const { service, dhRepo } = newService();
+describe('OralWorkshopService 数字人形象（两库：media_assets + media_asset_avatar）', () => {
+  it('createDigitalHuman：主体写输入库·avatar，扩展写形象表', async () => {
+    const { service, dhRepo, voiceRepo } = newService();
     const created = await service.createDigitalHuman(7, { name: '主播小美', cloudId: 'dh_001' });
     assert.ok(created.id >= 1);
     assert.equal(created.cloudId, 'dh_001');
     assert.equal(created.authorized, true);
-    assert.equal(dhRepo.rows.length, 1);
+    assert.equal(dhRepo.rows.length, 1); // 扩展行
+    assert.equal(voiceRepo.rows.length, 1); // 素材主体行（media_assets）
+    const asset: any = voiceRepo.rows[0];
+    assert.equal(asset.library, 'input');
+    assert.equal(asset.kind, 'avatar');
+    assert.equal(asset.bizType, 'avatar');
+    // cloud 类形象无可直链媒体文件 → 占位 URL
+    assert.equal(asset.url, 'avatar://cloud/dh_001');
+    assert.equal((dhRepo.rows[0] as any).assetId, created.id);
+    assert.equal((dhRepo.rows[0] as any).dhKind, 'cloud');
+  });
+
+  it('createDigitalHuman：video 形象主体 assetType=video，url=视频直链', async () => {
+    const { service, voiceRepo, dhRepo } = newService();
+    const created = await service.createDigitalHuman(7, {
+      name: '真人视频',
+      kind: 'video',
+      videoUrl: 'https://oss/x/a.mp4',
+    });
+    const asset: any = voiceRepo.rows[0];
+    assert.equal(asset.assetType, 'video');
+    assert.equal(asset.url, 'https://oss/x/a.mp4');
+    assert.equal((dhRepo.rows[0] as any).videoUrl, 'https://oss/x/a.mp4');
+    assert.ok(created.cloudId.startsWith('local-video-'));
+  });
+
+  it('listDigitalHumans：按 media_assets(kind=avatar) 过滤并合并扩展字段', async () => {
+    const { service, voiceRepo, dhRepo } = newService();
+    // 其他 kind / 其他用户的素材不应出现
+    voiceRepo.rows.push({ id: 1, userId: 7, library: 'input', kind: 'avatar', title: 'A', url: 'avatar://cloud/a', createdAt: new Date('2026-08-01') } as any);
+    voiceRepo.rows.push({ id: 2, userId: 7, library: 'input', kind: 'voice', title: '声音', url: 'u', createdAt: new Date('2026-08-02') } as any);
+    voiceRepo.rows.push({ id: 3, userId: 8, library: 'input', kind: 'avatar', title: 'B', url: 'avatar://cloud/b', createdAt: new Date('2026-08-03') } as any);
+    dhRepo.rows.push({ assetId: 1, dhKind: 'cloud', cloudId: 'a', authorized: true, status: 'ready', createdAt: new Date('2026-08-01') } as any);
+    dhRepo.rows.push({ assetId: 3, dhKind: 'cloud', cloudId: 'b', authorized: true, status: 'ready', createdAt: new Date('2026-08-03') } as any);
+    const list = await service.listDigitalHumans(7);
+    assert.equal(list.length, 1);
+    assert.equal(list[0].id, 1);
+    assert.equal(list[0].name, 'A');
+    assert.equal(list[0].cloudId, 'a');
+  });
+
+  it('deleteDigitalHuman：同时删除素材主体与扩展行', async () => {
+    const { service, voiceRepo, dhRepo } = newService();
+    voiceRepo.rows.push({ id: 5, userId: 7, library: 'input', kind: 'avatar', title: 'A', url: 'avatar://cloud/a' } as any);
+    dhRepo.rows.push({ assetId: 5, dhKind: 'cloud', cloudId: 'a', authorized: true, status: 'ready' } as any);
+    await service.deleteDigitalHuman(7, 5);
+    assert.equal(voiceRepo.rows.length, 0);
+    assert.equal(dhRepo.rows.length, 0);
   });
 
   it('deleteDigitalHuman：删除不存在抛 NotFound', async () => {
@@ -187,7 +240,9 @@ describe('OralWorkshopExecutor 资产接线', () => {
   it('digitalHuman：digitalHumanId 指向不存在的形象 → markStepFailed（可读错误，不发起 HTTP）', async () => {
     process.env.VOLCANO_ARK_API_KEY = 'k';
     process.env.VOLCANO_DIGITAL_HUMAN_ENDPOINT = 'https://example.com/dh';
+    // 两库合并后：形象主体在 media_assets(kind=avatar)，扩展在 media_asset_avatar
     const dhAssetRepo = { findOne: async () => null };
+    const mediaAssetRepo = { findOne: async () => null };
     const service: any = {
       nextPendingStepOf: async () => 'digitalHuman',
       parseShots: () => null,
@@ -197,7 +252,14 @@ describe('OralWorkshopExecutor 资产接线', () => {
       markStepFailed: async (_id: number, _step: string, error: string) => { failed = error; },
     };
     let failed = '';
-    const exec = new OralWorkshopExecutor(service, null as unknown as OralWorkshopLlmService, undefined as any, undefined as any, undefined as any, dhAssetRepo as any);
+    const exec = new OralWorkshopExecutor(
+      service,
+      null as unknown as OralWorkshopLlmService,
+      undefined as any,
+      undefined as any,
+      mediaAssetRepo as any,
+      dhAssetRepo as any,
+    );
     await exec.processJob({ id: 1, userId: 7, digitalHumanId: 99 } as any);
     assert.ok(failed.includes('数字人形象不存在'));
   });

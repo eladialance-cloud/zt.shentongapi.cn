@@ -10,18 +10,30 @@ import assert from 'node:assert/strict';
 import { MediaAssetService } from '../../src/modules/media-assets/services/media-asset.service';
 import { MediaAssetEntity } from '../../src/modules/media-assets/entities/media-asset.entity';
 
-/** 最小内存 Repository mock：支持 create/save/findOne/find/findAndCount，find 支持 In 操作符 */
+/** where 值匹配：支持 TypeORM FindOperator（In / Not(In) / Like），其余按全等 */
+function matchValue(actual: any, want: any): boolean {
+  if (want && typeof want === 'object' && typeof want._type === 'string') {
+    if (want._type === 'in') return (want._value as any[]).includes(actual);
+    if (want._type === 'not') return !matchValue(actual, want._value);
+    if (want._type === 'like') {
+      const needle = String(want._value).replace(/%/g, '');
+      return needle ? String(actual ?? '').includes(needle) : true;
+    }
+  }
+  return actual === want;
+}
+
+/** where 全键匹配 */
+function matchWhere(row: any, where: any): boolean {
+  return Object.entries(where ?? {}).every(([k, v]) => matchValue(row?.[k], v));
+}
+
+/** 最小内存 Repository mock：支持 create/save/findOne/find/findAndCount，find 支持 In/Not 操作符 */
 function makeRepo(seed: MediaAssetEntity[] = []) {
   const rows: MediaAssetEntity[] = [...seed];
   let nextId = seed.reduce((max, r) => Math.max(max, r.id ?? 0), 0) + 1;
 
-  const matches = (row: any, where: any) =>
-    Object.entries(where ?? {}).every(([key, value]) => {
-      if (value && typeof value === 'object' && (value as any)._type === 'in') {
-        return (value as any)._value.includes((row as any)[key]);
-      }
-      return (row as any)[key] === value;
-    });
+  const matches = matchWhere;
 
   const sortDesc = (list: MediaAssetEntity[]) =>
     [...list].sort(
@@ -396,6 +408,131 @@ describe('MediaAssetService', () => {
       assert.equal(second.imported, 0);
       assert.equal(second.skipped, 2);
       assert.equal(assetRepo.rows.length, 2);
+    });
+  });
+
+  describe('两库归属（library/kind）', () => {
+    it('用户上传 → 输入库，kind 按物理类型（image→image / file→file）', async () => {
+      const { svc } = makeService();
+      const img = await svc.create(1, { title: '封面', url: 'https://oss/a.png', assetType: 'image' });
+      assert.equal(img.library, 'input');
+      assert.equal(img.kind, 'image');
+      assert.equal(img.sourceType, 'manual');
+      const doc = await svc.create(1, { title: '合同', url: 'https://oss/a.pdf' });
+      assert.equal(doc.library, 'input');
+      assert.equal(doc.kind, 'file');
+    });
+
+    it('官署产出（edict:// 占位 url）→ 生成库·文案 + sourceType=agent', async () => {
+      const { svc } = makeService();
+      const asset = await svc.create(1, {
+        title: '三省六部产出 T-1',
+        url: 'edict://text/T-1',
+        assetType: 'file',
+        tags: ['三省六部', 'T-1'],
+      });
+      assert.equal(asset.library, 'output');
+      assert.equal(asset.kind, 'copy');
+      assert.equal(asset.sourceType, 'agent');
+    });
+
+    it('口播工坊产物标签 → 生成库 + sourceType=media_job', async () => {
+      const { svc } = makeService();
+      const asset = await svc.create(1, {
+        title: '成片视频',
+        url: 'https://oss/final.mp4',
+        assetType: 'video',
+        tags: ['口播工坊'],
+      });
+      assert.equal(asset.library, 'output');
+      assert.equal(asset.kind, 'video');
+      assert.equal(asset.sourceType, 'media_job');
+    });
+
+    it('服务端注入 origin：task → 生成库；voice_asset → 输入库·声音', async () => {
+      const { svc } = makeService();
+      const generated = await svc.create(
+        1,
+        { title: '产出图', url: 'https://oss/g.png', assetType: 'image' },
+        { sourceType: 'task', sourceId: 7 },
+      );
+      assert.deepEqual(
+        [generated.library, generated.kind, generated.sourceType, generated.sourceId],
+        ['output', 'image', 'task', 7],
+      );
+      const voice = await svc.create(
+        1,
+        { title: '我的声音', url: 'https://oss/ref.mp3', assetType: 'audio' },
+        { bizType: 'voice_asset' },
+      );
+      assert.deepEqual([voice.library, voice.kind], ['input', 'voice']);
+    });
+
+    it('list：显式传 library 才返回声音/IP 档案；不传保持旧行为排除它们', async () => {
+      const seed = [
+        makeAsset({ id: 1, library: 'input', kind: 'image' }),
+        makeAsset({ id: 2, library: 'input', kind: 'voice', bizType: 'voice_asset' }),
+        makeAsset({ id: 3, library: 'input', kind: 'ip_archive', bizType: 'ip_archive' }),
+        makeAsset({ id: 4, library: 'output', kind: 'video', sourceType: 'agent' }),
+      ];
+      const { svc } = makeService({ assets: seed });
+      const input = await svc.list(1, { library: 'input' });
+      assert.deepEqual(input.list.map((a) => a.id).sort(), [1, 2, 3]);
+      const output = await svc.list(1, { library: 'output' });
+      assert.deepEqual(output.list.map((a) => a.id), [4]);
+      const legacy = await svc.list(1, {});
+      assert.deepEqual(legacy.list.map((a) => a.id).sort(), [1, 4]);
+    });
+
+    it('list：kind / sourceType 过滤', async () => {
+      const seed = [
+        makeAsset({ id: 1, library: 'output', kind: 'copy', sourceType: 'agent' }),
+        makeAsset({ id: 2, library: 'output', kind: 'video', sourceType: 'media_job' }),
+      ];
+      const { svc } = makeService({ assets: seed });
+      const copy = await svc.list(1, { kind: 'copy' });
+      assert.deepEqual(copy.list.map((a) => a.id), [1]);
+      const agent = await svc.list(1, { sourceType: 'agent' });
+      assert.deepEqual(agent.list.map((a) => a.id), [1]);
+    });
+
+    it('import（task 输出）→ 生成库；文本落 copy', async () => {
+      const { svc } = makeService({
+        tasks: [{ id: 5, userId: 1 }],
+        taskItems: [
+          { id: 51, taskId: 5, outputType: 'image', fileUrl: 'https://oss/i.png', content: '图' },
+          { id: 52, taskId: 5, outputType: 'text', fileUrl: 'https://oss/t.md', content: '文案正文' },
+        ],
+      });
+      const res = await svc.import(1, { taskId: 5 });
+      assert.equal(res.imported, 2);
+      assert.deepEqual(
+        res.list.map((a) => [a.library, a.kind, a.sourceType]),
+        [
+          ['output', 'image', 'task'],
+          ['output', 'copy', 'task'],
+        ],
+      );
+    });
+
+    it('import（media_jobs）→ 生成库', async () => {
+      const { svc } = makeService({
+        jobs: [
+          {
+            id: 9,
+            userId: 1,
+            status: 'done',
+            type: 'video',
+            prompt: '成片',
+            resultUrls: ['https://oss/v.mp4'],
+          },
+        ],
+      });
+      const res = await svc.import(1, { mediaJobId: 9 });
+      assert.deepEqual(
+        res.list.map((a) => [a.library, a.kind, a.sourceType]),
+        [['output', 'video', 'media_job']],
+      );
     });
   });
 });

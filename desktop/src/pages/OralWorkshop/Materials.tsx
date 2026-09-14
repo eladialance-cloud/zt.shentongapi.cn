@@ -1,35 +1,25 @@
 /**
- * 口播工坊 · 素材库（对标素材管理页）
- * 上传/登记素材 → 向量化（Qdrant 语义索引）→ 归档管理；AI 混剪建议（字幕关键词 → 素材匹配）
+ * 口播工坊 · 素材与混剪（收敛版）
+ *
+ * 素材的「上传 / 登记 / 向量化 / 归档」统一在「素材库」页维护（两库规则 R4：口播工坊只读输入库）。
+ * 本页只保留口播工坊特有的两件事：
+ *   1) AI 混剪建议（字幕关键词 → 输入库素材匹配）→「加入画中画」进入待用队列；
+ *   2) 一键把某次任务的产物导入「生成素材库」。
+ * 下方素材列表为只读视图（便于对照匹配结果），右上角可跳转素材库维护原料。
  */
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Card, Empty, Form, Input, Modal, Select, Spin, Table, Tag, Upload, message } from 'antd'
+import { Button, Card, Empty, Select, Table, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import {
-  Archive,
-  ArchiveRestore,
-  Clapperboard,
-  FileText,
-  Library,
-  Plus,
-  RefreshCw,
-  Sparkles,
-  Upload as UploadIcon,
-} from 'lucide-react'
-import {
-  createMediaAsset,
-  listMediaAssets,
-  updateMediaAsset,
-  vectorizeMediaAsset,
-  type MediaAssetItem,
-} from '@/api/media-assets-api'
-import { uploadFile } from '@/api/file-api'
+import { useNavigate } from 'react-router-dom'
+import { Clapperboard, ExternalLink, FileText, Library, Plus, Sparkles } from 'lucide-react'
+// 统一走素材库 API 客户端（两库口径同源；原 @/api/media-assets-api 副本已删除）
+import { listMediaAssets } from '@/api/media-asset-api'
+import type { MediaAsset as MediaAssetItem } from '@/api/media-asset-api'
 import { importJobToMaterials, listOralWorkshopJobs, mixSuggest } from '@/api/oral-workshop-api'
 import type { MixSuggestItem, OralWorkshopJob } from '@/types/oral-workshop'
 import { resolveMediaUrl } from '@/utils/media'
+import { addPipSuggestion, readPipSuggestions, toPipSuggestion } from './pip-suggestions'
 import styles from './styles.module.css'
-
-const { TextArea } = Input
 
 /** 素材类型展示名 */
 const ASSET_TYPE_LABEL: Record<MediaAssetItem['assetType'], string> = {
@@ -56,28 +46,13 @@ const PIP_POSITION_LABEL: Record<string, string> = {
   center: '居中',
 }
 
-/** 按文件 MIME 推断素材类型 */
-function inferAssetType(mime: string): MediaAssetItem['assetType'] {
-  if (mime.startsWith('image/')) return 'image'
-  if (mime.startsWith('video/')) return 'video'
-  if (mime.startsWith('audio/')) return 'audio'
-  return 'file'
-}
-
-/** 加入画中画的本地记录 key（工作台画中画素材可读取） */
-const PIP_STORAGE_KEY = 'oral-workshop-pip-suggestions'
-
 export default function OralWorkshopMaterials() {
+  const navigate = useNavigate()
   const [list, setList] = useState<MediaAssetItem[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [loading, setLoading] = useState(false)
-  const [vectorizingId, setVectorizingId] = useState<number | null>(null)
-  const [archivingId, setArchivingId] = useState<number | null>(null)
-  const [urlOpen, setUrlOpen] = useState(false)
-  const [urlForm] = Form.useForm()
-  const [urlSaving, setUrlSaving] = useState(false)
 
   // AI 混剪建议
   const [jobs, setJobs] = useState<OralWorkshopJob[]>([])
@@ -89,7 +64,8 @@ export default function OralWorkshopMaterials() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await listMediaAssets({ page, pageSize })
+      // 两库规则 R4：口播工坊（画中画/混剪）取材只读「用户输入库」
+      const data = await listMediaAssets({ library: 'input', page, pageSize })
       setList(data.list)
       setTotal(data.total)
     } catch (err) {
@@ -110,72 +86,12 @@ export default function OralWorkshopMaterials() {
       .catch(() => setJobs([]))
   }, [])
 
-  /** 上传素材：uploadFile → createMediaAsset */
-  const handleUpload = async (file: File) => {
-    try {
-      const up = await uploadFile(file)
-      await createMediaAsset({
-        title: file.name,
-        url: up.url,
-        assetType: inferAssetType(up.mimeType || file.type || ''),
-      })
-      message.success('素材已上传并登记（自动发起向量化）')
-      void load()
-    } catch (err) {
-      message.error('上传素材失败: ' + ((err as Error)?.message ?? err))
-    }
-    return false
-  }
+  /** 待用画中画建议条数（口播工坊写入 → 任务工作台消费，这里只做提示） */
+  const [pipQueued, setPipQueued] = useState(0)
 
-  /** 登记 URL 素材 */
-  const handleCreateByUrl = async () => {
-    const values = (await urlForm.validateFields()) as { title: string; url: string; type?: MediaAssetItem['assetType']; description?: string }
-    setUrlSaving(true)
-    try {
-      await createMediaAsset({
-        title: values.title.trim(),
-        url: values.url.trim(),
-        assetType: values.type,
-        description: values.description?.trim() || undefined,
-      })
-      message.success('素材已登记（自动发起向量化）')
-      setUrlOpen(false)
-      urlForm.resetFields()
-      void load()
-    } catch (err) {
-      message.error('登记素材失败: ' + ((err as Error)?.message ?? err))
-    } finally {
-      setUrlSaving(false)
-    }
-  }
-
-  /** 向量化素材 */
-  const handleVectorize = async (id: number) => {
-    setVectorizingId(id)
-    try {
-      await vectorizeMediaAsset(id)
-      message.success('向量化任务已提交，稍后刷新查看状态')
-      void load()
-    } catch (err) {
-      message.error('向量化失败: ' + ((err as Error)?.message ?? err))
-    } finally {
-      setVectorizingId(null)
-    }
-  }
-
-  /** 归档 / 恢复 */
-  const handleArchive = async (item: MediaAssetItem) => {
-    setArchivingId(item.id)
-    try {
-      await updateMediaAsset(item.id, { archived: !item.archived })
-      message.success(item.archived ? '素材已恢复' : '素材已归档')
-      void load()
-    } catch (err) {
-      message.error('更新素材失败: ' + ((err as Error)?.message ?? err))
-    } finally {
-      setArchivingId(null)
-    }
-  }
+  useEffect(() => {
+    setPipQueued(readPipSuggestions().length)
+  }, [])
 
   /** AI 混剪建议 */
   const handleSuggest = async () => {
@@ -188,7 +104,7 @@ export default function OralWorkshopMaterials() {
     try {
       const items = await mixSuggest(suggestJobId)
       setSuggestions(items)
-      if (!items.length) message.info('暂无混剪建议（可先上传/登记素材并完成向量化）')
+      if (!items.length) message.info('暂无混剪建议（请先在素材库上传素材并完成向量化）')
     } catch (err) {
       message.error('生成混剪建议失败: ' + ((err as Error)?.message ?? err))
     } finally {
@@ -196,28 +112,22 @@ export default function OralWorkshopMaterials() {
     }
   }
 
-  /** 加入画中画：匹配素材 URL 记到本地，供任务工作台使用 */
+  /** 加入画中画：把匹配素材写入待用队列（读写唯一口径见 pip-suggestions.ts） */
   const handleAddPip = (s: MixSuggestItem) => {
-    const matched = s.matched?.[0]
-    if (!matched?.url) {
-      message.warning('该建议暂无匹配素材')
+    const entry = toPipSuggestion({
+      subtitle: s.subtitle,
+      keyword: s.keyword,
+      matched: s.matched?.[0],
+      pip: s.pipAssets?.[0],
+      jobId: suggestJobId,
+    })
+    if (!entry) {
+      message.warning('该建议暂无匹配素材，无法加入画中画')
       return
     }
-    const prev = JSON.parse(localStorage.getItem(PIP_STORAGE_KEY) || '[]') as Array<Record<string, unknown>>
-    localStorage.setItem(
-      PIP_STORAGE_KEY,
-      JSON.stringify([
-        ...prev,
-        {
-          subtitle: s.subtitle,
-          url: matched.url,
-          position: s.pipAssets?.[0]?.position ?? 'tr',
-          scale: s.pipAssets?.[0]?.scale ?? 1,
-          addedAt: new Date().toISOString(),
-        },
-      ])
-    )
-    message.success('已加入画中画素材，可在任务工作台「画中画素材」中查看使用')
+    const next = addPipSuggestion(entry)
+    setPipQueued(next.length)
+    message.success('已加入画中画待用队列（' + next.length + ' 条），可在任务工作台画中画弹窗中一键使用')
   }
 
   /** 一键导入素材库（任务产物 → 素材库） */
@@ -272,32 +182,6 @@ export default function OralWorkshopMaterials() {
       width: 110,
       render: (s: MediaAssetItem['vectorStatus']) => <Tag color={VECTOR_STATUS_META[s]?.color}>{VECTOR_STATUS_META[s]?.label ?? s}</Tag>,
     },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 220,
-      render: (_, r) => (
-        <div className={styles.rowActions}>
-          <Button
-            size="small"
-            icon={<RefreshCw size={12} />}
-            loading={vectorizingId === r.id}
-            disabled={r.vectorStatus === 'pending'}
-            onClick={() => void handleVectorize(r.id)}
-          >
-            {r.vectorStatus === 'none' ? '向量化' : r.vectorStatus === 'ready' ? '重新向量化' : '向量化'}
-          </Button>
-          <Button
-            size="small"
-            icon={r.archived ? <ArchiveRestore size={12} /> : <Archive size={12} />}
-            loading={archivingId === r.id}
-            onClick={() => void handleArchive(r)}
-          >
-            {r.archived ? '恢复' : '归档'}
-          </Button>
-        </div>
-      ),
-    },
   ]
 
   return (
@@ -308,23 +192,34 @@ export default function OralWorkshopMaterials() {
             <Library size={17} strokeWidth={2} />
           </span>
           <div>
-            <h1 className={styles.title}>素材库</h1>
-            <div className={styles.subtitle}>上传/登记素材并向量化，供 AI 混剪建议与素材中心语义检索使用</div>
+            <h1 className={styles.title}>素材与混剪</h1>
+            <div className={styles.subtitle}>
+              口播工坊取材只读「用户输入库」；上传 / 向量化 / 归档请在素材库维护，本页负责混剪建议与任务产物入库
+            </div>
           </div>
         </div>
         <div className={styles.headActions}>
-          <Upload accept="image/*,video/*,audio/*" showUploadList={false} beforeUpload={(f) => handleUpload(f)}>
-            <Button type="primary" icon={<UploadIcon size={14} />}>
-              上传素材
+          {pipQueued > 0 && (
+            <Button icon={<Clapperboard size={14} />} onClick={() => navigate('/oral-workshop/workbench')}>
+              画中画待用 {pipQueued} 条
             </Button>
-          </Upload>
-          <Button icon={<Plus size={14} />} onClick={() => setUrlOpen(true)}>
-            登记 URL
+          )}
+          <Button type="primary" icon={<ExternalLink size={14} />} onClick={() => navigate('/assets')}>
+            去素材库维护原料
           </Button>
         </div>
       </header>
 
-      <Card className={styles.card} title={<span className={styles.cardTitle}>素材列表</span>} style={{ marginBottom: 16 }}>
+      <Card
+        className={styles.card}
+        title={<span className={styles.cardTitle}>可取材素材（只读 · 用户输入库）</span>}
+        extra={
+          <Button size="small" type="link" icon={<ExternalLink size={12} />} onClick={() => navigate('/assets')}>
+            管理
+          </Button>
+        }
+        style={{ marginBottom: 16 }}
+      >
         <Table
           className={styles.darkTable}
           rowKey="id"
@@ -343,7 +238,7 @@ export default function OralWorkshopMaterials() {
               setPageSize(ps)
             },
           }}
-          locale={{ emptyText: <Empty description="暂无素材，点击右上角上传或登记" /> }}
+          locale={{ emptyText: <Empty description="输入库暂无素材，请先到「素材库」上传或登记" /> }}
         />
       </Card>
 
@@ -386,7 +281,7 @@ export default function OralWorkshopMaterials() {
             </Button>
           )}
           <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
-            提示：素材需先向量化（状态「已就绪」）才能被混剪建议匹配
+            提示：素材需先在素材库向量化（状态「已就绪」）才能被混剪建议匹配；「加入画中画」后到任务工作台的画中画弹窗一键使用
           </span>
         </div>
         {suggestions.length === 0 ? (
@@ -427,37 +322,6 @@ export default function OralWorkshopMaterials() {
           </div>
         )}
       </Card>
-
-      <Modal
-        open={urlOpen}
-        title="登记 URL 素材"
-        onCancel={() => setUrlOpen(false)}
-        onOk={() => void handleCreateByUrl()}
-        okText="登记"
-        confirmLoading={urlSaving}
-      >
-        <Form form={urlForm} layout="vertical">
-          <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
-            <Input placeholder="如：海边日落素材" maxLength={128} />
-          </Form.Item>
-          <Form.Item name="url" label="素材 URL" rules={[{ required: true, message: '请输入素材 URL' }]}>
-            <Input placeholder="https://…" maxLength={1024} />
-          </Form.Item>
-          <Form.Item name="type" label="类型">
-            <Select
-              placeholder="自动推断（可选）"
-              allowClear
-              options={(Object.keys(ASSET_TYPE_LABEL) as MediaAssetItem['assetType'][]).map((t) => ({
-                value: t,
-                label: ASSET_TYPE_LABEL[t],
-              }))}
-            />
-          </Form.Item>
-          <Form.Item name="description" label="描述（可选）">
-            <TextArea rows={2} placeholder="补充描述，帮助语义检索" maxLength={500} />
-          </Form.Item>
-        </Form>
-      </Modal>
     </div>
   )
 }

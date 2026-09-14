@@ -42,22 +42,35 @@ function makePlan(overrides: Record<string, unknown> = {}): any {
   };
 }
 
-/** 最小 find-only repo mock：按 where 全等过滤 */
+/** where 值匹配：支持 TypeORM FindOperator（In / Not(In) / Like），其余按全等 */
+function matchValue(actual: any, want: any): boolean {
+  if (want && typeof want === 'object' && typeof want._type === 'string') {
+    if (want._type === 'in') return (want._value as any[]).includes(actual);
+    if (want._type === 'not') return !matchValue(actual, want._value);
+    if (want._type === 'like') {
+      const needle = String(want._value).replace(/%/g, '');
+      return needle ? String(actual ?? '').includes(needle) : true;
+    }
+  }
+  return actual === want;
+}
+
+/** where 全键匹配 */
+function matchWhere(row: any, where: any): boolean {
+  return Object.entries(where ?? {}).every(([k, v]) => matchValue(row?.[k], v));
+}
+
+/** 最小 find-only repo mock：按 where 匹配过滤 */
 function makeFindRepo(rows: any[]) {
   return {
-    find: async ({ where }: any = {}) =>
-      rows.filter((row: any) =>
-        Object.entries(where ?? {}).every(([k, v]) => row[k] === v),
-      ),
+    find: async ({ where }: any = {}) => rows.filter((row: any) => matchWhere(row, where)),
   };
 }
 
 function makeService(opts: { assets?: MediaAssetEntity[]; plans?: any[] } = {}) {
   const assetRepo = {
     findAndCount: async ({ where, order, skip, take }: any = {}) => {
-      let list = (opts.assets ?? []).filter((row: any) =>
-        Object.entries(where ?? {}).every(([k, v]) => row[k] === v),
-      );
+      let list = (opts.assets ?? []).filter((row: any) => matchWhere(row, where));
       const total = list.length;
       if (order?.createdAt === 'DESC') {
         list = [...list].sort(

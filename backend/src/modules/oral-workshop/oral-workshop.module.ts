@@ -2,7 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OralWorkshopJobEntity } from './entities/oral-workshop-job.entity';
 import { OralWorkshopStepEntity } from './entities/oral-workshop-step.entity';
-import { DigitalHumanAssetEntity } from './entities/digital-human-asset.entity';
+import { MediaAssetAvatarEntity } from '../media-assets/entities/media-asset-avatar.entity';
 import { PublishAccountEntity } from './entities/publish-account.entity';
 import { PublishPlatformEntity } from './entities/publish-platform.entity';
 import { OralWorkshopController } from './oral-workshop.controller';
@@ -26,7 +26,7 @@ import { MediaAssetsModule } from '../media-assets/media-asset.module';
     TypeOrmModule.forFeature([
       OralWorkshopJobEntity,
       OralWorkshopStepEntity,
-      DigitalHumanAssetEntity,
+      MediaAssetAvatarEntity,
       PublishAccountEntity,
       PublishPlatformEntity,
       ModelProviderEntity,

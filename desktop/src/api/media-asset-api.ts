@@ -10,9 +10,21 @@
 //   POST   /media-assets/:id/vectorize  向量化素材（写入语义检索索引）
 import { httpClient } from './http-client'
 
-export type MediaAssetSourceType = 'task' | 'media_job' | 'manual'
+export type MediaAssetSourceType = 'task' | 'media_job' | 'manual' | 'agent' | 'flow'
 export type MediaAssetType = 'image' | 'video' | 'audio' | 'file'
 export type MediaAssetUsage = 'in_use' | 'selected' | 'unused'
+/** 素材库：input=用户输入库（原料）；output=生成素材库（成品） */
+export type MediaAssetLibrary = 'input' | 'output'
+/** 业务类别（与 library 成对：声音/形象/IP 档案只在输入库，文案只在生成库） */
+export type MediaAssetKind =
+  | 'voice'
+  | 'avatar'
+  | 'ip_archive'
+  | 'image'
+  | 'video'
+  | 'audio'
+  | 'file'
+  | 'copy'
 
 export interface MediaAsset {
   id: number
@@ -27,10 +39,14 @@ export interface MediaAsset {
   tags?: string[] | null
   /** 素材描述（参与语义检索） */
   description?: string | null
-  /** 向量化状态 none|pending|ready|failed */
-  vectorStatus?: string
+  /** 向量化状态 none|pending|ready|failed（后端列 NOT NULL，恒有值） */
+  vectorStatus: 'none' | 'pending' | 'ready' | 'failed'
   /** 扩展元数据（时长/分辨率/封面/字幕摘要） */
   meta?: Record<string, unknown> | null
+  /** 素材库（input=用户输入库 / output=生成素材库） */
+  library?: MediaAssetLibrary
+  /** 业务类别 */
+  kind?: MediaAssetKind
   archived: boolean
   /** 素材使用状态：in_use=被执行/已发布计划引用；selected=被草稿/待审计划引用；unused=无引用 */
   usage?: MediaAssetUsage
@@ -74,9 +90,19 @@ export interface MediaAssetListResult {
   totalPages: number
 }
 
-/** 资产列表 GET /media-assets?type=&archived=&page=&pageSize= */
+/** 资产列表 GET /media-assets?library=&kind=&type=&archived=&page=&pageSize= */
 export function listMediaAssets(
-  query: { type?: MediaAssetType; archived?: boolean; page?: number; pageSize?: number } = {},
+  query: {
+    /** 素材库过滤（两库规则：不传=兼容旧行为，排除声音/形象/IP 档案） */
+    library?: MediaAssetLibrary
+    /** 业务类别过滤（优先于 type） */
+    kind?: MediaAssetKind
+    type?: MediaAssetType
+    sourceType?: MediaAssetSourceType
+    archived?: boolean
+    page?: number
+    pageSize?: number
+  } = {},
 ): Promise<MediaAssetListResult> {
   return httpClient.get<MediaAssetListResult>('/media-assets', { params: query })
 }
@@ -109,9 +135,9 @@ export default {
   getMediaAsset,
 }
 
-/** 素材语义检索 GET /media-assets/search?q=&type=&topK=（Qdrant 优先，LIKE 降级） */
+/** 素材语义检索 GET /media-assets/search?q=&library=&kind=&type=&topK=（Qdrant 优先，LIKE 降级） */
 export function searchMediaAssets(
-  query: { q: string; type?: MediaAssetType; topK?: number },
+  query: { q: string; library?: MediaAssetLibrary; kind?: MediaAssetKind; type?: MediaAssetType; topK?: number },
 ): Promise<Array<{ asset: MediaAsset; score: number }>> {
   return httpClient.get<Array<{ asset: MediaAsset; score: number }>>('/media-assets/search', { params: query })
 }
