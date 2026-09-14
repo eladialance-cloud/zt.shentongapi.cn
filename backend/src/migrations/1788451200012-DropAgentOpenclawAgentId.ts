@@ -17,7 +17,9 @@ export class DropAgentOpenclawAgentId1788451200012 implements MigrationInterface
       "SELECT COUNT(*) AS c FROM information_schema.COLUMNS " +
       "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'eco_agents' AND COLUMN_NAME = 'openclaw_agent_id'",
     )) as Array<{ c: number }>;
-    if (!rows[0]?.c) {
+    // mysql2 会把 COUNT(*) 以字符串返回（'0' 是真值），必须显式转数字，
+    // 否则「列不存在」会被误判成「列存在」，去执行必然失败的 DROP/MODIFY（2026-09-14 生产事故）
+    if (!(Number(rows[0]?.c ?? 0) > 0)) {
       return;
     }
     // 动态删除所有引用 openclaw_agent_id 的索引（不硬编码索引名，兼容旧库真实命名）；
