@@ -199,7 +199,12 @@ export class SystemLlmService implements LlmCaller {
     try {
       const resp = await fetch(base + '/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+        headers: {
+          'Content-Type': 'application/json',
+          // 百炼异步接口（含连通性探测）需要显式声明异步，否则返回错误（2026-09-14 线上热修回填）
+          'X-DashScope-Async': 'enable',
+          Authorization: 'Bearer ' + apiKey,
+        },
         body: JSON.stringify({ model, messages: [{ role: 'user', content: 'ping' }], max_tokens: 8 }),
         signal: AbortSignal.timeout(20000),
       });
