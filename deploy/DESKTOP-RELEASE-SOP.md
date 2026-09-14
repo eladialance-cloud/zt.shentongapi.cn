@@ -107,9 +107,57 @@ $sql | ssh ubuntu@129.204.227.200 'sudo docker exec -i shentong-mysql mysql --de
 8. **改库改错库**：生产是 `shentong`，仓库默认 `ai_agent`，见第 6 节。
 9. **`electron-builder --dir` 不写 `app-update.yml`（v2.0.14 踩到）**：`app-update.yml` 由 `PublishManager` 的 `onAfterPack` 钩子写入，而该钩子只在 targets 里含 nsis 等 Windows target 时才触发。离线打包若只跑 `--win --dir`、再 `--prepackaged` 重打 NSIS，装机后 `resources/` 里**没有** `app-update.yml`，客户端永远收不到自动更新（且构建期零报错）。正确顺序：① 先跑一次完整 `--win`（写出 `app-update.yml` 并首次生成 NSIS）→ ② 删掉 `win-unpacked\version` 与 `win-unpacked\resources\default_app.asar`（自定义 electronDist 不会自动清理）→ ③ 再 `--win --prepackaged win-unpacked` 重打最终 NSIS。验收：`win-unpacked\resources` 必须同时有 `app-update.yml`、`app.asar`、`elevate.exe`，且**没有** `default_app.asar`。
 
+
 ## 9. 相关文件
 
+- 一键发版（本地）：`deploy/release-desktop.ps1`（第 10 节）
+- 服务器换包：`deploy/publish-desktop.sh`（第 10 节）
 - CI 工作流：`.github/workflows/desktop-build.yml`
 - 一键构建+上传脚本（半过时，输出目录为 `dist/installer-v${version}`）：`desktop/scripts/build-and-upload.ps1`
 - 旧版发布指南（含 GitHub Actions 下载脚本模板）：`deploy/桌面端发布部署指南.md`
 - 本 SOP 为唯一权威流程，发现不一致以本文件为准。
+
+## 10. 脚本化发版（推荐路径，2026-09-14 起）
+
+第 2~6 节的手工步骤已固化成两个脚本；任一步失败都会带非零退出码停下，且每一步都打印可核对的结果。
+
+### 10.1 本地：`deploy/release-desktop.ps1`
+
+```powershell
+# 只做到「下载产物 + 校验」为止（不改动服务器）
+powershell -ExecutionPolicy Bypass -File deploy\release-desktop.ps1 -Version 2.1.7
+
+# 一条命令走完：推送 -> 等 CI -> 下载 -> 校验 -> 上传 -> 服务器发布 -> 数据库登记 -> 线上验收
+powershell -ExecutionPolicy Bypass -File deploy\release-desktop.ps1 -Version 2.1.7 -Push -Publish
+```
+
+前置检查（不满足直接报错并给出修法）：
+
+1. `desktop/package.json` 的 version 按第 1 节规则 +1 后必须等于 `-Version`；
+2. `deploy/publish-<Version>.sql` 必须存在（官网 changelog）；
+3. 工作区不能有未提交的**已跟踪**改动（未跟踪的临时脚本不影响）；
+4. 当前分支不是 `upgrade/electron-41` 时给出 warn。
+
+参数：`-Version`（必填）、`-Sha`（默认 HEAD 短 sha）、`-Branch`、`-Repo`、`-Server`、`-SiteBase`、`-TimeoutMinutes`、`-Push`、`-SkipUpload`、`-Publish`。
+
+校验动作（对应第 3 节）：`latest.yml` 的 `version` 必须等于 `-Version`，`size` 必须等于本地文件大小，本地 SHA-512 转 base64 必须与 `latest.yml` 的 `sha512` 完全一致 —— 三者任一不符即中断，不会上传。
+
+### 10.2 服务器：`deploy/publish-desktop.sh`
+
+```bash
+ssh ubuntu@129.204.227.200 "bash /tmp/publish-desktop.sh 2.1.7"
+```
+
+对应第 5 节：备份 `latest.yml` → 删旧包 → 换包 → **重建 Setup 前缀 zip** → `chown www-data` → 打印目录与后续校验命令。
+守卫：版本号必须形如 `x.y.z`；`/tmp/<exe>` 与 `/tmp/latest.yml` 必须存在；`latest.yml` 里的 version 必须等于传入版本。
+⚠️ 它**不动数据库** —— 第 6 节的 SQL 仍需单独执行（用 `-Publish` 时脚本会替你跑）。
+
+### 10.3 为什么网络调用全部用 `curl.exe`（不要改回 Invoke-RestMethod）
+
+本机实测（Windows + PowerShell 5.1）：`Invoke-RestMethod` / `Invoke-WebRequest` 请求 `api.github.com` 会非确定性失败（`基础连接已经关闭: 发送时发生错误`，TLS 握手层面），而 `curl.exe` 请求同一端点稳定可用。因此脚本内所有网络调用都走 `curl.exe`，并对 API 调用与产物下载各做多次重试。
+
+### 10.4 改脚本前必读的两个约束
+
+- **PowerShell 脚本：ASCII-only + UTF-8 BOM + CRLF。** PowerShell 5.1 会把无 BOM 的 UTF-8 按 ANSI 解码，含中文注释的脚本会直接报 `Unexpected token` 这类解析错误（2026-09-14 踩过）。
+- **bash 脚本：ASCII-only + LF。**
+
