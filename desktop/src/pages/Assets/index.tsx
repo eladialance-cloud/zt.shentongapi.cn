@@ -1,30 +1,14 @@
-// 素材库（2026-09-13 起合并原「素材管理」页，素材共用一个入口）
-// 原「素材管理」的「融合素材」面板与素材库本体重复，已删除；其余 4 个面板并入本页 Tab。
-import type { ReactNode } from "react";
-import { Tabs } from "antd";
-import type { TabsProps } from "antd";
+// 素材库（2026-09-14 收敛为「单层 · 两库」）
+// 本页只有一层 Tab：用户输入库 / 生成素材库；类别是这一层下面的二级过滤，不再有第二层库 Tab。
+//
+// 原「合成视频 / 形象视频 / 音频素材」三个只读面板与本页两库内容重复（数据就是同一批 media_assets），
+// 且形象 / 声音的创建入口本来就在「口播工坊」；「知识库」在侧边栏已有独立入口。
+// 因此一并删除：去掉重复入口与「两层 Tab」的歧义，素材只从「输入库 / 生成库」进出。
 import { FolderOutlined } from "@ant-design/icons";
 import AssetLibraryTab from "./AssetLibrary";
-import { AudioTab } from "./panels/AudioTab";
-import { ComposeTab } from "./panels/ComposeTab";
-import { DigitalTab } from "./panels/DigitalTab";
-import { KnowledgeTab } from "./panels/KnowledgeTab";
-import { ASSET_LIBRARY_TABS, type AssetLibraryTabKey } from "./tabs";
 import styles from "./styles.module.css";
 
 export default function AssetsPage() {
-  const panels: Record<AssetLibraryTabKey, ReactNode> = {
-    library: <AssetLibraryTab />,
-    compose: <ComposeTab />,
-    digital: <DigitalTab />,
-    audio: <AudioTab />,
-    knowledge: <KnowledgeTab />,
-  };
-  const items: TabsProps["items"] = ASSET_LIBRARY_TABS.map((t) => ({
-    key: t.key,
-    label: t.label,
-    children: panels[t.key],
-  }));
   return (
     <div className={styles.pageContainer}>
       <div className={styles.pageHeader}>
@@ -33,7 +17,7 @@ export default function AssetsPage() {
           <span>素材库</span>
         </div>
       </div>
-      <Tabs defaultActiveKey="library" items={items} />
+      <AssetLibraryTab />
     </div>
   );
 }

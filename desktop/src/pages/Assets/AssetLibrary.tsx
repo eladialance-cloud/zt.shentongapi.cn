@@ -5,7 +5,7 @@ import {
   Button, Card, Descriptions, Empty, Form, Image, Input, Modal, Pagination, Select, Space, Spin, Switch, Tabs, Tag, Typography, message,
 } from "antd";
 import {
-  FileOutlined, LinkOutlined, PlusOutlined, ReloadOutlined,
+  DownloadOutlined, FileOutlined, LinkOutlined, PlusOutlined, ReloadOutlined,
 } from "@ant-design/icons";
 import { createMediaAsset, listMediaAssets, searchMediaAssets, updateMediaAsset, vectorizeMediaAsset } from "@/api/media-asset-api";
 import type { MediaAsset, MediaAssetType } from "@/api/media-asset-api";
@@ -389,6 +389,7 @@ export default function AssetLibraryTab() {
         footer={
           detail ? (
             <Space>
+              <Button icon={<DownloadOutlined />} href={detail.url} target="_blank" download>下载</Button>
               <Button icon={<LinkOutlined />} onClick={() => copyUrl(detail.url)}>复制链接</Button>
               <Button loading={actingId === detail.id} onClick={() => onArchive(detail)}>
                 {detail.archived ? "恢复" : "归档"}
