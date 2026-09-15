@@ -5,7 +5,7 @@
 //  - 生成库 output：软件产出的成品（文案/图片/视频/音频）——任务/媒体生成完成自动入库。
 // 一级 Tab 选库，二级 Tab 选类别；类别 → 后端查询参数（kind 优先，其次物理 type）在本文件统一映射，
 // 避免各页面各写一套过滤口径。
-import type { MediaAssetKind, MediaAssetLibrary, MediaAssetType } from '@/api/media-asset-api'
+import type { MediaAssetKind, MediaAssetLibrary, MediaAssetSourceType, MediaAssetType } from '@/api/media-asset-api'
 
 /** 素材库：input=用户输入库；output=生成素材库（与 API 层同源，避免两处定义漂移） */
 export type AssetLibrary = MediaAssetLibrary
@@ -62,11 +62,56 @@ export const LIBRARY_TABS: Record<AssetLibrary, AssetLibraryTabDef[]> = {
   ],
 }
 
+/**
+ * 生成库「来源」筛选（2026-09-14）：
+ * 替代已删除的「合成视频」入口 —— 口播成片就是打「口播工坊」标签的生成物。
+ * 只作用于生成库（输入库的来源只有「用户上传」，没有筛选价值）。
+ */
+export type OutputSourceKey = 'all' | 'oral' | 'agent' | 'media_job' | 'task'
+
+export interface OutputSourceDef {
+  key: OutputSourceKey
+  label: string
+  hint: string
+}
+
+/** 生成库来源筛选项（顺序 = 界面顺序，第一项为默认） */
+export const OUTPUT_SOURCES: OutputSourceDef[] = [
+  { key: 'all', label: '全部来源', hint: '生成库里的全部成品' },
+  { key: 'oral', label: '口播成片', hint: '口播工坊「一键导入产物」进来的成片 / 封面 / 人声轨' },
+  { key: 'agent', label: '官署产出', hint: '三省六部（官署）任务完成后自动入库的文案 / 图片 / 视频' },
+  { key: 'media_job', label: '媒体生成', hint: '媒体生成任务的产物' },
+  { key: 'task', label: '任务输出', hint: '任务中心批量导入的产出' },
+]
+
+/**
+ * 来源 → 后端查询参数（唯一映射口径）：
+ *  - 口播成片：按标签精确匹配（source_type 区分不出来——媒体生成任务同为 media_job）
+ *  - 其余：按 source_type
+ */
+export function outputSourceQuery(source: OutputSourceKey): { sourceType?: MediaAssetSourceType; tag?: string } {
+  switch (source) {
+    case 'oral':
+      return { tag: '口播工坊' }
+    case 'agent':
+      return { sourceType: 'agent' }
+    case 'media_job':
+      return { sourceType: 'media_job' }
+    case 'task':
+      return { sourceType: 'task' }
+    case 'all':
+    default:
+      return {}
+  }
+}
+
 /** 后端素材查询参数（与 MediaAssetQuery 对齐） */
 export interface AssetLibraryQuery {
   library: AssetLibrary
   kind?: MediaAssetKind
   type?: MediaAssetType
+  sourceType?: MediaAssetSourceType
+  tag?: string
 }
 
 /** 类别 → 后端查询参数（kind 优先；文档 = 输入库里的普通文件） */

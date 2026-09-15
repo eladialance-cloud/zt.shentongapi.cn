@@ -133,6 +133,15 @@ export class MediaAssetQueryDto {
   @IsIn(['manual', 'task', 'media_job', 'agent', 'flow'])
   sourceType?: string;
 
+  @ApiPropertyOptional({
+    description: '标签精确过滤（tags JSON 数组包含该值）。用于「口播成片」这类跨来源筛选，example: 口播工坊',
+    example: '口播工坊',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  tag?: string;
+
   @ApiPropertyOptional({ description: '是否只查已归档（true/false/1/0）', example: 'false' })
   @IsOptional()
   @IsBooleanString()

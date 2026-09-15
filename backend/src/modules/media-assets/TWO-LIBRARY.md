@@ -21,6 +21,9 @@
 - 两轴成对校验：见 `LIBRARY_KINDS`（"生成库里的声音"这类越界数据在口径上就不存在）。
 - `biz_type` 是**过渡字段**（`media` / `voice_asset` / `ip_archive` / `avatar`），只为兼容历史查询，新代码不要再用它做判定。
 - `source_type` 保留精确来源：`manual`（用户上传）/ `task`（任务输出）/ `media_job`（媒体生成）/ `agent`（官署产出）/ `flow`（业务流）。
+- 列表查询支持 `tag` 精确过滤（`GET /media-assets?tag=口播工坊`）：SQL 片段真源 = `library-kind.tagContainsSql()`
+  （`JSON_VALID` 兜底脏数据 + `JSON_CONTAINS` 精确匹配）。**用途**：口播成片与媒体生成任务的 `source_type`
+  同为 `media_job`，只能靠标签区分「口播工坊」这一类产物。
 - 形象（原来的 `digital_human_assets`）已并入：主体 = `media_assets(library=input, kind=avatar, biz_type=avatar)`，
   云侧字段（`dh_kind`/`cloud_id`/`video_url`/`image_url`/`preview_url`/`authorized`/`status`）= 1:1 扩展表 `media_asset_avatar(asset_id)`。
 
@@ -59,6 +62,7 @@
 | 场景 | 代码位置 |
 | --- | --- |
 | 素材库页「生成素材库」Tab | `Assets/AssetLibrary.tsx` → `libraryTabQuery('output', tab)` |
+| 素材库页「生成素材库 · 来源」筛选 | `Assets/library-tabs.ts` → `outputSourceQuery()`：口播成片=`tag=口播工坊`；官署产出 / 媒体生成 / 任务输出=`sourceType`（替代已删除的「合成视频」入口） |
 | 发布中心「关联素材」 | `Channels/Publish.tsx` → `listMediaAssets({ library:'output' })`（可切到输入库选封面/画中画） |
 | 语义检索 | `GET /media-assets/search?library=...` 跟随当前库 |
 

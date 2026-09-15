@@ -82,6 +82,20 @@ export interface AssetOriginInput {
   tags?: string[] | null;
 }
 
+/**
+ * 列表「标签精确过滤」的 SQL 片段与参数（唯一真源，供 TypeORM Raw 使用）。
+ *
+ * 用途：成片 = 打「口播工坊」标签的生成物。source_type 区分不出来（媒体生成任务同为 media_job），
+ * 只能按标签精确匹配。JSON_VALID 兜底历史脏数据：tags 不是合法 JSON 时判 false，
+ * 而不是让整条列表查询报错。
+ */
+export function tagContainsSql(tag: string): { sql: string; params: { tag: string } } {
+  return {
+    sql: 'JSON_VALID(COALESCE(tags, JSON_ARRAY())) AND JSON_CONTAINS(COALESCE(tags, JSON_ARRAY()), :tag)',
+    params: { tag: JSON.stringify(tag) },
+  };
+}
+
 /** 归一化来源：只认生成类来源，其余（含空值/脏值）一律按用户上传 manual */
 function normalizeSourceType(value: string): MediaAssetSourceType {
   return (GENERATED_SOURCE_TYPES as readonly string[]).includes(value)

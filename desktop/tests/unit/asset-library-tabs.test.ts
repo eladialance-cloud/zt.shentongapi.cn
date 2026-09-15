@@ -5,8 +5,10 @@ import {
   KIND_LABELS,
   LIBRARY_LABELS,
   LIBRARY_TABS,
+  OUTPUT_SOURCES,
   libraryTabQuery,
   normalizeLibraryTab,
+  outputSourceQuery,
 } from '@/pages/Assets/library-tabs'
 
 describe('两库定义', () => {
@@ -87,5 +89,31 @@ describe('normalizeLibraryTab 切库归一', () => {
     }
     expect(normalizeLibraryTab('output', 'text')).toBe('text')
     expect(normalizeLibraryTab('input', 'voice')).toBe('voice')
+  })
+})
+
+describe('生成库「来源」筛选（替代已删除的「合成视频」入口）', () => {
+  it('筛选项与顺序：全部来源 / 口播成片 / 官署产出 / 媒体生成 / 任务输出', () => {
+    expect(OUTPUT_SOURCES.map((s) => s.key)).toEqual(['all', 'oral', 'agent', 'media_job', 'task'])
+    expect(OUTPUT_SOURCES.map((s) => s.label)).toEqual([
+      '全部来源',
+      '口播成片',
+      '官署产出',
+      '媒体生成',
+      '任务输出',
+    ])
+    for (const s of OUTPUT_SOURCES) expect(s.hint.length).toBeGreaterThan(0)
+  })
+
+  it('来源 → 后端查询参数：成片按标签筛，其余按 sourceType', () => {
+    expect(outputSourceQuery('all')).toEqual({})
+    expect(outputSourceQuery('oral')).toEqual({ tag: '口播工坊' })
+    expect(outputSourceQuery('agent')).toEqual({ sourceType: 'agent' })
+    expect(outputSourceQuery('media_job')).toEqual({ sourceType: 'media_job' })
+    expect(outputSourceQuery('task')).toEqual({ sourceType: 'task' })
+  })
+
+  it('口播成片只认标签、不叠加 sourceType：避免历史脏数据（manual + 标签）被漏筛', () => {
+    expect(outputSourceQuery('oral').sourceType).toBeUndefined()
   })
 })

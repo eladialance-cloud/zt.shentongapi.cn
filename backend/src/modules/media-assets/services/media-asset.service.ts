@@ -1,13 +1,13 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, Not, FindOptionsWhere } from 'typeorm';
+import { Repository, In, Not, Raw, FindOptionsWhere } from 'typeorm';
 import {
   MediaAssetEntity,
   MediaAssetType,
   MediaAssetSourceType,
   MediaAssetBizType,
 } from '../entities/media-asset.entity';
-import { BUSINESS_INPUT_KINDS, kindFromAssetType, resolveAssetOrigin } from '../library-kind';
+import { BUSINESS_INPUT_KINDS, kindFromAssetType, resolveAssetOrigin, tagContainsSql } from '../library-kind';
 import { TaskOutputItemEntity } from '../../task/entities/task-output-item.entity';
 import { AgentTaskEntity } from '../../task/entities/agent-task.entity';
 import { PublishPlanEntity } from '../../channel/entities/publish-plan.entity';
@@ -144,6 +144,11 @@ export class MediaAssetService {
     }
     if (query.sourceType) {
       where.sourceType = query.sourceType as MediaAssetSourceType;
+    }
+    if (query.tag) {
+      // 标签精确过滤（成片=口播工坊标签）：SQL 片段口径见 library-kind.tagContainsSql
+      const { sql, params } = tagContainsSql(query.tag);
+      where.tags = Raw(() => sql, params);
     }
     if (query.type) {
       where.assetType = query.type;

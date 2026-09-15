@@ -13,6 +13,7 @@ import {
   isKindInLibrary,
   kindFromAssetType,
   resolveAssetOrigin,
+  tagContainsSql,
 } from '../../src/modules/media-assets/library-kind';
 
 describe('library-kind 两库定义', () => {
@@ -128,5 +129,20 @@ describe('resolveAssetOrigin 归属判定', () => {
       kind: 'audio',
       sourceType: 'manual',
     });
+  });
+});
+
+describe('tagContainsSql（标签精确过滤片段）', () => {
+  it('按 JSON 数组精确包含匹配，且参数为 JSON 字符串（带引号，避免子串误命中）', () => {
+    const { sql, params } = tagContainsSql('口播工坊');
+    assert.match(sql, /JSON_CONTAINS/);
+    assert.match(sql, /:tag/);
+    assert.equal(params.tag, '"口播工坊"');
+  });
+
+  it('JSON_VALID 兜底：历史脏数据（tags 非合法 JSON）不匹配而不是报错', () => {
+    const { sql } = tagContainsSql('口播工坊');
+    assert.match(sql, /JSON_VALID/);
+    assert.match(sql, /COALESCE\(tags, JSON_ARRAY\(\)\)/);
   });
 });

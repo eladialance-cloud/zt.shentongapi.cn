@@ -14,10 +14,12 @@ import {
   KIND_LABELS,
   LIBRARY_LABELS,
   LIBRARY_TABS,
+  OUTPUT_SOURCES,
   libraryTabQuery,
   normalizeLibraryTab,
+  outputSourceQuery,
 } from "./library-tabs";
-import type { AssetLibrary, AssetLibraryTab } from "./library-tabs";
+import type { AssetLibrary, AssetLibraryTab, OutputSourceKey } from "./library-tabs";
 import styles from "./styles.module.css";
 
 const TYPE_OPTIONS = [
@@ -42,6 +44,15 @@ const TYPE_LABELS: Record<MediaAssetType, string> = {
 };
 
 const PAGE_SIZE = 12;
+
+/** 来源中文名（详情弹窗用）；与后端 source_type 对齐 */
+const SOURCE_LABELS: Record<string, string> = {
+  manual: "手动登记",
+  task: "任务产出",
+  media_job: "媒体生成",
+  agent: "官署产出",
+  flow: "业务流",
+};
 
 function formatSize(bytes?: number | null): string {
   if (bytes == null) return "-";
@@ -82,6 +93,8 @@ export default function AssetLibraryTab() {
   /** 一级 Tab：素材库（输入库 / 生成库） */
   const [library, setLibrary] = useState<AssetLibrary>("input");
   const [tab, setTab] = useState<AssetLibraryTab>("all");
+  /** 生成库专用「来源」筛选（全部来源 / 口播成片 / 官署产出 / 媒体生成 / 任务输出） */
+  const [source, setSource] = useState<OutputSourceKey>("all");
   const [showArchived, setShowArchived] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [detail, setDetail] = useState<MediaAsset | null>(null);
@@ -101,6 +114,7 @@ export default function AssetLibraryTab() {
       currentLibrary: AssetLibrary = "input",
       currentTab: AssetLibraryTab = "all",
       archived = false,
+      currentSource: OutputSourceKey = "all",
     ) => {
       const seq = ++seqRef.current;
       setLoading(true);
@@ -109,6 +123,8 @@ export default function AssetLibraryTab() {
         // 不再需要前端翻页聚合 2000 条再本地过滤
         const res = await listMediaAssets({
           ...libraryTabQuery(currentLibrary, currentTab),
+          // 来源筛选只作用于生成库（输入库的来源只有「用户上传」）
+          ...(currentLibrary === "output" ? outputSourceQuery(currentSource) : {}),
           archived,
           page: targetPage,
           pageSize: PAGE_SIZE,
@@ -129,13 +145,14 @@ export default function AssetLibraryTab() {
     [],
   );
 
-  useEffect(() => { void load(1, library, tab, showArchived); }, [load, library, tab, showArchived]);
+  useEffect(() => { void load(1, library, tab, showArchived, source); }, [load, library, tab, showArchived, source]);
 
   /** 切库：把 Tab 归一到新库合法值，并清空按库的检索/筛选状态 */
   const handleLibraryChange = (key: string) => {
     const next = key as AssetLibrary;
     setLibrary(next);
     setTab((prev) => normalizeLibraryTab(next, prev));
+    setSource("all"); // 来源筛选只属于生成库，切库一律复位
     setKeyword("");
     setSearchMode(false);
     setSearchResults([]);
@@ -153,7 +170,7 @@ export default function AssetLibraryTab() {
       await updateMediaAsset(asset.id, { archived: !asset.archived });
       message.success(asset.archived ? "已恢复" : "已归档");
       if (detail?.id === asset.id) setDetail(null);
-      void load(page, library, tab, showArchived);
+      void load(page, library, tab, showArchived, source);
     } catch (err) {
       message.error("操作失败: " + (err as Error).message);
     } finally {
@@ -176,7 +193,7 @@ export default function AssetLibraryTab() {
       message.success("素材已登记");
       setCreateOpen(false);
       form.resetFields();
-      void load(1, library, tab, showArchived);
+      void load(1, library, tab, showArchived, source);
     } catch (err) {
       message.error("登记失败: " + (err as Error).message);
     } finally {
@@ -265,7 +282,7 @@ export default function AssetLibraryTab() {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12 }}>
-        <Button icon={<ReloadOutlined />} onClick={() => void load(page, library, tab, showArchived)}>刷新</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => void load(page, library, tab, showArchived, source)}>刷新</Button>
         {library === "input" && (
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setCreateOpen(true); }}>上传素材</Button>
         )}
@@ -287,6 +304,21 @@ export default function AssetLibraryTab() {
           size="small"
           style={{ marginBottom: 4 }}
         />
+        {library === "output" && (
+          <Space size={8} style={{ marginBottom: 8 }} wrap>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>来源</Typography.Text>
+            <Select
+              size="small"
+              style={{ width: 150 }}
+              value={source}
+              onChange={(v) => setSource(v as OutputSourceKey)}
+              options={OUTPUT_SOURCES.map((s) => ({ value: s.key, label: s.label }))}
+            />
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {OUTPUT_SOURCES.find((s) => s.key === source)?.hint}
+            </Typography.Text>
+          </Space>
+        )}
         <Space wrap size={12}>
           <Switch checked={showArchived} onChange={setShowArchived} checkedChildren="含已归档" unCheckedChildren="仅未归档" />
           <Input
@@ -379,7 +411,7 @@ export default function AssetLibraryTab() {
 
       {!searchMode && total > PAGE_SIZE && (
         <div className={styles.pager}>
-          <Pagination current={page} total={total} pageSize={PAGE_SIZE} showSizeChanger={false} onChange={(p) => void load(p, library, tab, showArchived)} />
+          <Pagination current={page} total={total} pageSize={PAGE_SIZE} showSizeChanger={false} onChange={(p) => void load(p, library, tab, showArchived, source)} />
         </div>
       )}
 
@@ -425,7 +457,7 @@ export default function AssetLibraryTab() {
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="来源">
-                {detail.sourceType === "task" ? "任务产出" : detail.sourceType === "media_job" ? "媒体生成" : "手动登记"}
+                {SOURCE_LABELS[detail.sourceType] ?? detail.sourceType}
                 {detail.sourceId != null ? ` #${detail.sourceId}` : ""}
               </Descriptions.Item>
               <Descriptions.Item label="大小">{formatSize(detail.fileSize)}</Descriptions.Item>

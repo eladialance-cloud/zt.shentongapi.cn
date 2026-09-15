@@ -90,7 +90,7 @@ export interface MediaAssetListResult {
   totalPages: number
 }
 
-/** 资产列表 GET /media-assets?library=&kind=&type=&archived=&page=&pageSize= */
+/** 资产列表 GET /media-assets?library=&kind=&type=&sourceType=&tag=&archived=&page=&pageSize= */
 export function listMediaAssets(
   query: {
     /** 素材库过滤（两库规则：不传=兼容旧行为，排除声音/形象/IP 档案） */
@@ -99,6 +99,8 @@ export function listMediaAssets(
     kind?: MediaAssetKind
     type?: MediaAssetType
     sourceType?: MediaAssetSourceType
+    /** 标签精确过滤（tags 包含该值）；成片 = tag: '口播工坊' */
+    tag?: string
     archived?: boolean
     page?: number
     pageSize?: number

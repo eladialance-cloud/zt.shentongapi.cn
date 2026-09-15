@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { MediaAssetService } from '../../src/modules/media-assets/services/media-asset.service';
 import { MediaAssetEntity } from '../../src/modules/media-assets/entities/media-asset.entity';
 
-/** where 值匹配：支持 TypeORM FindOperator（In / Not(In) / Like），其余按全等 */
+/** where 值匹配：支持 TypeORM FindOperator（In / Not(In) / Like / Raw-tag），其余按全等 */
 function matchValue(actual: any, want: any): boolean {
   if (want && typeof want === 'object' && typeof want._type === 'string') {
     if (want._type === 'in') return (want._value as any[]).includes(actual);
@@ -18,6 +18,14 @@ function matchValue(actual: any, want: any): boolean {
     if (want._type === 'like') {
       const needle = String(want._value).replace(/%/g, '');
       return needle ? String(actual ?? '').includes(needle) : true;
+    }
+    if (want._type === 'raw') {
+      // 仅覆盖标签过滤用的 JSON_CONTAINS 片段（真实 SQL 见 library-kind.tagContainsSql），
+      // 这里是它的内存等价实现：tags 数组精确包含该标签（tags 非数组/为 null 即不匹配，等价于 JSON_VALID 兜底）
+      const sql = String(want._getSql ? want._getSql('tags') : '');
+      if (!/JSON_CONTAINS/i.test(sql)) return true;
+      const tag = JSON.parse(String(want._objectLiteralParameters?.tag ?? '""'));
+      return Array.isArray(actual) && actual.map(String).includes(String(tag));
     }
   }
   return actual === want;
@@ -494,6 +502,24 @@ describe('MediaAssetService', () => {
       assert.deepEqual(copy.list.map((a) => a.id), [1]);
       const agent = await svc.list(1, { sourceType: 'agent' });
       assert.deepEqual(agent.list.map((a) => a.id), [1]);
+    });
+
+    it('list：tag 过滤（成片=口播工坊标签；精确匹配，不吃子串与脏数据）', async () => {
+      const seed = [
+        makeAsset({ id: 1, library: 'output', kind: 'video', sourceType: 'media_job', tags: ['口播工坊'] }),
+        makeAsset({ id: 2, library: 'output', kind: 'video', sourceType: 'media_job', tags: ['媒体生成'] }),
+        makeAsset({ id: 3, library: 'output', kind: 'image', sourceType: 'agent', tags: ['三省六部'] }),
+        makeAsset({ id: 4, library: 'output', kind: 'audio', sourceType: 'media_job', tags: null }),
+      ];
+      const { svc } = makeService({ assets: seed });
+      const oral = await svc.list(1, { library: 'output', tag: '口播工坊' });
+      assert.deepEqual(oral.list.map((a) => a.id), [1]);
+      // 不传 tag 时行为不变（不会误筛掉没有标签的成品，例如官署文案）
+      const all = await svc.list(1, { library: 'output' });
+      assert.equal(all.total, 4);
+      // 标签是精确匹配：'口播' 不等于 '口播工坊'
+      const partial = await svc.list(1, { library: 'output', tag: '口播' });
+      assert.equal(partial.total, 0);
     });
 
     it('import（task 输出）→ 生成库；文本落 copy', async () => {
